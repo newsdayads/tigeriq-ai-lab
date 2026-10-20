@@ -16,12 +16,12 @@ const actor = {
 };
 const run = {
   id: 'RUN1234567', actId: actor.id, status: 'SUCCEEDED',
-  buildNumber: '0.0.4', startedAt: '2026-10-08T03:00:00.000Z',
+  buildNumber: '0.0.4', buildId:'BUILD12345', startedAt: '2026-10-08T03:00:00.000Z',
   finishedAt: '2026-10-08T03:00:02.000Z',
   defaultKeyValueStoreId: 'STORE12345', usageTotalUsd: 0.0004,
   stats: { computeUnits: 0.002 },
 };
-const output = { schemaVersion: '1.0', status: 'success', requestedUrl: 'https://example.com/' };
+const output = { schemaVersion: '1.0', status: 'success', requestedUrl: 'https://example.com/', pages:[{url:'https://example.com/',statusCode:200}],metrics:{pagesAudited:1,errorCount:0},errors:[],summary:{titlePresent:true} };
 function fixture(override = {}) {
   let calls = [];
   const fetchFn = async (url, options) => {

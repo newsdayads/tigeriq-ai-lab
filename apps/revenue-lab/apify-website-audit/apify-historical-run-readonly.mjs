@@ -108,6 +108,8 @@ function validateRun(run, config, nowMs) {
   if (typeof run.buildNumber !== 'string' || !run.buildNumber)
     reject('HISTORICAL_BUILD_UNVERIFIED');
   if (run.buildNumber !== EXPECTED_BUILD) reject('HISTORICAL_BUILD_MISMATCH');
+  if (typeof run.buildId !== 'string' || !OPAQUE.test(run.buildId))
+    reject('HISTORICAL_BUILD_ID_UNVERIFIED');
   if (!validApifyInstant(run.startedAt) || !validApifyInstant(run.finishedAt))
     reject('RUN_TIMESTAMPS_UNVERIFIED');
   const start = Date.parse(run.startedAt), end = Date.parse(run.finishedAt);
@@ -118,6 +120,7 @@ function validateRun(run, config, nowMs) {
 }
 export async function inspectHistoricalRun({
   env = process.env, fetchFn = globalThis.fetch, now = () => new Date(),
+  expectedBuildId = undefined,
 } = {}) {
   const cfg = historicalRunConfig(env);
   if (typeof fetchFn !== 'function') reject('FETCH_UNAVAILABLE');
@@ -137,7 +140,9 @@ export async function inspectHistoricalRun({
   validateRun(first, cfg, clock.getTime());
   const final = await readJson(fetchFn, runUrl, cfg.token);
   validateRun(final, cfg, clock.getTime());
-  if (first.startedAt !== final.startedAt || first.finishedAt !== final.finishedAt ||
+  if (expectedBuildId !== undefined && final.buildId !== expectedBuildId)
+    reject('RUN_LIST_DETAIL_BUILD_ID_MISMATCH');
+  if (first.buildId !== final.buildId || first.startedAt !== final.startedAt || first.finishedAt !== final.finishedAt ||
       first.defaultKeyValueStoreId !== final.defaultKeyValueStoreId)
     reject('RUN_RECHECK_DRIFT');
   // Verify stability across both GETs. A completed run is not proof that

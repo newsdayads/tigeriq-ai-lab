@@ -11,7 +11,7 @@ const actor={id:env.APIFY_ACTOR_ID,username:'tigeriq',name:'tigeriq-ai-lab',isPu
 const canonical={id:env.APIFY_RUN_ID,actId:env.APIFY_ACTOR_ID,status:'SUCCEEDED',
   startedAt:'2026-10-08T03:00:00.000Z',finishedAt:'2026-10-08T03:00:02.000Z',
   defaultKeyValueStoreId:'STORE12345',stats:{computeUnits:0.002},usageTotalUsd:0.0004,
-  buildNumber:'0.0.4'};
+  buildNumber:'0.0.4',buildId:'BUILD12345'};
 const now=()=>new Date('2026-10-15T12:00:00.000Z');
 function mock(first=canonical,second=first){
  let getRun=0;const calls=[];
@@ -23,7 +23,7 @@ function mock(first=canonical,second=first){
   assert.doesNotMatch(url,/run-sync|\/builds|\/runs\?/);
   if(url.endsWith('/actors/ACTOR12345'))return Response.json({data:actor});
   if(url.endsWith('/actor-runs/RUN1234567'))return Response.json({data:++getRun===1?first:second});
-  if(url.endsWith('/key-value-stores/STORE12345/records/OUTPUT'))return Response.json({schemaVersion:'1.0',status:'success',requestedUrl:'https://example.com/'});
+  if(url.endsWith('/key-value-stores/STORE12345/records/OUTPUT'))return Response.json({schemaVersion:'1.0',status:'success',requestedUrl:'https://example.com/',pages:[{url:'https://example.com/',statusCode:200}],metrics:{pagesAudited:1,errorCount:0},errors:[],summary:{titlePresent:true}});
   throw Error('OTHER_ENDPOINT_NOT_ALLOWED');
  };
  return {calls,fetchFn};

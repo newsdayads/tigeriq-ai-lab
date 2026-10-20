@@ -17,7 +17,7 @@ const run = () => ({
   id:env.APIFY_RUN_ID, actId:env.APIFY_ACTOR_ID, status:'SUCCEEDED',
   startedAt:'2026-10-08T03:00:00.000Z',
   finishedAt:'2026-10-08T03:00:02.000Z',
-  defaultKeyValueStoreId:'STORE12345', buildNumber:'0.0.4',
+  defaultKeyValueStoreId:'STORE12345', buildNumber:'0.0.4', buildId:'BUILD12345',
   stats:{computeUnits:0.002}, usageTotalUsd:0.0004,
 });
 const output=()=>({
@@ -74,6 +74,23 @@ test('R04 authenticated existing run only: exactly 4 GET, no build/run/sync muta
     assert.doesNotMatch(c.url,/token|run-sync|\/builds|\/runs\?/i);
   }
   assert.doesNotMatch(JSON.stringify(res),/SENSITIVE_SENTINEL_TOKEN|example\.com/);
+});
+test('R04 rejects absent or malformed native build identity on the first read',async()=>{
+  for(const buildId of [undefined,null,{},'', 'bad/build']){
+    const first={...run(),buildId};
+    const calls=await rejected('HISTORICAL_BUILD_ID_UNVERIFIED',{first});
+    assert.equal(calls.length,2);
+  }
+});
+test('R04 same build number but different build IDs on second GET cannot be accepted',async()=>{
+  const calls=await rejected('RUN_RECHECK_DRIFT',{final:{...run(),buildId:'BUILDDIFFERENT'}});
+  assert.equal(calls.length,3);
+});
+test('R04 discovered list build identity must match authenticated run detail',async()=>{
+  const m=mocked();
+  await assert.rejects(inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock,expectedBuildId:'BUILDFROMLIST'}),
+    e=>e.code==='RUN_LIST_DETAIL_BUILD_ID_MISMATCH');
+  assert.equal(m.calls.length,3);
 });
 test('R04 missing execute gate prevents network use even with token',async()=>{
   const c=await rejected('READONLY_GATE_REQUIRED',{}, {...env,APIFY_READONLY_EXECUTE:undefined});
