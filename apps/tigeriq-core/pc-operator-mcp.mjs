@@ -126,7 +126,17 @@ function nativeOk(action, receipt) {
       && data?.database?.running === true
       && String(data?.database?.healthStatus || '').toLowerCase() === 'healthy'
       && data?.http?.appOk === true
-      && data?.port?.reachable === true;
+      && data?.port?.reachable === true
+      // R02 checklist includes an independently observed, fresh broker
+      // heartbeat; a green HTTP/DB response alone cannot close this step.
+      && data?.broker?.ready === true
+      && data?.broker?.version === '1.7-openai-device-auth'
+      && Number.isInteger(data?.broker?.sessionId)
+      && data.broker.sessionId > 0
+      && data?.broker?.wslKeepaliveRunning === true
+      && Number.isFinite(data?.broker?.ageMs)
+      && data.broker.ageMs >= 0
+      && data.broker.ageMs <= 15000;
   }
   return receipt.data?.installed === true && receipt.data?.r07SourceVerified === true
     && typeof receipt.data?.dockerVersion === 'string' && receipt.data.dockerVersion.length > 0;
@@ -312,7 +322,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
         try {
           const receipt = await executePcActionImpl({ action });
           const ok = nativeOk(action, receipt);
-          return mcpReply({ ...common, ok, completedStepId: action === 'paperclip_lab_preflight' && ok ? 'R01' : null, receipt, reason: ok ? null : 'NATIVE_RECEIPT_NOT_ACCEPTED' });
+          return mcpReply({ ...common, ok, completedStepId: ok ? targetStepId : null, receipt, reason: ok ? null : 'NATIVE_RECEIPT_NOT_ACCEPTED' });
         } catch (error) {
           return mcpReply({ ...common, ok: false, reason: 'PC_OPERATOR_READ_ERROR', error: String(error?.message || error) });
         }
