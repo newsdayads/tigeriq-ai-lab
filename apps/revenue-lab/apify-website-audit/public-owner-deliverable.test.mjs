@@ -22,8 +22,8 @@ function publicResult() {
 }
 async function fixture() {
   // Fake HTML analysis here ONLY; the CI export still runs real HTTPS twice.
-  const direct=await collectPublicHttpEvidence({auditFn:async()=>publicResult()});
-  direct.verifiedSourceRevision = SHA;
+  const direct={...(await collectPublicHttpEvidence({auditFn:async()=>publicResult()})),
+    verifiedSourceRevision:SHA};
   const markdown=direct.productReportMarkdown;
   const ui={
     evidenceSchema:'TIGERIQ_REVENUE_PUBLIC_UI_REAL_E2E_V1',
