@@ -67,6 +67,53 @@ describe('GH-2054: only accepted MCP native receipts complete a checklist step',
     expect(response.completedStepId).toBeNull();
   });
 
+  it('completes R02 only after a real, fresh broker heartbeat accompanies native container, database and HTTP acceptance', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        ok: true,
+        port: { reachable: true },
+        http: { appOk: true },
+        container: { identityOk: true, portBindingOk: true },
+        database: { present: true, running: true, healthStatus: 'healthy' },
+        broker: {
+          ready: true,
+          version: '1.7-openai-device-auth',
+          sessionId: 1,
+          ageMs: 1200,
+          wslKeepaliveRunning: true,
+        },
+      },
+    });
+    const response = parse(await getHandler('paperclip_lab_health', execute)());
+    expect(response.ok).toBe(true);
+    expect(response.targetStepId).toBe('R02');
+    expect(response.completedStepId).toBe('R02');
+    expect(execute).toHaveBeenCalledExactlyOnceWith({ action: 'paperclip_lab_health' });
+  });
+
+  it.each([
+    ['stale heartbeat', { ready: true, version: '1.7-openai-device-auth', sessionId: 1, ageMs: 16000, wslKeepaliveRunning: true }],
+    ['missing heartbeat', { ready: false, version: '1.7-openai-device-auth', sessionId: 1, ageMs: 0, wslKeepaliveRunning: true }],
+    ['missing keepalive', { ready: true, version: '1.7-openai-device-auth', sessionId: 1, ageMs: 300, wslKeepaliveRunning: false }],
+    ['unexpected broker version', { ready: true, version: 'unknown', sessionId: 1, ageMs: 300, wslKeepaliveRunning: true }],
+  ])('does not complete R02 with %s', async (_why, broker) => {
+    const execute = vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        ok: true,
+        port: { reachable: true },
+        http: { appOk: true },
+        container: { identityOk: true, portBindingOk: true },
+        database: { present: true, running: true, healthStatus: 'healthy' },
+        broker,
+      },
+    });
+    const response = parse(await getHandler('paperclip_lab_health', execute)());
+    expect(response.ok).toBe(false);
+    expect(response.completedStepId).toBeNull();
+  });
+
   it('does not mark R02 for HTTP-only health with database unverified', async () => {
     const execute = vi.fn().mockResolvedValue({
       ok: true,
