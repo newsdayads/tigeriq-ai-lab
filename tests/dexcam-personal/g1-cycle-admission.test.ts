@@ -37,6 +37,28 @@ it('R ON and OFF require distinct local evidence refs',()=>{
   const x=sample();x.cycles[1].R_off_evidence=x.cycles[1].R_on_evidence;
   invalid(x,'cycles[1].R_off_evidence');
 });
+it('G1 rejects a reused R ON evidence pointer across distinct cycles without leaking the pointer',()=>{
+  const x=sample(); x.capture_kind='REAL_DEVICE_OBSERVATION';
+  x.cycles[4].R_on_evidence=x.cycles[0].R_on_evidence;
+  const r=inspectG1Cycles(x);
+  expect(r.status).toBe('INCOMPLETE');
+  expect(r.g1_accepted).toBe(false);
+  expect(r.errors).toContain('cycles[4].R_on_evidence:REUSED_ACROSS_CYCLES');
+  expect(JSON.stringify(r)).not.toContain('LOCAL_ONLY:on-1');
+});
+it('G1 rejects cross-cycle R OFF pointer aliasing an earlier R ON',()=>{
+  const x=sample();
+  x.cycles[3].R_off_evidence=x.cycles[1].R_on_evidence;
+  invalid(x,'cycles[3].R_off_evidence');
+  expect(inspectG1Cycles(x).errors).toContain('cycles[3].R_off_evidence:REUSED_ACROSS_CYCLES');
+});
+it('G1 permits one aggregate private log covering independent R observations',()=>{
+  const x=sample();
+  for (const row of x.cycles) row.private_log_pointer='LOCAL_ONLY:shared-aggregate-log';
+  expect(inspectG1Cycles(x)).toMatchObject({
+    status:'SYNTHETIC_FIXTURE_ONLY', g1_accepted:false, errors:[]
+  });
+});
 it('no inference of R OFF from USB loss or missing actual OFF state',()=>{
   const x=sample();x.cycles[0].reverse_state='UNKNOWN';invalid(x,'cycles[0].reverse_state');
 });
