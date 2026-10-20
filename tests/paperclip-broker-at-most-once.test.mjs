@@ -1,7 +1,25 @@
 import {readFileSync} from 'node:fs';
 import {test} from 'vitest';
 import assert from 'node:assert/strict';
-import {paperclipBrokerR07GuardPresent} from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
+import {paperclipBrokerR07GuardPresent,paperclipBrokerHeartbeatAgeMs} from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
+
+test('R07 heartbeat freshness rejects future-dated or malformed timestamps without hiding stale age',()=>{
+  const now=Date.parse('2026-10-20T06:00:00.000Z');
+  assert.equal(paperclipBrokerHeartbeatAgeMs('2026-10-20T05:59:59.000Z',now),1000);
+  assert.equal(paperclipBrokerHeartbeatAgeMs('2026-10-20T06:00:01.000Z',now),0);
+  assert.equal(paperclipBrokerHeartbeatAgeMs('2026-10-20T06:00:03.000Z',now),null);
+  assert.equal(paperclipBrokerHeartbeatAgeMs('2026-10-20T05:59:44.000Z',now),16000);
+  assert.equal(paperclipBrokerHeartbeatAgeMs('not-an-iso-date',now),null);
+  assert.equal(paperclipBrokerHeartbeatAgeMs(null,now),null);
+  assert.equal(paperclipBrokerHeartbeatAgeMs('2026-10-20T06:00:00.000Z',Number.POSITIVE_INFINITY),null);
+  const native=readFileSync(new URL('../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs',import.meta.url),'utf8');
+  const start=native.indexOf('async function brokerStatus()');
+  const end=native.indexOf('export function paperclipLabBrokerOperationForDockerArgs(',start);
+  const brokerStatus=native.slice(start,end);
+  assert.ok(start>=0 && end>start);
+  assert.match(brokerStatus,/const ageMs = paperclipBrokerHeartbeatAgeMs\(heartbeat\?\.at\)/);
+  assert.match(brokerStatus,/Number\.isFinite\(ageMs\) && ageMs <= 15000/);
+});
 
 // GH-2054 R07: offline contract test. This cannot attest a live broker restart.
 const source=readFileSync(new URL('../apps/openclaw-tigeriq-runtime/paperclip-wsl-broker.ps1',import.meta.url),'utf8');
