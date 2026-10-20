@@ -192,6 +192,44 @@ for(const value of [null,-0.01,'0.000',NaN]){
     await rejected('APIFY_USAGE_UNVERIFIED',{final:{...run(),usageTotalUsd:value}});
   });
 }
+test('R04 explicit identity mode treats absent and null usage as the same unverified value',async()=>{
+  const absent={...run()};
+  delete absent.usageTotalUsd;
+  const nullCost={...run(),usageTotalUsd:null};
+  for(const [first,final] of [[absent,nullCost],[nullCost,absent]]){
+    const m=mocked({first,final});
+    const res=await inspectHistoricalRun({
+      env,fetchFn:m.fetchFn,now:clock,allowMissingUsageForIdentity:true
+    });
+    assert.equal(res.acceptance.historicalRunMatched,true);
+    assert.equal(res.run.usageTotalUsd,null);
+    assert.equal(res.cost.source,'APIFY_API_USAGE_MISSING_NOT_FINAL_INVOICE');
+    assert.equal(res.acceptance.platformFinalInvoiceVerified,false);
+    assert.equal(res.cost.zeroCostClaim,false);
+    assert.equal(m.calls.length,4);
+    assert.ok(m.calls.every(x=>x.options.method==='GET'));
+  }
+});
+test('R04 nullish normalization does not weaken strict or numeric cost gates',async()=>{
+  const absent={...run()};
+  delete absent.usageTotalUsd;
+  const nullCost={...run(),usageTotalUsd:null};
+  const strict=mocked({first:absent,final:nullCost});
+  await assert.rejects(inspectHistoricalRun({
+    env,fetchFn:strict.fetchFn,now:clock
+  }),e=>e instanceof HistoricReadError&&e.code==='APIFY_USAGE_UNVERIFIED');
+  assert.equal(strict.calls.length,3);
+  for(const [first,final] of [
+    [absent,run()], [run(),nullCost], [nullCost,{...run(),usageTotalUsd:0}],
+  ]){
+    const m=mocked({first,final});
+    await assert.rejects(inspectHistoricalRun({
+      env,fetchFn:m.fetchFn,now:clock,allowMissingUsageForIdentity:true
+    }),e=>e instanceof HistoricReadError&&e.code==='APIFY_USAGE_UNVERIFIED');
+    assert.equal(m.calls.length,3);
+  }
+});
+
 test('R04 missing computeUnits is explicitly null not zero',async()=>{
   const missing={...run(),stats:{}};
   const m=mocked({first:missing,final:missing});
