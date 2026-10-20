@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import { requireActorAuditUrl, auditStartLogMessage, auditFailureCode, auditFailureLogMessage } from './actor-input.mjs';
-import { auditWebsite, AuditError } from './audit-engine.mjs';
+import { auditWebsite, AuditError, actionableSeoFindings } from './audit-engine.mjs';
 
 test('Actor refuses missing/empty/non-string required URL before any network request', async () => {
   for (const input of [undefined, null, {}, {url:''}, {url:'   '},
@@ -42,5 +43,49 @@ test('Actor failure logging redacts unknown errors, network details and URL cred
     assert.equal(line, `Audit failed [${expectedCode}].`);
     for (const forbidden of ['password', 'access_token', 'DO_NOT_PRINT', secret])
       assert.equal(line.includes(forbidden), false);
+  }
+});
+
+test('actionable SEO rules are bounded, transparent and do not invent ranking scores', () => {
+  const failures = actionableSeoFindings({
+    title: '', metaDescription: null, h1Count: 0,
+  });
+  assert.deepEqual(failures.map(x => [x.code, x.severity]), [
+    ['MISSING_TITLE', 'high'],
+    ['MISSING_META_DESCRIPTION', 'medium'],
+    ['MISSING_H1', 'medium'],
+  ]);
+  assert.ok(failures.every(x => typeof x.recommendation === 'string' && x.recommendation.length > 10));
+  const duplicates = actionableSeoFindings({
+    title: 'Audit Title', metaDescription: 'Meta Description', h1Count: 2,
+  });
+  assert.deepEqual(duplicates.map(x => x.code), ['MULTIPLE_H1']);
+  assert.deepEqual(actionableSeoFindings({
+    title: 'Audit Title', metaDescription: 'Meta Description', h1Count: 1,
+  }), []);
+});
+
+test('required CI gate verifies full crawl-to-actionable-report integration against actual HTTP HTML', async () => {
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end('<html><title>Good title</title><h1>Useful heading</h1></html>');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const target = `http://audit.test:${server.address().port}/`;
+    const report = await auditWebsite(target, {
+      maxPages: 1,
+      resolveTargetFn: async () => ({ address: '127.0.0.1', family: 4 }),
+    });
+    assert.equal(report.status, 'success');
+    assert.equal(report.metrics.pagesAudited, 1);
+    assert.deepEqual(report.pages[0].findings.map(x => x.code),
+      ['MISSING_META_DESCRIPTION']);
+    assert.deepEqual(report.findingsSummary, {
+      total: 1, high: 0, medium: 1, low: 0, pagesWithFindings: 1,
+    });
+    assert.equal(report.metrics.platformCostUSD, null);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
   }
 });
