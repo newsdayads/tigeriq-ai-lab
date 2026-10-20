@@ -16,7 +16,7 @@ const offlinePreload='data:text/javascript,'+encodeURIComponent(
   "globalThis.fetch=async()=>{throw new Error('APIFY_NATIVE_OFFLINE_NETWORK_DENIED')};",
 );
 
-it('GH-2293 runs all 20 original R08 node:test mock cases natively with network denied',()=>{
+it('GH-2293 runs full R08 node:test suite natively with network denied',()=>{
   const env={...process.env};
   for(const key of Object.keys(env)){
     if(key.startsWith('APIFY_')||key==='NODE_OPTIONS')delete env[key];
@@ -33,8 +33,12 @@ it('GH-2293 runs all 20 original R08 node:test mock cases natively with network 
   expect(run.signal).toBeNull();
   expect(run.status,'Native offline R08 node:test failed: '+String(run.stderr||'').slice(0,400)).toBe(0);
   // A successful process without full TAP enumeration is NOT acceptance.
-  expect(run.stdout).toMatch(/(?:^|\n)(?:#|ℹ) tests 20(?:\n|$)/);
-  expect(run.stdout).toMatch(/(?:^|\n)(?:#|ℹ) pass 20(?:\n|$)/);
+  const total=Number(run.stdout.match(/(?:^|\n)(?:#|ℹ) tests (\d+)(?:\n|$)/)?.[1] ?? -1);
+  const passed=Number(run.stdout.match(/(?:^|\n)(?:#|ℹ) pass (\d+)(?:\n|$)/)?.[1] ?? -1);
+  // Preserve the original 20 cases plus the two new cost-envelope tests.
+  // Additional future cases must all pass, not break CI merely due to count.
+  expect(total).toBeGreaterThanOrEqual(22);
+  expect(passed).toBe(total);
   expect(run.stdout).toMatch(/(?:^|\n)(?:#|ℹ) fail 0(?:\n|$)/);
   expect(run.stdout).toMatch(/(?:^|\n)(?:#|ℹ) cancelled 0(?:\n|$)/);
   expect(run.stdout).toMatch(/(?:^|\n)(?:#|ℹ) skipped 0(?:\n|$)/);
