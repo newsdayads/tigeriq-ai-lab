@@ -99,6 +99,14 @@ before(async () => {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end("<html><body><!-- <a href=\"/missing\">Ghost Comment</a> -->\n<script>const fake = '<a href=\"/missing\">Ghost Script</a>';</script>\n<style>div:after { content:'<a href=\"/missing\">Ghost Style</a>'; }</style>\n<a href=\"/page2\">Actual Link</a></body></html>");
     }
+    if (req.url === '/links-gt-double') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Link GT double</title></head><body><a data-label="9 > 2" href="/page2">Next</a></body></html>');
+    }
+    if (req.url === '/links-gt-single') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end("<html><head><title>Link GT single</title></head><body><a aria-label='4 > 3' href='/page2'>Next</a></body></html>");
+    }
     if (req.url === '/links-unquoted') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Unquoted Links</title></head><body><a href=/page2>Valid link</a></body></html>');
@@ -142,6 +150,19 @@ test('real bounded crawl derives evidence from fetched HTML', async () => {
   assert.equal(result.pages[0].seo.metaDescription, 'Evidence first audit');
   assert.equal(result.pages[0].seo.h1Count, 1);
   assert.equal(result.pages[1].seo.title, 'Page Two');
+});
+
+test('same-origin crawler follows href after a greater-than in quoted anchor attributes', async () => {
+  for (const path of ['/links-gt-double', '/links-gt-single']) {
+    const result = await auditWebsite(`${baseUrl}${path}`, {
+      maxPages: 2,
+      resolveTargetFn: localResolver,
+    });
+    assert.equal(result.status, 'success', path);
+    assert.equal(result.metrics.pagesAudited, 2, path);
+    assert.equal(result.pages[1].url.endsWith('/page2'), true, path);
+    assert.equal(result.pages[1].seo.title, 'Page Two', path);
+  }
 });
 
 test('same-origin crawler discovers valid unquoted href attributes', async () => {
