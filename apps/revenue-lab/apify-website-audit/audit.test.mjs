@@ -55,6 +55,14 @@ before(async () => {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><titlex>Fake title</title><title>Real title</title></head><body><h1fake>Fake heading</h1><h1 class="real">Real heading</h1></body></html>');
     }
+    if (req.url === '/meta-quoted-greater-than') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Quoted GT</title><meta data-note="7 > 4" name="description" content="Value > threshold"></head><body><h1>Valid</h1></body></html>');
+    }
+    if (req.url === '/meta-single-quoted-greater-than') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end("<html><head><title>Single quote</title><meta name='description' content='One > zero'></head><body><h1>Valid</h1></body></html>");
+    }
     if (req.url === '/meta-unquoted-name') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Unquoted Name</title><meta name=description content="Quoted content valid"></head><body><h1>Audit</h1></body></html>');
@@ -178,6 +186,17 @@ test('SEO extraction ignores tag-name prefix decoys but accepts real title and H
   assert.equal(mixed.pages[0].seo.h1Count, 1);
   assert.deepEqual(mixed.pages[0].seo.h1, ['Real heading']);
   assert.ok(!mixed.pages[0].findings.some(finding => finding.code === 'MULTIPLE_H1'));
+});
+
+test('SEO extraction preserves quoted greater-than characters in meta tag attributes', async () => {
+  const doubleQuoted = await auditWebsite(`${baseUrl}/meta-quoted-greater-than`, { resolveTargetFn: localResolver });
+  const singleQuoted = await auditWebsite(`${baseUrl}/meta-single-quoted-greater-than`, { resolveTargetFn: localResolver });
+  assert.equal(doubleQuoted.pages[0].seo.metaDescription, 'Value > threshold');
+  assert.equal(singleQuoted.pages[0].seo.metaDescription, 'One > zero');
+  for (const result of [doubleQuoted, singleQuoted]) {
+    assert.equal(result.status, 'success');
+    assert.equal(result.pages[0].findings.some(finding => finding.code === 'MISSING_META_DESCRIPTION'), false);
+  }
 });
 
 test('SEO extraction accepts valid unquoted HTML meta description attributes', async () => {
