@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { auditWebsite } from './audit-engine.mjs';
 import { renderWebsiteAuditMarkdown } from './website-report.mjs';
+import { collectPublicUiLiveEvidence } from './public-ui-live-e2e.mjs';
 
 export const PUBLIC_SMOKE_TARGET = 'https://example.com/';
 export const PUBLIC_SMOKE_OPTIONS = Object.freeze({
@@ -62,9 +63,12 @@ export async function collectPublicHttpEvidence({ auditFn = auditWebsite } = {})
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  collectPublicHttpEvidence().then(evidence => {
+  collectPublicHttpEvidence().then(async evidence => {
     process.stdout.write('TIGERIQ_REVENUE_PUBLIC_LIVE_EVIDENCE=' +
       JSON.stringify(evidence) + '\n');
+    const uiEvidence = await collectPublicUiLiveEvidence();
+    process.stdout.write('TIGERIQ_REVENUE_PUBLIC_UI_REAL_E2E=' +
+      JSON.stringify(uiEvidence) + '\n');
   }).catch(() => {
     // No raw upstream URL, response or exception text in a CI error message.
     process.stderr.write('PUBLIC_HTTP_AUDIT_SMOKE_FAILED\n');

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { collectPublicHttpEvidence, PUBLIC_SMOKE_OPTIONS, PUBLIC_SMOKE_TARGET } from './public-live-smoke.mjs';
 import { startWebsiteAuditUi } from './website-ui.mjs';
+import { collectPublicUiLiveEvidence } from './public-ui-live-e2e.mjs';
 
 function validProof() {
   return {
@@ -166,4 +167,36 @@ test('browser UI rejects cross-origin, malformed, oversized requests without lea
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
   }
+});
+
+
+test('full localhost HTTP POST E2E returns reproducible SEO report evidence and cryptographic digest', async () => {
+  const result = await collectPublicUiLiveEvidence({
+    startUiFn: options => startWebsiteAuditUi({
+      ...options,
+      auditFn: async (target, auditOptions) => {
+        assert.equal(target, 'https://example.com/');
+        assert.equal(auditOptions.maxPages, 1);
+        return validProof();
+      },
+    }),
+  });
+  assert.equal(result.evidenceSchema, 'TIGERIQ_REVENUE_PUBLIC_UI_REAL_E2E_V1');
+  assert.equal(result.loopbackBound, true);
+  assert.equal(result.route, 'POST /api/audit');
+  assert.deepEqual(result.issueCounts, { total: 1, high: 0, medium: 1, low: 0 });
+  assert.match(result.productReportMarkdown, /MISSING_META_DESCRIPTION/);
+  assert.match(result.reportSha256, /^[a-f0-9]{64}$/);
+  assert.equal(result.apifyActorRan, false);
+  assert.equal(result.apifyPlatformCostUsd, null);
+  assert.equal(result.productWorkOrderDone, false);
+});
+
+test('local UI public E2E refuses failed audit, never manufactures a live report', async () => {
+  await assert.rejects(() => collectPublicUiLiveEvidence({
+    startUiFn: options => startWebsiteAuditUi({
+      ...options,
+      auditFn: async () => { throw Error('private-url-token=DO_NOT_LOG'); },
+    }),
+  }), /PUBLIC_UI_AUDIT_HTTP_FAILED/);
 });

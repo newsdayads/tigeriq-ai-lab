@@ -22,6 +22,25 @@ Standalone zero-cost-first website audit Actor, isolated from TigerIQ Core and A
 - `maxRedirects` — 0..5, default 3.
 - `requestDelayMs` — 0..2000 ms between pages.
 
+## Verifiable real localhost UI end-to-end evidence
+
+The required GitHub `Revenue Actor Entry Contract` job now runs a public
+HTML audit through **two independent real HTTPS paths**:
+
+1. The existing bounded direct HTTP audit, logged as
+   `TIGERIQ_REVENUE_PUBLIC_LIVE_EVIDENCE`.
+2. A real local `127.0.0.1` server started in the CI runner, called with
+   `POST /api/audit` for the actual `https://example.com/` URL (no
+   injected mock audit). Its returned Markdown report and SHA-256 digest
+   are logged as `TIGERIQ_REVENUE_PUBLIC_UI_REAL_E2E`.
+
+The UI evidence proves a **real HTTP POST → real public HTTPS fetch → SEO
+analysis → Markdown response** on the GitHub CI runner at the exact source
+revision. It is not a browser click test, not access to the Owner's PC01,
+not a publicly accessible hosted product, and not an authenticated/private
+Apify run or platform invoice. The public HTTP path uses no paid API and
+does not prove that Apify compute units cost zero. R04/R05 remain gated.
+
 ## Browser preview on the owner's own machine
 
 Run `npm run audit:ui` from this app folder, then open
