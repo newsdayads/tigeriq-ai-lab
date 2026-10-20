@@ -32,3 +32,27 @@ export function auditFailureCode(error) {
 export function auditFailureLogMessage(error) {
   return `Audit failed [${auditFailureCode(error)}].`;
 }
+
+
+// Persist only stable, non-sensitive failure evidence. Network exceptions,
+// rejected input URLs and dependency details can contain bearer-like query
+// parameters, passwords or signed links. The original URL and exception
+// message/detail must never be serialized to Apify's OUTPUT record.
+export function auditFailureOutput(error) {
+  const code = auditFailureCode(error);
+  return {
+    schemaVersion: '1.0',
+    status: 'failed',
+    requestedUrl: null,
+    error: {
+      code,
+      message: auditFailureLogMessage(error),
+      detail: null,
+    },
+    metrics: {
+      externalApiCostUSD: 0,
+      platformCostUSD: null,
+      platformCostStatus: 'pending_private_apify_run',
+    },
+  };
+}
