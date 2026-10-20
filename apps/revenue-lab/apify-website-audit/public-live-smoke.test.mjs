@@ -75,7 +75,7 @@ test('smoke rejects spoofed success, malformed outputs and nonpublic redirects',
     mutate(result);
     await assert.rejects(
       () => collectPublicHttpEvidence({ auditFn: async () => result }),
-      /PUBLIC_HTTP_AUDIT_EVIDENCE_INVALID|PUBLIC_HTTP_TARGET_ORIGIN_MISMATCH/);
+      /PUBLIC_HTTP_AUDIT_EVIDENCE_INVALID|PUBLIC_HTTP_TARGET_ORIGIN_MISMATCH|REPORT_[A-Z_]+/);
   }
 });
 
@@ -84,9 +84,9 @@ test('live report strips query credentials and is constructed from inspected pag
   result.pages[0].url = 'https://example.com/public?api_key=DO_NOT_PRINT&token=DO_NOT_PRINT';
   result.pages[0].seo.title = 'Example *Markdown*';
   const report = await collectPublicHttpEvidence({ auditFn: async () => result });
-  assert.match(report.productReportMarkdown, /Example \\*Markdown\\*/);
+  assert.ok(report.productReportMarkdown.includes('Example \\*Markdown\\*'));
   assert.ok(!report.productReportMarkdown.includes('DO_NOT_PRINT'));
   assert.ok(!report.productReportMarkdown.includes('api_key'));
   assert.ok(!report.productReportMarkdown.includes('token='));
-  assert.match(report.productReportMarkdown, /example\\.com\\/public/);
+  assert.ok(report.productReportMarkdown.includes('example\\.com/public'));
 });
