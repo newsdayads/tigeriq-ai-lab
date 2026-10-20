@@ -16,7 +16,8 @@
     "apify:preflight": "node apify-private-preflight.mjs",
     "test:apify-historical": "node --test apify-historical-run-readonly.test.mjs apify-historical-run-build-check.test.mjs apify-existing-run-locator.test.mjs apify-existing-run-cli.test.mjs",
     "apify:historical-discover": "node apify-existing-run-cli.mjs",
-    "apify:historical-readonly": "node apify-historical-run-readonly.mjs"
+    "apify:historical-readonly": "node apify-historical-run-readonly.mjs",
+    "audit:ui": "node website-ui.mjs"
   },
   "dependencies": {
     "apify": "^3.2.0"
