@@ -102,6 +102,7 @@ export async function inspectDiscoveredOwnerCanary({ env = process.env,
   const evidence = await inspectHistoricalRun({
     env: { ...env, APIFY_ACTOR_ID: found.actorId, APIFY_RUN_ID: found.runId },
     fetchFn, now, expectedBuildId: found.buildId,
+    allowMissingUsageForIdentity: true,
   });
   return { ...evidence,
     discovery: { source: found.source, boundedDate: DAY, candidates: 1,
