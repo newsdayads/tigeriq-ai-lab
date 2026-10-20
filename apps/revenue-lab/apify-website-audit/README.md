@@ -22,6 +22,22 @@ Standalone zero-cost-first website audit Actor, isolated from TigerIQ Core and A
 - `maxRedirects` — 0..5, default 3.
 - `requestDelayMs` — 0..2000 ms between pages.
 
+## Browser preview on the owner's own machine
+
+Run `npm run audit:ui` from this app folder, then open
+`http://127.0.0.1:4179/` in a browser. Enter a public HTTP/HTTPS URL,
+select a 1–3-page bound, and receive a real actionable SEO Markdown
+report. The backend makes actual HTTP requests through the same bounded
+audit engine as the CLI; the HTML only displays the result as plain text.
+
+Security: server always listens on `127.0.0.1` (never `0.0.0.0`),
+enforces localhost Host and same-origin JSON POST, limits input bytes,
+does not persist submissions, never echoes the input URL in errors,
+does not download browser scripts or use third-party APIs. The browser
+UI is **local-only**, not a public launch, production deployment,
+authenticated Apify Actor run or final platform billing receipt.
+There is no connection to TigerIQ Core, PC01 or App Chrome.
+
 ## Real public Website Audit report (no Apify account needed)
 
 `node website-report.mjs https://example.com/` creates a complete, bounded
