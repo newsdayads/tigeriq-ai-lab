@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { requireActorAuditUrl, auditStartLogMessage, auditFailureCode, auditFailureLogMessage } from './actor-input.mjs';
-import { auditWebsite, AuditError } from './audit-engine.mjs';
+import { auditWebsite, AuditError, actionableSeoFindings } from './audit-engine.mjs';
 
 test('Actor refuses missing/empty/non-string required URL before any network request', async () => {
   for (const input of [undefined, null, {}, {url:''}, {url:'   '},
@@ -43,4 +43,23 @@ test('Actor failure logging redacts unknown errors, network details and URL cred
     for (const forbidden of ['password', 'access_token', 'DO_NOT_PRINT', secret])
       assert.equal(line.includes(forbidden), false);
   }
+});
+
+test('actionable SEO rules are bounded, transparent and do not invent ranking scores', () => {
+  const failures = actionableSeoFindings({
+    title: '', metaDescription: null, h1Count: 0,
+  });
+  assert.deepEqual(failures.map(x => [x.code, x.severity]), [
+    ['MISSING_TITLE', 'high'],
+    ['MISSING_META_DESCRIPTION', 'medium'],
+    ['MISSING_H1', 'medium'],
+  ]);
+  assert.ok(failures.every(x => typeof x.recommendation === 'string' && x.recommendation.length > 10));
+  const duplicates = actionableSeoFindings({
+    title: 'Audit Title', metaDescription: 'Meta Description', h1Count: 2,
+  });
+  assert.deepEqual(duplicates.map(x => x.code), ['MULTIPLE_H1']);
+  assert.deepEqual(actionableSeoFindings({
+    title: 'Audit Title', metaDescription: 'Meta Description', h1Count: 1,
+  }), []);
 });
