@@ -54,7 +54,7 @@ describe('GH-2054: only accepted MCP native receipts complete a checklist step',
     expect(response.completedStepId).toBeNull();
   });
 
-  it('checks R02 native health but does not yet complete the broker-heartbeat checklist', async () => {
+  it('refuses R02 checklist completion when native Docker/DB/HTTP pass but broker heartbeat was not observed', async () => {
     const execute = vi.fn().mockResolvedValue({
       ok: true,
       data: { ok: true, port: { reachable: true }, http: { appOk: true },
@@ -62,7 +62,7 @@ describe('GH-2054: only accepted MCP native receipts complete a checklist step',
         database: { present: true, running: true, healthStatus: 'healthy' } }, 
     });
     const response = parse(await getHandler('paperclip_lab_health', execute)());
-    expect(response.ok).toBe(true);
+    expect(response.ok).toBe(false);
     expect(response.targetStepId).toBe('R02');
     expect(response.completedStepId).toBeNull();
   });
