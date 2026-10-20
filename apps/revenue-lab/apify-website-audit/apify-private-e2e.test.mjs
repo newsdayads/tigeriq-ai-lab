@@ -135,6 +135,76 @@ test('R07 exhausts build-adjusted budget before any charged run POST', async () 
   }
 });
 
+test('R08 finalized Apify usage over run cap is not accepted even when combined usage stays under total', async () => {
+  const base = successFetch();
+  const seen = [];
+  let wrote = false;
+  const fetchFn = async (url, options) => {
+    const endpoint = String(url);
+    seen.push({endpoint, method:options.method});
+    if (endpoint.endsWith('/actor-builds/build1')) {
+      return response(200, {data:{
+        id:'build1',status:'SUCCEEDED',buildNumber:'0.1.7',
+        stats:{computeUnits:0.01},usageTotalUsd:0.0024,
+      }});
+    }
+    if (endpoint.endsWith('/actor-runs/run1')) {
+      return response(200, {data:{
+        id:'run1',buildId:'build1',status:'SUCCEEDED',
+        stats:{computeUnits:0.02},usageTotalUsd:0.0474,
+      }});
+    }
+    return base.fetchFn(url,options);
+  };
+  await assert.rejects(
+    () => runPrivateApifyE2E({
+      env:{...env, APIFY_EVIDENCE_PATH:'not-written.json'},fetchFn,sleepFn:noSleep,
+      writeFileFn:async()=>{wrote=true;},
+    }),
+    error => error instanceof ApifyE2EError && error.code==='FINAL_USAGE_EXCEEDS_COST_ENVELOPE'
+  );
+  const runPost=seen.find(x=>x.endpoint.includes('/actors/actor123/runs?'));
+  assert.equal(new URL(runPost.endpoint).searchParams.get('maxTotalChargeUsd'),'0.047');
+  // Platform overcharged the *per-run* cap even though sum 0.0498 < 0.05.
+  assert.ok(0.0024 + 0.0474 < Number(env.APIFY_E2E_MAX_TOTAL_CHARGE_USD));
+  assert.equal(seen.some(x=>x.endpoint.includes('/records/OUTPUT')),false);
+  assert.equal(seen.filter(x=>x.method==='POST').length,2);
+  assert.equal(wrote,false);
+});
+
+test('R08 finalized combined build and run usage above total envelope is rejected', async () => {
+  const base=successFetch();
+  let outputRead=false;
+  const fetchFn=async(url,options)=>{
+    const endpoint=String(url);
+    if(endpoint.endsWith('/actor-runs/run1'))return response(200,{data:{
+      id:'run1',buildId:'build1',status:'SUCCEEDED',
+      stats:{computeUnits:0.02},usageTotalUsd:0.0481,
+    }});
+    if(endpoint.includes('/records/OUTPUT'))outputRead=true;
+    return base.fetchFn(url,options);
+  };
+  await assert.rejects(
+    () => runPrivateApifyE2E({env,fetchFn,sleepFn:noSleep}),
+    error => error instanceof ApifyE2EError && error.code==='FINAL_USAGE_EXCEEDS_COST_ENVELOPE'
+  );
+  assert.equal(outputRead,false);
+});
+
+test('R08 finalized usage exactly at the run and total budget remains valid offline', async () => {
+  const base=successFetch();
+  const fetchFn=(url,options)=>String(url).endsWith('/actor-runs/run1')
+    ? Promise.resolve(response(200,{data:{
+        id:'run1',buildId:'build1',status:'SUCCEEDED',
+        stats:{computeUnits:0.02},usageTotalUsd:0.048,
+      }}))
+    : base.fetchFn(url,options);
+  const evidence=await runPrivateApifyE2E({env,fetchFn,sleepFn:noSleep});
+  assert.equal(evidence.cost.totalPlatformCostUSD,0.05);
+  assert.equal(evidence.output.status,'success');
+  assert.equal(evidence.safety.paidPublish,false);
+});
+
 // R08-specific trust boundary: an HTTP 200 is not a successful audited result.
 test('R08 invalid OUTPUT must never become accepted E2E evidence', async () => {
   for (const badOutput of [
