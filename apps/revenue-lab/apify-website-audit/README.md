@@ -22,6 +22,26 @@ Standalone zero-cost-first website audit Actor, isolated from TigerIQ Core and A
 - `maxRedirects` — 0..5, default 3.
 - `requestDelayMs` — 0..2000 ms between pages.
 
+## Tệp kết quả tải về cho anh Sơn (public demo, không phải private Apify)
+
+Trong mỗi GitHub Actions `CI` chạy thành công, job
+`Revenue Actor Entry Contract` kiểm tra **hai** đường thật trên
+`https://example.com/`: HTTPS trực tiếp và `POST /api/audit`
+qua server `127.0.0.1` của runner. Job chỉ xuất gói
+`tigeriq-gh2293-public-demo-<run_id>` nếu bằng chứng cùng
+exact source SHA, HTTP 200, report SHA-256 và cổng chi phí được xác minh.
+
+Vào trang Actions của run, mục **Artifacts**, lấy file ZIP gồm:
+- `owner-report.md`: kết quả SEO thực tế, hạn chế, trạng thái nghiệm thu và link chạy.
+- `ui-report.md`: bản báo cáo từ API giao diện cục bộ.
+- `proof.json`: hai SHA-256, exact source SHA, GitHub run, các cờ về chi phí/quyền.
+
+`node --test public-owner-deliverable.test.mjs` kiểm chứng builder
+hoàn toàn offline. Artifact giữ **30 ngày** theo cấu hình Actions; bản
+mã nguồn và GitHub issue vẫn là tài liệu bền vững sau thời hạn đó.
+Không có số liệu hóa đơn Apify thật, không có doanh thu, không có Actor
+riêng tư chạy mới và không được coi toàn bộ GH-2293 đã nghiệm thu.
+
 ## Verifiable real localhost UI end-to-end evidence
 
 The required GitHub `Revenue Actor Entry Contract` job now runs a public
