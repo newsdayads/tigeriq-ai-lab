@@ -325,6 +325,31 @@ function extractSameOriginLinks(html, baseUrl, rootOrigin) {
   return links;
 }
 
+
+// Product-level SEO findings are observations from fetched HTML, not ranking,
+// Lighthouse or performance scores. Keep output bounded (four rules per page)
+// and independent of network, pricing or authentication.
+export function actionableSeoFindings(seo) {
+  const findings = [];
+  if (!seo.title) findings.push({
+    code: 'MISSING_TITLE', severity: 'high',
+    recommendation: 'Add a descriptive HTML title for this page.',
+  });
+  if (!seo.metaDescription) findings.push({
+    code: 'MISSING_META_DESCRIPTION', severity: 'medium',
+    recommendation: 'Add a concise meta description for search snippets.',
+  });
+  if (seo.h1Count === 0) findings.push({
+    code: 'MISSING_H1', severity: 'medium',
+    recommendation: 'Add one meaningful H1 heading describing the page.',
+  });
+  if (seo.h1Count > 1) findings.push({
+    code: 'MULTIPLE_H1', severity: 'low',
+    recommendation: 'Review H1 headings and keep the primary heading clear.',
+  });
+  return findings;
+}
+
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function auditWebsite(inputUrl, options = {}) {
@@ -368,6 +393,7 @@ export async function auditWebsite(inputUrl, options = {}) {
         fetchDurationMs: response.durationMs,
         redirectCount: response.redirectCount,
         seo,
+        findings: actionableSeoFindings(seo),
       });
       for (const link of extractSameOriginLinks(documentHtml, response.finalUrl, root.origin)) {
         if (!visited.has(link) && !queue.includes(link) && queue.length + pages.length + errors.length < maxPages) queue.push(link);
@@ -402,6 +428,13 @@ export async function auditWebsite(inputUrl, options = {}) {
       h1Count: first.seo.h1Count,
       wordCount: first.seo.wordCount,
     } : null,
+    findingsSummary: {
+      total: pages.reduce((sum, page) => sum + page.findings.length, 0),
+      high: pages.reduce((sum, page) => sum + page.findings.filter(x => x.severity === 'high').length, 0),
+      medium: pages.reduce((sum, page) => sum + page.findings.filter(x => x.severity === 'medium').length, 0),
+      low: pages.reduce((sum, page) => sum + page.findings.filter(x => x.severity === 'low').length, 0),
+      pagesWithFindings: pages.filter(page => page.findings.length > 0).length,
+    },
     pages,
     errors,
   };
