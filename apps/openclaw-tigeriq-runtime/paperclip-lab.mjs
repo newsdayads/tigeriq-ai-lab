@@ -292,6 +292,15 @@ function parseBrokerJson(text) {
   return JSON.parse(String(text || '').replace(/^\uFEFF/, ''));
 }
 
+// A heartbeat in the future is not evidence of a newly running broker.
+// Allow only a small local scheduling/clock tolerance, otherwise fail closed.
+export function paperclipBrokerHeartbeatAgeMs(value, nowMs = Date.now()) {
+  const atMs = Date.parse(String(value || ''));
+  const deltaMs = Number(nowMs) - atMs;
+  if (!Number.isFinite(deltaMs) || deltaMs < -2000) return null;
+  return Math.max(0, deltaMs);
+}
+
 async function brokerStatus() {
   try {
     // Status reads must never create the broker directory or its parent.
@@ -301,8 +310,7 @@ async function brokerStatus() {
     const real = normalizeWinPath(await fs.realpath(safeHeartbeat));
     if (!pathInsideLab(real)) throw new Error('TIGERIQ_PAPERCLIP_LAB_REALPATH_ESCAPE_BLOCKED');
     const heartbeat = parseBrokerJson(await fs.readFile(safeHeartbeat, 'utf8'));
-    const atMs = Date.parse(String(heartbeat?.at || ''));
-    const ageMs = Number.isFinite(atMs) ? Math.max(0, Date.now() - atMs) : Number.POSITIVE_INFINITY;
+    const ageMs = paperclipBrokerHeartbeatAgeMs(heartbeat?.at);
     const ready = heartbeat?.schema === 'TIGERIQ_PAPERCLIP_WSL_HEARTBEAT_V1'
       && String(heartbeat?.distro || '') === PAPERCLIP_LAB_WSL_DISTRO
       && String(heartbeat?.version || '') === BROKER_EXPECTED_VERSION
@@ -310,7 +318,7 @@ async function brokerStatus() {
       && Boolean(String(heartbeat?.user || '').trim())
       && heartbeat?.wslKeepaliveRunning === true
       && Number(heartbeat?.wslKeepalivePid || 0) > 0
-      && ageMs <= 15000;
+      && Number.isFinite(ageMs) && ageMs <= 15000;
     return {
       ready,
       user: ready ? String(heartbeat.user) : null,
