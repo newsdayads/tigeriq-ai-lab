@@ -22,6 +22,22 @@ Standalone zero-cost-first website audit Actor, isolated from TigerIQ Core and A
 - `maxRedirects` — 0..5, default 3.
 - `requestDelayMs` — 0..2000 ms between pages.
 
+## Real public Website Audit report (no Apify account needed)
+
+`node website-report.mjs https://example.com/` creates a complete, bounded
+Markdown report on stdout. Use `node website-report.mjs https://example.com/ > audit-report.md`
+to save it locally. The command runs the real HTTPS audit engine (one page by
+default) and reports observed title/meta/H1 problems, severity, and fixes.
+URL query strings and fragments are omitted from page labels so credentials
+are not exposed in the report. Errors print fixed codes, not raw upstream URLs.
+
+GitHub Actions' existing Revenue Actor Entry job also audits the public
+`https://example.com/` URL through real HTTPS and emits
+`TIGERIQ_REVENUE_PUBLIC_LIVE_EVIDENCE` containing
+`productReportMarkdown`, `actionableFindings`, and source revision.
+This is an actual public-web product example, **not** authenticated/private
+Apify verification, a final platform cost, a paid report, or a production release.
+
 ## Cost evidence
 
 Local/CI audit logic uses no paid external API, so `externalApiCostUSD=0`.
