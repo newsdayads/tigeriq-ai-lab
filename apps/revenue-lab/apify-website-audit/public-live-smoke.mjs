@@ -39,7 +39,7 @@ export async function collectPublicHttpEvidence({ auditFn = auditWebsite } = {})
     evidenceSchema: 'TIGERIQ_REVENUE_PUBLIC_HTTP_LIVE_V1',
     evidenceClass: 'REAL_EXTERNAL_PUBLIC_HTTP_NOT_APIFY',
     target: PUBLIC_SMOKE_TARGET,
-    verifiedSourceRevision: process.env.GITHUB_SHA || null,
+    verifiedSourceRevision: process.env.TIGERIQ_VERIFIED_SOURCE_SHA || null,
     completedAt: result.completedAt,
     auditStatus: result.status,
     httpStatus: page.statusCode,
