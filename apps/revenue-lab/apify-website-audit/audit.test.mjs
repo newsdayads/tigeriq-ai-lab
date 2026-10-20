@@ -518,3 +518,42 @@ test('one timeout budget covers DNS lookup and subsequent HTTP response', async 
   );
   assert.ok(Date.now() - started < 400, 'Shared budget was not applied before the HTTP response');
 });
+
+
+test('actionable SEO report identifies missing metadata and headings from actual HTML without fake ranking scores', async () => {
+  const bad = await auditWebsite(`${baseUrl}/inert-links`, {
+    maxPages: 1,
+    resolveTargetFn: localResolver,
+  });
+  assert.equal(bad.status, 'success', 'SEO warnings do not masquerade as fetch failures');
+  assert.deepEqual(bad.pages[0].findings.map(x => x.code),
+    ['MISSING_TITLE', 'MISSING_META_DESCRIPTION', 'MISSING_H1']);
+  assert.deepEqual(bad.findingsSummary, {
+    total: 3, high: 1, medium: 2, low: 0, pagesWithFindings: 1,
+  });
+  for (const finding of bad.pages[0].findings) {
+    assert.ok(['high', 'medium', 'low'].includes(finding.severity));
+    assert.ok(finding.recommendation.length > 10);
+  }
+  assert.equal(Object.hasOwn(bad, 'seoScore'), false);
+  assert.equal(bad.metrics.externalApiCostUSD, 0);
+  assert.equal(bad.metrics.platformCostUSD, null);
+
+  const good = await auditWebsite(`${baseUrl}/inert-seo`, {
+    maxPages: 1,
+    resolveTargetFn: localResolver,
+  });
+  assert.deepEqual(good.pages[0].findings, []);
+  assert.equal(good.findingsSummary.total, 0);
+
+  const multiple = await auditWebsite(`${baseUrl}/`, {
+    maxPages: 2,
+    resolveTargetFn: localResolver,
+  });
+  assert.deepEqual(multiple.pages[0].findings, []);
+  assert.deepEqual(multiple.pages[1].findings.map(x => x.code),
+    ['MISSING_META_DESCRIPTION']);
+  assert.deepEqual(multiple.findingsSummary, {
+    total: 1, high: 0, medium: 1, low: 0, pagesWithFindings: 1,
+  });
+});
