@@ -185,9 +185,20 @@ async function requestOnce(url, options) {
     }, res => {
       const statusCode = Number(res.statusCode || 0);
       if (statusCode >= 300 && statusCode < 400 && res.headers.location) {
+        // An untrusted Location may be syntactically invalid. URL parsing
+        // must not throw from the HTTP response event handler and crash Node.
+        let redirect;
+        try {
+          redirect = new URL(res.headers.location, parsed).toString();
+        } catch {
+          res.destroy();
+          return done(reject, new AuditError(
+            'INVALID_REDIRECT', 'Target returned an invalid redirect location.',
+          ));
+        }
         res.destroy();
         return done(resolve, {
-          redirect: new URL(res.headers.location, parsed).toString(),
+          redirect,
           statusCode,
           durationMs: Date.now() - started,
         });
