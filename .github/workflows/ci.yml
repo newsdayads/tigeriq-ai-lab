@@ -73,3 +73,17 @@ jobs:
         run: npm ci
       - name: Execute real HTTP API and WorkItem contract tests
         run: npx vitest run tests/api.test.ts tests/api-workitems.test.ts
+
+  revenue-actor-entry:
+    name: Revenue Actor Entry Contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Required URL and credential-safe Actor log contract
+        run: node --test apps/revenue-lab/apify-website-audit/actor-input.test.mjs

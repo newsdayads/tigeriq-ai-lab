@@ -1,15 +1,18 @@
 import { Actor } from 'apify';
 import { auditWebsite, AuditError } from './audit-engine.mjs';
+import { requireActorAuditUrl, auditStartLogMessage } from './actor-input.mjs';
 
 async function main() {
   await Actor.init();
   const input = await Actor.getInput() || {};
-  const url = input.url || 'https://example.com';
+  const url = typeof input.url === 'string' ? input.url : null;
 
-  console.log(`Starting website audit for: ${url}`);
+  // Never print a user-supplied URL: even public sites can carry credential
+  // query parameters or Basic Auth information.
+  console.log(auditStartLogMessage());
 
   try {
-    const auditResult = await auditWebsite(url, input);
+    const auditResult = await auditWebsite(requireActorAuditUrl(input), input);
     await Actor.setValue('OUTPUT', auditResult);
     console.log('Audit completed successfully.');
   } catch (error) {
