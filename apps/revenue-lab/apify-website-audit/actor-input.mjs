@@ -13,3 +13,22 @@ export function requireActorAuditUrl(input) {
 export function auditStartLogMessage() {
   return 'Starting website audit (target URL omitted from logs).';
 }
+
+const KNOWN_AUDIT_FAILURE_CODES = new Set([
+  'INVALID_URL', 'UNSUPPORTED_PROTOCOL', 'CREDENTIALS_REJECTED',
+  'PRIVATE_TARGET', 'DNS_FAILURE', 'TIMEOUT', 'NON_2XX',
+  'UNSUPPORTED_CONTENT_TYPE', 'OVERSIZED_RESPONSE', 'NETWORK_FAILURE',
+  'TOO_MANY_REDIRECTS', 'AUDIT_FAILURE',
+]);
+
+// Errors from HTTP, DNS, or dependencies may contain user-supplied signed URLs.
+// Never interpolate error.message, error.detail, or untrusted error.code into
+// Apify's potentially shared execution logs.
+export function auditFailureCode(error) {
+  return error instanceof AuditError && KNOWN_AUDIT_FAILURE_CODES.has(error.code)
+    ? error.code : 'AUDIT_FAILURE';
+}
+
+export function auditFailureLogMessage(error) {
+  return `Audit failed [${auditFailureCode(error)}].`;
+}
