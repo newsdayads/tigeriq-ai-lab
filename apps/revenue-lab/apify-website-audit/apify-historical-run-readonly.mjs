@@ -152,8 +152,12 @@ export async function inspectHistoricalRun({
   // usage or compute totals have settled (nor a final platform invoice).
   const validUsd = value => typeof value === 'number' &&
     Number.isFinite(value) && value >= 0;
-  const missingUsdBoth = first.usageTotalUsd == null && final.usageTotalUsd == null;
-  if (!validUsd(first.usageTotalUsd) || !validUsd(final.usageTotalUsd)) {
+  // Apify's optional nullable cost field may be absent on one GET and null
+  // on the other. Both mean "not reported"; neither verifies R05 billing.
+  const firstUsd = first.usageTotalUsd ?? null;
+  const finalUsd = final.usageTotalUsd ?? null;
+  const missingUsdBoth = firstUsd === null && finalUsd === null;
+  if (!validUsd(firstUsd) || !validUsd(finalUsd)) {
     // Omitted/null is explicitly permitted by Apify for this run field.
     // Permit it only in R04 identity mode, and only when both reads agree.
     // An invalid, negative or mismatched value remains a hard error.
@@ -161,7 +165,7 @@ export async function inspectHistoricalRun({
       reject('APIFY_USAGE_UNVERIFIED');
   }
   const firstUnits = getUnits(first), finalUnits = getUnits(final);
-  if (first.usageTotalUsd !== final.usageTotalUsd || firstUnits !== finalUnits)
+  if (firstUsd !== finalUsd || firstUnits !== finalUnits)
     reject('RUN_USAGE_RECHECK_DRIFT');
   const output = await readJson(fetchFn,
     API + '/key-value-stores/' + final.defaultKeyValueStoreId + '/records/OUTPUT', cfg.token);
