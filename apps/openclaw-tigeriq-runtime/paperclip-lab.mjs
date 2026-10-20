@@ -1210,7 +1210,7 @@ async function inspectComposeService(dockerKind, service, signal = null, diagnos
   const psResult = await runDocker(
     dockerKind,
     composeArgs(['ps', '--all', '--format', 'json', 'db']),
-    { cwd: CONFIG_DIR, timeoutMs: 15000, signal },
+    { cwd: CONFIG_DIR, timeoutMs: 15000, signal, readOnly: true },
   ).catch(() => null);
   const rows = psResult?.exitCode === 0 ? parsePaperclipComposePsRows(psResult.stdout) : [];
   const row = paperclipComposeDbStatusRow(rows);
@@ -1238,7 +1238,7 @@ async function inspectComposeService(dockerKind, service, signal = null, diagnos
     const logs = await runDocker(
       dockerKind,
       composeArgs(['logs', '--no-color', '--tail', '120', 'db']),
-      { cwd: CONFIG_DIR, timeoutMs: 20000, signal },
+      { cwd: CONFIG_DIR, timeoutMs: 20000, signal, readOnly: true },
     ).catch(() => null);
     if (logs?.exitCode === 0) {
       const combinedLogs = `${logs.stdout || ''}\n${logs.stderr || ''}`;
@@ -1313,7 +1313,7 @@ async function health(signal = null, transport = null, options = {}) {
   const [port, http, inspect, database] = await Promise.all([
     probePort(),
     httpHealth(signal),
-    runDocker(docker.kind, ['inspect', PAPERCLIP_LAB_CONTAINER, '--format', '{{json .}}'], { timeoutMs: 15000, signal }).catch(() => null),
+    runDocker(docker.kind, ['inspect', PAPERCLIP_LAB_CONTAINER, '--format', '{{json .}}'], { timeoutMs: 15000, signal, readOnly: true }).catch(() => null),
     inspectComposeService(docker.kind, 'db', signal, options?.diagnostics === true),
   ]);
 
@@ -1354,7 +1354,7 @@ async function health(signal = null, transport = null, options = {}) {
     const logs = await runDocker(
       docker.kind,
       ['logs', '--tail', '160', PAPERCLIP_LAB_CONTAINER],
-      { timeoutMs: 20000, signal },
+      { timeoutMs: 20000, signal, readOnly: true },
     ).catch(() => null);
     if (logs?.exitCode === 0) {
       const combinedLogs = `${logs.stdout || ''}\n${logs.stderr || ''}`;
