@@ -13,7 +13,8 @@ test('Actor refuses missing/empty/non-string required URL before any network req
   await assert.rejects(
     () => auditWebsite(requireActorAuditUrl({url:'https://example.com/'}),
       {resolveTargetFn:()=>{fetchAttempts++; throw Error('NOT_CALLED');}}),
-    /NOT_CALLED/);
+    error => error instanceof AuditError && error.code === 'AUDIT_FAILURE' &&
+      error.detail === 'NOT_CALLED');
   assert.equal(fetchAttempts,1,'valid URL still enters real audit request path');
 });
 
