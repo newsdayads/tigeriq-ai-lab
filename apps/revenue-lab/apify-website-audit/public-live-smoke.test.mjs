@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { collectPublicHttpEvidence, PUBLIC_SMOKE_OPTIONS, PUBLIC_SMOKE_TARGET } from './public-live-smoke.mjs';
+import { startWebsiteAuditUi } from './website-ui.mjs';
 
 function validProof() {
   return {
@@ -89,4 +90,80 @@ test('live report strips query credentials and is constructed from inspected pag
   assert.ok(!report.productReportMarkdown.includes('api_key'));
   assert.ok(!report.productReportMarkdown.includes('token='));
   assert.ok(report.productReportMarkdown.includes('example\\.com/public'));
+});
+
+
+test('browser UI serves local-only page and responds with real product-shaped Markdown over HTTP', async () => {
+  let calls = 0;
+  const { server, origin } = await startWebsiteAuditUi({
+    auditFn: async (url, options) => {
+      calls++;
+      assert.equal(url, 'https://example.com/');
+      assert.equal(options.maxPages, 1);
+      assert.equal(options.timeoutMs, 8000);
+      return validProof();
+    },
+  });
+  try {
+    assert.equal(server.address().address, '127.0.0.1', 'server must never bind a public interface');
+    const page = await fetch(origin + '/');
+    assert.equal(page.status, 200);
+    assert.match(page.headers.get('content-security-policy'), /default-src 'none'/);
+    const html = await page.text();
+    assert.match(html, /TigerIQ Website Audit/);
+    assert.match(html, /textContent = result.markdown/);
+    assert.doesNotMatch(html, /\.innerHTML\s*=/);
+
+    const health = await fetch(origin + '/health');
+    assert.deepEqual(await health.json(), { status: 'ok', mode: 'local_only', apifyActorRan: false });
+
+    const run = await fetch(origin + '/api/audit', {
+      method: 'POST',
+      headers: { 'Origin': origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'https://example.com/', maxPages: 1 }),
+    });
+    assert.equal(run.status, 200);
+    const data = await run.json();
+    assert.equal(data.status, 'success');
+    assert.equal(data.format, 'markdown');
+    assert.match(data.markdown, /MISSING_META_DESCRIPTION/);
+    assert.match(data.markdown, /Apify platform cost: NOT VERIFIED/);
+    assert.equal(data.apifyActorRan, false);
+    assert.equal(data.platformBillingVerified, false);
+    assert.equal(calls, 1);
+  } finally {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test('browser UI rejects cross-origin, malformed, oversized requests without leaking URLs or running audit', async () => {
+  let calls = 0;
+  const { server, origin } = await startWebsiteAuditUi({
+    auditFn: async () => { calls++; throw Error('SHOULD_NOT_EXECUTE'); },
+  });
+  const secret = 'https://example.com/?access_token=LEAK_THIS_NEVER';
+  try {
+    const probes = [
+      { origin: 'http://evil.example', type: 'application/json', body: JSON.stringify({ url: secret }), status: 403 },
+      { origin, type: 'text/plain', body: JSON.stringify({ url: secret }), status: 403 },
+      { origin, type: 'application/json', body: '{ invalid json', status: 422 },
+      { origin, type: 'application/json', body: JSON.stringify({ url: secret, maxPages: 100 }), status: 422 },
+      { origin, type: 'application/json', body: JSON.stringify({ url: secret, pad: 'x'.repeat(4096) }), status: 413 },
+    ];
+    for (const probe of probes) {
+      const response = await fetch(origin + '/api/audit', {
+        method: 'POST', headers: { Origin: probe.origin, 'Content-Type': probe.type },
+        body: probe.body,
+      });
+      assert.equal(response.status, probe.status);
+      const body = await response.text();
+      assert.ok(!body.includes('LEAK_THIS_NEVER'));
+      assert.ok(!body.includes(secret));
+    }
+    assert.equal(calls, 0);
+  } finally {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+  }
 });
