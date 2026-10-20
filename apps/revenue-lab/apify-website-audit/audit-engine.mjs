@@ -199,7 +199,10 @@ async function requestOnce(url, options) {
         return done(reject, new AuditError('NON_2XX', 'Target returned a non-success HTTP status.', statusCode));
       }
       const contentType = headerValue(res.headers, 'content-type').toLowerCase();
-      if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) {
+      // Exact MIME token only: text/html inside a parameter, suffix or
+      // unrelated media type must not be treated as fetched HTML evidence.
+      const mediaType = contentType.split(';', 1)[0].trim();
+      if (mediaType !== 'text/html' && mediaType !== 'application/xhtml+xml') {
         res.destroy();
         return done(reject, new AuditError('UNSUPPORTED_CONTENT_TYPE', 'Response is not HTML.', contentType || null));
       }
