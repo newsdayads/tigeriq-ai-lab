@@ -87,3 +87,11 @@ jobs:
           node-version: 20
       - name: Required URL and credential-safe Actor log contract
         run: node --test apps/revenue-lab/apify-website-audit/actor-input.test.mjs
+      - name: Validate live HTTP evidence shape without external requests
+        run: node --test apps/revenue-lab/apify-website-audit/public-live-smoke.test.mjs
+      - name: Audit public example.com via real HTTPS (no Apify and no paid API)
+        env:
+          TIGERIQ_VERIFIED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$TIGERIQ_VERIFIED_SOURCE_SHA"
+          node apps/revenue-lab/apify-website-audit/public-live-smoke.mjs
