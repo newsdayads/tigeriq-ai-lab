@@ -91,9 +91,18 @@ jobs:
         run: node --test apps/revenue-lab/apify-website-audit/public-live-smoke.test.mjs
       - name: Verify private Apify E2E cost guard offline (no Apify credentials)
         run: node --test apps/revenue-lab/apify-website-audit/apify-private-e2e.test.mjs
+      - name: Validate owner public demo artifact schema/digest offline
+        run: node --test apps/revenue-lab/apify-website-audit/public-owner-deliverable.test.mjs
       - name: Audit public example.com via real HTTPS (no Apify and no paid API)
         env:
           TIGERIQ_VERIFIED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           test "$(git rev-parse HEAD)" = "$TIGERIQ_VERIFIED_SOURCE_SHA"
           node apps/revenue-lab/apify-website-audit/public-live-smoke.mjs
+      - name: Publish verified public Website Audit owner result bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: tigeriq-gh2293-public-demo-${{ github.run_id }}
+          path: artifacts/revenue-lab/gh2293-public-demo/
+          if-no-files-found: error
+          retention-days: 30
