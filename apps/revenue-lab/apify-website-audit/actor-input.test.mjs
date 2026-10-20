@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { requireActorAuditUrl, auditStartLogMessage, auditFailureCode, auditFailureLogMessage } from './actor-input.mjs';
+import { readFileSync } from 'node:fs';
+import { requireActorAuditUrl, auditStartLogMessage, auditFailureCode, auditFailureLogMessage, auditFailureOutput } from './actor-input.mjs';
 import { auditWebsite, AuditError, actionableSeoFindings } from './audit-engine.mjs';
 
 test('Actor refuses missing/empty/non-string required URL before any network request', async () => {
@@ -88,4 +89,38 @@ test('required CI gate verifies full crawl-to-actionable-report integration agai
   } finally {
     await new Promise(resolve => server.close(resolve));
   }
+});
+
+
+test('Actor persists only safe fixed-code failure evidence for credential-bearing exceptions', () => {
+  const secret = 'https://user:password@example.com/?session=UNREDACTED_TOKEN#internal';
+  for (const error of [
+    new Error('Network error while fetching ' + secret),
+    new AuditError('DNS_FAILURE', 'DNS lookup leaked ' + secret, { url: secret }),
+    new AuditError('INJECTED_' + secret, 'Untrusted code: ' + secret),
+    null,
+  ]) {
+    const output = auditFailureOutput(error);
+    assert.equal(output.schemaVersion, '1.0');
+    assert.equal(output.status, 'failed');
+    assert.equal(output.requestedUrl, null);
+    assert.equal(output.error.code, auditFailureCode(error));
+    assert.equal(output.error.message, auditFailureLogMessage(error));
+    assert.equal(output.error.detail, null);
+    assert.equal(output.metrics.externalApiCostUSD, 0);
+    assert.equal(output.metrics.platformCostUSD, null);
+    assert.equal(output.metrics.platformCostStatus, 'pending_private_apify_run');
+    const serialized = JSON.stringify(output);
+    for (const forbidden of ['password', 'session=', 'UNREDACTED_TOKEN', secret, 'INJECTED_']) {
+      assert.ok(!serialized.includes(forbidden), 'sensitive data appeared in stored OUTPUT');
+    }
+  }
+});
+
+test('Actor catch writes sanitized failure OUTPUT without missing AuditError reference or raw exception fields', () => {
+  const source = readFileSync(new URL('./actor.mjs', import.meta.url), 'utf8');
+  assert.match(source, /Actor\.setValue\('OUTPUT', auditFailureOutput\(error\)\)/);
+  assert.doesNotMatch(source, /\binstanceof AuditError\b/);
+  assert.doesNotMatch(source, /\berror\.(?:message|detail)\b/);
+  assert.doesNotMatch(source, /requestedUrl:\s*url/);
 });
