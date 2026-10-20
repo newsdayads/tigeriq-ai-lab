@@ -1,0 +1,108 @@
+name: Revenue Audit Portable Package
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/revenue-audit-portable.yml'
+      - 'apps/revenue-lab/apify-website-audit/audit-engine.mjs'
+      - 'apps/revenue-lab/apify-website-audit/website-report.mjs'
+      - 'apps/revenue-lab/apify-website-audit/website-ui.mjs'
+      - 'apps/revenue-lab/apify-website-audit/run-audit-windows.cmd'
+      - 'apps/revenue-lab/apify-website-audit/run-audit-mac-linux.sh'
+      - 'apps/revenue-lab/apify-website-audit/website-ui-*.test.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/revenue-audit-portable.yml'
+      - 'apps/revenue-lab/apify-website-audit/audit-engine.mjs'
+      - 'apps/revenue-lab/apify-website-audit/website-report.mjs'
+      - 'apps/revenue-lab/apify-website-audit/website-ui.mjs'
+      - 'apps/revenue-lab/apify-website-audit/run-audit-windows.cmd'
+      - 'apps/revenue-lab/apify-website-audit/run-audit-mac-linux.sh'
+      - 'apps/revenue-lab/apify-website-audit/website-ui-*.test.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  portable-package:
+    name: Website Audit Portable ZIP Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify exact source and local UI regressions
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          node --test apps/revenue-lab/apify-website-audit/website-ui-export.test.mjs apps/revenue-lab/apify-website-audit/website-ui-partial.test.mjs
+      - name: Build dependency-free portable ZIP
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$EXPECTED_SHA" in *[!0-9a-f]*|'') echo 'BAD_SOURCE_SHA' >&2; exit 1;; esac
+          test "${#EXPECTED_SHA}" -eq 40
+          root=apps/revenue-lab/apify-website-audit
+          bundle=.portable-build/TigerIQ-Website-Audit
+          mkdir -p "$bundle" .portable-artifacts
+          for file in audit-engine.mjs website-report.mjs website-ui.mjs run-audit-windows.cmd run-audit-mac-linux.sh; do
+            test -f "$root/$file"
+            cp "$root/$file" "$bundle/$file"
+          done
+          printf '%s\n'             'TigerIQ Website Audit — local portable package'             'Requires Node.js 20 or newer; no npm install or Apify account needed.'             'Windows: double-click run-audit-windows.cmd in this folder.'             'macOS/Linux: run sh run-audit-mac-linux.sh in this folder.'             'Open http://127.0.0.1:4179/ and audit a public HTTPS website.'             'The UI audits up to 3 same-origin pages and downloads a Markdown report.'             'Do not paste credentials, tokens, or sensitive URLs.'             'The server binds only to 127.0.0.1 and does not persist report data.'             'This is not a private Apify test, paid publication, or platform-cost receipt.'             "GitHub source commit: $EXPECTED_SHA" > "$bundle/README-LOCAL.txt"
+          (cd "$bundle" && sha256sum audit-engine.mjs website-report.mjs website-ui.mjs run-audit-windows.cmd run-audit-mac-linux.sh README-LOCAL.txt > SHA256SUMS.txt)
+          (cd .portable-build && zip -q -X -r ../.portable-artifacts/TigerIQ-Website-Audit-Portable.zip TigerIQ-Website-Audit)
+          test -s .portable-artifacts/TigerIQ-Website-Audit-Portable.zip
+      - name: Extract packaged product and verify runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .portable-unpacked
+          unzip -q .portable-artifacts/TigerIQ-Website-Audit-Portable.zip -d .portable-unpacked
+          test "$(find .portable-unpacked/TigerIQ-Website-Audit -type f | wc -l)" -eq 7
+          cd .portable-unpacked/TigerIQ-Website-Audit
+          sha256sum -c SHA256SUMS.txt
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { startWebsiteAuditUi } from './website-ui.mjs';
+          const { server, origin } = await startWebsiteAuditUi({ port: 0 });
+          try {
+            assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
+            const health = await fetch(origin + '/health');
+            assert.equal(health.status, 200);
+            assert.deepEqual(await health.json(), { status: 'ok', mode: 'local_only', apifyActorRan: false });
+            const page = await fetch(origin + '/');
+            assert.equal(page.status, 200);
+            const html = await page.text();
+            assert.match(html, /TigerIQ Website Audit/);
+            assert.match(html, /Tải báo cáo Markdown/);
+            const foreign = await fetch(origin + '/api/audit', {
+              method: 'POST',
+              headers: { Origin: 'https://untrusted.example', 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url: 'https://example.com/', maxPages: 1 }),
+            });
+            assert.equal(foreign.status, 403);
+            assert.equal((await foreign.json()).code, 'SAME_ORIGIN_JSON_REQUIRED');
+            console.log('TIGERIQ_PORTABLE_EXTRACTED_RUNTIME=PASS');
+          } finally {
+            server.closeAllConnections();
+            await new Promise(resolve => server.close(resolve));
+          }
+          NODE
+      - name: Publish portable ZIP as a GitHub Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TigerIQ-Website-Audit-Portable-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .portable-artifacts/TigerIQ-Website-Audit-Portable.zip
+          if-no-files-found: error
+          retention-days: 30
