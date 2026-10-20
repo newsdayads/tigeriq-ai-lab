@@ -5,6 +5,8 @@ import path from 'node:path';
 import { auditWebsite } from './audit-engine.mjs';
 import { renderWebsiteAuditMarkdown } from './website-report.mjs';
 import { collectPublicUiLiveEvidence } from './public-ui-live-e2e.mjs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { buildOwnerPublicDemo } from './public-owner-deliverable.mjs';
 
 export const PUBLIC_SMOKE_TARGET = 'https://example.com/';
 export const PUBLIC_SMOKE_OPTIONS = Object.freeze({
@@ -67,6 +69,23 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
     process.stdout.write('TIGERIQ_REVENUE_PUBLIC_LIVE_EVIDENCE=' +
       JSON.stringify(evidence) + '\n');
     const uiEvidence = await collectPublicUiLiveEvidence();
+    // Fixed, public-only artifacts: no arbitrary paths or private actor output.
+    // Fail CI rather than upload a bundle unless BOTH independent real paths
+    // attest the same exact source SHA and pass the provenance checks.
+    if (process.env.GITHUB_ACTIONS === 'true') {
+      const bundle = buildOwnerPublicDemo({
+        direct: evidence, ui: uiEvidence,
+        sourceSha: process.env.TIGERIQ_VERIFIED_SOURCE_SHA,
+        runId: process.env.GITHUB_RUN_ID,
+      });
+      const dir = 'artifacts/revenue-lab/gh2293-public-demo';
+      await mkdir(dir, { recursive: true });
+      await Promise.all([
+        writeFile(dir + '/owner-report.md', bundle.ownerReport, 'utf8'),
+        writeFile(dir + '/ui-report.md', bundle.uiReport, 'utf8'),
+        writeFile(dir + '/proof.json', bundle.proof, 'utf8'),
+      ]);
+    }
     process.stdout.write('TIGERIQ_REVENUE_PUBLIC_UI_REAL_E2E=' +
       JSON.stringify(uiEvidence) + '\n');
   }).catch(() => {
