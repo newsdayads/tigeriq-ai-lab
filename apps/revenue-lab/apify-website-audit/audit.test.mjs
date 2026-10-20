@@ -137,6 +137,25 @@ before(async () => {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Decoy Links</title></head><body><a data-href="/missing">Not a link</a><a href="https://external.example/not-ours">External</a></body></html>');
     }
+    if (req.url === '/canonical-redirect') {
+      res.writeHead(301, {
+        location: `http://www.audit.test:${server.address().port}/canonical-home`,
+      });
+      return res.end();
+    }
+    if (req.url === '/canonical-home') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end(
+        `<html><head><title>Canonical Home</title></head><body><h1>Home</h1>` +
+        `<a href="/page2">Allowed canonical link</a>` +
+        `<a href="http://audit.test:${server.address().port}/original-origin-trap">Old origin trap</a>` +
+        `</body></html>`
+      );
+    }
+    if (req.url === '/original-origin-trap') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Wrong Origin</title></head><body><h1>Bad</h1></body></html>');
+    }
     if (req.url === '/page2') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Page Two</title></head><body><h1>Second</h1><p>Useful content here.</p></body></html>');
@@ -168,6 +187,21 @@ test('real bounded crawl derives evidence from fetched HTML', async () => {
   assert.equal(result.pages[0].seo.metaDescription, 'Evidence first audit');
   assert.equal(result.pages[0].seo.h1Count, 1);
   assert.equal(result.pages[1].seo.title, 'Page Two');
+});
+
+test('initial redirect selects canonical origin for subsequent same-origin links', async () => {
+  const result = await auditWebsite(`${baseUrl}/canonical-redirect`, {
+    maxPages: 3,
+    resolveTargetFn: localResolver,
+  });
+  assert.equal(result.status, 'success');
+  assert.equal(result.pages.length, 2, 'should ignore the old origin trap after canonical redirect');
+  assert.equal(result.pages[0].seo.title, 'Canonical Home');
+  assert.equal(result.pages[0].redirectCount, 1);
+  assert.equal(result.pages[1].seo.title, 'Page Two');
+  assert.ok(result.pages.every(page => new URL(page.url).hostname === 'www.audit.test'));
+  assert.ok(result.pages.every(page => !page.url.includes('original-origin-trap')));
+  assert.equal(result.requestedUrl, `${baseUrl}/canonical-redirect`);
 });
 
 test('same-origin crawler follows href after a greater-than in quoted anchor attributes', async () => {
