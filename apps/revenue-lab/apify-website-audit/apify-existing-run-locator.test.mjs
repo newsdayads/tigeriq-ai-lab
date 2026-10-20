@@ -4,7 +4,7 @@ import { locateOwnerCanaryRun, inspectDiscoveredOwnerCanary, RunLocatorError } f
 
 const env = { APIFY_TOKEN:'SYNTHETIC_SECRET_NO_LOG', APIFY_READONLY_EXECUTE:'OWNER_APPROVED_EXISTING_RUN_READ' };
 const actor={id:'ACTOR12345',username:'tigeriq',name:'tigeriq-ai-lab',isPublic:false,actorPermissionLevel:'LIMITED_PERMISSIONS'};
-const row=(opts={})=>({id:'RUN1234567',actId:actor.id,status:'SUCCEEDED',startedAt:'2026-10-08T03:00:00.000Z',finishedAt:'2026-10-08T03:00:02.000Z',buildNumber:'0.0.4',defaultKeyValueStoreId:'STORE12345',stats:{computeUnits:0.002},usageTotalUsd:0.0004,...opts});
+const row=(opts={})=>({id:'RUN1234567',actId:actor.id,status:'SUCCEEDED',startedAt:'2026-10-08T03:00:00.000Z',finishedAt:'2026-10-08T03:00:02.000Z',buildNumber:'0.0.4',buildId:'BUILD12345',defaultKeyValueStoreId:'STORE12345',stats:{computeUnits:0.002},usageTotalUsd:0.0004,...opts});
 const list=(items=[row()],opts={})=>({total:items.length,offset:0,count:items.length,items,...opts});
 const output={
   schemaVersion:'1.0',status:'success',requestedUrl:'https://example.com/',
@@ -77,6 +77,12 @@ test('R04 locator accepts the same absolute instant with explicit Vietnam offset
 test('R04 locator refuses wrong build instead of guessing latest',async()=>{
  assert.equal((await refuses('OCT08_CANARY_NOT_FOUND',{runList:list([row({buildNumber:'0.0.5'})])})).length,2);
 });
+test('R04 locator rejects absent or nonopaque candidate build IDs before detail GET',async()=>{
+ for(const buildId of [undefined,null,{},'','bad/build']){
+  const calls=await refuses('RUN_BUILD_ID_UNVERIFIED',{runList:list([row({buildId})])});
+  assert.equal(calls.length,2);
+ }
+});
 test('R04 locator rejects two Oct-08 candidate runs as ambiguous',async()=>{
  assert.equal((await refuses('OCT08_CANARY_AMBIGUOUS',{runList:list([row(),row({id:'RUN5555555'})])})).length,2);
 });
@@ -106,6 +112,12 @@ test('R04 full locator runs the already-merged exact-ID, output and cost guards:
  assert.equal(e.cost.zeroCostClaim,false);assert.equal(m.calls.length,6);
  for(const {url,opts} of m.calls){assert.equal(opts.method,'GET');assert.equal(opts.redirect,'error');assert.doesNotMatch(url,/run-sync|\/builds|token=/)}
  assert.doesNotMatch(JSON.stringify(e),/SYNTHETIC_SECRET_NO_LOG|example\.com/);
+});
+test('R04 locator detail must preserve exact candidate build ID even with identical build number',async()=>{
+ const m=mock({run:{...row(),buildId:'BUILDDETAIL999'}});
+ await assert.rejects(inspectDiscoveredOwnerCanary({env,fetchFn:m.fetchFn,now:()=>new Date('2026-10-16T03:00:00Z')}),
+  e=>e.code==='RUN_LIST_DETAIL_BUILD_ID_MISMATCH');
+ assert.equal(m.calls.length,5);
 });
 test('R04 full locator reuses exact output URL check; rejects wrong output in last GET',async()=>{
  const m=mock({storeOutput:{...output,requestedUrl:'https://wrong.example/'}});
