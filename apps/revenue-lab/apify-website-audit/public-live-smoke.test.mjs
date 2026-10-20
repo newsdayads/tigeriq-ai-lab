@@ -12,7 +12,15 @@ function validProof() {
       pagesAudited: 1, errorCount: 0, externalApiCostUSD: 0,
       platformCostUSD: null, platformCostStatus: 'pending_private_apify_run',
     },
-    pages: [{ url: 'https://example.com/', statusCode: 200, bytes: 1234, seo: { title: 'Example Domain' } }],
+    findingsSummary: { total: 1, high: 0, medium: 1, low: 0, pagesWithFindings: 1 },
+    pages: [{
+      url: 'https://example.com/', statusCode: 200, bytes: 1234,
+      seo: { title: 'Example Domain', metaDescription: null, h1Count: 1 },
+      findings: [{
+        code: 'MISSING_META_DESCRIPTION', severity: 'medium',
+        recommendation: 'Add a concise meta description for search snippets.',
+      }],
+    }],
   };
 }
 
@@ -32,6 +40,12 @@ test('public smoke checks actual audit response and reports only public, non-Api
   assert.equal(report.httpStatus, 200);
   assert.equal(report.pagesAudited, 1);
   assert.equal(report.titlePresent, true);
+  assert.equal(report.productReportFormat, 'TIGERIQ_SEO_MARKDOWN_V1');
+  assert.deepEqual(report.actionableFindings,
+    { total: 1, high: 0, medium: 1, low: 0, pagesWithFindings: 1 });
+  assert.match(report.productReportMarkdown, /# TigerIQ Website Audit/);
+  assert.match(report.productReportMarkdown, /MISSING_META_DESCRIPTION/);
+  assert.match(report.productReportMarkdown, /Apify platform cost: NOT VERIFIED/);
   assert.equal(report.apifyActorRan, false);
   assert.equal(report.apifyPlatformCostUsd, null);
   assert.equal(report.platformBillingVerified, false);
@@ -52,6 +66,9 @@ test('smoke rejects spoofed success, malformed outputs and nonpublic redirects',
     x => { x.pages[0].statusCode = 503; },
     x => { x.pages[0].url = 'http://example.com/'; },
     x => { x.pages[0].url = 'https://internal.example.com/'; },
+    x => { x.findingsSummary.total = 999; },
+    x => { x.pages[0].findings[0].recommendation = 'fake audit recommendation'; },
+    x => { x.pages[0].findings[0].code = 'INVENTED_RANK_SCORE'; },
   ];
   for (const mutate of variants) {
     const result = validProof();
@@ -60,4 +77,16 @@ test('smoke rejects spoofed success, malformed outputs and nonpublic redirects',
       () => collectPublicHttpEvidence({ auditFn: async () => result }),
       /PUBLIC_HTTP_AUDIT_EVIDENCE_INVALID|PUBLIC_HTTP_TARGET_ORIGIN_MISMATCH/);
   }
+});
+
+test('live report strips query credentials and is constructed from inspected page evidence', async () => {
+  const result = validProof();
+  result.pages[0].url = 'https://example.com/public?api_key=DO_NOT_PRINT&token=DO_NOT_PRINT';
+  result.pages[0].seo.title = 'Example *Markdown*';
+  const report = await collectPublicHttpEvidence({ auditFn: async () => result });
+  assert.match(report.productReportMarkdown, /Example \\*Markdown\\*/);
+  assert.ok(!report.productReportMarkdown.includes('DO_NOT_PRINT'));
+  assert.ok(!report.productReportMarkdown.includes('api_key'));
+  assert.ok(!report.productReportMarkdown.includes('token='));
+  assert.match(report.productReportMarkdown, /example\\.com\\/public/);
 });
