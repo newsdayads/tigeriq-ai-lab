@@ -26,6 +26,16 @@ test('Paperclip: a gated runtime release restarts only the exact stale MCP gatew
   assert.match(script,/\[string\]\$health\.service -eq 'TigerIQ PC Operator MCP Server'/);
   assert.match(script,/\[double\]\$health\.uptimeSec -lt 65/);
   assert.match(script,/viewGatewayRestarted=\(\$null-ne\$viewGatewayHealth\)/);
+  // The prior version of the updater performs the first self-update; it cannot call newly added functions.
+  assert.match(script,/function Reconcile-ApiHealthViewSelfUpdate/);
+  assert.match(script,/viewGatewayReconcile=Reconcile-ApiHealthViewSelfUpdate \$local/);
+  assert.match(script,/\[string\]\$release\.result -ne 'COMMITTED'/);
+  assert.match(script,/\[string\]\$release\.targetSha -ne \$sha/);
+  assert.match(script,/\[string\]\$source\.currentSha -ne \$sha/);
+  assert.match(script,/if\(\$viewGatewayHealth\)\{Save-ApiHealthViewAppliedState \$remote \$viewGatewayHealth\}/);
+  assert.match(script,/MCP_VIEW_SELF_UPDATE_RECONCILE_FAILED/);
+  assert.match(script,/reason='already_applied'/);
+
   assert.match(script,/if\(\$impact\.ContainsKey\('viewGateway'\) -and \$impact\.viewGateway\)/);
   assert.doesNotMatch(script,/Restart-ApiHealthViewGateway[\s\S]{0,700}\.\s*\$releaseGuardScript/);
 });
@@ -200,7 +210,7 @@ test('bootstrap stops the old updater instance before re-registering its task',(
 
 
 test('runtime updater structural gate prevents swallowed duplicate control loops',()=>{
-  assert.ok(script.length<66000,`updater unexpectedly large: ${script.length}`);
+  assert.ok(script.length<69000,`updater unexpectedly large: ${script.length}`);
   assert.equal((script.match(/function Invoke-LiveStatusBridgeReconcile/g)||[]).length,1);
   assert.equal((script.match(/function Gates-Pass/g)||[]).length,1);
   assert.equal((script.match(/function Invoke-AppChromeZeroTouchHelper/g)||[]).length,1);
