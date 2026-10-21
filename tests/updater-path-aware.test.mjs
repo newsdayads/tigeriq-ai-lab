@@ -29,6 +29,10 @@ test('Paperclip MCP reload is bounded to a committed release and exact gateway p
   assert.match(mcpView,/Get-NetTCPConnection -LocalPort 8802 -State Listen -ErrorAction Stop/);
   assert.match(mcpView,/MCP_VIEW_LISTENER_OWNERS_AMBIGUOUS/);
   assert.match(mcpView,/MCP_VIEW_LISTENER_OWNER_MISMATCH/);
+  assert.match(script,/if\(\$mcpViewTouched -and \(Get-Command Restart-ApiHealthViewGateway/);
+  assert.match(mcpView,/Stop-ScheduledTask -TaskName \$apiHealthViewTask -ErrorAction Stop\n  \$script:mcpViewTouched=\$true/);
+  assert.ok(mcpView.indexOf('MCP_VIEW_LISTENER_OWNER_MISMATCH')<mcpView.indexOf('$script:mcpViewTouched=$true'),'rejected preflight never marks the shared gateway for rollback');
+
   assert.match(mcpView,/\$newListenerPid -eq \[int\]\$newPid/);
   assert.ok(mcpView.indexOf('MCP_VIEW_LISTENER_OWNER_MISMATCH')<mcpView.indexOf('Stop-ScheduledTask -TaskName $apiHealthViewTask'),'listener ownership before disruption');
 
