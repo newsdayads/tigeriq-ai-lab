@@ -121,6 +121,14 @@ before(async () => {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Live Template Page</title><meta name="description" content="Live content"></head><body><template id="component"><h1>Inert Heading</h1><a href="/missing">Inert link</a></template><h1>Live Heading</h1><a href="/page2">Live link</a></body></html>');
     }
+    if (req.url === '/template-textarea-close') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Template Textarea</title></head><body><template><textarea></template><h1>GHOST H1</h1><a href="/page-fake">Ghost</a></textarea><h1>STILL GHOST</h1></template><h1>REAL H1</h1><a href="/page2">Real</a></body></html>');
+    }
+    if (req.url === '/outside-textarea') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Outside Textarea</title></head><body><textarea><h1>GHOST H1</h1><a href="/page-fake">Ghost</a></textarea><h1>REAL H1</h1><a href="/page2">Real</a></body></html>');
+    }
     if (req.url === '/nested-template') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Nested Template</title><meta name="description" content="Live"></head><body><template id="outer"><!-- </template> false closing --><template><h1>Inner Ghost</h1></template><h1>Outer Ghost</h1><a href="/missing">Ghost</a></template><h1>Visible Heading</h1><a href="/page2">Visible link</a></body></html>');
@@ -449,6 +457,22 @@ test('HTML template content cannot fabricate visible H1 or crawl links', async (
   assert.equal(result.pages[0].seo.h1Count, 1);
   assert.ok(!result.pages[0].findings.some(f => f.code === 'MULTIPLE_H1'));
   assert.equal(result.pages[1].seo.title, 'Page Two');
+});
+
+test('textarea raw text never closes an outer template or invents visible SEO/crawl links', async () => {
+  for (const entry of ['/template-textarea-close', '/outside-textarea']) {
+    const result = await auditWebsite(`${baseUrl}${entry}`, {
+      maxPages: 3,
+      resolveTargetFn: localResolver,
+    });
+    assert.equal(result.status, 'success');
+    assert.equal(result.metrics.pagesAudited, 2, entry);
+    assert.equal(result.metrics.errorCount, 0, entry);
+    assert.deepEqual(result.pages[0].seo.h1, ['REAL H1'], entry);
+    assert.equal(result.pages[0].seo.h1Count, 1, entry);
+    assert.equal(result.pages[1].seo.title, 'Page Two', entry);
+    assert.ok(!result.pages.some(page => page.url.includes('/page-fake')), entry);
+  }
 });
 
 test('nested HTML templates and commented closing tags do not fabricate SEO or crawl pages', async () => {
