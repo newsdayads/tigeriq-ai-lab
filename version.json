@@ -1,0 +1,7 @@
+{
+  "latestVersionCode": 244,
+  "latestVersionName": "TigerIQ_HCM_v1.0.4",
+  "apkUrl": "https://github.com/newsdayads/tigeriq-ai-lab/releases/download/v1.0.4/UltraCar_TigerIQ_HCM_v1.0.4_signed.apk",
+  "releaseNotes": "Bản cập nhật TigerIQ UltraCar v1.0.4:\n1. Nút Camera nổi chuyên biệt trên màn hình DeX (không hiện trên điện thoại).\n2. Khôi phục hoàn toàn Camera Lùi gốc hoạt động mượt mà, ổn định.\n3. Nút 'TẢI VỀ' tự động tải file cập nhật về máy và mở ngay màn hình cài đặt một chạm.\n4. Tự động bật ứng dụng UltraCar trực tiếp lên màn hình xe khi ghim cắm cáp DeX.\n5. Nút thoát cửa sổ camera màu đỏ nổi bật dễ thao tác nhanh.",
+  "mandatory": false
+}
