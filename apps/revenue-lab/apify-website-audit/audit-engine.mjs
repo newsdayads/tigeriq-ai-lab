@@ -310,11 +310,11 @@ const cleanText = value => decodeSeoTextEntities(
 // Strip inert HTML in document order. A <template> may contain other
 // templates, so a shortest-match regex is insufficient: it would expose
 // the remainder of the outer template as real SEO content or crawl links.
-// Scripts, styles and comments are consumed as atomic regions, so fake
+// Script, style, textarea and comment regions are consumed atomically, so fake
 // template tags inside them cannot affect the nesting depth.
 // A dangling template opener remains hidden (fail closed).
 function stripInertHtml(html) {
-  const regions = /<!--[\s\S]*?(?:-->|$)|<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>|<template\b(?:[^>"']|"[^"]*"|'[^']*')*>|<\/template\s*>/gi;
+  const regions = /<!--[\s\S]*?(?:-->|$)|<(script|style|textarea)\b[^>]*>[\s\S]*?<\/\1\s*>|<template\b(?:[^>"']|"[^"]*"|'[^']*')*>|<\/template\s*>/gi;
   let depth = 0;
   let from = 0;
   let visible = '';
