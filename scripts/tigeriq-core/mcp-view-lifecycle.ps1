@@ -4,6 +4,14 @@ $apiHealthViewTask='TigerIQ API Health View Gateway'
 $apiHealthViewEntry=(Join-Path $runtimeRepo 'apps\tigeriq-core\api-health-view-gateway.mjs').ToLowerInvariant()
 $apiHealthViewAppliedState='D:\TigerIQ\State\api-health-view-applied.json'
 
+function Get-McpViewListenerPid(){
+  # The exact TCP listener must be owned by the exact node.exe PID before any stop.
+  $connections=@(Get-NetTCPConnection -LocalPort 8802 -State Listen -ErrorAction Stop)
+  $owners=@($connections | ForEach-Object { [int]$_.OwningProcess } | Where-Object {$_ -gt 0} | Sort-Object -Unique)
+  if($owners.Count -gt 1){throw 'MCP_VIEW_LISTENER_OWNERS_AMBIGUOUS'}
+  if($owners.Count -eq 1){return [int]$owners[0]}
+  return $null
+}
 function Restart-ApiHealthViewGateway(){
   # Static ESM imports in the separate MCP process do not reload after source updates.
   if(-not(Task-Exists $apiHealthViewTask)){throw 'MCP_VIEW_TASK_MISSING'}
@@ -12,6 +20,9 @@ function Restart-ApiHealthViewGateway(){
   })
   if($matching.Count -gt 1){throw 'MCP_VIEW_PROCESS_AMBIGUOUS'}
   $oldPid=if($matching.Count -eq 1){[int]$matching[0].ProcessId}else{$null}
+  $listenerPid=Get-McpViewListenerPid
+  if($oldPid -and [int]$listenerPid -ne [int]$oldPid){throw 'MCP_VIEW_LISTENER_OWNER_MISMATCH'}
+  if(-not $oldPid -and $listenerPid){throw 'MCP_VIEW_LISTENER_UNOWNED'}
   if(-not $oldPid){
     try{$oldHealth=Invoke-RestMethod -Uri 'http://127.0.0.1:8802/mcp/health' -TimeoutSec 3 -ErrorAction Stop}catch{$oldHealth=$null}
     if($oldHealth -and $oldHealth.ok -eq $true){throw 'MCP_VIEW_LISTENER_UNOWNED'}
@@ -27,9 +38,11 @@ function Restart-ApiHealthViewGateway(){
   $deadline=(Get-Date).AddSeconds(60)
   while((Get-Date)-lt$deadline){
     $newPid=Get-NodePidByMatch $apiHealthViewEntry
+    $newListenerPid=Get-McpViewListenerPid
     $health=$null
     try{$health=Invoke-RestMethod -Uri 'http://127.0.0.1:8802/mcp/health' -TimeoutSec 3 -ErrorAction Stop}catch{}
-    if($newPid -and (($null-eq$oldPid)-or([int]$newPid-ne[int]$oldPid)) -and
+    if($newPid -and $newListenerPid -and [int]$newListenerPid -eq [int]$newPid -and
+       (($null-eq$oldPid)-or([int]$newPid-ne[int]$oldPid)) -and
        $health -and $health.ok -eq $true -and [string]$health.service -eq 'TigerIQ PC Operator MCP Server' -and
        $null-ne$health.uptimeSec -and [double]$health.uptimeSec -ge 0 -and [double]$health.uptimeSec -lt 65){
       return @{pid=[int]$newPid;previousPid=$oldPid;uptimeSec=[double]$health.uptimeSec;verified=$true}
