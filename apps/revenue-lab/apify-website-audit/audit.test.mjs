@@ -1090,3 +1090,63 @@ for (const [encoding, bytes, code] of [
     });
   });
 }
+
+
+// GH-2293: Content-Encoding and the HTTP-declared text charset are independent.
+// The old UTF-8-only conversion corrupted otherwise valid Latin-1 SEO fields.
+async function withCharsetFixture(contentType, wireBytes, encoding, verify) {
+  const fixture = http.createServer((_req, res) => {
+    res.writeHead(200, {
+      'content-type': contentType,
+      ...(encoding ? { 'content-encoding': encoding } : {}),
+    });
+    res.end(wireBytes);
+  });
+  await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
+  try {
+    const url = 'http://audit.test:' + fixture.address().port + '/charset';
+    await verify(url);
+  } finally {
+    fixture.closeAllConnections();
+    await new Promise(resolve => fixture.close(resolve));
+  }
+}
+const latin1SeoHtml = '<html><head><title>Café sécurisé</title>' +
+  '<meta name="description" content="Résumé de qualité"></head>' +
+  '<body><h1>Enquête détaillée</h1></body></html>';
+
+for (const [label, compressed, encoding] of [
+  ['plain ISO-8859-1', false, null],
+  ['gzip ISO-8859-1 with quoted charset', true, 'gzip'],
+]) {
+  test('real HTTP declared charset preserves accented SEO: ' + label, async () => {
+    const latin1 = Buffer.from(latin1SeoHtml, 'latin1');
+    const bytes = compressed ? gzipSync(latin1) : latin1;
+    const contentType = compressed
+      ? 'text/html; CHARSET="ISO-8859-1"'
+      : 'text/html; charset=iso-8859-1';
+    await withCharsetFixture(contentType, bytes, encoding, async url => {
+      const result = await auditWebsite(url, { resolveTargetFn: localResolver });
+      assert.equal(result.status, 'success');
+      assert.equal(result.pages[0].seo.title, 'Café sécurisé');
+      assert.equal(result.pages[0].seo.metaDescription, 'Résumé de qualité');
+      assert.deepEqual(result.pages[0].seo.h1, ['Enquête détaillée']);
+      assert.equal(result.findingsSummary.total, 0);
+      assert.equal(result.metrics.externalApiCostUSD, 0);
+      assert.equal(result.metrics.platformCostUSD, null);
+    });
+  });
+}
+
+test('unsupported HTTP charset never fabricates a successful SEO audit', async () => {
+  await withCharsetFixture(
+    'text/html; charset=not-a-real-charset',
+    Buffer.from(latin1SeoHtml, 'latin1'), null,
+    async url => {
+      await assert.rejects(
+        auditWebsite(url, { resolveTargetFn: localResolver }),
+        error => error instanceof AuditError && error.code === 'UNSUPPORTED_CHARSET',
+      );
+    },
+  );
+});
