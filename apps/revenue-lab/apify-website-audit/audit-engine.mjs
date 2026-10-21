@@ -332,13 +332,30 @@ function stripInertHtml(html) {
 }
 
 function extractSeo(html) {
-  const titleMatch = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+  // SEO document metadata belongs in the head. A body SVG <title> or an
+  // incorrectly placed body <meta> must not hide missing SEO findings.
+  // Preserve best-effort parsing of HTML fragments without head/body tags.
+  const headOpen = /<head\b(?:[^>"']|"[^"]*"|'[^']*')*>/i.exec(html);
+  const bodyOpen = /<body\b(?:[^>"']|"[^"]*"|'[^']*')*>/i.exec(html);
+  const headClose = /<\/head\s*>/i.exec(html);
+  let metadataHtml = html;
+  if (headOpen && (!bodyOpen || headOpen.index < bodyOpen.index)) {
+    const start = headOpen.index + headOpen[0].length;
+    const ends = [headClose?.index, bodyOpen?.index].filter(
+      index => index !== undefined && index >= start,
+    );
+    metadataHtml = html.slice(start, ends.length ? Math.min(...ends) : undefined);
+  } else if (bodyOpen) {
+    // HTML permits omitted <head>; elements before <body> still form its head.
+    metadataHtml = html.slice(0, bodyOpen.index);
+  }
+  const titleMatch = metadataHtml.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
   // Extract exact attribute names from <meta>, not substrings such as
   // data-name. HTML permits unquoted attribute values and either order.
   let metaDescription = null;
   // A literal '>' inside an HTML-quoted attribute is not the tag terminator.
   // Keep malformed/unclosed quotes fail-closed instead of inventing metadata.
-  for (const tag of html.match(/<meta\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi) || []) {
+  for (const tag of metadataHtml.match(/<meta\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi) || []) {
     const attributes = Object.create(null);
     for (const [, key, doubleQuoted, singleQuoted, unquoted] of
       tag.matchAll(/\s+([^\s=\/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'\x60=<>]+))/g)) {
