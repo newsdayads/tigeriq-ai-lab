@@ -117,6 +117,10 @@ before(async () => {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end("<html><head><!-- <title>Comment Title</title><meta name=\"description\" content=\"Decoy\"> -->\n<script>const inject = '<h1>Script Fake</h1><a href=\"/missing\">';</script>\n<style>.rule:after { content:'<h1>Style Fake</h1>'; }</style>\n<title>Actual Title</title><meta name=\"description\" content=\"Actual Description\"></head>\n<body><!-- <h1>Comment Fake</h1> --><h1>Actual H1</h1></body></html>");
     }
+    if (req.url === '/inert-template') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Live Template Page</title><meta name="description" content="Live content"></head><body><template id="component"><h1>Inert Heading</h1><a href="/missing">Inert link</a></template><h1>Live Heading</h1><a href="/page2">Live link</a></body></html>');
+    }
     if (req.url === '/inert-links') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end("<html><body><!-- <a href=\"/missing\">Ghost Comment</a> -->\n<script>const fake = '<a href=\"/missing\">Ghost Script</a>';</script>\n<style>div:after { content:'<a href=\"/missing\">Ghost Style</a>'; }</style>\n<a href=\"/page2\">Actual Link</a></body></html>");
@@ -426,6 +430,20 @@ test('same-origin crawler ignores fake anchor tags in inert HTML regions', async
   assert.equal(result.status, 'success');
   assert.equal(result.metrics.pagesAudited, 2);
   assert.equal(result.metrics.errorCount, 0);
+  assert.equal(result.pages[1].seo.title, 'Page Two');
+});
+
+test('HTML template content cannot fabricate visible H1 or crawl links', async () => {
+  const result = await auditWebsite(`${baseUrl}/inert-template`, {
+    maxPages: 2,
+    resolveTargetFn: localResolver,
+  });
+  assert.equal(result.status, 'success');
+  assert.equal(result.metrics.pagesAudited, 2);
+  assert.equal(result.metrics.errorCount, 0);
+  assert.deepEqual(result.pages[0].seo.h1, ['Live Heading']);
+  assert.equal(result.pages[0].seo.h1Count, 1);
+  assert.ok(!result.pages[0].findings.some(f => f.code === 'MULTIPLE_H1'));
   assert.equal(result.pages[1].seo.title, 'Page Two');
 });
 
