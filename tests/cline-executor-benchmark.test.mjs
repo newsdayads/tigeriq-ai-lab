@@ -129,14 +129,14 @@ test('TAP scoring rejects skipped-only, todo-only and missing summaries',()=>{
 });
 
 test('line-count metric ignores shifts from insertions and deletions', () => {
-  const before='alpha\\nbeta\\ngamma';
-  assert.equal(changedLineCount(before, '// note\\n'+before), 1);
-  assert.equal(changedLineCount(before, 'alpha\\ngamma'), 1);
-  assert.equal(changedLineCount(before, 'alpha\\nchanged\\ngamma'), 2);
+  const before='alpha\nbeta\ngamma';
+  assert.equal(changedLineCount(before, '// note\n'+before), 1);
+  assert.equal(changedLineCount(before, 'alpha\ngamma'), 1);
+  assert.equal(changedLineCount(before, 'alpha\nchanged\ngamma'), 2);
   assert.equal(changedLineCount(before, before), 0);
   assert.equal(changedLineCount('', 'new line'), 1);
-  assert.equal(changedLineCount('a\\nb\\na', 'a\\na'), 1);
-  assert.equal(changedLineCount('x\\ny\\n', 'new\\nx\\ny\\n'), 1);
+  assert.equal(changedLineCount('a\nb\na', 'a\na'), 1);
+  assert.equal(changedLineCount('x\ny\n', 'new\nx\ny\n'), 1);
 });
 
 test('real fixture scorer reports one line added without inflating shifted lines', async () => {
@@ -145,7 +145,7 @@ test('real fixture scorer reports one line added without inflating shifted lines
     const seeded = await seedLane({ root, lane: 'line-delta' });
     const file = path.join(seeded.fixtures[0].root, 'src', 'parse-count.mjs');
     const original = await readFile(file, 'utf8');
-    await writeFile(file, '// benchmark comment\\n' + original, 'utf8');
+    await writeFile(file, '// benchmark comment\n' + original, 'utf8');
     const score = await scoreLane({ root, lane: 'line-delta' });
     const row = score.fixtures.find((item) => item.fixtureId === 'strict-count-parser');
     assert.equal(row.filesChanged, 1);
