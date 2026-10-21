@@ -314,14 +314,14 @@ const cleanText = value => decodeSeoTextEntities(
 // template tags inside them cannot affect the nesting depth.
 // A dangling template opener remains hidden (fail closed).
 function stripInertHtml(html) {
-  const regions = /<!--[\\s\\S]*?(?:-->|$)|<(script|style)\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>|<template\\b(?:[^>"']|"[^"]*"|'[^']*')*>|<\\/template\\s*>/gi;
+  const regions = /<!--[\s\S]*?(?:-->|$)|<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>|<template\b(?:[^>"']|"[^"]*"|'[^']*')*>|<\/template\s*>/gi;
   let depth = 0;
   let from = 0;
   let visible = '';
   for (const match of html.matchAll(regions)) {
     if (depth === 0) visible += html.slice(from, match.index);
-    if (/^<template\\b/i.test(match[0])) depth++;
-    else if (/^<\\/template\\b/i.test(match[0])) depth = Math.max(0, depth - 1);
+    if (/^<template\b/i.test(match[0])) depth++;
+    else if (/^<\/template\b/i.test(match[0])) depth = Math.max(0, depth - 1);
     if (depth === 0) {
       visible += ' ';
       from = match.index + match[0].length;
