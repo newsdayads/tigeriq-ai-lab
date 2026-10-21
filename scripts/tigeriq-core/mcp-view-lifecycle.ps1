@@ -73,7 +73,8 @@ function Invoke-McpViewRelease([string[]]$changed,[string]$sha){
     'apps/tigeriq-core/pc-operator-mcp.mjs',
     'apps/openclaw-tigeriq-runtime/operator.mjs',
     'apps/openclaw-tigeriq-runtime/paperclip-lab.mjs',
-    'scripts/tigeriq-core/update-core-runtime.ps1'
+    'scripts/tigeriq-core/update-core-runtime.ps1',
+    'scripts/tigeriq-core/mcp-view-lifecycle.ps1'
   )
   if(-not(@($changed | Where-Object{$_ -in $targets}).Count)){return $false}
   $script:mcpViewChanged=$true
