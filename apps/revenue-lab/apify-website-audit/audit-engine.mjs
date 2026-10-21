@@ -392,9 +392,42 @@ function decodeHrefAmpersands(href) {
   return href.replace(/&(?:amp|#0*38|#x0*26);/gi, '&');
 }
 
+// Browsers resolve relative <a href> targets against the first <base href>
+// in the document head. Never honor a body-injected base, and keep the
+// existing same-origin/SSRF checks on every discovered target.
+function effectiveDocumentBase(html, documentUrl) {
+  const headOpen = /<head\b(?:[^>"']|"[^"]*"|'[^']*')*>/i.exec(html);
+  const bodyOpen = /<body\b(?:[^>"']|"[^"]*"|'[^']*')*>/i.exec(html);
+  const headClose = /<\/head\s*>/i.exec(html);
+  let headHtml = html;
+  if (headOpen && (!bodyOpen || headOpen.index < bodyOpen.index)) {
+    const start = headOpen.index + headOpen[0].length;
+    const ends = [headClose?.index, bodyOpen?.index].filter(
+      index => index !== undefined && index >= start,
+    );
+    headHtml = html.slice(start, ends.length ? Math.min(...ends) : undefined);
+  } else if (bodyOpen) {
+    headHtml = html.slice(0, bodyOpen.index);
+  }
+  for (const tag of headHtml.match(/<base\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi) || []) {
+    for (const [, name, doubleQuoted, singleQuoted, unquoted] of
+      tag.matchAll(/\s+([^\s=\/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'`=<>]+))/g)) {
+      if (name.toLowerCase() !== 'href') continue;
+      try {
+        return new URL(decodeHrefAmpersands(doubleQuoted ?? singleQuoted ?? unquoted), documentUrl);
+      } catch {
+        // Invalid first base href never authorizes an alternate crawl scope.
+        return new URL(documentUrl);
+      }
+    }
+  }
+  return new URL(documentUrl);
+}
+
 function extractSameOriginLinks(html, baseUrl, rootOrigin) {
   const links = [];
   const seen = new Set();
+  const effectiveBase = effectiveDocumentBase(html, baseUrl);
   // Require the exact href attribute; HTML also permits unquoted attribute
   // values. An attribute such as data-href must not trigger a crawl.
   // Quoted attribute values can contain literal '>' without closing <a>.
@@ -410,9 +443,10 @@ function extractSameOriginLinks(html, baseUrl, rootOrigin) {
     }
     if (!href || href.startsWith('#')) continue;
     try {
-      const candidate = new URL(decodeHrefAmpersands(href), baseUrl);
+      const candidate = new URL(decodeHrefAmpersands(href), effectiveBase);
       candidate.hash = '';
-      if (candidate.origin !== rootOrigin || !['http:', 'https:'].includes(candidate.protocol)) continue;
+      if (candidate.origin !== rootOrigin || candidate.username || candidate.password ||
+          !['http:', 'https:'].includes(candidate.protocol)) continue;
       const normalized = candidate.toString();
       if (!seen.has(normalized)) {
         seen.add(normalized);
