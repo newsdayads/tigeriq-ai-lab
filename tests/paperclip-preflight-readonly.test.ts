@@ -145,7 +145,40 @@ describe('Paperclip #2054 R01 read-only source contract', () => {
       kind: null, version: null,
       error: 'BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT',
       broker: { ready: true },
+      directProbe: {
+        windowsExitCode: 1, wslExitCode: 1,
+        windowsTimedOut: false, wslTimedOut: false,
+      },
     });
+  });
+  it('reports WSL service-context exit 4294967295 without broker writes or exposing stderr', async () => {
+    const attempted: string[] = [];
+    let brokerWrites = 0;
+    const result = await resolveDockerTransport(null, {
+      allowBrokerProbe: false,
+      runVersionCommand: async (command: string, _args: unknown, opts: { readOnly?: boolean }) => {
+        expect(opts.readOnly).toBe(true);
+        attempted.push(command);
+        return command === 'wsl.exe'
+          ? { exitCode: 4294967295, timedOut: false, stdout: '', stderr: 'PRIVATE_DIAGNOSTIC_NEVER_ECHO' }
+          : { exitCode: -1, timedOut: false, stdout: '', stderr: 'WINDOWS_DOCKER_UNAVAILABLE' };
+      },
+      readBrokerStatus: async () => ({ ready: true, version: '1.7-openai-device-auth' }),
+      probeViaBroker: async () => {
+        brokerWrites++;
+        throw new Error('BROKER_WRITE_MUST_NOT_OCCUR');
+      },
+    });
+    expect(attempted).toEqual(['docker.exe', 'wsl.exe']);
+    expect(brokerWrites).toBe(0);
+    expect(result).toMatchObject({
+      kind: null, error: 'BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT',
+      directProbe: {
+        windowsExitCode: -1, wslExitCode: 4294967295,
+        windowsTimedOut: false, wslTimedOut: false,
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain('PRIVATE_DIAGNOSTIC_NEVER_ECHO');
   });
   it('preserves the existing operational broker route outside R01', async () => {
     let bridged = 0;

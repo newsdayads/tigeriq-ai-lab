@@ -557,6 +557,15 @@ export async function resolveDockerTransport(signal = null, {
     // R01 cannot write a broker request file merely to check Docker readiness.
     if (!allowBrokerProbe) return {
       kind: null, version: null, error: 'BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT', broker,
+      // R01/R02 cannot enqueue a broker request without a mutation lease.
+      // Preserve only status codes and timeouts from direct probes so an actual
+      // WSL service-context failure stays visible without leaking stderr.
+      directProbe: {
+        windowsExitCode: Number.isInteger(windows.exitCode) ? windows.exitCode : null,
+        wslExitCode: Number.isInteger(wsl.exitCode) ? wsl.exitCode : null,
+        windowsTimedOut: windows.timedOut === true,
+        wslTimedOut: wsl.timedOut === true,
+      },
     };
     const bridged = await probeViaBroker(['version', '--format', '{{.Server.Version}}'], { timeoutMs: 20000, signal })
       .catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) }));
@@ -952,7 +961,10 @@ export async function paperclipReadOnlyPreflight({
           : docker.error === 'BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT'
             ? 'DOCKER_UNVERIFIED_READ_ONLY' : 'DOCKER_UNAVAILABLE' };
   return {
-    docker: { ok: Boolean(docker.kind), transport: docker.kind, version: docker.version, error: docker.error, broker },
+    docker: {
+      ok: Boolean(docker.kind), transport: docker.kind, version: docker.version, error: docker.error, broker,
+      ...(docker.directProbe ? { directProbe: docker.directProbe } : {}),
+    },
     container,
     port3210: port,
     root: PAPERCLIP_LAB_ROOT,

@@ -174,6 +174,10 @@ describe('Paperclip R01 production-default preflight call chain (isolated OS)', 
     expect(result.rootPresent).toBe(true);
     expect(result.disk).toEqual({ freeBytes: 8192, totalBytes: 32768 });
     expect(result.docker.error).toBe('BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT');
+    expect(result.docker.directProbe).toEqual({
+      windowsExitCode: 1, wslExitCode: 1,
+      windowsTimedOut: false, wslTimedOut: false,
+    });
     expect(result.container).toMatchObject({
       attempted:false,present:null,running:null,reason:'DOCKER_UNVERIFIED_READ_ONLY',
       imageDigestVerified:false,
@@ -382,6 +386,10 @@ describe('Paperclip R01 production-default preflight call chain (isolated OS)', 
           kind: null,
           error: 'BROKER_PROBE_SKIPPED_READ_ONLY_PREFLIGHT',
           broker: { ready: true },
+          directProbe: {
+            windowsExitCode: 1, wslExitCode: 1,
+            windowsTimedOut: false, wslTimedOut: false,
+          },
         },
         port: { reachable: false },
         http: { reachable: true, status: 200, appOk: true },
