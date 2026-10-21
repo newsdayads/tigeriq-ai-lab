@@ -89,8 +89,14 @@ export async function locateOwnerCanaryRun({ env = process.env, fetchFn = global
   const run = candidates[0];
   if (typeof run.buildId !== 'string' || !OPAQUE.test(run.buildId))
     fail('RUN_BUILD_ID_UNVERIFIED');
+  // A succeeded candidate must have a valid end timestamp before detail GETs.
+  if (!validApifyInstant(run.finishedAt) ||
+      Date.parse(run.finishedAt) < Date.parse(run.startedAt))
+    fail('RUN_LIST_TIMESTAMPS_UNVERIFIED');
   // Opaque IDs remain process-local; never persist or post them in public issues.
-  return { actorId: actor.id, runId: run.id, buildId: run.buildId, source: 'AUTHENTICATED_BOUNDED_APIFY_RUN_LIST',
+  return { actorId: actor.id, runId: run.id, buildId: run.buildId,
+    startedAt: run.startedAt, finishedAt: run.finishedAt,
+    source: 'AUTHENTICATED_BOUNDED_APIFY_RUN_LIST',
     targetDay: DAY, expectedBuild: BUILD, requests: 2 };
 }
 
@@ -104,6 +110,11 @@ export async function inspectDiscoveredOwnerCanary({ env = process.env,
     fetchFn, now, expectedBuildId: found.buildId,
     allowMissingUsageForIdentity: true,
   });
+  // Both endpoints are authenticated; reject list/detail drift before R04 acceptance.
+  // Compare absolute instants, not the timezone formatting of equivalent timestamps.
+  if (Date.parse(evidence.run.startedAt) !== Date.parse(found.startedAt) ||
+      Date.parse(evidence.run.finishedAt) !== Date.parse(found.finishedAt))
+    fail('RUN_LIST_DETAIL_TIMESTAMP_DRIFT');
   return { ...evidence,
     discovery: { source: found.source, boundedDate: DAY, candidates: 1,
       readOnly: true, discoveryGetRequests: 2 },
