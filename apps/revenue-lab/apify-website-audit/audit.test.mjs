@@ -153,6 +153,22 @@ before(async () => {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end("<html><body><!-- <a href=\"/missing\">Ghost Comment</a> -->\n<script>const fake = '<a href=\"/missing\">Ghost Script</a>';</script>\n<style>div:after { content:'<a href=\"/missing\">Ghost Style</a>'; }</style>\n<a href=\"/page2\">Actual Link</a></body></html>");
     }
+    if (req.url === '/base-relative') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Base Entry</title><base data-note="7 > 3" href="/docs/"><base href="/wrong/"></head><body><h1>Entry</h1><a href="next">Next</a></body></html>');
+    }
+    if (req.url === '/docs/next') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Correct Base Target</title></head><body><h1>Next</h1></body></html>');
+    }
+    if (req.url === '/base-external') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>External Base</title><base href="https://external.example/docs/"></head><body><h1>Entry</h1><a href="next">External relative link</a></body></html>');
+    }
+    if (req.url === '/base-body-decoy') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Body Decoy Base</title></head><body><base href="/wrong/"><h1>Entry</h1><a href="page2">Real page</a></body></html>');
+    }
     if (req.url === '/links-gt-double') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Link GT double</title></head><body><a data-label="9 > 2" href="/page2">Next</a></body></html>');
@@ -339,6 +355,35 @@ test('later page redirects cannot fetch a different origin while same-origin red
     auditServer.closeAllConnections();
     await new Promise(resolve => auditServer.close(resolve));
   }
+});
+
+test('crawler follows the first head base href for relative links without changing site scope', async () => {
+  const result = await auditWebsite(baseUrl + '/base-relative', {
+    maxPages: 2, resolveTargetFn: localResolver,
+  });
+  assert.equal(result.status, 'success');
+  assert.equal(result.metrics.pagesAudited, 2);
+  assert.equal(result.pages[1].url.endsWith('/docs/next'), true);
+  assert.equal(result.pages[1].seo.title, 'Correct Base Target');
+});
+
+test('crawler never follows a relative link through an external document base', async () => {
+  const result = await auditWebsite(baseUrl + '/base-external', {
+    maxPages: 2, resolveTargetFn: localResolver,
+  });
+  assert.equal(result.status, 'success');
+  assert.equal(result.metrics.pagesAudited, 1);
+  assert.equal(result.metrics.errorCount, 0);
+});
+
+test('body base decoys cannot rewrite relative crawl targets', async () => {
+  const result = await auditWebsite(baseUrl + '/base-body-decoy', {
+    maxPages: 2, resolveTargetFn: localResolver,
+  });
+  assert.equal(result.status, 'success');
+  assert.equal(result.metrics.pagesAudited, 2);
+  assert.equal(result.pages[1].url.endsWith('/page2'), true);
+  assert.equal(result.pages[1].seo.title, 'Page Two');
 });
 
 test('same-origin crawler follows href after a greater-than in quoted anchor attributes', async () => {
