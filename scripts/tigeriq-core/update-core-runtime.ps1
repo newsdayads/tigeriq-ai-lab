@@ -39,6 +39,7 @@ $webTask='TigerIQ Web Control 24x7'
 $codingTask='TigerIQ Coding Lane 24x7'
 $openclawTask='TigerIQ OpenClaw Gateway'
 $apiHealthViewTask='TigerIQ API Health View Gateway'
+$apiHealthViewAppliedState='D:\TigerIQ\State\api-health-view-applied.json'
 $remoteDesktopTask='TigerIQ Desktop Commander Remote'
 $remoteDesktopRuntime='D:\TigerIQ\Runtime\desktop-commander-remote'
 $remoteDesktopLifecycleGeneration='20260930_TOPOLOGY_2'
@@ -825,6 +826,34 @@ function Restart-ApiHealthViewGateway(){
   }
   throw 'MCP_VIEW_NEW_PID_AND_HEALTH_NOT_VERIFIED'
 }
+function Save-ApiHealthViewAppliedState([string]$sha,$receipt){
+  $result=[ordered]@{schema='TIGERIQ_MCP_VIEW_APPLIED_V1';installedSha=$sha;pid=$receipt.pid;previousPid=$receipt.previousPid;uptimeSec=$receipt.uptimeSec;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
+  $tmp=$apiHealthViewAppliedState+'.tmp'
+  [IO.File]::WriteAllText($tmp,($result|ConvertTo-Json -Depth 4),(New-Object Text.UTF8Encoding($false)))
+  Move-Item -Force $tmp $apiHealthViewAppliedState
+}
+function Reconcile-ApiHealthViewSelfUpdate([string]$sha){
+  # The *old* updater executes the first release; this code first runs on its next NO_CHANGE loop.
+  if(-not $sha -or -not(Test-Path -LiteralPath $state)){return @{action='skip';reason='missing_state'}}
+  try{
+    if(Test-Path -LiteralPath $apiHealthViewAppliedState){
+      $applied=Get-Content -Raw -LiteralPath $apiHealthViewAppliedState|ConvertFrom-Json -ErrorAction Stop
+      if([string]$applied.installedSha -eq $sha){return @{action='none';reason='already_applied'}}
+    }
+    $prior=Get-Content -Raw -LiteralPath $state|ConvertFrom-Json -ErrorAction Stop
+    if([string]$prior.result -ne 'UPDATED' -or [string]$prior.installedSha -ne $sha -or
+       -not (@($prior.changedPaths) -contains 'scripts/tigeriq-core/update-core-runtime.ps1')){
+      return @{action='skip';reason='no_self_update_receipt'}
+    }
+    $release=Get-Content -Raw -LiteralPath 'C:\ProgramData\TigerIQCoreRelease\core-runtime-release-attempt.json'|ConvertFrom-Json -ErrorAction Stop
+    $source=Get-Content -Raw -LiteralPath $runtimeSourceState|ConvertFrom-Json -ErrorAction Stop
+    if([string]$release.result -ne 'COMMITTED' -or [string]$release.targetSha -ne $sha -or
+       [string]$source.currentSha -ne $sha){return @{action='blocked';reason='release_receipt_mismatch'}}
+    $receipt=Restart-ApiHealthViewGateway
+    Save-ApiHealthViewAppliedState $sha $receipt
+    return @{action='restarted';pid=$receipt.pid;previousPid=$receipt.previousPid;uptimeSec=$receipt.uptimeSec}
+  }catch{return @{action='blocked';reason='MCP_VIEW_SELF_UPDATE_RECONCILE_FAILED';error=$_.Exception.Message}}
+}
 function Get-Impact([string[]]$paths){
   $web=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-core/web-control(?:\.|-)' -or $_ -eq 'apps/tigeriq-core/owner-facing-vietnamese.mjs' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-web-control'}).Count)
   $coding=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-coding-lane/' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-coding-lane'}).Count)
@@ -894,7 +923,7 @@ while($true){
     }
     if(Test-GithubApiBackoff){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='WAIT_GITHUB_API_RATE_LIMIT';candidateSha=$remote;installedSha=$local;githubApiBackoffUntil=$githubApiBackoffUntil.ToString('o');runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     if($runtimeExists){$local=Resolve-DeployedSourceSha $local $remote}
-    if($runtimeExists -and $local -eq $remote){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeTaskBlueprint=$appChromeTaskBlueprintState;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    if($runtimeExists -and $local -eq $remote){$viewGatewayReconcile=Reconcile-ApiHealthViewSelfUpdate $local;$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';viewGatewayReconcile=$viewGatewayReconcile;installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeTaskBlueprint=$appChromeTaskBlueprintState;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
@@ -949,6 +978,7 @@ while($true){
     $newCore=HealthInfo 'http://100.97.23.87:8795/health'
     if($impact.openclaw -and $null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}
     Save-ReleaseAttempt $releaseApproval.requestId $remote $previousRuntimeSha 'COMMITTED'
+    if($viewGatewayHealth){Save-ApiHealthViewAppliedState $remote $viewGatewayHealth}
     Save-State @{result='UPDATED';appChromeTaskBlueprint=$appChromeTaskBlueprintState;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;appChromeInstall=$appChromeInstall;installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;changedPaths=$changed;impact=$impact;updaterTaskTarget=$updaterTaskTarget;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;viewGatewayRestarted=($null-ne$viewGatewayHealth);viewGatewayPid=if($viewGatewayHealth){$viewGatewayHealth.pid}else{$null};viewGatewayPreviousPid=if($viewGatewayHealth){$viewGatewayHealth.previousPid}else{$null};viewGatewayUptimeSec=if($viewGatewayHealth){$viewGatewayHealth.uptimeSec}else{$null};openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};remoteDesktopGuard=$remoteDesktopGuard;webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
     if($impact.updater){Restart-UpdaterAfterExit;exit 75}
   }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
