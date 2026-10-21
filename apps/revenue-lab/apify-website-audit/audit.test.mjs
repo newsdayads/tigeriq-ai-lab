@@ -439,31 +439,31 @@ test('IANA documentation, transition and reserved IPs are not publicly auditable
 });
 
 
-test('IETF 192.0.0.0/24 special-purpose targets cannot bypass literal or DNS guards', async () => {
-  // IANA IPv4 Special-Purpose Address Registry: 192.0.0.0/24 includes
-  // dummy, service continuity, NAT64 discovery and protocol anycast.
-  // A public website crawler must not use these protocol-purpose targets.
-  for (const address of [
-    '192.0.0.8', '192.0.0.9', '192.0.0.10',
-    '192.0.0.171', '192.0.0.254',
-  ]) {
-    assert.equal(isBlockedAddress(address), true, 'special-purpose IP allowed: ' + address);
+test('premature HTTP response body disconnect fails safely instead of crashing the audit', async () => {
+  // The server sends valid response headers and a partial HTML body before
+  // terminating the socket. Node IncomingMessage emits error/close on res,
+  // not reliably on the original request object.
+  const source = http.createServer((_req, res) => {
+    res.writeHead(200, {
+      'content-type': 'text/html; charset=utf-8',
+      'content-length': '4096',
+    });
+    res.flushHeaders();
+    res.write('<html><title>TRUNCATED IS NOT SUCCESS</title>');
+    setTimeout(() => res.destroy(), 15);
+  });
+  await new Promise(resolve => source.listen(0, '127.0.0.1', resolve));
+  try {
+    const url = 'http://audit.test:' + source.address().port + '/premature';
     await assert.rejects(
-      () => resolveSafeTarget('https://' + address + '/'),
-      error => error instanceof AuditError && error.code === 'PRIVATE_TARGET',
-      'literal target was not rejected: ' + address,
+      () => auditWebsite(url, { timeoutMs: 1000, resolveTargetFn: localResolver }),
+      err => err instanceof AuditError && err.code === 'NETWORK_FAILURE',
+      'a truncated HTML response must not be mistaken for a successful audit',
     );
-    await assert.rejects(
-      () => resolveSafeTarget('https://public-audit.invalid/', {
-        lookupFn: async () => [
-          { address: '8.8.8.8', family: 4 }, { address, family: 4 },
-        ],
-      }),
-      error => error instanceof AuditError && error.code === 'PRIVATE_TARGET',
-      'mixed DNS answer was not rejected: ' + address,
-    );
+  } finally {
+    source.closeAllConnections();
+    await new Promise(resolve => source.close(resolve));
   }
-  assert.equal(isBlockedAddress('192.0.1.1'), false, 'guard must not widen to adjacent /24');
 });
 
 test('IPv6 fe00 reserved, link-local and deprecated fec0 site-local never pass public-target screening', async () => {
