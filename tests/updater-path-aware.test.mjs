@@ -8,6 +8,28 @@ const zeroTouch=readFileSync(new URL('../scripts/tigeriq-core/appchrome-zero-tou
 const psVerify=readFileSync(new URL('../scripts/verify-powershell.ps1',import.meta.url),'utf8');
 const bootstrapWatchdog=readFileSync(new URL('../scripts/tigeriq-core/bootstrap-watchdog.ps1',import.meta.url),'utf8');
 
+test('Paperclip: a gated runtime release restarts only the exact stale MCP gateway process',()=>{
+  assert.match(script,/\$apiHealthViewTask='TigerIQ API Health View Gateway'/);
+  assert.match(script,/api-health-view-gateway\.mjs/);
+  assert.match(script,/function Restart-ApiHealthViewGateway\(\)/);
+  assert.match(script,/\$viewGateway=\[bool\]/);
+  assert.match(script,/apps\/openclaw-tigeriq-runtime\/paperclip-lab\.mjs/);
+  assert.match(script,/\$impact\.viewGateway/);
+  assert.match(script,/MCP_VIEW_PROCESS_AMBIGUOUS/);
+  assert.match(script,/MCP_VIEW_LISTENER_UNOWNED/);
+  assert.match(script,/Stop-ScheduledTask -TaskName \$apiHealthViewTask -ErrorAction Stop/);
+  assert.match(script,/Stop-Process -Id \$oldPid -Force/);
+  assert.match(script,/Start-ScheduledTask -TaskName \$apiHealthViewTask -ErrorAction Stop/);
+  assert.match(script,/MCP_VIEW_OLD_PID_STILL_RUNNING/);
+  assert.match(script,/MCP_VIEW_NEW_PID_AND_HEALTH_NOT_VERIFIED/);
+  assert.match(script,/MCP_VIEW_TASK_MISSING/);
+  assert.match(script,/\[string\]\$health\.service -eq 'TigerIQ PC Operator MCP Server'/);
+  assert.match(script,/\[double\]\$health\.uptimeSec -lt 65/);
+  assert.match(script,/viewGatewayRestarted=\(\$null-ne\$viewGatewayHealth\)/);
+  assert.match(script,/if\(\$impact\.ContainsKey\('viewGateway'\) -and \$impact\.viewGateway\)/);
+  assert.doesNotMatch(script,/Restart-ApiHealthViewGateway[\s\S]{0,700}\.\s*\$releaseGuardScript/);
+});
+
 test('updater never relies on Nullable HasValue/Value',()=>{
   assert.doesNotMatch(script,/\.HasValue\b|\.Value\b/);
   assert.match(script,/\$oldPid=if\(\$oldCore\)\{\[int\]\$oldCore\.pid\}else\{\$null\}/);
@@ -178,7 +200,7 @@ test('bootstrap stops the old updater instance before re-registering its task',(
 
 
 test('runtime updater structural gate prevents swallowed duplicate control loops',()=>{
-  assert.ok(script.length<60000,`updater unexpectedly large: ${script.length}`);
+  assert.ok(script.length<66000,`updater unexpectedly large: ${script.length}`);
   assert.equal((script.match(/function Invoke-LiveStatusBridgeReconcile/g)||[]).length,1);
   assert.equal((script.match(/function Gates-Pass/g)||[]).length,1);
   assert.equal((script.match(/function Invoke-AppChromeZeroTouchHelper/g)||[]).length,1);
