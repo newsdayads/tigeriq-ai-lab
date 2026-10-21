@@ -55,13 +55,31 @@ export async function seedLane({ root, lane, force = false } = {}) {
   return { version: manifest.version, lane, laneRoot, fixtures: seeded };
 }
 
-function changedLineCount(before, after) {
-  const a = String(before).split(/\r?\n/);
-  const b = String(after).split(/\r?\n/);
-  const n = Math.max(a.length, b.length);
-  let changed = 0;
-  for (let i = 0; i < n; i += 1) if ((a[i] ?? '') !== (b[i] ?? '')) changed += 1;
-  return changed;
+export function changedLineCount(before, after) {
+  const a = String(before) === '' ? [] : String(before).split(/\r?\n/);
+  const b = String(after) === '' ? [] : String(after).split(/\r?\n/);
+  // Keep unchanged prefixes and suffixes out of the comparison.
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start++;
+  let endA = a.length, endB = b.length;
+  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
+    endA--;
+    endB--;
+  }
+  // LCS counts shifted matching lines as unchanged; the remaining
+  // additions and deletions form the actual line delta.
+  const previous = new Uint32Array(endB - start + 1);
+  for (let i = start; i < endA; i++) {
+    let diagonal = 0;
+    for (let j = start; j < endB; j++) {
+      const col = j - start + 1;
+      const old = previous[col];
+      previous[col] = a[i] === b[j] ? diagonal + 1 : Math.max(previous[col], previous[col - 1]);
+      diagonal = old;
+    }
+  }
+  const common = previous[endB - start];
+  return (endA - start) + (endB - start) - 2 * common;
 }
 
 // Fixture tests must never inherit the coordinator's GitHub/Ollama/API secrets
