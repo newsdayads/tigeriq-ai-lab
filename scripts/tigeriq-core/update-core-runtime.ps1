@@ -874,6 +874,7 @@ while($true){
       continue
     }
     $oldCore=HealthInfo 'http://100.97.23.87:8795/health';$oldPid=if($oldCore){[int]$oldCore.pid}else{$null}
+    $mcpViewTouched=$false;$mcpViewChanged=$false;$mcpViewReceipt=$null
     Save-ReleaseAttempt $releaseApproval.requestId $remote $local 'STARTED'
     $previousRuntimeSha=$local
     try{
