@@ -484,7 +484,12 @@ export async function auditWebsite(inputUrl, options = {}) {
 
     try {
       const response = await fetchBounded(current, requestOptions, crawlOrigin);
-      if (crawlOrigin === null) crawlOrigin = new URL(response.finalUrl).origin;
+      // Canonical self-links and redirect aliases must not duplicate a fetched
+      // final URL, consume the page budget or count the same SEO findings twice.
+      const finalUrl = new URL(response.finalUrl).toString();
+      if (finalUrl !== current && visited.has(finalUrl)) continue;
+      visited.add(finalUrl);
+      if (crawlOrigin === null) crawlOrigin = new URL(finalUrl).origin;
       const documentHtml = stripInertHtml(response.body);
       const seo = extractSeo(documentHtml);
       totalBytes += response.bytes;
