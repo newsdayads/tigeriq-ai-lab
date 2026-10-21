@@ -166,9 +166,11 @@ async function requestOnce(url, options) {
   const started = Date.now();
   return new Promise((resolve, reject) => {
     let settled = false;
+    let timer;
     const done = (fn, value) => {
       if (settled) return;
       settled = true;
+      clearTimeout(timer);
       fn(value);
     };
     const req = client.request(parsed, {
@@ -231,20 +233,36 @@ async function requestOnce(url, options) {
         }
         chunks.push(chunk);
       });
-      res.on('end', () => done(resolve, {
+      // The response stream, not necessarily req, emits 'error' after a
+      // server disconnects following headers. Always consume that event.
+      res.on('error', () => done(reject,
+        new AuditError('NETWORK_FAILURE', 'HTTP response failed before completion.')));
+      res.on('close', () => {
+        if (!res.complete) done(reject,
+          new AuditError('NETWORK_FAILURE', 'HTTP response closed before completion.'));
+      });
+      res.on('end', () => {
+        if (!res.complete) return done(reject,
+          new AuditError('NETWORK_FAILURE', 'HTTP response was incomplete.'));
+        done(resolve, {
         statusCode,
         contentType,
         body: Buffer.concat(chunks).toString('utf8'),
         bytes,
         durationMs: Date.now() - started,
         finalUrl: parsed.toString(),
-      }));
+        });
+      });
     });
 
-    const timer = setTimeout(() => req.destroy(new AuditError('TIMEOUT', 'Request exceeded the configured timeout.', { timeoutMs: options.timeoutMs })), Math.max(1, deadline - Date.now()));
-    req.on('close', () => clearTimeout(timer));
+    // req 'close' can precede completion of a streaming response body.
+    // Only a settled response may clear the deadline; never clear on req close.
+    timer = setTimeout(() => {
+      const error = new AuditError('TIMEOUT', 'Request exceeded the configured timeout.', { timeoutMs: options.timeoutMs });
+      done(reject, error);
+      req.destroy(error);
+    }, Math.max(1, deadline - Date.now()));
     req.on('error', error => {
-      clearTimeout(timer);
       if (error instanceof AuditError) return done(reject, error);
       done(reject, new AuditError('NETWORK_FAILURE', 'HTTP request failed.', String(error?.message || error)));
     });

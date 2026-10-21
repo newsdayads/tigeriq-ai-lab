@@ -439,6 +439,33 @@ test('IANA documentation, transition and reserved IPs are not publicly auditable
 });
 
 
+test('premature HTTP response body disconnect fails safely instead of crashing the audit', async () => {
+  // The server sends valid response headers and a partial HTML body before
+  // terminating the socket. Node IncomingMessage emits error/close on res,
+  // not reliably on the original request object.
+  const source = http.createServer((_req, res) => {
+    res.writeHead(200, {
+      'content-type': 'text/html; charset=utf-8',
+      'content-length': '4096',
+    });
+    res.flushHeaders();
+    res.write('<html><title>TRUNCATED IS NOT SUCCESS</title>');
+    setTimeout(() => res.destroy(), 15);
+  });
+  await new Promise(resolve => source.listen(0, '127.0.0.1', resolve));
+  try {
+    const url = 'http://audit.test:' + source.address().port + '/premature';
+    await assert.rejects(
+      () => auditWebsite(url, { timeoutMs: 1000, resolveTargetFn: localResolver }),
+      err => err instanceof AuditError && err.code === 'NETWORK_FAILURE',
+      'a truncated HTML response must not be mistaken for a successful audit',
+    );
+  } finally {
+    source.closeAllConnections();
+    await new Promise(resolve => source.close(resolve));
+  }
+});
+
 test('IPv6 fe00 reserved, link-local and deprecated fec0 site-local never pass public-target screening', async () => {
   // IANA IPv6 Address Space: fe00::/9 reserved, fe80::/10 link-local,
   // fec0::/10 deprecated site-local (RFC 3879). Include both range edges.
