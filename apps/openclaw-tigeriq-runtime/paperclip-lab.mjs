@@ -532,6 +532,16 @@ export async function resolveDockerTransport(signal = null, {
   readBrokerStatus = brokerStatus,
   probeViaBroker = runDockerViaBroker,
 } = {}) {
+  // A failed Docker/WSL probe can exit with no stderr. Never erase that
+  // diagnostic or turn a live HTTP port into unverified Docker success.
+  const probeFailure = (label, result) => {
+    if (String(result?.stderr || '').trim()) return `${label}: ${String(result.stderr).trim()}`;
+    if (result?.timedOut) return `${label}: PROBE_TIMEOUT`;
+    if (Number.isInteger(result?.exitCode) && result.exitCode !== 0) {
+      return `${label}: EXIT_CODE_${result.exitCode}`;
+    }
+    return `${label}: EMPTY_SERVER_VERSION`;
+  };
   const windows = await runVersionCommand('docker.exe', ['version', '--format', '{{.Server.Version}}'], { timeoutMs: 15000, signal, readOnly: !allowBrokerProbe })
     .catch((error) => ({ exitCode: -1, timedOut: false, stdout: '', stderr: String(error?.message || error) }));
   if (windows.exitCode === 0 && !windows.timedOut && windows.stdout.trim()) {
@@ -553,12 +563,12 @@ export async function resolveDockerTransport(signal = null, {
     if (bridged.exitCode === 0 && !bridged.timedOut && bridged.stdout.trim()) {
       return { kind: DOCKER_TRANSPORT_BROKER, version: bridged.stdout.trim(), error: null, broker };
     }
-    return { kind: null, version: null, error: clipped([windows.stderr, wsl.stderr, bridged.stderr].filter(Boolean).join('\n')), broker };
+    return { kind: null, version: null, error: clipped([probeFailure('WINDOWS_DOCKER', windows), probeFailure('WSL_DOCKER', wsl), probeFailure('BROKER', bridged)].join('\n')), broker };
   }
   return {
     kind: null,
     version: null,
-    error: clipped([windows.stderr && `WINDOWS_DOCKER: ${windows.stderr}`, wsl.stderr && `WSL_DOCKER: ${wsl.stderr}`, broker.reason && `BROKER: ${broker.reason}`].filter(Boolean).join('\n')),
+    error: clipped([probeFailure('WINDOWS_DOCKER', windows), probeFailure('WSL_DOCKER', wsl), broker.reason && `BROKER: ${broker.reason}`].filter(Boolean).join('\n')),
     broker,
   };
 }
