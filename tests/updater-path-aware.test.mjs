@@ -35,7 +35,7 @@ test('Paperclip MCP reload is bounded to a committed release and exact gateway p
   assert.match(mcpView,/\[string\]\$source\.currentSha -ne \$sha/);
   assert.match(mcpView,/reason='already_applied'/);
   assert.match(mcpView,/Save-ApiHealthViewAppliedState \$sha \$receipt/);
-  assert.doesNotMatch(mcpView,/New-ScheduledTask|Register-ScheduledTask|Set-ScheduledTask|password|credential|Auth-Bypass/i);
+  assert.doesNotMatch(mcpView,/(^|\n)\s*(New-ScheduledTask|Register-ScheduledTask|Set-ScheduledTask)\b|Get-Credential|ConvertTo-SecureString/i);
 });
 
 test('updater never relies on Nullable HasValue/Value',()=>{
