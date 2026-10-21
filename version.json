@@ -1,7 +1,7 @@
 {
-  "latestVersionCode": 247,
-  "latestVersionName": "TigerIQ_HCM_v1.0.7 (21/10/2026)",
-  "apkUrl": "https://github.com/newsdayads/tigeriq-ai-lab/releases/download/v1.0.7/UltraCar_TigerIQ_HCM_v1.0.7_signed.apk",
-  "releaseNotes": "Bản cập nhật TigerIQ UltraCar HCM v1.0.7 (21/10/2026):\n- Tắt hoàn toàn thông báo cập nhật tự động khi khởi động App (chỉ kiểm tra khi vào mục Thông báo trong Cài đặt)\n- Căn chỉnh thước vạch căn lùi chuẩn xác theo camera gốc của xe, bổ sung đầy đủ chỉ số khoảng cách 2m, 1m, 0.5m\n- Tích hợp phím tắt nổi (Popup Button) chuyên dụng mở nhanh Camera ngay trên màn hình DeX một chạm",
+  "latestVersionCode": 249,
+  "latestVersionName": "TigerIQ_HCM_v1.0.9 (21/10/2026 17:30)",
+  "apkUrl": "https://github.com/newsdayads/tigeriq-ai-lab/releases/download/v1.0.9/UltraCar_TigerIQ_HCM_v1.0.9_signed.apk",
+  "releaseNotes": "Bản cập nhật TigerIQ UltraCar HCM v1.0.9 (17:30 21/10/2026):\n- Nâng cấp vạch căn lùi Camera chuẩn nét theo mẫu duyệt (Hình 4) với 3 vùng 1.5m / 1.0m / 0.5m, vạch tim trắng đứt đoạn, nhãn capsule tâm, mấu tai OEM. Đã kiểm chứng thực tế chạy rất ổn định trên xe.\n- Tắt hoàn toàn popup thông báo khi vừa mở App, vào thẳng màn hình lái.\n- Sửa lỗi FileProvider và cập nhật đường dẫn chính thức để nút Tải về tự động tải APK và mở cài đặt trực tiếp.\n\nBản cập nhật v1.0.8 (14:00 21/10/2026):\n- Đặt xe mặc định VinFast Limo Đỏ.\n- Cập nhật Logo và icon UltraCar HCM mới.\n- Hiển thị phiên bản ở góc trái màn hình Hồ sơ.",
   "mandatory": false
 }
