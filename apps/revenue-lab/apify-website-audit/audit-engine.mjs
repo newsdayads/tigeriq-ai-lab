@@ -308,11 +308,13 @@ const cleanText = value => decodeSeoTextEntities(
 ).replace(/\s+/g, ' ').trim();
 
 // Strip inert regions in DOCUMENT ORDER, not in two independent passes:
+// HTML template fragments are inert until explicitly cloned by JavaScript;
+// they must not invent headings or cause the crawler to visit hidden links.
 // a JS/CSS string can contain literal "<!--" and HTML comments can contain
 // mock script/style tags. The leftmost token owns its entire inert region.
 // Keep raw response bytes/cost metrics and network validation unchanged.
 function stripInertHtml(html) {
-  return html.replace(/<!--[\s\S]*?-->|<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ');
+  return html.replace(/<!--[\s\S]*?-->|<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ');
 }
 
 function extractSeo(html) {
