@@ -91,6 +91,27 @@ test('R04 locator permits one matching Oct-08 run among other builds',async()=>{
  const r=await locateOwnerCanaryRun({env,fetchFn:m.fetchFn});
  assert.equal(r.runId,'RUN1234567');assert.equal(m.calls.length,2);
 });
+test('R04 rejects malformed finishedAt on a noncandidate succeeded row before run detail GETs',async()=>{
+ for(const finishedAt of ['not-a-date','2026-10-08T03:00:00','2026-10-08T02:59:59.000Z']){
+  const other=row({id:'RUN5555555',buildNumber:'0.0.5',finishedAt});
+  const calls=await refuses('RUN_LIST_TIMESTAMPS_UNVERIFIED',{runList:list([row(),other])});
+  assert.equal(calls.length,2,finishedAt);
+ }
+});
+test('R04 rejects a terminal noncandidate without a valid finishedAt',async()=>{
+ for(const status of ['SUCCEEDED','FAILED','ABORTED','TIMED-OUT']){
+  const other=row({id:'RUN5555555',buildNumber:'0.0.5',status,finishedAt:null});
+  const calls=await refuses('RUN_LIST_TIMESTAMPS_UNVERIFIED',{runList:list([row(),other])});
+  assert.equal(calls.length,2,status);
+ }
+});
+test('R04 allows a nonterminal same-day row without finishedAt, still selecting only the canary',async()=>{
+ const other=row({id:'RUN5555555',buildNumber:'0.0.5',status:'RUNNING',finishedAt:null});
+ const m=mock({runList:list([row(),other])});
+ const found=await locateOwnerCanaryRun({env,fetchFn:m.fetchFn});
+ assert.equal(found.runId,'RUN1234567');
+ assert.equal(m.calls.length,2);
+});
 test('R04 locator rejects redirects and unauthorized private Actor reads',async()=>{
  assert.equal((await refuses('APIFY_REDIRECT_BLOCKED',{responses:{actor:new Response(null,{status:302,headers:{location:'https://bad.example/'}})}})).length,1);
  assert.equal((await refuses('SCOPED_READ_DENIED',{responses:{actor:Response.json({error:'forbidden'},{status:403})}})).length,1);

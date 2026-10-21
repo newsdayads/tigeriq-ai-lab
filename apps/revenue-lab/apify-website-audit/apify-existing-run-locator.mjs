@@ -83,6 +83,16 @@ export async function locateOwnerCanaryRun({ env = process.env, fetchFn = global
       row.actId !== actor.id || !validApifyInstant(row.startedAt)))
     fail('RUN_LIST_IDENTITY_UNVERIFIED');
   if (data.items.some(row => !oct8(row.startedAt))) fail('RUN_LIST_DATE_MISMATCH');
+  // The whole authenticated list is the source for unique-candidate selection.
+  // Do not skip malformed/reversed end times on non-candidate rows: a stale
+  // or forged second terminal run must not become invisible to provenance.
+  const terminal = new Set(['SUCCEEDED', 'FAILED', 'ABORTED', 'TIMED-OUT']);
+  if (data.items.some(row => {
+    const hasEnd = row.finishedAt != null;
+    return (terminal.has(row.status) && !hasEnd) ||
+      (hasEnd && (!validApifyInstant(row.finishedAt) ||
+        Date.parse(row.finishedAt) < Date.parse(row.startedAt)));
+  })) fail('RUN_LIST_TIMESTAMPS_UNVERIFIED');
   const candidates = data.items.filter(row => row.status === 'SUCCEEDED' && row.buildNumber === BUILD);
   if (!candidates.length) fail('OCT08_CANARY_NOT_FOUND');
   if (candidates.length !== 1) fail('OCT08_CANARY_AMBIGUOUS');
