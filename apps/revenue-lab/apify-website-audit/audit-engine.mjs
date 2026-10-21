@@ -287,7 +287,25 @@ async function fetchBounded(startUrl, options, allowedOrigin = null) {
   throw new AuditError('TOO_MANY_REDIRECTS', 'Redirect limit exceeded.');
 }
 
-const cleanText = value => String(value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+// Decode text-only HTML references after stripping markup. Never interpret
+// decoded '<' as a tag, or turn encoded user text into executable markup.
+// Common named entities plus bounded decimal/hex numeric references are enough
+// for readable title, meta description and H1 in the HTML-only audit.
+const SEO_TEXT_ENTITIES = Object.freeze({
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0',
+});
+function decodeSeoTextEntities(value) {
+  return value.replace(/&(?:#(?:[0-9]{1,7}|[xX][0-9a-fA-F]{1,6})|amp|lt|gt|quot|apos|nbsp);/gi, ref => {
+    if (ref[1] !== '#') return SEO_TEXT_ENTITIES[ref.slice(1, -1).toLowerCase()] ?? ref;
+    const hex = ref[2].toLowerCase() === 'x';
+    const code = Number.parseInt(ref.slice(hex ? 3 : 2, -1), hex ? 16 : 10);
+    return Number.isSafeInteger(code) && code > 0 && code <= 0x10ffff &&
+      (code < 0xd800 || code > 0xdfff) ? String.fromCodePoint(code) : ref;
+  });
+}
+const cleanText = value => decodeSeoTextEntities(
+  String(value || '').replace(/<[^>]*>/g, ' '),
+).replace(/\s+/g, ' ').trim();
 
 // Strip inert regions in DOCUMENT ORDER, not in two independent passes:
 // a JS/CSS string can contain literal "<!--" and HTML comments can contain
