@@ -186,6 +186,26 @@ test('R04 incomplete run timestamp refused',async()=>{await rejected('RUN_TIMEST
 test('R04 settle gate rejects near-future finished time',async()=>{await rejected('RUN_USAGE_NOT_SETTLED',{first:{...run(),finishedAt:'2026-10-15T11:59:55.000Z'}})});
 test('R04 exact Oct 8 Vietnam day enforced',async()=>{await rejected('HISTORICAL_RUN_DAY_MISMATCH',{first:{...run(),startedAt:'2026-10-07T03:00:00.000Z'}})});
 test('R04 invalid default store ID never produces guessed record path',async()=>{await rejected('RUN_STORE_UNVERIFIED',{first:{...run(),defaultKeyValueStoreId:'../../secret'}})});
+test('R04 equivalent UTC and Vietnam-offset instants across two authenticated GETs are stable',async()=>{
+  const m=mocked({first:run(),final:{...run(),
+    startedAt:'2026-10-08T10:00:00+07:00',
+    finishedAt:'2026-10-08T10:00:02+07:00',
+  }});
+  const evidence=await inspectHistoricalRun({env,fetchFn:m.fetchFn,now:clock});
+  assert.equal(evidence.acceptance.historicalRunMatched,true);
+  assert.equal(evidence.acceptance.platformFinalInvoiceVerified,false);
+  assert.equal(m.calls.length,4);
+  assert.ok(m.calls.every(x=>x.options.method==='GET'));
+});
+test('R04 differing absolute instants are still rejected despite a valid alternate timezone',async()=>{
+  for(const values of [
+    {startedAt:'2026-10-08T10:00:01+07:00'},
+    {finishedAt:'2026-10-08T10:00:03+07:00'},
+  ]){
+    const calls=await rejected('RUN_RECHECK_DRIFT',{final:{...run(),...values}});
+    assert.equal(calls.length,3);
+  }
+});
 test('R04 immutable historical fields cannot drift between 2 GETs',async()=>{await rejected('RUN_RECHECK_DRIFT',{final:{...run(),finishedAt:'2026-10-08T03:00:05.000Z'}})});
 for(const value of [null,-0.01,'0.000',NaN]){
   test('R04 refuses unset, negative, textual or NaN usage '+String(value),async()=>{
