@@ -76,6 +76,8 @@ vi.mock('node:fs', async (importOriginal) => {
           distro: 'Ubuntu',
           version: '1.7-openai-device-auth',
           sessionId: 123,
+          pid: 789,
+          sourceSha256: 'a'.repeat(64),
           user: 'test-only',
           wslKeepaliveRunning: true,
           wslKeepalivePid: 456,

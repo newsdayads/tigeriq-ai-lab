@@ -317,6 +317,15 @@ export function paperclipBrokerHeartbeatAgeMs(value, nowMs = Date.now()) {
   return Math.max(0, deltaMs);
 }
 
+// A fresh heartbeat without a broker PID or startup source SHA cannot
+// attest the process that produced it. R07 separately checks exact source bytes.
+export function paperclipBrokerHeartbeatProvenancePresent(heartbeat) {
+  return Number.isSafeInteger(heartbeat?.pid)
+    && heartbeat.pid > 0
+    && typeof heartbeat?.sourceSha256 === 'string'
+    && /^[a-f0-9]{64}$/.test(heartbeat.sourceSha256);
+}
+
 async function brokerStatus() {
   try {
     // Status reads must never create the broker directory or its parent.
@@ -334,6 +343,7 @@ async function brokerStatus() {
       && Boolean(String(heartbeat?.user || '').trim())
       && heartbeat?.wslKeepaliveRunning === true
       && Number(heartbeat?.wslKeepalivePid || 0) > 0
+      && paperclipBrokerHeartbeatProvenancePresent(heartbeat)
       && Number.isFinite(ageMs) && ageMs <= 15000;
     return {
       ready,
