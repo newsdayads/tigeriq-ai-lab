@@ -316,6 +316,13 @@ function extractSeo(html) {
   };
 }
 
+function decodeHrefAmpersands(href) {
+  // HTML attribute references must be decoded before URL resolution:
+  // otherwise ?x=1&amp;y=2 fetches the wrong query on real websites.
+  // Limit this change to ampersands; all existing origin/IP guards remain.
+  return href.replace(/&(?:amp|#0*38|#x0*26);/gi, '&');
+}
+
 function extractSameOriginLinks(html, baseUrl, rootOrigin) {
   const links = [];
   const seen = new Set();
@@ -334,7 +341,7 @@ function extractSameOriginLinks(html, baseUrl, rootOrigin) {
     }
     if (!href || href.startsWith('#')) continue;
     try {
-      const candidate = new URL(href, baseUrl);
+      const candidate = new URL(decodeHrefAmpersands(href), baseUrl);
       candidate.hash = '';
       if (candidate.origin !== rootOrigin || !['http:', 'https:'].includes(candidate.protocol)) continue;
       const normalized = candidate.toString();
