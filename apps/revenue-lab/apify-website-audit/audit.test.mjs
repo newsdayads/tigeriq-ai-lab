@@ -929,3 +929,42 @@ test('actionable SEO report identifies missing metadata and headings from actual
     total: 1, high: 0, medium: 1, low: 0, pagesWithFindings: 1,
   });
 });
+
+
+test('redirect aliases and canonical self-links do not duplicate SEO pages', async () => {
+  const hits = new Map();
+  const redirectServer = http.createServer((req, res) => {
+    hits.set(req.url, (hits.get(req.url) || 0) + 1);
+    if (req.url === '/redirect-first' || req.url === '/redirect-duplicate') {
+      res.writeHead(302, { location: '/canonical' });
+      res.end();
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'text/html' });
+    if (req.url === '/canonical') {
+      res.end('<html><head><title>Canonical</title></head><body><h1>Canonical</h1><a href="/canonical">Self</a><a href="/redirect-duplicate">Alias</a><a href="/other">Other</a></body></html>');
+    } else {
+      res.end('<html><head><title>Other</title></head><body><h1>Other</h1></body></html>');
+    }
+  });
+  await new Promise(resolve => redirectServer.listen(0, '127.0.0.1', resolve));
+  try {
+    const url = 'http://audit.test:' + redirectServer.address().port + '/redirect-first';
+    const result = await auditWebsite(url, {
+      maxPages: 3,
+      resolveTargetFn: localResolver,
+    });
+    assert.equal(result.status, 'success');
+    assert.deepEqual(result.pages.map(page => new URL(page.url).pathname), [
+      '/canonical', '/other',
+    ]);
+    assert.equal(result.metrics.pagesAudited, 2);
+    assert.equal(result.findingsSummary.total,
+      result.pages.reduce((count, page) => count + page.findings.length, 0));
+    assert.equal(hits.get('/canonical'), 2,
+      'the redirect alias may fetch canonical but must not count it again');
+  } finally {
+    redirectServer.closeAllConnections();
+    await new Promise(resolve => redirectServer.close(resolve));
+  }
+});
