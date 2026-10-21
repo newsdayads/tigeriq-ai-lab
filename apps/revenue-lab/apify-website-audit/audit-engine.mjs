@@ -139,24 +139,35 @@ function headerValue(headers, name) {
 // Interpret the actual HTTP representation. Decoding compressed bytes as
 // UTF-8 HTML fabricates MISSING_TITLE/H1 findings for otherwise valid pages.
 // Cap both transferred bytes (streaming) and decoded bytes (zlib limit).
-function decodeHtmlResponse(chunks, encoding, maxBytes) {
+function decodeHtmlResponse(chunks, encoding, maxBytes, contentType) {
   const wire = Buffer.concat(chunks);
-  if (!encoding || encoding === 'identity') return wire.toString('utf8');
-  const decompress = encoding === 'gzip' ? gunzipSync
-    : encoding === 'deflate' ? inflateSync
-    : encoding === 'br' ? brotliDecompressSync : null;
-  if (!decompress) throw new AuditError(
-    'UNSUPPORTED_CONTENT_ENCODING', 'Response uses an unsupported content encoding.');
+  let decoded = wire;
+  if (encoding && encoding !== 'identity') {
+    const decompress = encoding === 'gzip' ? gunzipSync
+      : encoding === 'deflate' ? inflateSync
+      : encoding === 'br' ? brotliDecompressSync : null;
+    if (!decompress) throw new AuditError(
+      'UNSUPPORTED_CONTENT_ENCODING', 'Response uses an unsupported content encoding.');
+    try {
+      decoded = decompress(wire, { maxOutputLength: maxBytes + 1 });
+      if (decoded.length > maxBytes) throw new AuditError(
+        'OVERSIZED_RESPONSE', 'Decompressed HTML exceeds the configured byte limit.', { maxBytes });
+    } catch (error) {
+      if (error instanceof AuditError) throw error;
+      if (error?.code === 'ERR_BUFFER_TOO_LARGE') throw new AuditError(
+        'OVERSIZED_RESPONSE', 'Decompressed HTML exceeds the configured byte limit.', { maxBytes });
+      throw new AuditError('INVALID_CONTENT_ENCODING', 'Compressed HTML payload is invalid.');
+    }
+  }
+  // Content-Encoding describes the compression; Content-Type charset describes
+  // the text bytes inside it. UTF-8-only decoding corrupts real Latin-1 titles.
+  const declared = /(?:^|;)\s*charset\s*=\s*(?:"([^"]*)"|'([^']*)'|([^;\s]+))/i.exec(contentType);
+  const charset = declared ? (declared[1] ?? declared[2] ?? declared[3]).trim() : 'utf-8';
   try {
-    const decoded = decompress(wire, { maxOutputLength: maxBytes + 1 });
-    if (decoded.length > maxBytes) throw new AuditError(
-      'OVERSIZED_RESPONSE', 'Decompressed HTML exceeds the configured byte limit.', { maxBytes });
-    return decoded.toString('utf8');
-  } catch (error) {
-    if (error instanceof AuditError) throw error;
-    if (error?.code === 'ERR_BUFFER_TOO_LARGE') throw new AuditError(
-      'OVERSIZED_RESPONSE', 'Decompressed HTML exceeds the configured byte limit.', { maxBytes });
-    throw new AuditError('INVALID_CONTENT_ENCODING', 'Compressed HTML payload is invalid.');
+    return new TextDecoder(charset).decode(decoded);
+  } catch {
+    // Never claim clean SEO findings when the HTTP encoding is unknown.
+    throw new AuditError('UNSUPPORTED_CHARSET', 'HTML response declares an unsupported charset.');
   }
 }
 
@@ -273,7 +284,7 @@ async function requestOnce(url, options) {
           new AuditError('NETWORK_FAILURE', 'HTTP response was incomplete.'));
         let body;
         try {
-          body = decodeHtmlResponse(chunks, encoding, options.maxBytes);
+          body = decodeHtmlResponse(chunks, encoding, options.maxBytes, contentType);
         } catch (error) {
           return done(reject, error);
         }
