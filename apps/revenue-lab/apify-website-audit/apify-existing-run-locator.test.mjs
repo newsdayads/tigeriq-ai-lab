@@ -132,7 +132,8 @@ test('R04 nullable usage exception never accepts invalid negative cost',async()=
  const m=mock({run:{...row(),usageTotalUsd:-1}});
  await assert.rejects(inspectDiscoveredOwnerCanary({env,fetchFn:m.fetchFn,now:()=>new Date('2026-10-16T03:00:00Z')}),
   e=>e.code==='APIFY_USAGE_UNVERIFIED');
- assert.equal(m.calls.length,4);
+ // The negative cost is compared after the two authenticated run-detail reads.
+ assert.equal(m.calls.length,5);
 });
 
 test('R04 locator detail must preserve exact candidate build ID even with identical build number',async()=>{
