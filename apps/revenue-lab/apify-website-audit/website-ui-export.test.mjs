@@ -13,6 +13,7 @@ test('local UI offers a Markdown download only after a successful audit', async 
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-security-policy'), /default-src 'none'/);
     const html = await response.text();
+    assert.match(html, /id="overview" hidden/);
     assert.match(html, /id="download"[^>]*download="tigeriq-website-audit.md"[^>]*hidden/);
     const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
     assert.ok(script, 'browser script is served');
@@ -28,6 +29,13 @@ test('local UI offers a Markdown download only after a successful audit', async 
       submit: { disabled: false },
       status: { textContent: '' },
       report: { textContent: '' },
+      overview: { hidden: true },
+      'metric-pages': { textContent: '' },
+      'metric-high': { textContent: '' },
+      'metric-medium': { textContent: '' },
+      'metric-low': { textContent: '' },
+      'metric-skipped': { textContent: '' },
+
       download: {
         hidden: true, href: '',
         removeAttribute(name) {
@@ -58,7 +66,7 @@ test('local UI offers a Markdown download only after a successful audit', async 
         return {
           ok: requestSucceeds,
           json: async () => requestSucceeds
-            ? {status:'success', markdown:'# TigerIQ Website Audit\n\nReport from HTML.'}
+            ? {status:'success', overview:{pagesAudited:1,pagesSkipped:0,high:0,medium:1,low:0}, markdown:'# TigerIQ Website Audit\n\nReport from HTML.'}
             : {status:'failed', code:'BAD_URL'},
         };
       },
@@ -66,6 +74,10 @@ test('local UI offers a Markdown download only after a successful audit', async 
 
     assert.equal(typeof onSubmit, 'function');
     await onSubmit({ preventDefault() {} });
+    assert.equal(controls.overview.hidden, false);
+    assert.equal(controls['metric-pages'].textContent, '1');
+    assert.equal(controls['metric-medium'].textContent, '1');
+    assert.equal(controls['metric-skipped'].textContent, '0');
     assert.equal(controls.download.hidden, false);
     assert.equal(controls.download.href, 'blob:local-audit-1');
     assert.equal(controls.report.textContent, '# TigerIQ Website Audit\n\nReport from HTML.');
@@ -77,6 +89,7 @@ test('local UI offers a Markdown download only after a successful audit', async 
     requestSucceeds = false;
     await onSubmit({ preventDefault() {} });
     assert.deepEqual(revoked, ['blob:local-audit-1']);
+    assert.equal(controls.overview.hidden, true);
     assert.equal(controls.download.hidden, true);
     assert.equal(controls.download.href, '');
     assert.equal(controls.report.textContent, 'Không có báo cáo hợp lệ.');
