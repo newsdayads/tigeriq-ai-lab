@@ -28,6 +28,7 @@ function Restart-ApiHealthViewGateway(){
     if($oldHealth -and $oldHealth.ok -eq $true){throw 'MCP_VIEW_LISTENER_UNOWNED'}
   }
   Stop-ScheduledTask -TaskName $apiHealthViewTask -ErrorAction Stop
+  $script:mcpViewTouched=$true
   if($oldPid){Stop-Process -Id $oldPid -Force -ErrorAction SilentlyContinue}
   $stopDeadline=(Get-Date).AddSeconds(15)
   while($oldPid -and (Get-Process -Id $oldPid -ErrorAction SilentlyContinue)){
