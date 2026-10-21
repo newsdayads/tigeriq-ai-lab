@@ -1660,7 +1660,9 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
     : { steps: [], source: null };
   const rawBlocker = currentLifecycle?.blocker ?? (bodyValue(body, 'BLOCKER') || bodyValue(body, 'BLOCKED_REASON') || '');
   const blockerBodyCurrent = currentLifecycle ? !currentLifecycle.blockerCleared : true;
-  const blocker = status === 'BLOCKED' && blockerBodyCurrent && rawBlocker && !/^(?:NONE|NULL|N\/A|NO_BLOCKER|KHÔNG|KHONG)(?:\b|\s|$)/i.test(rawBlocker)
+  // An externally parked Work Order remains WAITING but must surface its real BLOCKER.
+  // This is presentation-only; it never changes eligibility, claims, or admission.
+  const blocker = ['BLOCKED','WAITING'].includes(status) && blockerBodyCurrent && rawBlocker && !/^(?:NONE|NULL|N\/A|NO_BLOCKER|KHÔNG|KHONG)(?:\b|\s|$)/i.test(rawBlocker)
     ? rawBlocker
     : null;
   const activeEvidenceUrl = classification.ownerGate
