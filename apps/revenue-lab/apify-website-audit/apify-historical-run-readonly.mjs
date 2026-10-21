@@ -145,7 +145,12 @@ export async function inspectHistoricalRun({
   validateRun(final, cfg, clock.getTime());
   if (expectedBuildId !== undefined && final.buildId !== expectedBuildId)
     reject('RUN_LIST_DETAIL_BUILD_ID_MISMATCH');
-  if (first.buildId !== final.buildId || first.startedAt !== final.startedAt || first.finishedAt !== final.finishedAt ||
+  // ISO timestamps with different explicit offsets can identify the exact
+  // same instant. Both reads have already passed strict calendar/offset checks.
+  // Reject actual timeline drift, not harmless UTC/+07 representation drift.
+  if (first.buildId !== final.buildId ||
+      Date.parse(first.startedAt) !== Date.parse(final.startedAt) ||
+      Date.parse(first.finishedAt) !== Date.parse(final.finishedAt) ||
       first.defaultKeyValueStoreId !== final.defaultKeyValueStoreId)
     reject('RUN_RECHECK_DRIFT');
   // Verify stability across both GETs. A completed run is not proof that
