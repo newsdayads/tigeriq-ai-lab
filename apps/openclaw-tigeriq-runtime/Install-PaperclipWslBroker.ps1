@@ -6,10 +6,10 @@ $BrokerRoot=Join-Path $LabRoot 'broker'
 $Broker=Join-Path $BrokerRoot 'paperclip-wsl-broker.ps1'
 $Heartbeat=Join-Path $BrokerRoot 'heartbeat.json'
 $ExpectedBrokerVersion='1.7-openai-device-auth'
-$ExpectedBrokerSha256=(Get-FileHash -LiteralPath $Broker -Algorithm SHA256).Hash.ToLowerInvariant()
 $InstallStartedAt=(Get-Date).ToUniversalTime()
 
 if(-not (Test-Path -LiteralPath $Broker -PathType Leaf)){ throw 'TIGERIQ_PAPERCLIP_WSL_BROKER_SCRIPT_MISSING' }
+$ExpectedBrokerSha256=(Get-FileHash -LiteralPath $Broker -Algorithm SHA256).Hash.ToLowerInvariant()
 $user=(Get-CimInstance Win32_ComputerSystem).UserName
 if([string]::IsNullOrWhiteSpace($user)){ throw 'TIGERIQ_PAPERCLIP_WSL_BROKER_INTERACTIVE_USER_NOT_FOUND' }
 
@@ -19,6 +19,36 @@ $principal=New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunL
 $settings=New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
 
 $existing=Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+# An identical, healthy interactive broker must not be stopped by R07 retry.
+# Match the running startup source SHA, authenticated interactive user, and
+# a fresh keepalive. Stale, foreign or malformed heartbeats cannot short-circuit.
+if($existing -and [string]$existing.State -eq 'Running' -and (Test-Path -LiteralPath $Heartbeat -PathType Leaf)){
+  try {
+    $live=Get-Content -Raw -LiteralPath $Heartbeat | ConvertFrom-Json
+    $liveAt=[DateTime]::Parse([string]$live.at).ToUniversalTime()
+    $ageSec=($InstallStartedAt - $liveAt).TotalSeconds
+    $expectedUserName=([string]$user -split '\\')[-1]
+    if([string]$live.schema -eq 'TIGERIQ_PAPERCLIP_WSL_HEARTBEAT_V1' -and
+       [string]$live.version -eq $ExpectedBrokerVersion -and
+       [string]$live.sourceSha256 -ceq $ExpectedBrokerSha256 -and
+       [string]$live.user -ieq $expectedUserName -and
+       [int]$live.sessionId -gt 0 -and
+       [int]$live.pid -gt 0 -and
+       [bool]$live.wslKeepaliveRunning -eq $true -and
+       [int]$live.wslKeepalivePid -gt 0 -and
+       $ageSec -ge -2 -and $ageSec -le 15){
+      Write-Output ('TASK='+$TaskName)
+      Write-Output ('USER='+$user)
+      Write-Output ('BROKER='+$Broker)
+      Write-Output ('BROKER_VERSION='+$ExpectedBrokerVersion)
+      Write-Output ('BROKER_PID='+[string]$live.pid)
+      Write-Output ('WSL_KEEPALIVE_PID='+[string]$live.wslKeepalivePid)
+      exit 0
+    }
+  } catch {
+    # Fall through to the existing bounded reinstallation lifecycle.
+  }
+}
 if($existing){
   Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
   for($i=0;$i -lt 40;$i++){
