@@ -129,6 +129,19 @@ before(async () => {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Unquoted Links</title></head><body><a href=/page2>Valid link</a></body></html>');
     }
+    const escapedAmp = {
+      '/links-html-amp': '&amp;',
+      '/links-html-decimal': '&#38;',
+      '/links-html-hex': '&#x26;',
+    }[req.url];
+    if (escapedAmp) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Encoded query</title></head><body><a href="/page2?x=1' + escapedAmp + 'y=2">Next</a></body></html>');
+    }
+    if (req.url === '/page2?x=1&y=2') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Decoded Query Page</title></head><body><h1>Expected page</h1></body></html>');
+    }
     if (req.url === '/links-fragment') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Fragment Links</title></head><body><a href="/page2#details">Valid fragment</a></body></html>');
@@ -282,6 +295,19 @@ test('same-origin crawler discovers valid unquoted href attributes', async () =>
   assert.equal(result.status, 'success');
   assert.equal(result.metrics.pagesAudited, 2);
   assert.equal(result.pages[1].seo.title, 'Page Two');
+});
+
+test('crawler decodes HTML ampersand entities before requesting same-origin query links', async () => {
+  for (const route of ['/links-html-amp', '/links-html-decimal', '/links-html-hex']) {
+    const result = await auditWebsite(`${baseUrl}${route}`, {
+      maxPages: 2,
+      resolveTargetFn: localResolver,
+    });
+    assert.equal(result.status, 'success', route);
+    assert.equal(result.metrics.pagesAudited, 2, route);
+    assert.equal(result.pages[1].seo.title, 'Decoded Query Page', route);
+    assert.equal(new URL(result.pages[1].url).search, '?x=1&y=2', route);
+  }
 });
 
 test('same-origin crawler strips fragments from valid quoted href links', async () => {
