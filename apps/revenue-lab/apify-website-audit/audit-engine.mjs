@@ -2,6 +2,7 @@ import dns from 'node:dns/promises';
 import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
+import { gunzipSync, inflateSync, brotliDecompressSync } from 'node:zlib';
 
 export class AuditError extends Error {
   constructor(code, message, detail = null) {
@@ -135,6 +136,30 @@ function headerValue(headers, name) {
   return Array.isArray(value) ? value.join(', ') : String(value || '');
 }
 
+// Interpret the actual HTTP representation. Decoding compressed bytes as
+// UTF-8 HTML fabricates MISSING_TITLE/H1 findings for otherwise valid pages.
+// Cap both transferred bytes (streaming) and decoded bytes (zlib limit).
+function decodeHtmlResponse(chunks, encoding, maxBytes) {
+  const wire = Buffer.concat(chunks);
+  if (!encoding || encoding === 'identity') return wire.toString('utf8');
+  const decompress = encoding === 'gzip' ? gunzipSync
+    : encoding === 'deflate' ? inflateSync
+    : encoding === 'br' ? brotliDecompressSync : null;
+  if (!decompress) throw new AuditError(
+    'UNSUPPORTED_CONTENT_ENCODING', 'Response uses an unsupported content encoding.');
+  try {
+    const decoded = decompress(wire, { maxOutputLength: maxBytes + 1 });
+    if (decoded.length > maxBytes) throw new AuditError(
+      'OVERSIZED_RESPONSE', 'Decompressed HTML exceeds the configured byte limit.', { maxBytes });
+    return decoded.toString('utf8');
+  } catch (error) {
+    if (error instanceof AuditError) throw error;
+    if (error?.code === 'ERR_BUFFER_TOO_LARGE') throw new AuditError(
+      'OVERSIZED_RESPONSE', 'Decompressed HTML exceeds the configured byte limit.', { maxBytes });
+    throw new AuditError('INVALID_CONTENT_ENCODING', 'Compressed HTML payload is invalid.');
+  }
+}
+
 async function requestOnce(url, options) {
   const parsed = parseTarget(url);
   const deadline = Date.now() + options.timeoutMs;
@@ -178,6 +203,7 @@ async function requestOnce(url, options) {
       headers: {
         'user-agent': 'TigerIQ-RevenueLab-Audit/1.0',
         accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1',
+        'accept-encoding': 'gzip, deflate, br',
       },
       lookup: (_hostname, lookupOptions, callback) => {
         if (lookupOptions?.all) return callback(null, [{ address: resolved.address, family: resolved.family }]);
@@ -220,6 +246,7 @@ async function requestOnce(url, options) {
         return done(reject, new AuditError('UNSUPPORTED_CONTENT_TYPE', 'Response is not HTML.', contentType || null));
       }
 
+      const encoding = headerValue(res.headers, 'content-encoding').trim().toLowerCase();
       const chunks = [];
       let bytes = 0;
       res.on('data', chunk => {
@@ -244,10 +271,16 @@ async function requestOnce(url, options) {
       res.on('end', () => {
         if (!res.complete) return done(reject,
           new AuditError('NETWORK_FAILURE', 'HTTP response was incomplete.'));
+        let body;
+        try {
+          body = decodeHtmlResponse(chunks, encoding, options.maxBytes);
+        } catch (error) {
+          return done(reject, error);
+        }
         done(resolve, {
         statusCode,
         contentType,
-        body: Buffer.concat(chunks).toString('utf8'),
+        body,
         bytes,
         durationMs: Date.now() - started,
         finalUrl: parsed.toString(),

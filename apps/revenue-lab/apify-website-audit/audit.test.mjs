@@ -1,6 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import { gzipSync, deflateSync, brotliCompressSync } from 'node:zlib';
 import { auditWebsite, AuditError, resolveSafeTarget, isBlockedAddress } from './audit-engine.mjs';
 
 let server;
@@ -1036,3 +1037,56 @@ test('redirect aliases and canonical self-links do not duplicate SEO pages', asy
     await new Promise(resolve => redirectServer.close(resolve));
   }
 });
+
+
+// GH-2293: real servers can return compressed HTML. The former parser
+// interpreted compressed bytes as UTF-8 and manufactured missing-SEO findings.
+// Local HTTP fixtures exercise real socket/representation decoding, no Apify.
+const compressedSeoHtml = '<html><head><title>Real compressed title</title>' +
+  '<meta name="description" content="Real metadata"></head><body><h1>Real H1</h1></body></html>';
+async function withEncodingFixture(encoding, bytes, verify) {
+  const fixture = http.createServer((_req, res) => {
+    res.writeHead(200, {
+      'content-type': 'text/html; charset=utf-8',
+      'content-encoding': encoding,
+    });
+    res.end(bytes);
+  });
+  await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
+  try {
+    const url = 'http://audit.test:' + fixture.address().port + '/';
+    await verify(url);
+  } finally {
+    fixture.closeAllConnections();
+    await new Promise(resolve => fixture.close(resolve));
+  }
+}
+for (const [encoding, compress] of [
+  ['gzip', gzipSync], ['deflate', deflateSync], ['br', brotliCompressSync],
+]) {
+  test('real compressed HTML (' + encoding + ') produces accurate SEO without false warnings', async () => {
+    await withEncodingFixture(encoding, compress(Buffer.from(compressedSeoHtml)), async url => {
+      const result = await auditWebsite(url, { resolveTargetFn: localResolver });
+      assert.equal(result.status, 'success');
+      assert.equal(result.pages[0].seo.title, 'Real compressed title');
+      assert.equal(result.pages[0].seo.metaDescription, 'Real metadata');
+      assert.deepEqual(result.pages[0].seo.h1, ['Real H1']);
+      assert.equal(result.findingsSummary.total, 0);
+      assert.equal(result.metrics.platformCostUSD, null);
+    });
+  });
+}
+for (const [encoding, bytes, code] of [
+  ['gzip', Buffer.from('invalid gzip representation'), 'INVALID_CONTENT_ENCODING'],
+  ['zstd', Buffer.from(compressedSeoHtml), 'UNSUPPORTED_CONTENT_ENCODING'],
+  ['gzip', gzipSync(Buffer.from('<html>' + 'x'.repeat(9000) + '</html>')), 'OVERSIZED_RESPONSE'],
+]) {
+  test('invalid or oversized compressed HTML fails closed: ' + code, async () => {
+    await withEncodingFixture(encoding, bytes, async url => {
+      await assert.rejects(
+        auditWebsite(url, { maxBytes: 1024, resolveTargetFn: localResolver }),
+        error => error instanceof AuditError && error.code === code,
+      );
+    });
+  });
+}

@@ -37,13 +37,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Verify exact source and local UI regressions
+      - name: Verify exact source, compressed HTTP and local UI regressions
         env:
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-          node --test apps/revenue-lab/apify-website-audit/website-ui-export.test.mjs apps/revenue-lab/apify-website-audit/website-ui-partial.test.mjs
+          node --test apps/revenue-lab/apify-website-audit/audit.test.mjs apps/revenue-lab/apify-website-audit/website-ui-export.test.mjs apps/revenue-lab/apify-website-audit/website-ui-partial.test.mjs
       - name: Build dependency-free portable ZIP
         env:
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
