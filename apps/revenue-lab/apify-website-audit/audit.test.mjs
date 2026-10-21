@@ -121,6 +121,10 @@ before(async () => {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Live Template Page</title><meta name="description" content="Live content"></head><body><template id="component"><h1>Inert Heading</h1><a href="/missing">Inert link</a></template><h1>Live Heading</h1><a href="/page2">Live link</a></body></html>');
     }
+    if (req.url === '/nested-template') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Nested Template</title><meta name="description" content="Live"></head><body><template id="outer"><!-- </template> false closing --><template><h1>Inner Ghost</h1></template><h1>Outer Ghost</h1><a href="/missing">Ghost</a></template><h1>Visible Heading</h1><a href="/page2">Visible link</a></body></html>');
+    }
     if (req.url === '/inert-links') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end("<html><body><!-- <a href=\"/missing\">Ghost Comment</a> -->\n<script>const fake = '<a href=\"/missing\">Ghost Script</a>';</script>\n<style>div:after { content:'<a href=\"/missing\">Ghost Style</a>'; }</style>\n<a href=\"/page2\">Actual Link</a></body></html>");
@@ -445,6 +449,20 @@ test('HTML template content cannot fabricate visible H1 or crawl links', async (
   assert.equal(result.pages[0].seo.h1Count, 1);
   assert.ok(!result.pages[0].findings.some(f => f.code === 'MULTIPLE_H1'));
   assert.equal(result.pages[1].seo.title, 'Page Two');
+});
+
+test('nested HTML templates and commented closing tags do not fabricate SEO or crawl pages', async () => {
+  const result = await auditWebsite(`${baseUrl}/nested-template`, {
+    maxPages: 3,
+    resolveTargetFn: localResolver,
+  });
+  assert.equal(result.status, 'success');
+  assert.equal(result.metrics.pagesAudited, 2);
+  assert.equal(result.metrics.errorCount, 0);
+  assert.deepEqual(result.pages[0].seo.h1, ['Visible Heading']);
+  assert.equal(result.pages[0].seo.h1Count, 1);
+  assert.equal(result.pages[1].seo.title, 'Page Two');
+  assert.ok(!result.pages[0].findings.some(finding => finding.code === 'MULTIPLE_H1'));
 });
 
 test('rejects invalid, unsupported, credential-bearing, and literal private targets', async () => {

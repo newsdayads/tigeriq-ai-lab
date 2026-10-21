@@ -307,14 +307,28 @@ const cleanText = value => decodeSeoTextEntities(
   String(value || '').replace(/<[^>]*>/g, ' '),
 ).replace(/\s+/g, ' ').trim();
 
-// Strip inert regions in DOCUMENT ORDER, not in two independent passes:
-// HTML template fragments are inert until explicitly cloned by JavaScript;
-// they must not invent headings or cause the crawler to visit hidden links.
-// a JS/CSS string can contain literal "<!--" and HTML comments can contain
-// mock script/style tags. The leftmost token owns its entire inert region.
-// Keep raw response bytes/cost metrics and network validation unchanged.
+// Strip inert HTML in document order. A <template> may contain other
+// templates, so a shortest-match regex is insufficient: it would expose
+// the remainder of the outer template as real SEO content or crawl links.
+// Scripts, styles and comments are consumed as atomic regions, so fake
+// template tags inside them cannot affect the nesting depth.
+// A dangling template opener remains hidden (fail closed).
 function stripInertHtml(html) {
-  return html.replace(/<!--[\s\S]*?-->|<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ');
+  const regions = /<!--[\s\S]*?(?:-->|$)|<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>|<template\b(?:[^>"']|"[^"]*"|'[^']*')*>|<\/template\s*>/gi;
+  let depth = 0;
+  let from = 0;
+  let visible = '';
+  for (const match of html.matchAll(regions)) {
+    if (depth === 0) visible += html.slice(from, match.index);
+    if (/^<template\b/i.test(match[0])) depth++;
+    else if (/^<\/template\b/i.test(match[0])) depth = Math.max(0, depth - 1);
+    if (depth === 0) {
+      visible += ' ';
+      from = match.index + match[0].length;
+    }
+  }
+  if (depth === 0) visible += html.slice(from);
+  return visible;
 }
 
 function extractSeo(html) {
