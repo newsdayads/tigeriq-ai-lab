@@ -141,6 +141,38 @@ test('R04 locator detail must preserve exact candidate build ID even with identi
   e=>e.code==='RUN_LIST_DETAIL_BUILD_ID_MISMATCH');
  assert.equal(m.calls.length,5);
 });
+test('R04 rejects same-day list/detail startedAt or finishedAt drift before accepting canary',async()=>{
+ for (const change of [
+  {startedAt:'2026-10-08T02:59:00.000Z'},
+  {finishedAt:'2026-10-08T03:00:03.000Z'},
+ ]) {
+  const m=mock({runList:list([row(change)])});
+  await assert.rejects(inspectDiscoveredOwnerCanary({
+   env,fetchFn:m.fetchFn,now:()=>new Date('2026-10-16T03:00:00Z'),
+  }),e=>e instanceof RunLocatorError&&e.code==='RUN_LIST_DETAIL_TIMESTAMP_DRIFT');
+  assert.equal(m.calls.length,6,'only the existing six read-only GETs');
+ }
+});
+test('R04 compares list/detail instants, accepting equivalent Vietnam offset timestamps',async()=>{
+ const m=mock({runList:list([row({
+  startedAt:'2026-10-08T10:00:00+07:00',
+  finishedAt:'2026-10-08T10:00:02+07:00',
+ })])});
+ const e=await inspectDiscoveredOwnerCanary({
+  env,fetchFn:m.fetchFn,now:()=>new Date('2026-10-16T03:00:00Z'),
+ });
+ assert.equal(e.acceptance.historicalRunMatched,true);
+ assert.equal(m.calls.length,6);
+});
+test('R04 rejects missing, malformed or reversed candidate finishedAt before detail requests',async()=>{
+ for(const finishedAt of [undefined,null,'not-an-instant','2026-10-08T02:59:59.000Z']){
+  const m=mock({runList:list([row({finishedAt})])});
+  await assert.rejects(locateOwnerCanaryRun({env,fetchFn:m.fetchFn}),
+   e=>e instanceof RunLocatorError&&e.code==='RUN_LIST_TIMESTAMPS_UNVERIFIED');
+  assert.equal(m.calls.length,2);
+ }
+});
+
 test('R04 full locator reuses exact output URL check; rejects wrong output in last GET',async()=>{
  const m=mock({storeOutput:{...output,requestedUrl:'https://wrong.example/'}});
  await assert.rejects(inspectDiscoveredOwnerCanary({env,fetchFn:m.fetchFn,now:()=>new Date('2026-10-16T03:00:00Z')}),e=>e.code==='HISTORICAL_REQUESTED_URL_MISMATCH');
