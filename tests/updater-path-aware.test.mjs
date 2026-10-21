@@ -25,6 +25,13 @@ test('Paperclip MCP reload is bounded to a committed release and exact gateway p
   assert.match(mcpView,/MCP_VIEW_TASK_MISSING/);
   assert.match(mcpView,/MCP_VIEW_PROCESS_AMBIGUOUS/);
   assert.match(mcpView,/MCP_VIEW_LISTENER_UNOWNED/);
+  assert.match(mcpView,/function Get-McpViewListenerPid/);
+  assert.match(mcpView,/Get-NetTCPConnection -LocalPort 8802 -State Listen -ErrorAction Stop/);
+  assert.match(mcpView,/MCP_VIEW_LISTENER_OWNERS_AMBIGUOUS/);
+  assert.match(mcpView,/MCP_VIEW_LISTENER_OWNER_MISMATCH/);
+  assert.match(mcpView,/\$newListenerPid -eq \[int\]\$newPid/);
+  assert.ok(mcpView.indexOf('MCP_VIEW_LISTENER_OWNER_MISMATCH')<mcpView.indexOf('Stop-ScheduledTask -TaskName $apiHealthViewTask'),'listener ownership before disruption');
+
   assert.match(mcpView,/MCP_VIEW_OLD_PID_STILL_RUNNING/);
   assert.match(mcpView,/MCP_VIEW_NEW_PID_AND_HEALTH_NOT_VERIFIED/);
   assert.match(mcpView,/Stop-ScheduledTask -TaskName \$apiHealthViewTask -ErrorAction Stop/);
