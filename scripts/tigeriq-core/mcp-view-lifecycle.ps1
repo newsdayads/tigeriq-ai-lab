@@ -6,7 +6,7 @@ $apiHealthViewAppliedState='D:\TigerIQ\State\api-health-view-applied.json'
 
 function Get-McpViewListenerPid(){
   # The exact TCP listener must be owned by the exact node.exe PID before any stop.
-  $connections=@(Get-NetTCPConnection -LocalPort 8802 -State Listen -ErrorAction Stop)
+  $connections=@(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object { [int]$_.LocalPort -eq 8802 })
   $owners=@($connections | ForEach-Object { [int]$_.OwningProcess } | Where-Object {$_ -gt 0} | Sort-Object -Unique)
   if($owners.Count -gt 1){throw 'MCP_VIEW_LISTENER_OWNERS_AMBIGUOUS'}
   if($owners.Count -eq 1){return [int]$owners[0]}
