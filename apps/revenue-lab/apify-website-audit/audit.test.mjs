@@ -113,6 +113,13 @@ before(async () => {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><!-- <script>const injected = "<h1>Fake</h1>";</script><title>Fake</title> --><title>Comment Marker Live</title></head><body><h1>Comment Marker H1</h1><a href="/page2">Go</a></body></html>');
     }
+    if (/^\/dangling-raw-(script|style|textarea)$/.test(req.url)) {
+      const tag = req.url.slice('/dangling-raw-'.length);
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      // The browser treats everything after an unclosed raw-text opener as
+      // inert text, including these fake SEO tags and crawl links.
+      return res.end(`<html><head><title>Real title</title></head><body><${tag}><h1>Ghost heading</h1><a href="/missing">Ghost link</a>`);
+    }
     if (req.url === '/inert-seo') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end("<html><head><!-- <title>Comment Title</title><meta name=\"description\" content=\"Decoy\"> -->\n<script>const inject = '<h1>Script Fake</h1><a href=\"/missing\">';</script>\n<style>.rule:after { content:'<h1>Style Fake</h1>'; }</style>\n<title>Actual Title</title><meta name=\"description\" content=\"Actual Description\"></head>\n<body><!-- <h1>Comment Fake</h1> --><h1>Actual H1</h1></body></html>");
@@ -203,6 +210,20 @@ before(async () => {
 
 after(async () => {
   if (server) await new Promise(resolve => server.close(resolve));
+});
+
+test('unterminated script/style/textarea content cannot leak SEO or crawl links', async () => {
+  for (const tag of ['script', 'style', 'textarea']) {
+    const result = await auditWebsite(`${baseUrl}/dangling-raw-${tag}`, {
+      maxPages: 2,
+      resolveTargetFn: localResolver,
+    });
+    assert.equal(result.status, 'success', tag);
+    assert.equal(result.metrics.pagesAudited, 1, tag);
+    assert.equal(result.pages[0].seo.title, 'Real title', tag);
+    assert.equal(result.pages[0].seo.h1Count, 0, tag);
+    assert.deepEqual(result.pages[0].seo.h1, [], tag);
+  }
 });
 
 test('real bounded crawl derives evidence from fetched HTML', async () => {

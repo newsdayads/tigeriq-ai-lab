@@ -312,9 +312,9 @@ const cleanText = value => decodeSeoTextEntities(
 // the remainder of the outer template as real SEO content or crawl links.
 // Script, style, textarea and comment regions are consumed atomically, so fake
 // template tags inside them cannot affect the nesting depth.
-// A dangling template opener remains hidden (fail closed).
+// A dangling template or raw-text element hides its remainder (fail closed).
 function stripInertHtml(html) {
-  const regions = /<!--[\s\S]*?(?:-->|$)|<(script|style|textarea)\b[^>]*>[\s\S]*?<\/\1\s*>|<template\b(?:[^>"']|"[^"]*"|'[^']*')*>|<\/template\s*>/gi;
+  const regions = /<!--[\s\S]*?(?:-->|$)|<(script|style|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>(?:[\s\S]*?<\/\1\s*>|[\s\S]*$)|<template\b(?:[^>"']|"[^"]*"|'[^']*')*>|<\/template\s*>/gi;
   let depth = 0;
   let from = 0;
   let visible = '';
