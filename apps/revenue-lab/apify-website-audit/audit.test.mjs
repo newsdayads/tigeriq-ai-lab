@@ -120,6 +120,15 @@ before(async () => {
       // inert text, including these fake SEO tags and crawl links.
       return res.end(`<html><head><title>Real title</title></head><body><${tag}><h1>Ghost heading</h1><a href="/missing">Ghost link</a>`);
     }
+    const headMetadataFixtures = {
+      '/head-body-metadata-decoy': '<!doctype html><html><head></head><body><svg role="img"><title>SVG icon caption</title></svg><meta name="description" content="body decoy"><h1>Real heading</h1></body></html>',
+      '/head-real-body-decoy': '<!doctype html><html><head><title>Real head title</title><meta name="description" content="Real head description"></head><body><svg><title>SVG caption</title></svg><meta name="description" content="body decoy"><h1>Real heading</h1></body></html>',
+      '/head-implicit': '<!doctype html><html><title>Implicit head title</title><meta name="description" content="Implicit head description"><body><h1>Real heading</h1></body></html>',
+    };
+    if (Object.hasOwn(headMetadataFixtures, req.url)) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end(headMetadataFixtures[req.url]);
+    }
     if (req.url === '/inert-seo') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end("<html><head><!-- <title>Comment Title</title><meta name=\"description\" content=\"Decoy\"> -->\n<script>const inject = '<h1>Script Fake</h1><a href=\"/missing\">';</script>\n<style>.rule:after { content:'<h1>Style Fake</h1>'; }</style>\n<title>Actual Title</title><meta name=\"description\" content=\"Actual Description\"></head>\n<body><!-- <h1>Comment Fake</h1> --><h1>Actual H1</h1></body></html>");
@@ -210,6 +219,23 @@ before(async () => {
 
 after(async () => {
   if (server) await new Promise(resolve => server.close(resolve));
+});
+
+test('SEO metadata is head-scoped: SVG titles and body meta never conceal missing SEO', async () => {
+  for (const [path, expectedTitle, expectedDescription, expectedCodes] of [
+    ['/head-body-metadata-decoy', null, null, ['MISSING_TITLE', 'MISSING_META_DESCRIPTION']],
+    ['/head-real-body-decoy', 'Real head title', 'Real head description', []],
+    ['/head-implicit', 'Implicit head title', 'Implicit head description', []],
+  ]) {
+    const result = await auditWebsite(baseUrl + path, {
+      maxPages: 1, resolveTargetFn: localResolver,
+    });
+    assert.equal(result.status, 'success', path);
+    assert.equal(result.metrics.pagesAudited, 1, path);
+    assert.equal(result.pages[0].seo.title, expectedTitle, path);
+    assert.equal(result.pages[0].seo.metaDescription, expectedDescription, path);
+    assert.deepEqual(result.pages[0].findings.map(finding => finding.code), expectedCodes, path);
+  }
 });
 
 test('unterminated script/style/textarea content cannot leak SEO or crawl links', async () => {
