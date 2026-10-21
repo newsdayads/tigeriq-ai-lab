@@ -10,7 +10,7 @@ const suite=fileURLToPath(new URL(
 ));
 
 it('GH-2293 executes bounded HTTP audit regressions against exact source',()=>{
-  const env={...process.env, NO_COLOR:'1'};
+  const env: Record<string, string | undefined>={...process.env, NO_COLOR:'1'};
   for(const key of Object.keys(env)){
     if(key.startsWith('APIFY_')||key==='NODE_OPTIONS') delete env[key];
   }
