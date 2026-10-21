@@ -471,7 +471,8 @@ export function actionableSeoFindings(seo) {
     code: 'MISSING_META_DESCRIPTION', severity: 'medium',
     recommendation: 'Add a concise meta description for search snippets.',
   });
-  if (seo.h1Count === 0) findings.push({
+  // A present but text-empty H1 is not a meaningful page heading.
+  if (seo.h1Count === 0 || (Array.isArray(seo.h1) && seo.h1.length === 0)) findings.push({
     code: 'MISSING_H1', severity: 'medium',
     recommendation: 'Add one meaningful H1 heading describing the page.',
   });

@@ -169,6 +169,15 @@ before(async () => {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Body Decoy Base</title></head><body><base href="/wrong/"><h1>Entry</h1><a href="page2">Real page</a></body></html>');
     }
+    const headingFixtures = {
+      '/seo-empty-h1': '<html><head><title>Useful title</title><meta name="description" content="Useful description"></head><body><h1> <span>  </span> </h1><p>Content</p></body></html>',
+      '/seo-two-empty-h1': '<html><head><title>Useful title</title><meta name="description" content="Useful description"></head><body><h1></h1><h1><span></span></h1></body></html>',
+      '/seo-nested-valid-h1': '<html><head><title>Useful title</title><meta name="description" content="Useful description"></head><body><h1> <span>Useful heading</span> </h1></body></html>',
+    };
+    if (Object.hasOwn(headingFixtures, req.url)) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end(headingFixtures[req.url]);
+    }
     if (req.url === '/links-gt-double') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Link GT double</title></head><body><a data-label="9 > 2" href="/page2">Next</a></body></html>');
@@ -454,6 +463,20 @@ test('SEO extraction ignores tag-name prefix decoys but accepts real title and H
   assert.equal(mixed.pages[0].seo.h1Count, 1);
   assert.deepEqual(mixed.pages[0].seo.h1, ['Real heading']);
   assert.ok(!mixed.pages[0].findings.some(finding => finding.code === 'MULTIPLE_H1'));
+});
+
+test('empty H1 text is reported as a missing meaningful page heading', async () => {
+  for (const [route, count, expected] of [
+    ['/seo-empty-h1', 1, ['MISSING_H1']],
+    ['/seo-two-empty-h1', 2, ['MISSING_H1', 'MULTIPLE_H1']],
+    ['/seo-nested-valid-h1', 1, []],
+  ]) {
+    const result = await auditWebsite(baseUrl + route, { resolveTargetFn: localResolver });
+    assert.equal(result.status, 'success', route);
+    assert.equal(result.pages[0].seo.h1Count, count, route);
+    assert.deepEqual(result.pages[0].findings.map(finding => finding.code), expected, route);
+    assert.equal(result.findingsSummary.total, expected.length, route);
+  }
 });
 
 test('SEO extraction renders HTML character references as readable real-world title, meta and H1', async () => {
