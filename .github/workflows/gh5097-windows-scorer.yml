@@ -1,0 +1,53 @@
+name: GH5097 Windows Native Scorer
+on:
+  pull_request:
+    paths:
+      - 'benchmarks/cline-executor-eval/RUN_DEMO.cmd'
+      - 'benchmarks/cline-executor-eval/run-demo.mjs'
+      - 'benchmarks/cline-executor-eval/reference-solutions.mjs'
+      - '.github/workflows/gh5097-windows-scorer.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native-windows-demo:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Native CMD smoke under Unicode and whitespace path
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = Join-Path $env:GITHUB_WORKSPACE 'benchmarks/cline-executor-eval'
+          $target = Join-Path $env:RUNNER_TEMP 'TigerIQ 5097 thử nghiệm đường dẫn có dấu'
+          New-Item -ItemType Directory -Path $target -Force | Out-Null
+          Copy-Item -Path (Join-Path $source '*') -Destination $target -Recurse -Force
+          Push-Location $target
+          try {
+            $output = @(& cmd.exe /d /c '.\RUN_DEMO.cmd' 2>&1)
+            $exitCode = $LASTEXITCODE
+            $combined = $output -join [Environment]::NewLine
+            Write-Output $combined
+            if ($exitCode -ne 0) { throw "Windows CMD demo exited $exitCode" }
+            $start = $combined.IndexOf('{')
+            $end = $combined.LastIndexOf('}')
+            if ($start -lt 0 -or $end -le $start) { throw 'No JSON receipt' }
+            $data = $combined.Substring($start, $end - $start + 1) | ConvertFrom-Json
+            if ($data.status -ne 'PASS_SCORER_END_TO_END_3_OF_3') { throw 'Scorer not PASS' }
+            if ($data.baseline.completed -ne 0 -or $data.verified.completed -ne 3) { throw 'Baseline or positive scoring mismatch' }
+            if ($data.verified.qualityPass -ne $true -or $data.agentExecuted -ne $false) { throw 'Quality or agent honesty mismatch' }
+            if ($data.shiftedLineCount.scoredSourceLinesChanged -ne 1) { throw 'Shifted line regression' }
+            foreach ($fixture in $data.verified.fixtures) {
+              if ($fixture.exitCode -ne 0 -or $fixture.testCount -lt 2 -or !$fixture.testsPass) {
+                throw "Actual Node child test failure in $($fixture.fixtureId)"
+              }
+            }
+            Write-Output 'WINDOWS_NATIVE_GH5097_PASS'
+          } finally {
+            Pop-Location
+          }
