@@ -26,10 +26,14 @@ test('Paperclip MCP reload is bounded to a committed release and exact gateway p
   assert.match(mcpView,/MCP_VIEW_PROCESS_AMBIGUOUS/);
   assert.match(mcpView,/MCP_VIEW_LISTENER_UNOWNED/);
   assert.match(mcpView,/function Get-McpViewListenerPid/);
-  assert.match(mcpView,/Get-NetTCPConnection -LocalPort 8802 -State Listen -ErrorAction Stop/);
+  assert.match(mcpView,/Get-NetTCPConnection -State Listen -ErrorAction Stop \| Where-Object \{ \[int\]\$_\.LocalPort -eq 8802 \}/);
   assert.match(mcpView,/MCP_VIEW_LISTENER_OWNERS_AMBIGUOUS/);
   assert.match(mcpView,/MCP_VIEW_LISTENER_OWNER_MISMATCH/);
   assert.match(script,/if\(\$mcpViewTouched -and \(Get-Command Restart-ApiHealthViewGateway/);
+  assert.match(script,/\$mcpViewTouched=\$false;\$mcpViewChanged=\$false;\$mcpViewReceipt=\$null/);
+  const startRelease=script.indexOf("Save-ReleaseAttempt $releaseApproval.requestId $remote $local 'STARTED'");
+  const reset=script.lastIndexOf('$mcpViewTouched=$false;$mcpViewChanged=$false;$mcpViewReceipt=$null',startRelease);
+  assert.ok(reset>0 && reset<startRelease && startRelease-reset<125,'a scoped release clears any previous MCP rollback flag');
   assert.match(mcpView,/Stop-ScheduledTask -TaskName \$apiHealthViewTask -ErrorAction Stop\n  \$script:mcpViewTouched=\$true/);
   assert.ok(mcpView.indexOf('MCP_VIEW_LISTENER_OWNER_MISMATCH')<mcpView.indexOf('$script:mcpViewTouched=$true'),'rejected preflight never marks the shared gateway for rollback');
 
