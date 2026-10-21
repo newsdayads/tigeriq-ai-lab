@@ -249,7 +249,10 @@ export function paperclipFixedExecutableForPlatform(exe, {
   systemRoot = process.env.SystemRoot || process.env.WINDIR || '',
 } = {}) {
   if (platform !== 'win32' || exe !== 'wsl.exe') return exe;
-  const root = String(systemRoot || '').replaceAll('/', '\\').replace(/\\+$/, '');
+  // The authorized PC01 has C:\\Windows\\System32\\wsl.exe; the restricted
+  // NV06 process may not inherit SystemRoot/WINDIR. Use this *fixed* Windows
+  // fallback instead of searching an untrusted PATH when both are absent.
+  const root = String(systemRoot || 'C:\\Windows').replaceAll('/', '\\').replace(/\\+$/, '');
   // Do not let a malformed/redirected environment select an arbitrary binary.
   if (!/^[A-Za-z]:\\windows$/i.test(root)) return exe;
   return win.join(root, 'System32', 'wsl.exe');
@@ -555,7 +558,7 @@ export async function resolveDockerTransport(signal = null, {
   return {
     kind: null,
     version: null,
-    error: clipped([windows.stderr, wsl.stderr, broker.reason].filter(Boolean).join('\n')),
+    error: clipped([windows.stderr && `WINDOWS_DOCKER: ${windows.stderr}`, wsl.stderr && `WSL_DOCKER: ${wsl.stderr}`, broker.reason && `BROKER: ${broker.reason}`].filter(Boolean).join('\n')),
     broker,
   };
 }
