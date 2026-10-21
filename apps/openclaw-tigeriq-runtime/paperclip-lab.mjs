@@ -242,6 +242,19 @@ export function validatePaperclipLabEnvText(text) {
   return true;
 }
 
+// Resolve WSL through the Windows system directory. NV06's service PATH may omit
+// System32 even when wsl.exe is installed. Never resolve a caller-supplied path.
+export function paperclipFixedExecutableForPlatform(exe, {
+  platform = process.platform,
+  systemRoot = process.env.SystemRoot || process.env.WINDIR || '',
+} = {}) {
+  if (platform !== 'win32' || exe !== 'wsl.exe') return exe;
+  const root = String(systemRoot || '').replaceAll('/', '\\').replace(/\\+$/, '');
+  // Do not let a malformed/redirected environment select an arbitrary binary.
+  if (!/^[A-Za-z]:\\windows$/i.test(root)) return exe;
+  return win.join(root, 'System32', 'wsl.exe');
+}
+
 async function runFixed(exe, args, { cwd = PAPERCLIP_LAB_ROOT, timeoutMs = 120000, signal = null, readOnly = false } = {}) {
   throwIfAborted(signal);
   const safeCwd = resolvePaperclipLabPath(cwd);
@@ -250,7 +263,7 @@ async function runFixed(exe, args, { cwd = PAPERCLIP_LAB_ROOT, timeoutMs = 12000
     ? await paperclipReadOnlyExistingDirectory(safeCwd)
     : await ensureContainedDirectory(safeCwd);
   return await new Promise((resolve, reject) => {
-    const child = spawn(exe, args, {
+    const child = spawn(paperclipFixedExecutableForPlatform(exe), args, {
       cwd: realCwd,
       windowsHide: true,
       env: baseEnv(),
