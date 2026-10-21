@@ -1,7 +1,7 @@
 {
-  "latestVersionCode": 245,
-  "latestVersionName": "TigerIQ_HCM_v1.0.5 (21/10/2026)",
-  "apkUrl": "https://github.com/newsdayads/tigeriq-ai-lab/releases/download/v1.0.5/UltraCar_TigerIQ_HCM_v1.0.5_signed.apk",
-  "releaseNotes": "Bản cập nhật ngày 21/10/2026:\n- Tự động bật camera khi vào số R (USB UVC & Broadcast)\n- Khôi phục kết nối phần cứng Camera Lùi gốc ổn định\n- Icon Camera nổi cố định chuẩn xác trên màn hình DeX\n- Tự động tải và cài đặt một chạm một click\n- Nút thoát màu đỏ nổi bật dễ thao tác",
+  "latestVersionCode": 246,
+  "latestVersionName": "TigerIQ_HCM_v1.0.6 (21/10/2026)",
+  "apkUrl": "https://github.com/newsdayads/tigeriq-ai-lab/releases/download/v1.0.6/UltraCar_TigerIQ_HCM_v1.0.6_signed.apk",
+  "releaseNotes": "Bản cập nhật ngày 21/10/2026 (v1.0.6):\n- Tích hợp thước vạch căn khoảng cách lùi (Parking Guidelines: Xanh - Vàng - Đỏ) trực tiếp trên màn hình camera\n- Nút thoát X góc phải phía trên màu đỏ tươi rực rỡ và icon trắng nổi bật, dễ quan sát và bấm chuẩn xác\n- Giữ trọn vẹn kết nối phần cứng camera gốc siêu ổn định\n- Tải về và cập nhật tự động một chạm",
   "mandatory": false
 }
