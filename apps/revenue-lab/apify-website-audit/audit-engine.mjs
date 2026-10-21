@@ -472,7 +472,7 @@ export function actionableSeoFindings(seo) {
     recommendation: 'Add a concise meta description for search snippets.',
   });
   // A present but text-empty H1 is not a meaningful page heading.
-  if (!seo.h1?.length) findings.push({
+  if (seo.h1Count === 0 || (Array.isArray(seo.h1) && seo.h1.length === 0)) findings.push({
     code: 'MISSING_H1', severity: 'medium',
     recommendation: 'Add one meaningful H1 heading describing the page.',
   });
