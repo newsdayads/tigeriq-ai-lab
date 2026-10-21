@@ -7,6 +7,51 @@ const canary=readFileSync(new URL('../apps/openclaw-tigeriq-runtime/canary.mjs',
 const zeroTouch=readFileSync(new URL('../scripts/tigeriq-core/appchrome-zero-touch.ps1',import.meta.url),'utf8');
 const psVerify=readFileSync(new URL('../scripts/verify-powershell.ps1',import.meta.url),'utf8');
 const bootstrapWatchdog=readFileSync(new URL('../scripts/tigeriq-core/bootstrap-watchdog.ps1',import.meta.url),'utf8');
+const mcpView=readFileSync(new URL('../scripts/tigeriq-core/mcp-view-lifecycle.ps1',import.meta.url),'utf8');
+
+test('Paperclip MCP reload is bounded to a committed release and exact gateway process',()=>{
+  assert.match(script,/mcp-view-lifecycle\.ps1/);
+  assert.match(script,/if\(Test-Path -LiteralPath \$viewModule\)/);
+  assert.match(script,/Invoke-McpViewRelease \$changed \$remote/);
+  assert.match(script,/Reconcile-ApiHealthViewSelfUpdate \$local/);
+  assert.match(script,/if\(\$mcpViewReceipt\)\{Save-ApiHealthViewAppliedState \$remote \$mcpViewReceipt\}/);
+  const approval=script.indexOf('Get-ReleaseApproval $remote $local $impact $changed $gateSha');
+  const install=script.indexOf('Ensure-RuntimeSource $remote');
+  const reload=script.indexOf('Invoke-McpViewRelease $changed $remote');
+  assert.ok(approval>=0 && install>approval && reload>install,'MCP reload follows signed release approval and source install');
+  assert.match(mcpView,/function Restart-ApiHealthViewGateway/);
+  assert.match(mcpView,/function Reconcile-ApiHealthViewSelfUpdate/);
+  assert.match(mcpView,/function Invoke-McpViewRelease/);
+  assert.match(mcpView,/MCP_VIEW_TASK_MISSING/);
+  assert.match(mcpView,/MCP_VIEW_PROCESS_AMBIGUOUS/);
+  assert.match(mcpView,/MCP_VIEW_LISTENER_UNOWNED/);
+  assert.match(mcpView,/function Get-McpViewListenerPid/);
+  assert.match(mcpView,/Get-NetTCPConnection -State Listen -ErrorAction Stop \| Where-Object \{ \[int\]\$_\.LocalPort -eq 8802 \}/);
+  assert.match(mcpView,/MCP_VIEW_LISTENER_OWNERS_AMBIGUOUS/);
+  assert.match(mcpView,/MCP_VIEW_LISTENER_OWNER_MISMATCH/);
+  assert.match(script,/if\(\$mcpViewTouched -and \(Get-Command Restart-ApiHealthViewGateway/);
+  assert.match(script,/\$mcpViewTouched=\$false;\$mcpViewChanged=\$false;\$mcpViewReceipt=\$null/);
+  const startRelease=script.indexOf("Save-ReleaseAttempt $releaseApproval.requestId $remote $local 'STARTED'");
+  const reset=script.lastIndexOf('$mcpViewTouched=$false;$mcpViewChanged=$false;$mcpViewReceipt=$null',startRelease);
+  assert.ok(reset>0 && reset<startRelease && startRelease-reset<125,'a scoped release clears any previous MCP rollback flag');
+  assert.match(mcpView,/Stop-ScheduledTask -TaskName \$apiHealthViewTask -ErrorAction Stop\n  \$script:mcpViewTouched=\$true/);
+  assert.ok(mcpView.indexOf('MCP_VIEW_LISTENER_OWNER_MISMATCH')<mcpView.indexOf('$script:mcpViewTouched=$true'),'rejected preflight never marks the shared gateway for rollback');
+
+  assert.match(mcpView,/\$newListenerPid -eq \[int\]\$newPid/);
+  assert.ok(mcpView.indexOf('MCP_VIEW_LISTENER_OWNER_MISMATCH')<mcpView.indexOf('Stop-ScheduledTask -TaskName $apiHealthViewTask'),'listener ownership before disruption');
+
+  assert.match(mcpView,/MCP_VIEW_OLD_PID_STILL_RUNNING/);
+  assert.match(mcpView,/MCP_VIEW_NEW_PID_AND_HEALTH_NOT_VERIFIED/);
+  assert.match(mcpView,/Stop-ScheduledTask -TaskName \$apiHealthViewTask -ErrorAction Stop/);
+  assert.match(mcpView,/Start-ScheduledTask -TaskName \$apiHealthViewTask -ErrorAction Stop/);
+  assert.match(mcpView,/\[double\]\$health\.uptimeSec -lt 65/);
+  assert.match(mcpView,/\[string\]\$release\.result -ne 'COMMITTED'/);
+  assert.match(mcpView,/\[string\]\$release\.targetSha -ne \$sha/);
+  assert.match(mcpView,/\[string\]\$source\.currentSha -ne \$sha/);
+  assert.match(mcpView,/reason='already_applied'/);
+  assert.match(mcpView,/Save-ApiHealthViewAppliedState \$sha \$receipt/);
+  assert.doesNotMatch(mcpView,/(^|\n)\s*(New-ScheduledTask|Register-ScheduledTask|Set-ScheduledTask)\b|Get-Credential|ConvertTo-SecureString/i);
+});
 
 test('updater never relies on Nullable HasValue/Value',()=>{
   assert.doesNotMatch(script,/\.HasValue\b|\.Value\b/);
@@ -178,7 +223,7 @@ test('bootstrap stops the old updater instance before re-registering its task',(
 
 
 test('runtime updater structural gate prevents swallowed duplicate control loops',()=>{
-  assert.ok(script.length<60000,`updater unexpectedly large: ${script.length}`);
+  assert.ok(script.length<62000,`updater unexpectedly large: ${script.length}`);
   assert.equal((script.match(/function Invoke-LiveStatusBridgeReconcile/g)||[]).length,1);
   assert.equal((script.match(/function Gates-Pass/g)||[]).length,1);
   assert.equal((script.match(/function Invoke-AppChromeZeroTouchHelper/g)||[]).length,1);
