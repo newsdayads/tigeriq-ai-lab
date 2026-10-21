@@ -424,6 +424,9 @@ async function installInteractiveWslBroker(signal = null) {
   if (await fs.readFile(safeBroker, 'utf8') !== brokerSource) {
     throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_SOURCE_DRIFT');
   }
+  if (await fs.readFile(safeInstaller, 'utf8') !== installerSource) {
+    throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_INSTALLER_SOURCE_DRIFT');
+  }
   const result = await runFixed(
     'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
     ['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',safeInstaller],
@@ -446,6 +449,9 @@ async function installInteractiveWslBroker(signal = null) {
   // Fresh heartbeat alone cannot attest the newly installed broker source.
   if (await fs.readFile(safeBroker, 'utf8') !== brokerSource) {
     throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_SOURCE_DRIFT');
+  }
+  if (await fs.readFile(safeInstaller, 'utf8') !== installerSource) {
+    throw new Error('TIGERIQ_PAPERCLIP_LAB_WSL_BROKER_INSTALLER_SOURCE_DRIFT');
   }
   return {
     installed: true,
