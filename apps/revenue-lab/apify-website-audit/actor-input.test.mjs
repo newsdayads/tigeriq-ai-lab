@@ -4,6 +4,10 @@ import http from 'node:http';
 import { readFileSync } from 'node:fs';
 import { requireActorAuditUrl, auditStartLogMessage, auditFailureCode, auditFailureLogMessage, auditFailureOutput } from './actor-input.mjs';
 import { auditWebsite, AuditError, actionableSeoFindings } from './audit-engine.mjs';
+// Keep R04 private-read provenance regressions inside the required offline Actor CI gate.
+// Imports execute mocked-only node:test suites; they never read APIFY_TOKEN or access Apify.
+import './apify-existing-run-locator.test.mjs';
+import './apify-existing-run-cli.test.mjs';
 
 test('Actor refuses missing/empty/non-string required URL before any network request', async () => {
   for (const input of [undefined, null, {}, {url:''}, {url:'   '},
