@@ -73,6 +73,10 @@ before(async () => {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><titlex>Fake title</title><title>Real title</title></head><body><h1fake>Fake heading</h1><h1 class="real">Real heading</h1></body></html>');
     }
+    if (req.url === '/seo-html-entities') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>R&amp;D &#x2014; &#169; 2026</title><meta name="description" content="Tom &quot;Jerry&quot; &#38; Co."></head><body><h1>4 &lt; 5 &amp; 6 &gt; 3</h1></body></html>');
+    }
     if (req.url === '/meta-quoted-greater-than') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>Quoted GT</title><meta data-note="7 > 4" name="description" content="Value > threshold"></head><body><h1>Valid</h1></body></html>');
@@ -342,6 +346,17 @@ test('SEO extraction ignores tag-name prefix decoys but accepts real title and H
   assert.equal(mixed.pages[0].seo.h1Count, 1);
   assert.deepEqual(mixed.pages[0].seo.h1, ['Real heading']);
   assert.ok(!mixed.pages[0].findings.some(finding => finding.code === 'MULTIPLE_H1'));
+});
+
+test('SEO extraction renders HTML character references as readable real-world title, meta and H1', async () => {
+  const result = await auditWebsite(`${baseUrl}/seo-html-entities`, {
+    resolveTargetFn: localResolver,
+  });
+  assert.equal(result.status, 'success');
+  assert.equal(result.pages[0].seo.title, 'R&D — © 2026');
+  assert.equal(result.pages[0].seo.metaDescription, 'Tom "Jerry" & Co.');
+  assert.deepEqual(result.pages[0].seo.h1, ['4 < 5 & 6 > 3']);
+  assert.deepEqual(result.pages[0].findings, []);
 });
 
 test('SEO extraction preserves quoted greater-than characters in meta tag attributes', async () => {
