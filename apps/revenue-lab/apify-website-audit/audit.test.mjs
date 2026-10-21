@@ -439,6 +439,33 @@ test('IANA documentation, transition and reserved IPs are not publicly auditable
 });
 
 
+test('IETF 192.0.0.0/24 special-purpose targets cannot bypass literal or DNS guards', async () => {
+  // IANA IPv4 Special-Purpose Address Registry: 192.0.0.0/24 includes
+  // dummy, service continuity, NAT64 discovery and protocol anycast.
+  // A public website crawler must not use these protocol-purpose targets.
+  for (const address of [
+    '192.0.0.8', '192.0.0.9', '192.0.0.10',
+    '192.0.0.171', '192.0.0.254',
+  ]) {
+    assert.equal(isBlockedAddress(address), true, 'special-purpose IP allowed: ' + address);
+    await assert.rejects(
+      () => resolveSafeTarget('https://' + address + '/'),
+      error => error instanceof AuditError && error.code === 'PRIVATE_TARGET',
+      'literal target was not rejected: ' + address,
+    );
+    await assert.rejects(
+      () => resolveSafeTarget('https://public-audit.invalid/', {
+        lookupFn: async () => [
+          { address: '8.8.8.8', family: 4 }, { address, family: 4 },
+        ],
+      }),
+      error => error instanceof AuditError && error.code === 'PRIVATE_TARGET',
+      'mixed DNS answer was not rejected: ' + address,
+    );
+  }
+  assert.equal(isBlockedAddress('192.0.1.1'), false, 'guard must not widen to adjacent /24');
+});
+
 test('IPv6 fe00 reserved, link-local and deprecated fec0 site-local never pass public-target screening', async () => {
   // IANA IPv6 Address Space: fe00::/9 reserved, fe80::/10 link-local,
   // fec0::/10 deprecated site-local (RFC 3879). Include both range edges.
