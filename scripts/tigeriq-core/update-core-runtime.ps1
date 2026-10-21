@@ -39,7 +39,7 @@ $webTask='TigerIQ Web Control 24x7'
 $codingTask='TigerIQ Coding Lane 24x7'
 $openclawTask='TigerIQ OpenClaw Gateway'
 $viewModule=(Join-Path $runtimeRepo 'scripts\tigeriq-core\mcp-view-lifecycle.ps1')
-$mcpViewChanged=$false;$mcpViewReceipt=$null
+$mcpViewChanged=$false;$mcpViewTouched=$false;$mcpViewReceipt=$null
 $remoteDesktopTask='TigerIQ Desktop Commander Remote'
 $remoteDesktopRuntime='D:\TigerIQ\Runtime\desktop-commander-remote'
 $remoteDesktopLifecycleGeneration='20260930_TOPOLOGY_2'
@@ -778,7 +778,7 @@ function Invoke-RuntimeRollback([string]$previousRuntimeSha,[string]$remote,[has
     $restartActions.Add('openclaw')
     if(-not $CanaryMode -and (Task-Exists $openclawTask)){$null=Restart-OpenClawGateway;$rollbackTree=OpenClaw-TreeSha;if($rollbackTree){Save-OpenClawAppliedState $rollbackTree}}
   }
-  if($mcpViewChanged -and (Get-Command Restart-ApiHealthViewGateway -ErrorAction SilentlyContinue)){$null=Restart-ApiHealthViewGateway}
+  if($mcpViewTouched -and (Get-Command Restart-ApiHealthViewGateway -ErrorAction SilentlyContinue)){$null=Restart-ApiHealthViewGateway}
   return [ordered]@{
     previousRuntimeSha=$previousRuntimeSha
     candidateSha=$remote
