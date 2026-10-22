@@ -129,3 +129,38 @@ export function cadenceContinuousVerifyDue({
   const last = Number(lastRunMs) || 0;
   return !last || Number(nowMs) - last >= interval;
 }
+
+export const CONTINUOUS_VERIFY_PENDING_LIMIT = 32;
+
+// Keep distinct event keys in arrival order; previously a second trigger
+// overwrote the only pending slot before either could be audited.
+export function createContinuousVerifyPendingQueue({
+  capacity=CONTINUOUS_VERIFY_PENDING_LIMIT,
+  now=()=>new Date().toISOString(),
+}={}) {
+  const max=Math.max(1,Math.min(256,Math.floor(Number(capacity)||CONTINUOUS_VERIFY_PENDING_LIMIT)));
+  const pending=[];
+  return Object.freeze({
+    get size() {return pending.length;},
+    enqueue(trigger,{runningKey='',lastRunKey=''}={}) {
+      const key=text(trigger?.key);
+      if(!shouldQueueContinuousVerify(trigger,{runningKey,lastRunKey})||
+         pending.some(item=>item.key===key))return {accepted:false,reason:'DUPLICATE_OR_INVALID',depth:pending.length};
+      if(pending.length>=max)return {accepted:false,reason:'CAPACITY_REACHED',key,depth:pending.length};
+      pending.push({...trigger,attempt:Math.max(0,Number(trigger?.attempt)||0),queuedAt:now()});
+      return {accepted:true,depth:pending.length};
+    },
+    take() {return pending.shift()||null;},
+    retryFirst(trigger) {
+      const key=text(trigger?.key),attempt=Number(trigger?.attempt)||0;
+      if(!key||attempt>=1||pending.some(item=>item.key===key)){
+        return {accepted:false,reason:'RETRY_DENIED',depth:pending.length};
+      }
+      // A running event has already left the queue; allow one reserved retry
+      // slot (max + 1) ahead of later events instead of overwriting them.
+      pending.unshift({...trigger,attempt:attempt+1,queuedAt:now()});
+      return {accepted:true,depth:pending.length};
+    },
+    keys() {return pending.map(item=>item.key);},
+  });
+}
