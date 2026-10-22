@@ -17,6 +17,9 @@ describe("Owner Dashboard live truth contract",()=>{
    expect(withoutLease.worker).toBeNull();
    expect(withoutLease.lastActivityIsExecutionReceipt).toBe(false);
    expect(globalThis.TigerIQWorkCenter.viewStatus({...base,liveTruth:withoutLease})).toBe("UNKNOWN");
+   const open={...base,workKind:"WORK",liveTruth:withoutLease};
+   expect(globalThis.TigerIQWorkCenter.rowsFor({openWork:[open]},"working")).toHaveLength(0);
+   expect(globalThis.TigerIQWorkCenter.rowsFor({openWork:[open]},"all")).toHaveLength(1);
  });
  it("needs fresh heartbeat, live Core connection and verified source",()=>{
    expect(projectOwnerLiveTruth(base,context).status).toBe("WORKING");
