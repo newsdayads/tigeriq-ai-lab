@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { gzipSync } from 'node:zlib';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   PAPERCLIP_BACKUP_ROOT, validatePaperclipBackupGzip, inspectPaperclipBackupProvenance,
@@ -34,6 +35,16 @@ function fakeIo({bytes=archive(),files=[name],symlink='',mtimeMs=modified,change
   return io;
 }
 describe('GH-2054: actual Paperclip HOME-mounted PostgreSQL backup provenance',()=>{
+  it('exposes safe backup reason only within the existing read-only preflight',()=>{
+    const source=readFileSync(new URL('../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs',import.meta.url),'utf8');
+    const section=source.slice(source.indexOf('async function preflight(signal = null) {'),
+      source.indexOf('function redactPaperclipDiagnosticText(',source.indexOf('async function preflight(signal = null) {')));
+    expect(section).toContain('await paperclipReadOnlyPreflight({ signal })');
+    expect(section).toContain('await inspectPaperclipBackupProvenance()');
+    expect(section).not.toContain('runBrokerRequest(');
+    expect(section).not.toContain('runDockerViaBroker(');
+  });
+
   it('uses the mounted /paperclip home, not the unrelated empty Lab backup directory',()=>{
     expect(PAPERCLIP_BACKUP_ROOT).toBe('D:\\TigerIQ-Paperclip-Lab\\data\\instances\\default\\data\\backups');
   });
