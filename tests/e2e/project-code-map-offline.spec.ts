@@ -42,3 +42,43 @@ test('real Chrome opens offline code-map, searches and navigates local dependenc
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
+
+
+test('offline viewer navigates extensionless JS/TS modules and their reverse dependencies', async ({ page }) => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'tigeriq-code-map-extensionless-'));
+  const mappings = [
+    { spec: './components/Button', target: 'src/components/Button.tsx' },
+    { spec: './widget', target: 'src/widget.jsx' },
+    { spec: './utils', target: 'src/utils/index.mts' },
+    { spec: './legacy', target: 'src/legacy.cts' },
+  ];
+  try {
+    const html = buildHtmlReport({
+      schemaVersion: 1,
+      sourceRevision: 'extensionless-browser-fixture',
+      rootName: 'source',
+      summary: { sourceFiles: 5, dependencyEdges: 5, filesWithImports: 1 },
+      nodes: ['src/main.mjs', ...mappings.map(({ target }) => target)],
+      edges: [
+        ...mappings.map(({ spec }) => ({ from: 'src/main.mjs', to: spec })),
+        { from: 'src/main.mjs', to: './missing' },
+      ],
+    });
+    const filename = path.join(tmp, 'index.html');
+    await fs.writeFile(filename, html);
+    await page.goto(pathToFileURL(filename).href);
+
+    for (const { spec, target } of mappings) {
+      await page.getByRole('button', { name: 'src/main.mjs', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Import từ tệp (5)' })).toBeVisible();
+      await page.getByRole('button', { name: spec, exact: true }).click();
+      await expect(page.getByRole('heading', { name: target, exact: true })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Tệp đang phụ thuộc vào tệp này (1)' })).toBeVisible();
+    }
+    await page.getByRole('button', { name: 'src/main.mjs', exact: true }).click();
+    await expect(page.getByText('module ngoài hoặc chưa phân giải')).toBeVisible();
+    await expect(page.getByRole('button', { name: './missing', exact: true })).toHaveCount(0);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
