@@ -1534,6 +1534,20 @@ async function health(signal = null, transport = null, options = {}) {
   };
   return state;
 }
+// Core-only bounded diagnostic. Not listed in PAPERCLIP_LAB_ACTIONS and never
+// available through generic tigeriq_pc / unauthenticated MCP R01/R02 tools.
+// Caller MUST own the atomic NV06 scope-fenced lease before invoking this.
+export async function readFencedPaperclipHealth(signal = null) {
+  throwIfAborted(signal);
+  const docker = await resolveDockerTransport(signal, { allowBrokerProbe: true });
+  if (!docker.kind) {
+    const [port, http] = await Promise.all([probePort(), httpHealth(signal)]);
+    return paperclipUnverifiedDockerHealth({ docker, port, http });
+  }
+  const data = await health(signal, docker.kind, { diagnostics: false });
+  return { ...data, docker: { transport: docker.kind, version: docker.version } };
+}
+
 export async function executePaperclipLabAction(input = {}, options = {}) {
   const signal = options?.signal || null;
   throwIfAborted(signal);

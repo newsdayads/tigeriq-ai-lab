@@ -1,4 +1,5 @@
-import { executeFencedPaperclipBrokerInstall } from './paperclip-direct-lease.mjs';
+import { executeFencedPaperclipBrokerInstall, executeFencedPaperclipHealth } from './paperclip-direct-lease.mjs';
+import { readFencedPaperclipHealth } from '../openclaw-tigeriq-runtime/paperclip-lab.mjs';
 import {installedLabVersion} from './installed-lab-version.mjs';
 import { createServer } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
@@ -1734,7 +1735,7 @@ function pcOperatorJobId(objectiveId,phaseIndex,ordinal){
   return `JOB-OC-${createHash('sha256').update(key).digest('hex').slice(0,24)}`;
 }
 const OPENCLAW_RETRYABLE_JOB_KINDS=new Set(['outage','timeout','openclaw_failure','worker_timeout','spawn_error','agent_terminal_invalid','busy','rate_limit']);
-const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop','android_worker_sign_v020_ci_artifact','android_worker_sign_v020_user_context','android_worker_grant_v020_signer_read_acl','android_worker_export_v020_signed_apk_chunk','android_worker_publish_v020_manifest','android_worker_gate_c_v020_enqueue_10','tigeriq_live_3150_production_deploy','chrome_ui_reconcile_cancelled_job','paperclip_lab_broker_install','paperclip_openai_device_auth_start','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']);
+const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop','android_worker_sign_v020_ci_artifact','android_worker_sign_v020_user_context','android_worker_grant_v020_signer_read_acl','android_worker_export_v020_signed_apk_chunk','android_worker_publish_v020_manifest','android_worker_gate_c_v020_enqueue_10','tigeriq_live_3150_production_deploy','chrome_ui_reconcile_cancelled_job','paperclip_lab_broker_install','paperclip_lab_fenced_health','paperclip_openai_device_auth_start','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']);
 
 export function directPcOperatorAction(job){
   const raw=job?.objective_metadata?.pcOperatorDirectAction;
@@ -1760,7 +1761,18 @@ async function runDirectPcOperatorJob(j){
         acquire:acquireSharedResourceLease,heartbeat:heartbeatSharedResourceLease,
         release:releaseSharedResourceLease,
       })).receipt
-    : await executePcAction(action);
+    : action.action==='paperclip_lab_fenced_health'
+      ? (await executeFencedPaperclipHealth({
+          job:j,db:pool,
+          execute: async ({action:requested}) => {
+            if(requested!=='paperclip_lab_fenced_health')throw new Error('PAPERCLIP_FENCED_ACTION_INVALID');
+            const data=await readFencedPaperclipHealth();
+            return {ok:true,action:requested,target:'pc01-local',data};
+          },
+          acquire:acquireSharedResourceLease,heartbeat:heartbeatSharedResourceLease,
+          release:releaseSharedResourceLease,
+        })).receipt
+      : await executePcAction(action);
   const result={ok:true,provider:'local-direct',executionSurface:'PC_OPERATOR_DIRECT_LOCAL',idempotencyKey,evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:receipt}]}};
   await hotPathStage(j,'EVIDENCE',{provider:'local-direct',executionSurface:'PC_OPERATOR_DIRECT_LOCAL',idempotencyKey});
   await pool.query("update tigeriq_jobs set status='done',employee_id=null,resource_id=null,provider='local-direct',routing_profile='PC_OPERATOR_DIRECT',result=$2,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,JSON.stringify(result)]);
