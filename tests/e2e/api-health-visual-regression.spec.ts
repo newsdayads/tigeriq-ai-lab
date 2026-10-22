@@ -144,7 +144,7 @@ test('five-point Owner acceptance: all open sort choices, labels and semantic ta
  await expect(page.locator('#workOpenSort')).toHaveValue('activity_latest');
  await expect.poll(order).toEqual([320,310,330]);
  await expect(page.locator('#woFilters')).toContainText('Có bình luận nhật ký: 2/3');
- await expect(page.locator('#workList .work-activity')).toHaveCount(2);
+ await expect(page.locator('#workList .work-activity')).toHaveCount(0);
  const ranks=()=>page.locator('#workList .work-row .rank').allTextContents();
  await expect.poll(ranks).toEqual(['03','02','01']);
  await page.locator('#workOpenSort').selectOption('rank_asc');
@@ -161,6 +161,10 @@ test('five-point Owner acceptance: all open sort choices, labels and semantic ta
  await expect.poll(order).toEqual([320,310,330]);
  await page.locator('#workOpenSort').selectOption('priority');
  await expect.poll(order).toEqual([320,330,310]);
+ await page.locator('#workList .work-row[data-work-number="320"]').click();
+ await expect(page.locator('#workDetailAudit')).toContainText('Nhật ký GitHub gần nhất');
+ await expect(page.locator('#workDetailAudit')).toContainText('[TIẾN ĐỘ] running');
+ await page.keyboard.press('Escape');
  const semantic=await page.locator('.wo-filter').evaluateAll(buttons=>buttons.map(el=>{
    const style=getComputedStyle(el);return {label:el.textContent?.trim(),selected:el.getAttribute('aria-pressed'),text:style.color,border:style.borderColor,background:style.backgroundColor};
  }));
@@ -425,16 +429,17 @@ test('Owner P0 flat workforce default and equal work-filter controls with visibl
  expect(await row.locator('.progress-fill').evaluate(el=>getComputedStyle(el,'::before').animationName)).toBe('none');
 });
 
-test('Owner P0 journal timestamp is green and blocker NONE is hidden',async({page})=>{
+test('Owner journal moves into detail and blocker NONE is hidden',async({page})=>{
  await openFixture(page);
  const rows=[{...work[0],lastActivitySource:'github_issue_comment',lastActivityAt:recent(2),lastActivitySummary:'Confirmed progress'},
    {...work[1],blocker:'NONE',waitReason:'NONE'},work[2]];
  await page.route(base+'/api/health-live-work',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,projection:{...projection().projection,openWork:rows}})}));
  await page.reload();
- const journal=page.locator('#workList .work-activity span:first-child');
- await expect(journal).toBeVisible();
- expect(await journal.evaluate(el=>getComputedStyle(el).color)).toBe('rgb(74, 222, 128)');
+ await expect(page.locator('#workList .work-activity')).toHaveCount(0);
  await expect(page.locator('#workList .work-row[data-work-number="4574"] .work-quick.blocked')).toHaveCount(0);
+ await page.locator('#workList .work-row[data-work-number="3278"]').click();
+ await expect(page.locator('#workDetailAudit')).toContainText('Nhật ký GitHub gần nhất');
+ await expect(page.locator('#workDetailAudit')).toContainText('Confirmed progress');
 });
 
 
