@@ -881,3 +881,8 @@ body.api-health #detailModal.detail-modal .employee-avatar{
   margin-top:4px!important;font-size:10px!important;
  }
 }
+
+/* Compact group-level project control; the children remain read-only until opened. */
+.tiq-project-child-summary{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:6px 0 3px;font-size:12px;font-weight:600}
+.tiq-project-children-toggle{font:inherit;cursor:pointer;padding:5px 9px;border:1px solid currentColor;border-radius:7px;color:inherit;background:transparent}
+.tiq-project-children-toggle:focus-visible{outline:2px solid currentColor;outline-offset:3px}
