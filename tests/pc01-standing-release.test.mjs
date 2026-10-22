@@ -4,6 +4,7 @@ import {
   validateStandingReleaseEvidence,acceptPc01StandingWorkflowRelease,
 } from '../apps/tigeriq-core/pc01-standing-release.mjs';
 import {readFileSync} from 'node:fs';
+import {githubContinuousVerifyTrigger} from '../apps/tigeriq-core/continuous-verify.mjs';
 
 const old='1'.repeat(40),next='2'.repeat(40),blob='a'.repeat(40);
 const now=Date.parse('2026-10-14T11:00:00.000Z');
@@ -171,7 +172,7 @@ if(begin<0||end<begin)throw Error('HANDLER_NOT_FOUND');
 const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
 const route=new AsyncFunction('req','res','url','verifyGithubActionsOidc','readRawBody',
  'enablePc01StandingRelease','acceptPc01StandingWorkflowRelease','acceptPc01OwnerApprovalEvent',
- 'pool','publishGithubEvent','GITHUB_TOKEN',source.slice(begin,end));
+ 'pool','publishGithubEvent','GITHUB_TOKEN','githubContinuousVerifyTrigger',source.slice(begin,end));
 async function invoke({eventName='issues',action='edited',number=280,duplicate=false,invalidIdentity=false}={}){
  const calls={persisted:0,published:0,standing:0};
  const payload={action,repository:{full_name:'newsdayads/tigeriq-ai-lab'},issue:{id:280999,number},comment:{id:1,body:'ordinary signal'}};
@@ -188,7 +189,8 @@ async function invoke({eventName='issues',action='edited',number=280,duplicate=f
   async()=>JSON.stringify(payload),async()=>{throw Error('UNEXPECTED_ACTIVATION');},
   async()=>{calls.standing++;throw Error('PC01_STANDING_NOT_ACTIVATED');},
   async()=>{throw Error('UNEXPECTED_OWNER_APPROVAL');},
-  pool,()=>{calls.published++;return{issueNumber:number,subscribers:0};},'ISOLATED_FAKE_READ_TOKEN');
+  pool,()=>{calls.published++;return{issueNumber:number,subscribers:0};},
+  'ISOLATED_FAKE_READ_TOKEN',githubContinuousVerifyTrigger);
  return{calls,res};
 }
 it('keeps normal issue ingestion when the independent release policy is absent',async()=>{
