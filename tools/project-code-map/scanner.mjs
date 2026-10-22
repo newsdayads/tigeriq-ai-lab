@@ -1,6 +1,12 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 
+// Repository metadata, installed packages and generated files are not source.
+// Ignore these at every depth to keep indexes bounded and avoid phantom modules.
+const IGNORED_DIRECTORIES = new Set([
+  '.git', 'node_modules', 'dist', 'build', 'coverage', '.next', '.nuxt', '.turbo', '.cache',
+]);
+
 // Preserve string contents (including module specifiers), while masking comments
 // and remembering string offsets so an import/export *inside* a string is ignored.
 function maskNonCodeImports(code) {
@@ -66,7 +72,9 @@ export async function scanProject(root) {
     for (const entry of entries) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        await walk(full);
+        if (!IGNORED_DIRECTORIES.has(entry.name)) {
+          await walk(full);
+        }
       } else if (/\.(js|mjs|cjs|ts)$/.test(entry.name)) {
         const code = await fs.readFile(full, 'utf8');
         const { sanitized, quotedOffsets } = maskNonCodeImports(code);
