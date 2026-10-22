@@ -3246,6 +3246,27 @@ const server=createServer(async(req,res)=>{
     }
     if(req.method==='GET'&&url.pathname==='/api/status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await snapshot()));}
     if(req.method==='GET'&&url.pathname==='/api/api-doctor-status'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify({ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},apiDoctor:await apiDoctorTelemetry()}));}
+    // Local-only bounded provenance for native GitHub push -> Core verify.
+    // Expose no job prompts, tokens or full event DB payloads.
+    if(req.method==='GET'&&url.pathname==='/api/continuous-verify-evidence'){
+      if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
+      const sha=String(url.searchParams.get('sha')||'').trim();
+      if(!/^[a-f0-9]{40}$/i.test(sha)){res.writeHead(400,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'SOURCE_SHA_REQUIRED'}));}
+      const key='github-main:'+sha;
+      const rows=(await pool.query(
+        "select seq,ts,type,data from tigeriq_events where type in ('GITHUB_EVENT_RECEIVED','CONTINUOUS_VERIFY_TRIGGER_QUEUED','CONTINUOUS_VERIFY_RUN','CONTINUOUS_VERIFY_RUN_FAILED') and data->>'key'=$1 order by seq desc limit 12",
+        [key]
+      )).rows;
+      const receipts=rows.map(row=>({
+        seq:Number(row.seq),at:row.ts,type:row.type,kind:String(row.data?.kind||''),
+        key:String(row.data?.key||''),sourceSha:String(row.data?.sourceSha||''),
+        attempt:Number(row.data?.attempt||0),
+        contractCount:Number(row.data?.contractCount||0),
+        error:String(row.data?.error||'').slice(0,120),
+      }));
+      res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
+      return res.end(JSON.stringify({ok:true,sourceSha:sha,key,receipts}));
+    }
     if(req.method==='GET'&&url.pathname==='/api/self-audit'){
       if(!auth(req)&&!localSelf(req)){res.writeHead(401);return res.end('unauthorized');}
       res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await selfAuditStatus()));
@@ -3351,7 +3372,13 @@ const server=createServer(async(req,res)=>{
         duplicate=(await client.query("select 1 from tigeriq_events where type='GITHUB_EVENT_RECEIVED' and data->>'deliveryId'=$1 limit 1",[deliveryId])).rowCount>0;
         if(!duplicate){
           const issueNumber=Number(payload?.issue?.number||payload?.pull_request?.number||0)||null;
-          await client.query("insert into tigeriq_events(type,data) values('GITHUB_EVENT_RECEIVED',$1)",[JSON.stringify({deliveryId,eventName,issueNumber,repository:'newsdayads/tigeriq-ai-lab',runId:identity.runId||null,receivedAt:new Date().toISOString()})]);
+          await client.query("insert into tigeriq_events(type,data) values('GITHUB_EVENT_RECEIVED',$1)",[JSON.stringify({
+            deliveryId,eventName,issueNumber,repository:'newsdayads/tigeriq-ai-lab',
+            runId:identity.runId||null,receivedAt:new Date().toISOString(),
+            ...(eventName==='push'&&/^[a-f0-9]{40}$/i.test(String(payload?.after||''))?{
+              key:'github-main:'+payload.after,sourceSha:payload.after
+            }:{})
+          })]);
         }
         await client.query('commit');
       }catch(error){try{await client.query('rollback')}catch{};throw error}

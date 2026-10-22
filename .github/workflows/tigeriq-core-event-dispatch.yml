@@ -1,6 +1,8 @@
 name: TigerIQ Core Event Dispatch
 
 on:
+  push:
+    branches: [main]
   issues:
     types: [opened, edited, reopened, closed, labeled, unlabeled, assigned, unassigned]
   issue_comment:
@@ -19,6 +21,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
+      - name: Read canonical main push source for bounded path enrichment
+        if: github.event_name == 'push'
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
       - name: Resolve TigerIQ bridge and dispatch signed event
         shell: bash
         env:
@@ -29,6 +37,11 @@ jobs:
           DELIVERY_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
+          payload="$GITHUB_EVENT_PATH"
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            payload="$RUNNER_TEMP/tigeriq-enriched-push.json"
+            node scripts/tigeriq-core/enrich-github-push-event.mjs "$GITHUB_EVENT_PATH" "$payload"
+          fi
           pointer="$(curl --fail-with-body --silent --show-error             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -H "X-GitHub-Api-Version: 2022-11-28"             "$API_URL/repos/$REPOSITORY/issues/1402")"
           bridge="$(POINTER="$pointer" python3 - <<'PY'
           import json, os
@@ -42,4 +55,4 @@ jobs:
           PY
           )"
           oidc="$(curl --fail-with-body --silent --show-error             -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN"             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=tigeriq-core"             | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')"
-          curl --fail-with-body --silent --show-error --retry 2 --retry-all-errors             -X POST "$bridge/github-event"             -H "Authorization: Bearer $oidc"             -H "Content-Type: application/json"             -H "X-GitHub-Event: $EVENT_NAME"             -H "X-TigerIQ-Delivery: $DELIVERY_ID"             --data-binary "@$GITHUB_EVENT_PATH"
+          curl --fail-with-body --silent --show-error --retry 2 --retry-all-errors             -X POST "$bridge/github-event"             -H "Authorization: Bearer $oidc"             -H "Content-Type: application/json"             -H "X-GitHub-Event: $EVENT_NAME"             -H "X-TigerIQ-Delivery: $DELIVERY_ID"             --data-binary "@$payload"
