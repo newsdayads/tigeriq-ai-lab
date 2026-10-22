@@ -33,5 +33,23 @@ jobs:
         run: node scripts/test-chief-router.mjs
       - name: Verify web-hosting boundary
         run: node scripts/verify-vercel-deployment-policy.mjs
+      - name: Ensure PowerShell for mandatory native R07 regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v pwsh >/dev/null 2>&1; then
+            . /etc/os-release
+            case "${ID}:${VERSION_ID}" in
+              ubuntu:22.04|ubuntu:24.04|ubuntu:26.04) ;;
+              *) echo "Unsupported runner for PowerShell native tests" >&2; exit 1 ;;
+            esac
+            curl --fail --silent --show-error --retry 2 --max-time 60 \
+              "https://packages.microsoft.com/config/ubuntu/${VERSION_ID}/packages-microsoft-prod.deb" \
+              -o "$RUNNER_TEMP/packages-microsoft-prod.deb"
+            sudo dpkg -i "$RUNNER_TEMP/packages-microsoft-prod.deb"
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends powershell
+          fi
+          pwsh -NoProfile -NonInteractive -Command 'if ($PSVersionTable.PSVersion.Major -lt 7) { exit 1 }'
       - name: Existing TigerIQ gates
         run: npm run typecheck && npm run test && npm run build
