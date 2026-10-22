@@ -24,6 +24,22 @@ const issue=(body=validBody,extra={})=>({number:990001,title:'[P0] Kiểm tra mo
  closed_at:'2026-10-12T11:31:00Z',updated_at:'2026-10-12T11:31:00Z',
  html_url:url,user:{login:'newsdayads'},...extra});
 
+describe('TigerIQ Game: parent summary keeps independently executable children',()=>{
+ it('collapses only when the actual parent is present; expands without changing source rows',()=>{
+  const parent={number:5179,workKind:'WORK',status:'OPEN',projectName:'TigerIQ Game'};
+  const children=[{number:5180,parentNumber:5179,status:'OPEN',workKind:'WORK'},
+    {number:5181,parentNumber:5179,status:'DONE',completionVerified:true,workKind:'WORK'}];
+  const separate={number:2054,workKind:'WORK',status:'WORKING'};
+  const source=[parent,...children,separate];
+  const closed=wc.visibleProjectRows(source,new Set());
+  expect(closed.rows.map(x=>x.number)).toEqual([5179,2054]);
+  expect(closed.groups.get(5179)).toEqual({count:2,done:1});
+  const opened=wc.visibleProjectRows(source,new Set([5179]));
+  expect(opened.rows.map(x=>x.number)).toEqual([5179,5180,5181,2054]);
+  expect(wc.visibleProjectRows([children[0],separate],new Set()).rows).toHaveLength(2);
+  expect(source.map(x=>x.number)).toEqual([5179,5180,5181,2054]);
+ });
+});
 describe('TigerIQ Work Center V1 — one shared source of truth',()=>{
  it('exposes canonical shared status, filters and strict verified finish',()=>{
   expect(wc.version).toBe('1.0.0');
