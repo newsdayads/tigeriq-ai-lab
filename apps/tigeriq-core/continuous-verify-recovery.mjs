@@ -13,6 +13,9 @@ function candidateFrom(row){
   if(!info||typeof info!=='object')return null;
   const kind=String(info.kind||''),key=String(info.key||'');
   if(!VALID_KIND.has(kind))return null;
+  // A signed GitHub webhook can attest only GitHub events, not a local
+  // runtime installation. Reject cross-origin recovery envelopes.
+  if(row.type==='GITHUB_EVENT_RECEIVED'&&kind==='RUNTIME_SHA_CHANGE')return null;
   const prefix=kind==='RUNTIME_SHA_CHANGE'?'runtime:':'github-main:';
   if(!key.startsWith(prefix)||!SHA.test(key.slice(prefix.length)))return null;
   const sha=key.slice(prefix.length);
