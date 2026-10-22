@@ -414,7 +414,8 @@ function extractSeo(html) {
       break;
     }
   }
-  // A quoted '>' belongs to the opening tag attribute, not the H1 text.\n  const h1Matches = [...html.matchAll(/<h1\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>([\s\S]*?)<\/h1\s*>/gi)];
+  // A quoted '>' belongs to the opening tag attribute, not the H1 text.
+  const h1Matches = [...html.matchAll(/<h1\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/h1\s*>/gi)];
   const visible = cleanText(
     html
       .replace(/<script[\s\S]*?<\/script>/gi, ' ')
