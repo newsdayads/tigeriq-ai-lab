@@ -76,6 +76,27 @@ function sortOpen(rows,mode){
  });
 }
 function rowsFor(data,filter,closedOrder,openOrder){
+ const subset=rawRowsFor(data,filter,closedOrder,openOrder);
+ // The selected tab may hide closed children. Derive project totals from
+ // the whole supplied snapshot without changing any original work row.
+ const rawOpen=Array.isArray(data?.openWork)?data.openWork:[].concat(data?.activeWork||[],data?.nextQueue||[]);
+ const all=[...(Array.isArray(data?.recentWork)?data.recentWork:[]),...rawOpen];
+ const unique=new Map(all.filter(x=>Number(x?.number)>0).map(x=>[Number(x.number),x]));
+ const counts=new Map();
+ for(const row of unique.values()){
+  const parent=Number(row?.parentNumber);
+  if(!Number.isSafeInteger(parent)||parent<=0||parent===Number(row?.number)||!unique.has(parent))continue;
+  const count=counts.get(parent)||{total:0,done:0};
+  count.total++;
+  if(completion(row))count.done++;
+  counts.set(parent,count);
+ }
+ return subset.map(row=>{
+  const stat=counts.get(Number(row?.number));
+  return stat?{...row,projectChildTotal:stat.total,projectChildAccepted:stat.done}:row;
+ });
+}
+function rawRowsFor(data,filter,closedOrder,openOrder){
  const o=Array.isArray(data&&data.openWork)?data.openWork:[].concat(data&&data.activeWork||[],data&&data.nextQueue||[]);
  const done=Array.isArray(data&&data.recentWork)?data.recentWork:[];
  const work=x=>x&&x.workKind==='WORK'&&effective(x)!=='SYSTEM';
@@ -113,11 +134,17 @@ function visibleProjectRows(rows,expanded=expandedProjectParents){
  const numbers=new Set(source.map(r=>Number(r?.number)));
  const groups=new Map();
  for(const row of source){
+  const total=Number(row?.projectChildTotal),done=Number(row?.projectChildAccepted);
+  if(numbers.has(Number(row?.number))&&Number.isInteger(total)&&total>0){
+   groups.set(Number(row.number),{count:total,done:Number.isInteger(done)&&done>=0&&done<=total?done:0,visible:0,fromSnapshot:true});
+  }
+ }
+ for(const row of source){
   const parent=Number(row?.parentNumber);
   if(!Number.isSafeInteger(parent)||parent<=0||parent===Number(row?.number)||!numbers.has(parent))continue;
-  const group=groups.get(parent)||{count:0,done:0};
-  group.count++;
-  if(completion(row))group.done++;
+  const group=groups.get(parent)||{count:0,done:0,visible:0,fromSnapshot:false};
+  group.visible++;
+  if(!group.fromSnapshot){group.count++;if(completion(row))group.done++;}
   groups.set(parent,group);
  }
  return {rows:source.filter(row=>!groups.has(Number(row?.parentNumber))||expanded.has(Number(row?.parentNumber))),groups};
@@ -159,13 +186,13 @@ function renderCards(container,rows,options){
   const showNext=!blocker&&Boolean(row.nextStep);
   const stripped=showNext?summary.replace(/^(?:bước\s+tiếp(?:\s+theo)?|next(?:\s+step)?)\s*[:：–—-]\s*/i,''):summary;
   const arrow='<svg class="next-step-icon" role="img" aria-label="Bước tiếp theo" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="m13 5 7 7-7 7"/></svg>';
-  const signature=JSON.stringify([s,p,person(row),pr.percent,summary,project,stream,row.parentNumber,steps,bar,started,ended,row.lastActivityAt,row.lastActivitySummary,truth,opt.compact,childGroup?.count,childGroup?.done,childrenExpanded]);
+  const signature=JSON.stringify([s,p,person(row),pr.percent,summary,project,stream,row.parentNumber,steps,bar,started,ended,row.lastActivityAt,row.lastActivitySummary,truth,opt.compact,childGroup?.count,childGroup?.done,childGroup?.visible,childrenExpanded]);
   const past=lastSignatures.get(number);lastSignatures.set(number,signature);
   if(past&&past!==signature)el.classList.add('recently-updated');
   el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+txt(index+1).padStart(2,'0')+'</span><span class="work-id">#'+esc(number)+'</span><span class="priority '+p.toLowerCase()+'">'+esc(p)+'</span><span class="work-nv">'+esc(person(row))+'</span><span class="state '+s.toLowerCase()+'">'+badgeIcon(s)+esc(s==='VERIFY'&&status(row)==='DONE'?'CHỜ NGHIỆM THU':LABELS[s]||s)+'</span></div>'
    +'<div class="work-hierarchy">'+esc(project)+' <span aria-hidden="true">›</span> '+esc(stream)+'</div>'+parentLine
    +'<div class="work-title">'+esc(title(row))+'</div>'
-   +(childGroup?'<div class="tiq-project-child-summary"><span>VIỆC CON: '+childGroup.done+'/'+childGroup.count+' đã nghiệm thu</span> <button type="button" class="tiq-project-children-toggle" aria-expanded="'+childrenExpanded+'">'+(childrenExpanded?'THU GỌN':'XEM '+childGroup.count+' VIỆC CON')+'</button></div>':'')
+   +(childGroup?'<div class="tiq-project-child-summary"><span>VIỆC CON: '+childGroup.done+'/'+childGroup.count+' đã nghiệm thu</span> '+(childGroup.visible?'<button type="button" class="tiq-project-children-toggle" aria-expanded="'+childrenExpanded+'">'+(childrenExpanded?'THU GỌN':'XEM VIỆC CON')+'</button>':'')+'</div>':'')
    +(summary?'<div class="work-quick '+(blocker?'blocked':'next')+'">'+(showNext?arrow:'')+'<span>'+esc(stripped)+'</span></div>':'')
    +(steps||bar?'<div class="work-progress-bottom">'+steps+bar+'</div>':'')
    +'<div class="tiq-work-times"><span>Bắt đầu: '+esc(started)+'</span><span>Kết thúc: '+esc(ended)+'</span></div></div>';
