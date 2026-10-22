@@ -6,6 +6,7 @@ const COLORS={OPEN:'#64748B',UNKNOWN:'#64748B',OWNER_GATE:'#A78BFA',WORKING:'#58
 const ALIASES={'ĐANG XỬ LÝ':'WORKING','ĐANG LÀM':'WORKING','RÀ SOÁT':'REVIEW','ĐANG RÀ SOÁT':'REVIEW','XÁC MINH':'VERIFY','ĐANG XÁC MINH':'VERIFY','CHỜ':'WAITING','ĐANG CHỜ':'WAITING','BỊ CHẶN':'BLOCKED','HOÀN TẤT':'DONE','CHƯA LÀM':'OPEN','SẴN SÀNG':'QUEUED','TẠM DỪNG':'PAUSED','CHỜ ANH SƠN':'OWNER_GATE','CHỜ ANH SƠN DUYỆT':'OWNER_GATE','MỞ':'OPEN'};
 const lastSignatures=new Map();
 const activeHistory=new WeakMap();
+const expandedProjectParents=new Set();
 function txt(x){return String(x==null?'':x)}
 function esc(x){return txt(x).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function time(value){const ms=Date.parse(value||'');return Number.isFinite(ms)?ms:null}
@@ -105,21 +106,39 @@ function rowsFor(data,filter,closedOrder,openOrder){
  if(f==='goal')return o.filter(x=>x.workKind==='GOAL'||effective(x)==='GOAL');
  return sortOpen(o.filter(work),openOrder);
 }
+// Group only cards with a real visible parent. Source state, leases and ordering
+// remain independent. A filter without that parent still shows its children.
+function visibleProjectRows(rows,expanded=expandedProjectParents){
+ const source=Array.isArray(rows)?rows:[];
+ const numbers=new Set(source.map(r=>Number(r?.number)));
+ const groups=new Map();
+ for(const row of source){
+  const parent=Number(row?.parentNumber);
+  if(!Number.isSafeInteger(parent)||parent<=0||parent===Number(row?.number)||!numbers.has(parent))continue;
+  const group=groups.get(parent)||{count:0,done:0};
+  group.count++;
+  if(completion(row))group.done++;
+  groups.set(parent,group);
+ }
+ return {rows:source.filter(row=>!groups.has(Number(row?.parentNumber))||expanded.has(Number(row?.parentNumber))),groups};
+}
 function badgeIcon(s){
  const d={DONE:'M20 6 9 17l-5-5',WORKING:'M3 12h4l3-8 4 16 3-8h4',BLOCKED:'M12 9v4m0 4h.01',REVIEW:'M21 21l-4.35-4.35M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14',WAITING:'M12 7v5l4 2',QUEUED:'M12 7v5l4 2'};return '<svg class="live-status-icon" role="img" aria-label="'+esc(LABELS[s]||s)+'" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="'+(d[s]||'M12 4v16M4 12h16')+'"/></svg>';
 }
 function renderCards(container,rows,options){
  if(!container)return;
  const opt=options||{},data=Array.isArray(rows)?rows:[];
+ const hierarchy=visibleProjectRows(data);
  if(!data.length){if(container.children.length!==1||!container.firstElementChild.classList.contains('empty'))container.innerHTML='<div class="empty">Không có công việc được xác minh trong nhóm này.</div>';return}
  const fragment=[];
- data.forEach((row,index)=>{
+ hierarchy.rows.forEach((row,index)=>{
   const s=viewStatus(row),p=priority(row),pr=progress(row,opt),number=Number(row.number)||0;
+  const childGroup=hierarchy.groups.get(number)||null,childrenExpanded=expandedProjectParents.has(number);
   const el=document.createElement('article');el.className='work-row tiq-work-card status-'+s.toLowerCase()+' priority-'+p.toLowerCase()+(opt.compact?' tiq-compact':'');
   el.style.setProperty('--status-color',COLORS[s]||COLORS.UNKNOWN);el.setAttribute('data-work-number',txt(number));el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label','Mở chi tiết công việc '+number+' '+title(row));
   const project=txt(row.projectName||'Chưa phân dự án'),stream=txt(row.workstreamName||row.workPackageName||'Chưa phân nhánh');
   const truth=row.liveTruth&&typeof row.liveTruth==='object'?row.liveTruth:null;
-  const rawBlocker=txt(truth?.blocker||row.blocker||row.waitReason||'').trim();
+  const rawBlocker=childGroup?'':txt(truth?.blocker||row.blocker||row.waitReason||'').trim(); // Project supervisor is intentionally not dispatched.
    const blocker=/^(?:none|no(?:ne)?|null|undefined|không(?: có)?|khong(?: co)?|n\/?a|[-—–])$/i.test(rawBlocker)?'':rawBlocker;
   const summary=blocker?'Bị chặn: '+blocker:txt(truth?.next||row.nextStep||row.currentStep||'').trim();
   const count=Number(row.progressTotal),done=Number(row.progressDone);
@@ -140,16 +159,19 @@ function renderCards(container,rows,options){
   const showNext=!blocker&&Boolean(row.nextStep);
   const stripped=showNext?summary.replace(/^(?:bước\s+tiếp(?:\s+theo)?|next(?:\s+step)?)\s*[:：–—-]\s*/i,''):summary;
   const arrow='<svg class="next-step-icon" role="img" aria-label="Bước tiếp theo" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="m13 5 7 7-7 7"/></svg>';
-  const signature=JSON.stringify([s,p,person(row),pr.percent,summary,project,stream,row.parentNumber,steps,bar,started,ended,row.lastActivityAt,row.lastActivitySummary,truth,opt.compact]);
+  const signature=JSON.stringify([s,p,person(row),pr.percent,summary,project,stream,row.parentNumber,steps,bar,started,ended,row.lastActivityAt,row.lastActivitySummary,truth,opt.compact,childGroup?.count,childGroup?.done,childrenExpanded]);
   const past=lastSignatures.get(number);lastSignatures.set(number,signature);
   if(past&&past!==signature)el.classList.add('recently-updated');
   el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+txt(index+1).padStart(2,'0')+'</span><span class="work-id">#'+esc(number)+'</span><span class="priority '+p.toLowerCase()+'">'+esc(p)+'</span><span class="work-nv">'+esc(person(row))+'</span><span class="state '+s.toLowerCase()+'">'+badgeIcon(s)+esc(s==='VERIFY'&&status(row)==='DONE'?'CHỜ NGHIỆM THU':LABELS[s]||s)+'</span></div>'
    +'<div class="work-hierarchy">'+esc(project)+' <span aria-hidden="true">›</span> '+esc(stream)+'</div>'+parentLine
    +'<div class="work-title">'+esc(title(row))+'</div>'
+   +(childGroup?'<div class="tiq-project-child-summary"><span>VIỆC CON: '+childGroup.done+'/'+childGroup.count+' đã nghiệm thu</span> <button type="button" class="tiq-project-children-toggle" aria-expanded="'+childrenExpanded+'">'+(childrenExpanded?'THU GỌN':'XEM '+childGroup.count+' VIỆC CON')+'</button></div>':'')
    +(summary?'<div class="work-quick '+(blocker?'blocked':'next')+'">'+(showNext?arrow:'')+'<span>'+esc(stripped)+'</span></div>':'')
    +(steps||bar?'<div class="work-progress-bottom">'+steps+bar+'</div>':'')
    +'<div class="tiq-work-times"><span>Bắt đầu: '+esc(started)+'</span><span>Kết thúc: '+esc(ended)+'</span></div></div>';
   const open=()=>{if(typeof opt.onOpen==='function')opt.onOpen(row,el);else openModal(row,opt)};
+  const toggle=el.querySelector('.tiq-project-children-toggle');
+  if(toggle)toggle.addEventListener('click',event=>{event.stopPropagation();if(expandedProjectParents.has(number))expandedProjectParents.delete(number);else expandedProjectParents.add(number);renderCards(container,data,opt)});
   el.addEventListener('click',open);el.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open()}});
   const original=container.querySelector('.work-row[data-work-number="'+number+'"]');
   if(original&&original.dataset.signature===signature){fragment.push(original);return;}
@@ -224,6 +246,6 @@ function mountFloatingReload(){
  if(!old)button.addEventListener('click',()=>root.location.reload());
  document.body.append(button);return button;
 }
-const API=Object.freeze({version:'1.0.0',status,viewStatus,completion,priority,title,person,progress,rowsFor,renderCards,renderAudit,openModal,mountFloatingReload,fmt});
+const API=Object.freeze({version:'1.0.0',visibleProjectRows,status,viewStatus,completion,priority,title,person,progress,rowsFor,renderCards,renderAudit,openModal,mountFloatingReload,fmt});
 root.TigerIQWorkCenter=API;
 })(typeof window==='undefined'?globalThis:window);
