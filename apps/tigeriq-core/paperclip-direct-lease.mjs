@@ -78,9 +78,14 @@ export async function executeFencedPaperclipBrokerInstall({
     }
   } catch (error) {
     // Never forward raw lease exceptions, which may include a fencing token.
-    failure = error instanceof Error && /^PAPERCLIP_CORE_DIRECT_|^NV06_SHARED_LEASE_|^NATIVE_BROKER_INSTALL_NOT_ACCEPTED$/.test(error.message)
-      ? error.message
-      : 'NV06_INSTALL_OR_LEASE_ERROR';
+    const safeReasons = new Set([
+      'NV06_SHARED_LEASE_BUSY',
+      'NV06_SHARED_LEASE_INVALID',
+      'NV06_SHARED_LEASE_NOT_FENCED',
+      'NV06_SHARED_LEASE_LOST',
+      'NATIVE_BROKER_INSTALL_NOT_ACCEPTED',
+    ]);
+    failure = safeReasons.has(error?.message) ? error.message : 'NV06_INSTALL_OR_LEASE_ERROR';
   } finally {
     if (timer) clearInterval(timer);
     if (lease?.lease_token) {
