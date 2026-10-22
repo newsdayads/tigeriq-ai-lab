@@ -3,7 +3,7 @@ import { paperclipBrokerHeartbeatProvenancePresent } from '../apps/openclaw-tige
 
 // Pure R07 readiness regression: no Windows, Docker, broker or device mutation.
 describe('GH-2054 Paperclip broker heartbeat provenance', () => {
-  const valid = () => ({ pid: 9044, sourceSha256: 'a'.repeat(64) });
+  const valid = () => ({ pid: 9044, sessionId: 2, wslKeepalivePid: 9077, sourceSha256: 'a'.repeat(64) });
 
   it('accepts well-formed running-process evidence with a lowercase SHA-256', () => {
     expect(paperclipBrokerHeartbeatProvenancePresent(valid())).toBe(true);
@@ -13,6 +13,17 @@ describe('GH-2054 Paperclip broker heartbeat provenance', () => {
     for (const pid of [undefined, null, 0, -5, '9044', 4.5, Infinity, NaN]) {
       expect(paperclipBrokerHeartbeatProvenancePresent({ ...valid(), pid })).toBe(false);
     }
+  });
+
+  it('rejects coerced, missing and invalid Windows session and WSL keepalive PIDs', () => {
+    const invalid = [undefined, null, 0, -2, '2', '9077', 1.5, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1];
+    for (const field of ['sessionId', 'wslKeepalivePid']) {
+      for (const value of invalid) {
+        expect(paperclipBrokerHeartbeatProvenancePresent({ ...valid(), [field]: value }),
+          field + ':' + String(value)).toBe(false);
+      }
+    }
+    expect(paperclipBrokerHeartbeatProvenancePresent(valid())).toBe(true);
   });
 
   it('rejects absent, truncated or non-hexadecimal source provenance', () => {
