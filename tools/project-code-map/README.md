@@ -51,3 +51,17 @@ Mở `code-map.html` bằng Chrome/Edge: tìm kiếm theo tên tệp, bật lọ
 Bộ kiểm thử UI có trong `tests/e2e/project-code-map-offline.spec.ts`, chạy bằng `npm run test:e2e` (Chrome). GitHub Actions xuất cả `tigeriq-code-map.json` lẫn `tigeriq-code-map.html` từ cùng một revision thực; giải nén và mở HTML trực tiếp.
 
 Đây là bản đồ module dựa trên biểu thức import có tên cố định, không phải trình phân tích phụ thuộc toàn diện. Đường dẫn import khác thường, alias TypeScript và dynamic import dùng biến có thể không phân giải được; UI phân biệt rõ module nội bộ và module ngoài/chưa phân giải.
+
+## Tra cứu tên ký hiệu được xuất (chỉ đường dẫn mã nguồn)
+
+Tìm chính xác ký hiệu đã được bộ quét nhận diện mà không xuất mã nguồn hoặc toàn bộ đồ thị:
+
+```bash
+TIGERIQ_SOURCE_SHA=<40-hex-commit-sha> node tools/project-code-map/cli.mjs \
+  --root . --symbol scanProject --expect-sha <40-hex-commit-sha> \
+  --output code-map-symbol.json
+```
+
+Kết quả chứa `symbol`, `matches[].sourceRef` là đường dẫn tương đối first-party sắp xếp ổn định, `sourceRevision` và `revisionChecked`. Tên không tồn tại bị từ chối; `--symbol` không thể dùng cùng `--query` hoặc `--html`. `--expect-sha` từ chối metadata SHA thiếu hoặc không khớp. Ký hiệu chỉ được nhận nếu `scanner.mjs` nhận diện trực tiếp (không suy diễn tên tái xuất, alias, biến động hoặc phân tích cú pháp đầy đủ).
+
+GitHub Actions chạy truy vấn `scanProject` trên đúng checkout SHA, kiểm tra đường dẫn thật, đo kích thước JSON đầy đủ so với kết quả chọn lọc và xuất `tigeriq-code-map-symbol.json` cùng báo cáo hiện có. Đây là xác minh nguồn GitHub, không phải bằng chứng cài PC01.
