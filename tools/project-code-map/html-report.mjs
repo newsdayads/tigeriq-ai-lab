@@ -137,5 +137,5 @@ export function buildHtmlReport(report) {
     .replace(/</g, "\\u003c")
     .replace(/>/g, "\\u003e")
     .replace(/&/g, "\\u0026");
-  return TEMPLATE.replace("__TIGERIQ_REPORT_PAYLOAD__", safeData);
+  return TEMPLATE.replace("__TIGERIQ_REPORT_PAYLOAD__", () => safeData);
 }
