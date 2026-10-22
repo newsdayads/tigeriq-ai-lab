@@ -142,7 +142,7 @@ function renderCards(container,rows,options){
   el.style.setProperty('--status-color',COLORS[s]||COLORS.UNKNOWN);el.setAttribute('data-work-number',txt(number));el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label','Mở chi tiết công việc '+number+' '+title(row));
   const project=txt(row.projectName||'Chưa phân dự án'),stream=txt(row.workstreamName||row.workPackageName||'Chưa phân nhánh');
   const truth=row.liveTruth&&typeof row.liveTruth==='object'?row.liveTruth:null;
-  const rawBlocker=txt(truth?.blocker||row.blocker||row.waitReason||'').trim();
+  const rawBlocker=childGroup?'':txt(truth?.blocker||row.blocker||row.waitReason||'').trim(); // A non-dispatched project summary is not a failed execution job.
    const blocker=/^(?:none|no(?:ne)?|null|undefined|không(?: có)?|khong(?: co)?|n\/?a|[-—–])$/i.test(rawBlocker)?'':rawBlocker;
   const summary=blocker?'Bị chặn: '+blocker:txt(truth?.next||row.nextStep||row.currentStep||'').trim();
   const count=Number(row.progressTotal),done=Number(row.progressDone);
