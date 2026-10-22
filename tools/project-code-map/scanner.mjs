@@ -79,9 +79,14 @@ export async function scanProject(root) {
         const code = await fs.readFile(full, 'utf8');
         const { sanitized, quotedOffsets } = maskNonCodeImports(code);
         fileMap.set(full, code);
-        const imports = [...sanitized.matchAll(/import\s+(?:[^'\"]+?\s+from\s+)?['\"]([^'\"]+)['\"]/g)]
+        // Keep literal dynamic import() edges; never infer computed specifiers.
+        // The sanitizer removes comments and identifies fake calls inside strings.
+        const staticImports = [...sanitized.matchAll(/import\s+(?:[^'\"]+?\s+from\s+)?['\"]([^'\"]+)['\"]/g)];
+        const dynamicImports = [...sanitized.matchAll(/(?<![.\w$])import\s*\(\s*(['\"])([^'\"]+)\1\s*\)/g)];
+        const imports = [...staticImports, ...dynamicImports]
           .filter(m => !quotedOffsets.has(m.index))
-          .map(m => m[1]);
+          .sort((a, b) => a.index - b.index)
+          .map(m => m[2] ?? m[1]);
         const exports = [...sanitized.matchAll(/export\s+(?:default\s+)?(?:class|function|const|let|var)?\s*([A-Za-z0-9_$]*)/g)]
           .filter(m => !quotedOffsets.has(m.index))
           .map(m => m[1] || 'default');
