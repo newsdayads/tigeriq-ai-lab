@@ -88,7 +88,12 @@ export async function scanProject(root) {
         const reExports = [...sanitized.matchAll(
           /(?<![.\w$])export\s+(?:type\s+)?(?:\*\s*(?:as\s+[A-Za-z_$][\w$]*\s*)?|\{[^}]*\}\s*)from\s*(['"])([^'"]+)\1/g
         )];
-        const imports = [...staticImports, ...dynamicImports, ...reExports]
+        // CommonJS requires are dependencies only when the specifier is a
+        // literal; do not infer computed/member calls or strings/comments.
+        const commonJsRequires = [...sanitized.matchAll(
+          /(?<![.\w$])require\s*\(\s*(['"])([^'"]+)\1\s*\)/g
+        )];
+        const imports = [...staticImports, ...dynamicImports, ...reExports, ...commonJsRequires]
           .filter(m => !quotedOffsets.has(m.index))
           .sort((a, b) => a.index - b.index)
           .map(m => m[2] ?? m[1]);

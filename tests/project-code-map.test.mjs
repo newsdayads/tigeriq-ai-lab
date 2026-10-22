@@ -173,5 +173,39 @@ async function withTempProject(structure, fn) {
     ]);
   });
 
+
+  // CommonJS literal require() is a graph dependency; do not misinterpret
+  // a variable, member method, string, template or comment as a real edge.
+  await withTempProject({
+    'entry.cjs': [
+      "const fs = require('node:fs');",
+      'const lib = require("./local.cjs");',
+      "const lazy = require ( /* inline comment */ './lazy.cjs' );",
+      'const computed = require(dynamicName);',
+      "const member = pkg.require('./fake-member.cjs');",
+      "const prefixed = myrequire('./fake-prefix.cjs');",
+      "const resolved = require.resolve('./fake-resolve.cjs');",
+      "const quoted = \"require('./fake-quoted.cjs')\";",
+      'const template = `require("./fake-template.cjs")`;',
+      "// require('./fake-comment.cjs');",
+      "/* require('./fake-block.cjs'); */",
+    ].join('\n'),
+    'local.cjs': 'module.exports = { local: true };',
+    'lazy.cjs': 'module.exports = { lazy: true };',
+    'dist/ignored.cjs': "require('./generated-phantom.cjs');",
+    'node_modules/hidden.cjs': "require('./vendor-phantom.cjs');",
+  }, async (root) => {
+    const entry = path.join(root, 'entry.cjs');
+    const { importMap, fileMap } = await scanProject(root);
+    assert.deepStrictEqual(importMap.get(entry), [
+      'node:fs', './local.cjs', './lazy.cjs',
+    ]);
+    assert.equal(fileMap.size, 3, 'Excluded dependencies and generated files stay excluded');
+    const graph = await generateImportExportGraph(root);
+    assert.deepStrictEqual(graph.edges.filter(edge => edge.from === entry).map(edge => edge.to), [
+      'node:fs', './local.cjs', './lazy.cjs',
+    ]);
+  });
+
   console.log('All tests passed');
 })();
