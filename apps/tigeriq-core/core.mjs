@@ -1,4 +1,5 @@
 import { executeFencedPaperclipBrokerInstall, executeFencedPaperclipHealth } from './paperclip-direct-lease.mjs';
+import { readFencedPaperclipHealth } from '../openclaw-tigeriq-runtime/paperclip-lab.mjs';
 import {installedLabVersion} from './installed-lab-version.mjs';
 import { createServer } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
@@ -1762,7 +1763,12 @@ async function runDirectPcOperatorJob(j){
       })).receipt
     : action.action==='paperclip_lab_fenced_health'
       ? (await executeFencedPaperclipHealth({
-          job:j,db:pool,execute:executePcAction,
+          job:j,db:pool,
+          execute: async ({action:requested}) => {
+            if(requested!=='paperclip_lab_fenced_health')throw new Error('PAPERCLIP_FENCED_ACTION_INVALID');
+            const data=await readFencedPaperclipHealth();
+            return {ok:true,action:requested,target:'pc01-local',data};
+          },
           acquire:acquireSharedResourceLease,heartbeat:heartbeatSharedResourceLease,
           release:releaseSharedResourceLease,
         })).receipt
