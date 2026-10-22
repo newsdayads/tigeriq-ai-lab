@@ -18,8 +18,6 @@ export const PAPERCLIP_LAB_CONTAINER = 'tigeriq-paperclip-lab';
 export const PAPERCLIP_LAB_ACTIONS = Object.freeze([
   'paperclip_lab_preflight',
   'paperclip_lab_broker_install',
-  // Existing GH-2054 NV06 fenced scope only; unleased R01/R02 remain read-only.
-  'paperclip_lab_fenced_health',
   'paperclip_openai_device_auth_start',
   'paperclip_lab_install',
   'paperclip_lab_start',
@@ -1536,6 +1534,20 @@ async function health(signal = null, transport = null, options = {}) {
   };
   return state;
 }
+// Core-only bounded diagnostic. Not listed in PAPERCLIP_LAB_ACTIONS and never
+// available through generic tigeriq_pc / unauthenticated MCP R01/R02 tools.
+// Caller MUST own the atomic NV06 scope-fenced lease before invoking this.
+export async function readFencedPaperclipHealth(signal = null) {
+  throwIfAborted(signal);
+  const docker = await resolveDockerTransport(signal, { allowBrokerProbe: true });
+  if (!docker.kind) {
+    const [port, http] = await Promise.all([probePort(), httpHealth(signal)]);
+    return paperclipUnverifiedDockerHealth({ docker, port, http });
+  }
+  const data = await health(signal, docker.kind, { diagnostics: false });
+  return { ...data, docker: { transport: docker.kind, version: docker.version } };
+}
+
 export async function executePaperclipLabAction(input = {}, options = {}) {
   const signal = options?.signal || null;
   throwIfAborted(signal);
@@ -1545,19 +1557,6 @@ export async function executePaperclipLabAction(input = {}, options = {}) {
   let data;
   if (action === 'paperclip_lab_preflight') data = await preflight(signal);
   else if (action === 'paperclip_lab_broker_install') data = await installInteractiveWslBroker(signal);
-  else if (action === 'paperclip_lab_fenced_health') {
-    // Only Core's owner-scoped native NV06 lease may invoke this bounded action.
-    // The broker request file is a write, unlike the deliberately unleased
-    // paperclip_lab_health diagnostic. Docker commands remain fixed read probes.
-    const docker = await resolveDockerTransport(signal, { allowBrokerProbe: true });
-    if (!docker.kind) {
-      const [port, http] = await Promise.all([probePort(), httpHealth(signal)]);
-      data = paperclipUnverifiedDockerHealth({ docker, port, http });
-    } else {
-      data = await health(signal, docker.kind, { diagnostics: false });
-      data.docker = { transport: docker.kind, version: docker.version };
-    }
-  }
   else if (action === 'paperclip_openai_device_auth_start') data = await startOpenAiDeviceAuth(request.sessionId, signal);
   else if (action === 'paperclip_lab_install') data = await install(signal);
   else if (action === 'paperclip_lab_start') data = await start(signal);
