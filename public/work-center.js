@@ -77,31 +77,32 @@ function sortOpen(rows,mode){
 function rowsFor(data,filter,closedOrder,openOrder){
  const o=Array.isArray(data&&data.openWork)?data.openWork:[].concat(data&&data.activeWork||[],data&&data.nextQueue||[]);
  const done=Array.isArray(data&&data.recentWork)?data.recentWork:[];
- const work=x=>x&&x.workKind==='WORK'&&status(x)!=='SYSTEM';
- const ready=x=>['OPEN','WAITING','QUEUED'].includes(status(x))&&(status(x)==='QUEUED'||x.executionEligibility==='READY');
+ const work=x=>x&&x.workKind==='WORK'&&effective(x)!=='SYSTEM';
+ const ready=x=>['OPEN','WAITING','QUEUED'].includes(effective(x))&&(effective(x)==='QUEUED'||x.executionEligibility==='READY');
+ const effective=x=>viewStatus(x);
  const f=filter||'action';
- const ended=done.filter(x=>work(x)&&(completion(x)||status(x)==='CLOSED_UNVERIFIED'));
+ const ended=done.filter(x=>work(x)&&(completion(x)||effective(x)==='CLOSED_UNVERIFIED'));
  if(f==='all'){
   const seen=new Set(o.filter(work).map(x=>Number(x.number)).filter(n=>Number.isInteger(n)&&n>0));
   return o.filter(work).concat(sortClosed(ended.filter(x=>!seen.has(Number(x.number))),'finished'));
  }
- if(f==='working')return o.filter(x=>work(x)&&status(x)==='WORKING'&&x.activeLease===true&&x.heartbeatFresh===true);
- if(f==='waitblocked')return o.filter(x=>work(x)&&['WAITING','BLOCKED','OWNER_GATE','REVIEW','VERIFY','PAUSED'].includes(status(x))&&!(status(x)==='WAITING'&&x.executionEligibility==='READY'));
+ if(f==='working')return o.filter(x=>work(x)&&effective(x)==='WORKING'&&x.activeLease===true&&x.heartbeatFresh===true);
+ if(f==='waitblocked')return o.filter(x=>work(x)&&['WAITING','BLOCKED','OWNER_GATE','REVIEW','VERIFY','PAUSED'].includes(effective(x))&&!(effective(x)==='WAITING'&&x.executionEligibility==='READY'));
  if(f==='closed')return sortClosed(ended,closedOrder);
  if(f==='done')return sortClosed(done.filter(completion),'finished');
- if(f==='archived')return sortClosed(done.filter(x=>status(x)==='CLOSED_UNVERIFIED'&&!completion(x)),'closed');
- if(f==='owner')return o.filter(x=>status(x)==='OWNER_GATE');
- if(f==='running')return o.filter(x=>status(x)==='WORKING'&&x.activeLease===true&&x.heartbeatFresh===true);
- if(f==='review')return o.filter(x=>['REVIEW','VERIFY'].includes(status(x)));
- if(f==='verify')return o.filter(x=>status(x)==='VERIFY');
+ if(f==='archived')return sortClosed(done.filter(x=>effective(x)==='CLOSED_UNVERIFIED'&&!completion(x)),'closed');
+ if(f==='owner')return o.filter(x=>effective(x)==='OWNER_GATE');
+ if(f==='running')return o.filter(x=>effective(x)==='WORKING'&&x.activeLease===true&&x.heartbeatFresh===true);
+ if(f==='review')return o.filter(x=>['REVIEW','VERIFY'].includes(effective(x)));
+ if(f==='verify')return o.filter(x=>effective(x)==='VERIFY');
  if(f==='ready')return o.filter(x=>work(x)&&ready(x));
- if(f==='waiting')return o.filter(x=>status(x)==='WAITING'&&!ready(x));
- if(f==='waitgroup')return o.filter(x=>status(x)==='OWNER_GATE'||status(x)==='WAITING'&&!ready(x));
- if(f==='blocked')return o.filter(x=>status(x)==='BLOCKED');
- if(f==='paused')return o.filter(x=>status(x)==='PAUSED');
- if(f==='unstarted')return o.filter(x=>work(x)&&status(x)==='OPEN'&&!ready(x));
- if(f==='system')return o.filter(x=>x.workKind==='SYSTEM'||status(x)==='SYSTEM');
- if(f==='goal')return o.filter(x=>x.workKind==='GOAL'||status(x)==='GOAL');
+ if(f==='waiting')return o.filter(x=>effective(x)==='WAITING'&&!ready(x));
+ if(f==='waitgroup')return o.filter(x=>effective(x)==='OWNER_GATE'||effective(x)==='WAITING'&&!ready(x));
+ if(f==='blocked')return o.filter(x=>effective(x)==='BLOCKED');
+ if(f==='paused')return o.filter(x=>effective(x)==='PAUSED');
+ if(f==='unstarted')return o.filter(x=>work(x)&&effective(x)==='OPEN'&&!ready(x));
+ if(f==='system')return o.filter(x=>x.workKind==='SYSTEM'||effective(x)==='SYSTEM');
+ if(f==='goal')return o.filter(x=>x.workKind==='GOAL'||effective(x)==='GOAL');
  return sortOpen(o.filter(work),openOrder);
 }
 function badgeIcon(s){
