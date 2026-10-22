@@ -7,12 +7,13 @@ import { buildHtmlReport } from './html-report.mjs';
 
 const USAGE = [
   'TigerIQ Project Code Map (Node >=20)',
-  'Usage: node tools/project-code-map/cli.mjs [--root DIR] [--output FILE] [--html FILE] [--query PATH] [--expect-sha SHA]',
+  'Usage: node tools/project-code-map/cli.mjs [--root DIR] [--output FILE] [--html FILE] [--query PATH] [--symbol IDENTIFIER] [--expect-sha SHA]',
   '  --root DIR     Folder to scan (default: current working directory)',
   '  --output FILE  Write UTF-8 JSON; without it, emit JSON to stdout',
   '  --html FILE    Generate an offline interactive HTML explorer',
   '  --query PATH   Emit only a selected repository-relative module and its dependency neighborhood',
-  '  --expect-sha SHA  Fail closed if source revision differs (query mode only)',
+  '  --symbol IDENTIFIER  Look up exact exported symbol in first-party source files',
+  '  --expect-sha SHA  Fail closed if source revision differs (query/symbol modes)',
   '  --help         Show this help',
 ].join('\n');
 
@@ -21,24 +22,28 @@ function optionsFromArgs(args) {
   let output = null;
   let html = null;
   let query = null;
+  let symbol = null;
   let expectedSha = null;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--help' || arg === '-h') return { help: true };
-    if (arg !== '--root' && arg !== '--output' && arg !== '--html' && arg !== '--query' && arg !== '--expect-sha') throw new Error('Unknown option: ' + arg);
+    if (arg !== '--root' && arg !== '--output' && arg !== '--html' && arg !== '--query' && arg !== '--symbol' && arg !== '--expect-sha') throw new Error('Unknown option: ' + arg);
     const value = args[++i];
     if (!value || value.startsWith('--')) throw new Error('Missing value for ' + arg);
     if (arg === '--root') root = value;
     else if (arg === '--output') output = value;
     else if (arg === '--html') html = value;
     else if (arg === '--query') query = value;
+    else if (arg === '--symbol') symbol = value;
     else expectedSha = value;
   }
-  if (query && html) throw new Error('Cannot combine --query with --html');
-  if (expectedSha && !query) throw new Error('--expect-sha requires --query');
+  if (symbol && !/^[A-Za-z_$][\w$]*$/.test(symbol)) throw new Error('Invalid --symbol identifier');
+  if (query && symbol) throw new Error('Cannot combine --query with --symbol');
+  if ((query || symbol) && html) throw new Error('Cannot combine --query/--symbol with --html');
+  if (expectedSha && !query && !symbol) throw new Error('--expect-sha requires --query or --symbol');
   if (expectedSha && !/^[0-9a-f]{40}$/i.test(expectedSha)) throw new Error('Invalid --expect-sha (requires 40 hex characters)');
   return { root: path.resolve(root), output: output ? path.resolve(output) : null,
-    html: html ? path.resolve(html) : null, query, expectedSha };
+    html: html ? path.resolve(html) : null, query, symbol, expectedSha };
 }
 
 function relativeUnix(root, filename) {
@@ -120,6 +125,29 @@ export function queryCodeMap(report, modulePath, expectedSha = null) {
   };
 }
 
+export async function queryExportedSymbol(root, symbol, expectedSha = null) {
+  const sourceRevision = process.env.TIGERIQ_SOURCE_SHA || null;
+  if (expectedSha !== null && (!sourceRevision || sourceRevision !== expectedSha)) {
+    throw new Error('CODE_MAP_STALE_REVISION: expected ' + expectedSha +
+      ', actual ' + (sourceRevision || 'UNKNOWN'));
+  }
+  // Reuse the scanner's existing static exportMap. We do not infer re-exported
+  // names, dynamically-created exports, aliases, or types it cannot parse.
+  const { exportMap } = await scanProject(root);
+  const matches = [...exportMap]
+    .filter(([, exported]) => exported.includes(symbol))
+    .map(([file]) => relativeUnix(root, file))
+    .sort();
+  if (!matches.length) throw new Error('CODE_MAP_SYMBOL_NOT_FOUND: ' + symbol);
+  return {
+    schemaVersion: 1,
+    sourceRevision,
+    revisionChecked: expectedSha !== null,
+    symbol,
+    matches: matches.map(sourceRef => ({ sourceRef })),
+  };
+}
+
 async function main() {
   let opts;
   try {
@@ -134,8 +162,9 @@ async function main() {
     return;
   }
   try {
-    const report = await buildCodeMap(opts.root);
-    const result = opts.query ? queryCodeMap(report, opts.query, opts.expectedSha) : report;
+    const report = opts.symbol ? null : await buildCodeMap(opts.root);
+    const result = opts.symbol ? await queryExportedSymbol(opts.root, opts.symbol, opts.expectedSha) :
+      opts.query ? queryCodeMap(report, opts.query, opts.expectedSha) : report;
     const json = JSON.stringify(result, null, 2) + '\n';
     if (opts.html) {
       await fs.mkdir(path.dirname(opts.html), { recursive: true });
@@ -145,7 +174,8 @@ async function main() {
     if (opts.output) {
       await fs.mkdir(path.dirname(opts.output), { recursive: true });
       await fs.writeFile(opts.output, json, 'utf8');
-      console.error((opts.query ? 'CODE_MAP_QUERY_OK module=' + opts.query :
+      console.error((opts.symbol ? 'CODE_MAP_SYMBOL_OK symbol=' + opts.symbol +
+        ' matches=' + result.matches.length : opts.query ? 'CODE_MAP_QUERY_OK module=' + opts.query :
         'CODE_MAP_OK files=' + report.summary.sourceFiles + ' edges=' + report.summary.dependencyEdges) +
         ' output=' + opts.output);
     } else {
