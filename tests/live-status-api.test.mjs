@@ -8,6 +8,7 @@ import {
   rankQueueRows,
   normalizeRuntimeWorkerActivity,
   parseIssueNumber,
+  pullWorkOrderNumber,
   parseQueueIssue,
   classifyOpenIssue,
   parseOpenWorkIssue,
@@ -79,6 +80,39 @@ describe('Canonical open work state vs. display labels', () => {
     });
     expect(row?.status).toBe('WAITING');
     expect(row?.activeLease).toBe(false);
+  });
+});
+
+describe('GH-5165: verified primary issue identity for open PRs', () => {
+  it('rejects an incidental reference from an unrelated P0 governance PR', () => {
+    const governance = {
+      title: '[P0][GOVERNANCE] Loại Trello hoàn toàn khỏi TigerIQ AI Lab',
+      body: 'Thẻ theo dõi tự kiểm tra Core: #5144. Quyết định cũ: #169.',
+      head: { ref: 'owner/remove-trello-project-20261022' },
+    };
+    expect(pullWorkOrderNumber(governance)).toBe(null);
+  });
+
+  it('keeps explicit source-work links but ignores secondary mentions', () => {
+    expect(pullWorkOrderNumber({
+      title: 'fix(core): correct PR association',
+      body: 'WORK_ORDER=GH-5165\\nBackground: see #5144 and #504.',
+      head: { ref: 'fix/no-number' },
+    })).toBe(5165);
+    expect(pullWorkOrderNumber({
+      title: '[ULTRACAR V2] Source-only parity',
+      body: 'Refs #5135 and #5129. Historic records are not primary ownership.',
+      head: { ref: 'ultracarhcm-v2-parity-20261022' },
+    })).toBe(5135);
+    expect(pullWorkOrderNumber({
+      title: 'fix(android): restore tree guard',
+      body: 'Fixes #3736.',
+    })).toBe(3736);
+    expect(pullWorkOrderNumber({
+      title: 'fix(android): temporal camera rule',
+      body: 'Some context: #504',
+      head: { ref: 'nv02/gh4625-g1-live-frame-temporal-order' },
+    })).toBe(4625);
   });
 });
 
