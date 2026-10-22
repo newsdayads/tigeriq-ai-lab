@@ -11,6 +11,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
+import android.provider.Settings
 import android.os.Looper
 import android.view.Gravity
 import android.view.View
@@ -47,6 +48,18 @@ class HomeActivity : Activity() {
         setContentView(root)
         root.post { render() }
         tickHandler.post(clockTick)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (DexUtils.isDesktop(this) && Settings.canDrawOverlays(this)) {
+            try {
+                startService(Intent(this, OverlayService::class.java)
+                    .putExtra("displayId", display?.displayId ?: 0))
+            } catch (t: Throwable) {
+                android.util.Log.e("UltraCarV2", "DeX floating Camera service start failed", t)
+            }
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -133,8 +146,7 @@ class HomeActivity : Activity() {
         place(label("Welcome back", 14f, 0xffdddddd.toInt()), .20f, .185f, .60f, .024f)
         place(label(name, 31f, Color.WHITE, true), .17f, .214f, .66f, .038f)
         button("⚑  RACING", .37f, .268f, .26f, .038f) {
-            prefs.edit().putBoolean("racing", !prefs.getBoolean("racing", true)).apply()
-            render()
+            toast("Chế độ RACING V2 chưa hoàn tất — đang giữ giao diện chuẩn")
         }
         clock = label("", 16f, Color.WHITE, true).apply {
             background = shape(0x800c1a22.toInt(), radius=8f)
@@ -156,16 +168,14 @@ class HomeActivity : Activity() {
         place(bottomShade, .028f, .855f, .944f, .087f)
         button("▣\nBố cục đã lưu", .045f, .863f, .29f, .065f, false) { showSaved() }
         button("+\nBố cục mới", .357f, .863f, .29f, .065f, false) {
-            val count = prefs.getInt("saved_count", 0) + 1
-            prefs.edit().putInt("saved_count", count).apply()
-            toast("Đã lưu bố cục thử nghiệm #$count (chưa tương đương bản gốc)")
+            toast("Chưa hỗ trợ tạo bố cục V2 — không ghi dữ liệu giả")
         }
         val bot = VideoView(this)
         bot.setVideoURI(Uri.parse("android.resource://$packageName/${R.raw.ultrabot_glow_packed}"))
         bot.setOnPreparedListener { mp -> mp.isLooping = true; mp.setVolume(0f, 0f); bot.start() }
         bot.setOnErrorListener { _, _, _ -> true }
         place(bot, .675f, .857f, .278f, .078f)
-        bot.setOnClickListener { toast("Ultrabot V2 đang được tích hợp; chưa tương đương bản gốc") }
+        bot.setOnClickListener { toast("Ultrabot V2 chưa tích hợp — không đổi nút này thành Camera") }
         val footer = label("UltraCarHCM V2 • DEVELOPMENT • CHƯA NGHIỆM THU", 9f, 0xffbbbbbb.toInt())
         place(footer, .02f, .954f, .96f, .018f)
     }
@@ -182,7 +192,8 @@ class HomeActivity : Activity() {
         val options = arrayOf(
             if (prefs.getBoolean("night", false)) "Nền ban ngày" else "Nền ban đêm",
             if (prefs.getBoolean("limo", false)) "Xe Lamborghini trắng" else "Xe Limo đỏ",
-            "Chẩn đoán V2 (Camera/DeX)",
+            "Camera USB thật (UVC Host)",
+            "Cấp quyền nút Camera nổi DeX",
             "Trạng thái tương đương APP gốc"
         )
         AlertDialog.Builder(this).setTitle("UltraCarHCM V2 — Bản xây dựng")
@@ -190,8 +201,20 @@ class HomeActivity : Activity() {
                 when(which) {
                     0 -> { prefs.edit().putBoolean("night", !prefs.getBoolean("night", false)).apply(); render() }
                     1 -> { prefs.edit().putBoolean("limo", !prefs.getBoolean("limo", false)).apply(); render() }
-                    2 -> startActivity(Intent(this, MainActivity::class.java))
-                    3 -> AlertDialog.Builder(this).setTitle("Chưa đạt V2")
+                    2 -> startActivity(Intent(this, UsbCameraActivity::class.java))
+                    3 -> {
+                        if (!Settings.canDrawOverlays(this)) {
+                            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:$packageName")))
+                        } else if (DexUtils.isDesktop(this)) {
+                            startService(Intent(this, OverlayService::class.java)
+                                .putExtra("displayId", display?.displayId ?: 0))
+                            toast("Đã gửi yêu cầu hiện Camera nổi trên DeX")
+                        } else {
+                            toast("S10 chưa kết nối màn hình DeX ngoài")
+                        }
+                    }
+                    4 -> AlertDialog.Builder(this).setTitle("Chưa đạt V2")
                         .setMessage("Mới tái dựng màn Home bằng tài nguyên gốc. USB UVC, DeX, các tab, bố cục thực và dữ liệu gốc chưa tương đương.")
                         .setPositiveButton("Đóng", null).show()
                 }
