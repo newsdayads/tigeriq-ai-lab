@@ -5,6 +5,7 @@ on:
     paths:
       - 'tools/project-code-map/**'
       - 'tests/project-code-map*.mjs'
+      - 'tests/e2e/project-code-map-offline.spec.ts'
       - 'package.json'
       - '.github/workflows/project-code-map-live.yml'
   push:
@@ -12,6 +13,7 @@ on:
     paths:
       - 'tools/project-code-map/**'
       - 'tests/project-code-map*.mjs'
+      - 'tests/e2e/project-code-map-offline.spec.ts'
       - 'package.json'
       - '.github/workflows/project-code-map-live.yml'
   workflow_dispatch:
