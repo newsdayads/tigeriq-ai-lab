@@ -971,10 +971,25 @@ export function runtimeWorkRows(workers = [], issues = []) {
   return rows;
 }
 
+// A PR may mention other Issues as background or context. That reference is
+// not evidence that the PR is implementing the mentioned Work Order. Bind at
+// most one primary issue using explicit title/branch/relationship metadata.
+export function pullWorkOrderNumber(pull = {}) {
+  const titleNumber = parseIssueNumber(pull?.title);
+  if (titleNumber) return titleNumber;
+
+  const branch = String(pull?.head?.ref || '');
+  const branchMatch = /(?:^|[\\/_-])(?:gh|issue|wo)[_-]?(\\d{2,6})(?!\\d)(?=$|[\\/_-])/i.exec(branch);
+  if (branchMatch) return Number(branchMatch[1]);
+
+  const body = String(pull?.body || '');
+  const explicit = body.match(/^\\s*(?:WORK_ORDER|CANONICAL_ISSUE|TARGET_ISSUE)\\s*[:=]\\s*(?:GH-|#)?(\\d{2,6})(?!\\d)/mi)
+    || body.match(/^\\s*(?:Fix(?:es|ed)?|Clos(?:e|es|ed)|Resolv(?:e|es|ed)|Refs?|Relates? to|Liên quan(?: đến)?)\\s+(?:GH-|#)(\\d{2,6})(?!\\d)/mi);
+  return explicit ? Number(explicit[1]) : null;
+}
+
 function pullMentionsIssue(pull, issueNumber) {
-  const n = String(issueNumber);
-  const text = [pull?.title, pull?.body, pull?.head?.ref].filter(Boolean).join('\n');
-  return new RegExp('(?:#|GH-|issue[-_/ ])' + n + '(?!\\d)', 'i').test(text);
+  return pullWorkOrderNumber(pull) === Number(issueNumber);
 }
 
 function summarizeChecks(runs, pull) {
@@ -1920,7 +1935,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     }
 
     for (const pull of openPulls) {
-      const issueNumber = parseIssueNumber(pull?.body, pull?.title, pull?.head?.ref);
+      const issueNumber = pullWorkOrderNumber(pull);
       if (!issueNumber || activeNumbers.has(issueNumber)) continue;
       const issue = await githubIssue(owner, repo, issueNumber, issueMap, fetchImpl);
       if (!issue || issue.pull_request || issue.state !== 'open' || issueIsTerminal(issue)) continue;
