@@ -1,3 +1,4 @@
+import { executeFencedPaperclipBrokerInstall } from './paperclip-direct-lease.mjs';
 import {installedLabVersion} from './installed-lab-version.mjs';
 import { createServer } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
@@ -58,7 +59,7 @@ import { executePcAction } from '../openclaw-tigeriq-runtime/operator.mjs';
 import { createMobileWorkerApi, initMobileWorkerTables } from './mobile-worker-api.mjs';
 import { projectMobileWorkerPresence } from './mobile-workforce-presence.mjs';
 import { createCodingCoreHealthSnapshot } from './coding-health-api.mjs';
-import {acquireSharedResourceLease,activeSharedResourceLeases,ensureSharedResourceLeaseTable,indexSharedResourceLeases,recoverExpiredSharedResourceLeases,releaseSharedResourceLease} from './shared-resource-lease.mjs';
+import {acquireSharedResourceLease,activeSharedResourceLeases,ensureSharedResourceLeaseTable,indexSharedResourceLeases,recoverExpiredSharedResourceLeases,releaseSharedResourceLease,heartbeatSharedResourceLease} from './shared-resource-lease.mjs';
 import {projectPublicSharedLeases} from './public-shared-lease-projection.mjs';
 import { ensureNv07CanaryReservationIndex } from './nv07-canary-reservation.mjs';
 import { ensureNv07CanaryReceiptIndex } from './nv07-canary-receipt.mjs';
@@ -1751,7 +1752,15 @@ async function runDirectPcOperatorJob(j){
   const idempotencyKey=`pc-direct:${String(j.objective_id)}:${String(j.id)}:${createHash('sha256').update(JSON.stringify(action)).digest('hex').slice(0,16)}`;
   await pool.query("update tigeriq_jobs set attempts=attempts+1,provider='local-direct',routing_profile='PC_OPERATOR_DIRECT',routing_decision=$2 where id=$1",[j.id,JSON.stringify({profile:'PC_OPERATOR_DIRECT',executionSurface:'PC_OPERATOR_DIRECT_LOCAL',idempotencyKey,action:action.action})]);
   await event('PC_OPERATOR_DIRECT_ADMITTED',{jobId:j.id,objectiveId:j.objective_id,taskKind:'pc_operator',idempotencyKey,action:action.action});
-  const receipt=await executePcAction(action);
+  // Paperclip R07 is a state-changing PC01 operation. Core direct actions
+  // must not evade the atomic NV06 fence enforced by the MCP mutation route.
+  const receipt=action.action==='paperclip_lab_broker_install'
+    ? (await executeFencedPaperclipBrokerInstall({
+        job:j,db:pool,execute:executePcAction,
+        acquire:acquireSharedResourceLease,heartbeat:heartbeatSharedResourceLease,
+        release:releaseSharedResourceLease,
+      })).receipt
+    : await executePcAction(action);
   const result={ok:true,provider:'local-direct',executionSurface:'PC_OPERATOR_DIRECT_LOCAL',idempotencyKey,evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:receipt}]}};
   await hotPathStage(j,'EVIDENCE',{provider:'local-direct',executionSurface:'PC_OPERATOR_DIRECT_LOCAL',idempotencyKey});
   await pool.query("update tigeriq_jobs set status='done',employee_id=null,resource_id=null,provider='local-direct',routing_profile='PC_OPERATOR_DIRECT',result=$2,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,JSON.stringify(result)]);
