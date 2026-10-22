@@ -1,6 +1,6 @@
 import { describe,it,expect,vi } from 'vitest';
 import {readFileSync} from 'node:fs';
-import { PAPERCLIP_LAB_ACTIONS,assertPaperclipLabRequest } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
+import { PAPERCLIP_LAB_ACTIONS,assertPaperclipLabRequest,readFencedPaperclipHealth } from '../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs';
 import {
   PAPERCLIP_DIRECT_SCOPE,PAPERCLIP_NV06_RESOURCE,
   paperclipFencedHealthNativeAccepted,executeFencedPaperclipHealth,
@@ -32,10 +32,11 @@ describe('GH-2054: fenced Docker/PostgreSQL native proof',()=>{
   it('never allows the existing unleased health tool to write broker requests',()=>{
     const src=readFileSync(new URL('../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs',import.meta.url),'utf8');
     expect(src).toContain('resolveDockerTransport(signal, { allowBrokerProbe: false })');
-    expect(src).toContain("else if (action === 'paperclip_lab_fenced_health')");
+    expect(src).toContain('export async function readFencedPaperclipHealth(signal = null)');
     expect(src).toContain('resolveDockerTransport(signal, { allowBrokerProbe: true })');
-    expect(PAPERCLIP_LAB_ACTIONS).toContain('paperclip_lab_fenced_health');
-    expect(assertPaperclipLabRequest({action:'paperclip_lab_fenced_health'})).toEqual({action:'paperclip_lab_fenced_health'});
+    expect(PAPERCLIP_LAB_ACTIONS).not.toContain('paperclip_lab_fenced_health');
+    expect(() => assertPaperclipLabRequest({action:'paperclip_lab_fenced_health'})).toThrow('TIGERIQ_PAPERCLIP_LAB_ACTION_NOT_ALLOWED');
+    expect(readFencedPaperclipHealth).toBeTypeOf('function');
     expect(()=>assertPaperclipLabRequest({action:'paperclip_lab_fenced_health',path:'C:\\'})).toThrow();
   });
   it('Core typed dispatch reaches only the guarded owner-scoped lane',()=>{
@@ -43,6 +44,7 @@ describe('GH-2054: fenced Docker/PostgreSQL native proof',()=>{
     const intake=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
     expect(core).toContain("action.action==='paperclip_lab_fenced_health'");
     expect(core).toContain('executeFencedPaperclipHealth({');
+    expect(core).toContain('const data=await readFencedPaperclipHealth();');
     expect(core).toContain('acquire:acquireSharedResourceLease,heartbeat:heartbeatSharedResourceLease');
     expect(intake).toContain("'paperclip_lab_fenced_health'");
   });
@@ -67,7 +69,8 @@ describe('GH-2054: fenced Docker/PostgreSQL native proof',()=>{
       metadata:{workOrderId:2054,resourceScope:PAPERCLIP_DIRECT_SCOPE,action:'paperclip_lab_fenced_health',targetStepId:'R03'}
     });
     expect(h.heartbeat).toHaveBeenCalledTimes(2);
-    expect(h.execute).toHaveBeenCalledExactlyOnceWith({action:'paperclip_lab_fenced_health'});
+    expect(h.execute).toHaveBeenCalledOnce();
+    expect(h.execute).toHaveBeenCalledWith({action:'paperclip_lab_fenced_health'});
     expect(h.release).toHaveBeenCalledOnce();
     expect(JSON.stringify(r)).not.toContain('PRIVATE-TEST-FENCE');
   });
