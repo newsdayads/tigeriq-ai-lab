@@ -97,7 +97,11 @@ export async function scanProject(root) {
           .filter(m => !quotedOffsets.has(m.index))
           .sort((a, b) => a.index - b.index)
           .map(m => m[2] ?? m[1]);
-        const exports = [...sanitized.matchAll(/export\s+(?:default\s+)?(?:class|function|const|let|var)?\s*([A-Za-z0-9_$]*)/g)]
+        // Modifiers and TS declaration keywords are not exported symbol names.
+        // Recognize async/generator functions and interface/type/enum declarations.
+        const exports = [...sanitized.matchAll(
+          /export\s+(?:default\s+)?(?:(?:declare|abstract|async|type|interface|enum|namespace)\s+)*(?:class|function\s*\*?|const|let|var)?\s*([A-Za-z0-9_$]*)/g
+        )]
           .filter(m => !quotedOffsets.has(m.index)
             && !/^(?:type\s+)?(?:\*|\{)/.test(sanitized.slice(m.index + 6).trimStart()))
           .map(m => m[1] || 'default');
