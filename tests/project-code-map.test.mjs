@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { generateFileModuleMap, generateImportExportGraph } from '../tools/project-code-map/index.mjs';
+import { scanProject } from '../tools/project-code-map/scanner.mjs';
 
 async function withTempProject(structure, fn) {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'proj-'));
@@ -29,14 +30,32 @@ async function withTempProject(structure, fn) {
     return { map, graph };
   });
 
-  // Verify file map contains both files
   const mapKeys = Object.keys(result.map);
   assert.ok(mapKeys.some(p => p.endsWith('a.js')));
   assert.ok(mapKeys.some(p => p.endsWith('b.js')));
 
-  // Verify import edge from a.js to b.js exists
   const edge = result.graph.edges.find(e => e.from.endsWith('a.js') && e.to.endsWith('b.js'));
   assert.ok(edge, 'Import edge from a.js to b.js should exist');
+
+  // A code map must not invent dependencies for comments or string literals.
+  await withTempProject({
+    'main.mjs': [
+      '// import missing from "./phantom-line.mjs";',
+      '/* import missing from "./phantom-block.mjs"; export const phantom = true; */',
+      'const url = "https://example.org/page";',
+      'const quoted = "import fake from \'./phantom-string.mjs\'; export const fake = true";',
+      'const template = `import fake from "./phantom-template.mjs"`;',
+      'import { real } from "./real.mjs";',
+      'export const visible = real;',
+    ].join('\n'),
+    'real.mjs': 'export const real = true;',
+  }, async (root) => {
+    const { importMap, exportMap } = await scanProject(root);
+    assert.deepStrictEqual(importMap.get(path.join(root, 'main.mjs')), ['./real.mjs']);
+    assert.deepStrictEqual(exportMap.get(path.join(root, 'main.mjs')), ['visible']);
+    const graph = await generateImportExportGraph(root);
+    assert.deepStrictEqual(graph.edges.filter(e => e.from === path.join(root, 'main.mjs')).map(e => e.to), ['./real.mjs']);
+  });
 
   console.log('All tests passed');
 })();
