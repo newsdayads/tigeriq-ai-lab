@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildHtmlReport } from '../../tools/project-code-map/html-report.mjs';
 
 test.use({ channel: 'chrome' });
@@ -80,5 +81,55 @@ test('offline viewer navigates extensionless JS/TS modules and their reverse dep
     await expect(page.getByRole('button', { name: './missing', exact: true })).toHaveCount(0);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+
+test('real repository CLI HTML opens as file URL and navigates live source edges', async ({ page }) => {
+  const root = fileURLToPath(new URL('../../', import.meta.url));
+  const cli = fileURLToPath(new URL('../../tools/project-code-map/cli.mjs', import.meta.url));
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'tigeriq-code-map-file-url-'));
+  const htmlFile = path.join(temp, 'real-code-map.html');
+  const jsonFile = path.join(temp, 'real-code-map.json');
+  const pageErrors: string[] = [];
+  const externalRequests: string[] = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
+  page.on('request', request => {
+    if (/^https?:/.test(request.url())) externalRequests.push(request.url());
+  });
+
+  try {
+    // This must use the CLI output from the real checkout, not a small HTML fixture.
+    const run = spawnSync(process.execPath,
+      [cli, '--root', root, '--output', jsonFile, '--html', htmlFile],
+      { encoding: 'utf8', timeout: 60000 });
+    expect(run.status, run.stderr).toBe(0);
+    expect(run.stderr).toContain('CODE_MAP_HTML_OK');
+
+    // Unlike page.setContent(), navigation actually exercises browser file:// policy.
+    await page.goto(pathToFileURL(htmlFile).href);
+    expect(page.url()).toMatch(/^file:\/\//);
+    await expect(page.locator('#file-stat')).not.toHaveText('');
+    await expect(page.locator('#edge-stat')).not.toHaveText('');
+    await page.getByRole('searchbox', { name: 'Tìm module' })
+      .fill('tools/project-code-map/cli.mjs');
+    await page.locator('#module-list')
+      .getByRole('button', { name: 'tools/project-code-map/cli.mjs', exact: true })
+      .click();
+    await expect(page.locator('#focus-title'))
+      .toHaveText('tools/project-code-map/cli.mjs');
+
+    // The real source imports this real module. Check forward and reverse navigation.
+    await page.locator('#details')
+      .getByRole('button', { name: './scanner.mjs', exact: true })
+      .click();
+    await expect(page.locator('#focus-title'))
+      .toHaveText('tools/project-code-map/scanner.mjs');
+    await expect(page.getByRole('heading',
+      { name: /Tệp đang phụ thuộc vào tệp này/ })).toBeVisible();
+    expect(pageErrors).toEqual([]);
+    expect(externalRequests).toEqual([]);
+  } finally {
+    await fs.rm(temp, { recursive: true, force: true });
   }
 });
