@@ -26,6 +26,24 @@ Kiểm thử offline:
 node --test tests/project-code-map-cli.test.mjs
 ```
 
+
+## Truy vấn module chọn lọc (không đọc lại toàn bộ bản đồ)
+
+Khi biết chính xác đường dẫn module tương đối từ root, chỉ lấy các import trực tiếp và các tệp nhập module đó:
+
+```bash
+TIGERIQ_SOURCE_SHA=<40-hex-commit-sha> node tools/project-code-map/cli.mjs \
+  --root . --query tools/project-code-map/cli.mjs \
+  --expect-sha <40-hex-commit-sha> \
+  --output code-map-query.json
+```
+
+Kết quả JSON: `sourceRef`, `sourceRevision`, `revisionChecked`, `outgoing` (specifier + resolvedTarget nếu phân giải được), `incoming` (đường dẫn tệp nguồn + specifier). Không chứa mã nguồn hoặc toàn bộ graph. Đường dẫn query phải khớp **chính xác** một node trong map. Alias/biến, import ngoài repo và đường dẫn vượt root **không** bị suy diễn thành liên kết nội bộ.
+
+`--expect-sha` bắt buộc định dạng SHA 40 ký tự và từ chối khi SHA mong đợi khác metadata `TIGERIQ_SOURCE_SHA` (hoặc metadata thiếu). Đây là phép kiểm tra revision do nguồn/build cung cấp, **không thay thế** xác minh Git checkout thực tế. GitHub Actions kiểm tra SHA checkout trước khi tạo bản đồ. Nếu không truyền `--expect-sha`, kết quả có `revisionChecked=false`, không tuyên bố map còn mới.
+
+GitHub workflow đo `full_bytes` và `query_bytes` cho module CLI trên chính repository, xuất thêm `tigeriq-code-map-query.json` bên cạnh JSON/HTML. Đây là truy vấn một-hop, không phải graph database, không thay thế GitHub main.
+
 ## Xem sơ đồ trực quan offline
 
 Mở `code-map.html` bằng Chrome/Edge: tìm kiếm theo tên tệp, bật lọc tệp có import, chạm tên tệp để xem import đi/đến. Phần mềm không cần máy chủ, CDN, token hay kết nối Internet; HTML chứa sơ đồ dưới dạng dữ liệu JSON inert đã escape, không chứa mã nguồn thực tế. Bấm tên module nội bộ để đi tiếp.

@@ -56,7 +56,10 @@ small,.muted{color:#617186;overflow-wrap:anywhere}
       else if (item && item !== ".") parts.push(item);
     }
     const base = parts.join("/");
-    for (const suffix of ["", ".js", ".mjs", ".cjs", ".ts", "/index.js", "/index.ts"]) {
+    // Keep extensionless relative imports navigable for every JS/TS module
+    // extension that scanProject indexes, including directory index modules.
+    const extensions = [".js", ".mjs", ".cjs", ".ts", ".jsx", ".tsx", ".mts", ".cts"];
+    for (const suffix of ["", ...extensions, ...extensions.map(ext => "/index" + ext)]) {
       if (nodeSet.has(base + suffix)) return base + suffix;
     }
     return null;

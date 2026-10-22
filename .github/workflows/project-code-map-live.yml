@@ -5,6 +5,7 @@ on:
     paths:
       - 'tools/project-code-map/**'
       - 'tests/project-code-map*.mjs'
+      - 'tests/e2e/project-code-map-offline.spec.ts'
       - 'package.json'
       - '.github/workflows/project-code-map-live.yml'
   push:
@@ -12,6 +13,7 @@ on:
     paths:
       - 'tools/project-code-map/**'
       - 'tests/project-code-map*.mjs'
+      - 'tests/e2e/project-code-map-offline.spec.ts'
       - 'package.json'
       - '.github/workflows/project-code-map-live.yml'
   workflow_dispatch:
@@ -58,6 +60,35 @@ jobs:
           console.log('REAL_REPO_CODE_MAP_PASS source_sha=' + doc.sourceRevision +
             ' files=' + doc.summary.sourceFiles + ' edges=' + doc.summary.dependencyEdges);
           NODE
+      - name: Verify targeted query on real repository and benchmark output bytes
+        env:
+          TIGERIQ_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          REPORT: ${{ runner.temp }}/tigeriq-code-map.json
+          TARGETED_REPORT: ${{ runner.temp }}/tigeriq-code-map-query.json
+        run: |
+          node tools/project-code-map/cli.mjs --root . --query tools/project-code-map/cli.mjs --expect-sha "$TIGERIQ_SOURCE_SHA" --output "$TARGETED_REPORT"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const full = JSON.parse(readFileSync(process.env.REPORT, 'utf8'));
+          const targeted = JSON.parse(readFileSync(process.env.TARGETED_REPORT, 'utf8'));
+          if (targeted.sourceRevision !== process.env.TIGERIQ_SOURCE_SHA ||
+              !targeted.revisionChecked) throw Error('CODE_MAP_QUERY_FRESHNESS_NOT_CHECKED');
+          if (targeted.sourceRef !== 'tools/project-code-map/cli.mjs' ||
+              !targeted.outgoing.some(e =>
+                e.specifier === './scanner.mjs' && e.resolvedTarget === 'tools/project-code-map/scanner.mjs')) {
+            throw Error('CODE_MAP_QUERY_REAL_EDGE_MISSING');
+          }
+          if (targeted.incoming.some(e => !full.nodes.includes(e.from))) {
+            throw Error('CODE_MAP_QUERY_SOURCE_NOT_INDEXED');
+          }
+          const fullBytes = Buffer.byteLength(JSON.stringify(full));
+          const selectedBytes = Buffer.byteLength(JSON.stringify(targeted));
+          if (selectedBytes * 2 >= fullBytes) throw Error('CODE_MAP_QUERY_NOT_NARROWER');
+          console.log('REAL_REPO_CODE_MAP_QUERY_PASS source_sha=' + targeted.sourceRevision +
+            ' source_ref=' + targeted.sourceRef + ' full_bytes=' + fullBytes +
+            ' query_bytes=' + selectedBytes + ' reduced_pct=' +
+            Math.round(100 * (fullBytes - selectedBytes) / fullBytes));
+          NODE
       - name: Publish real repository JSON graph
         uses: actions/upload-artifact@v4
         with:
@@ -65,5 +96,6 @@ jobs:
           path: |
             ${{ runner.temp }}/tigeriq-code-map.json
             ${{ runner.temp }}/tigeriq-code-map.html
+            ${{ runner.temp }}/tigeriq-code-map-query.json
           if-no-files-found: error
           retention-days: 14

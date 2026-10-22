@@ -207,5 +207,37 @@ async function withTempProject(structure, fn) {
     ]);
   });
 
+
+  // Export symbols must reflect declarations, not TS keywords or async modifiers.
+  await withTempProject({
+    'declarations.mts': [
+      'export async function load() {}',
+      'export async function* stream() {}',
+      'export default async function create() {}',
+      'export interface Settings {}',
+      'export type Key = string;',
+      'export enum Mode { ACTIVE }',
+      'export declare interface Contract {}',
+      'export abstract class Service {}',
+      'export const existing = 1;',
+      "export { foo } from './forwarded.mts';",
+      "export type { External } from './types.mts';",
+      'const quoted = "export interface Fake {}";',
+      '// export enum Phantom {}',
+      '/* export async function ghost() {} */',
+    ].join('\n'),
+    'forwarded.mts': 'export const foo = true;',
+    'types.mts': 'export interface External {}',
+  }, async (root) => {
+    const source = path.join(root, 'declarations.mts');
+    const { exportMap, importMap } = await scanProject(root);
+    assert.deepStrictEqual(exportMap.get(source), [
+      'load', 'stream', 'create', 'Settings', 'Key',
+      'Mode', 'Contract', 'Service', 'existing',
+    ]);
+    // Re-export dependency recognition is an independent previously accepted fix.
+    assert.deepStrictEqual(importMap.get(source), ['./forwarded.mts', './types.mts']);
+  });
+
   console.log('All tests passed');
 })();
