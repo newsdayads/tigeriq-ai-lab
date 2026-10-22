@@ -31,7 +31,11 @@ function report(link, reason, detail = {}) {
 export async function inspectRdcPool({ links, whoAmI, listDevices }) {
   if (!Array.isArray(links) || typeof whoAmI !== 'function' || typeof listDevices !== 'function')
     throw new Error('RDC_INSPECTION_INPUT_INVALID');
-  if (new Set(links.map(a => a.link_id)).size !== links.length ||
+  // The stable RDC01..RDC05 slot must bind exactly one exposed link.
+  // Distinct link_id values with the same slot would make trace and
+  // failover account identity ambiguous even when individual links are valid.
+  if (new Set(links.map(a => a?.link_id)).size !== links.length ||
+      new Set(links.map(a => a?.rdcId)).size !== links.length ||
       links.some(l => !VALID_LINK.test(String(l?.link_id || '')) ||
         !/^RDC0[1-5]$/.test(String(l?.rdcId || ''))))
     throw new Error('RDC_LINK_CONFIGURATION_INVALID');

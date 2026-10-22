@@ -98,6 +98,34 @@ describe('RDC account preflight — actual linked-account routing contract', () 
     expect(out.result.deviceId).toBe('bbbb2222-2222-2222-2222-222222222222');
   });
 
+  it('GH-5167 rejects two distinct connector links claiming one RDC slot before metadata reads', async () => {
+    const duplicateSlot = [
+      {rdcId:'RDC02',link_id:'link_backup1'},
+      {rdcId:'RDC02',link_id:'link_backup2'},
+    ];
+    const who = vi.fn();
+    const devices = vi.fn();
+    await expect(inspectRdcPool({
+      links:duplicateSlot,whoAmI:who,listDevices:devices,
+    })).rejects.toThrow('RDC_LINK_CONFIGURATION_INVALID');
+    expect(who).not.toHaveBeenCalled();
+    expect(devices).not.toHaveBeenCalled();
+
+    const invoke = vi.fn();
+    await expect(executeRdcWithPool({
+      links:duplicateSlot,whoAmI:who,listDevices:devices,
+      invoke,authorized:true,operation:'write',
+    })).rejects.toThrow('RDC_LINK_CONFIGURATION_INVALID');
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('GH-5167 preserves valid 1:1 account-slot bindings despite arbitrary link input order', async () => {
+    const reordered=[links[2],links[0],links[1]];
+    const found=await inspectRdcPool({...args(),links:reordered});
+    expect(found.audit).toHaveLength(3);
+    expect(found.eligible.map(x=>x.rdcId)).toEqual(['RDC02','RDC03']);
+  });
+
   it('rejects duplicate links, malformed identities and unlabeled Rdc accounts', async () => {
     await expect(inspectRdcPool({...args(),links:[links[0],links[0]]}))
       .rejects.toThrow('RDC_LINK_CONFIGURATION_INVALID');
