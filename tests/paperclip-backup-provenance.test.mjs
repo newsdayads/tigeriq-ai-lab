@@ -69,6 +69,55 @@ describe('GH-2054: actual Paperclip HOME-mounted PostgreSQL backup provenance',(
     expect(r.archiveSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(JSON.stringify(r)).not.toContain('CREATE TABLE');
   });
+  it('accepts Paperclip JavaScript SQL fallback with its own paired transaction markers',async()=>{
+    const fallback=[
+      '-- Paperclip database backup',
+      '-- Created: 2026-10-22T06:08:28.000Z',
+      '',
+      'BEGIN;',
+      'SET LOCAL session_replication_role = replica;',
+      'SET LOCAL client_min_messages = warning;',
+      'CREATE TABLE example (id INTEGER NOT NULL);',
+      'INSERT INTO example VALUES (1);',
+      'COMMIT;',
+      '',
+    ].join('\n');
+    const bytes=gzipSync(Buffer.from(fallback,'utf8'));
+    const result=validatePaperclipBackupGzip(bytes);
+    expect(result).toMatchObject({verified:true,backupFormat:'paperclip_javascript_sql',
+      gzipCrcVerified:true,paperclipJsHeaderVerified:true,paperclipJsFooterVerified:true,
+      pgDumpHeaderVerified:false,pgDumpFooterVerified:false,restoreTested:false});
+    expect(JSON.stringify(result)).not.toContain('CREATE TABLE');
+    const io=fakeIo({bytes});
+    const live=await inspectPaperclipBackupProvenance({io,now:()=>now});
+    expect(live).toMatchObject({verified:true,backupFormat:'paperclip_javascript_sql',
+      scope:'paperclip-home-mounted-backups'});
+    expect(io.readFile).toHaveBeenCalledExactlyOnceWith(full);
+  });
+  it('rejects Paperclip JavaScript archives with missing footer or incomplete header',()=>{
+    const beginning=[
+      '-- Paperclip database backup',
+      '-- Created: 2026-10-22T06:08:28.000Z',
+      'BEGIN;',
+      'SET LOCAL session_replication_role = replica;',
+      'CREATE TABLE example (id INTEGER NOT NULL);',
+    ].join('\n');
+    const candidates=[
+      beginning + '\nINSERT INTO example VALUES (1);\n',
+      beginning.replace('SET LOCAL session_replication_role = replica;', 'SET LOCAL client_min_messages = warning;') + '\nCOMMIT;\n',
+      '-- Paperclip database backup\nBEGIN;\nSET LOCAL session_replication_role = replica;\nCOMMIT;\n',
+    ];
+    for(const candidate of candidates) {
+      expect(validatePaperclipBackupGzip(gzipSync(Buffer.from(candidate.repeat(3),'utf8'))))
+        .toMatchObject({verified:false,reason:'BACKUP_PG_DUMP_MARKER_MISSING'});
+    }
+  });
+  it('rejects mixed pg_dump header and Paperclip JavaScript COMMIT footer',()=>{
+    const mixed='-- PostgreSQL database dump\nBEGIN;\n' +
+      'INSERT INTO example VALUES (1);\nCOMMIT;\n';
+    const output=validatePaperclipBackupGzip(gzipSync(Buffer.from(mixed.repeat(3),'utf8')));
+    expect(output.verified).toBe(false);
+  });
   it('rejects truncated gzip even when the name looks like a normal archive',()=>{
     const bytes=archive(),broken=bytes.subarray(0,bytes.length-7);
     expect(validatePaperclipBackupGzip(broken).verified).toBe(false);

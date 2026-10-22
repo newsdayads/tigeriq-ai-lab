@@ -23,15 +23,28 @@ export function validatePaperclipBackupGzip(bytes) {
   const trailer = sql.subarray(Math.max(0, sql.length - 8192)).toString('utf8');
   const postgresHeader = header.includes('PostgreSQL database dump');
   const postgresFooter = trailer.includes('PostgreSQL database dump complete');
-  if (!postgresHeader || !postgresFooter) {
+  const pgDumpFormat = postgresHeader && postgresFooter;
+  // Paperclip's supported JavaScript backup engine writes transactional SQL
+  // with its own header and COMMIT footer (not the pg_dump comments).
+  // Require the complete paired format, never mix markers across engines.
+  const paperclipHeader =
+    /^-- Paperclip database backup\r?\n-- Created: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z(?:\r?\n|$)/.test(header) &&
+    /(?:^|\r?\n)BEGIN;(?:\r?\n|$)/.test(header) &&
+    header.includes('SET LOCAL session_replication_role = replica;');
+  const paperclipFooter = /(?:^|\r?\n)COMMIT;(?=\r?\n|$)/.test(trailer);
+  const paperclipJsFormat = paperclipHeader && paperclipFooter;
+  if (!pgDumpFormat && !paperclipJsFormat) {
     return { verified: false, reason: 'BACKUP_PG_DUMP_MARKER_MISSING' };
   }
   return {
     verified: true,
     // zlib's successful decompression verifies the gzip CRC32/ISIZE trailer.
     gzipCrcVerified: true,
-    pgDumpHeaderVerified: true,
-    pgDumpFooterVerified: true,
+    backupFormat: pgDumpFormat ? 'pg_dump_plain_sql' : 'paperclip_javascript_sql',
+    pgDumpHeaderVerified: pgDumpFormat,
+    pgDumpFooterVerified: pgDumpFormat,
+    paperclipJsHeaderVerified: paperclipJsFormat,
+    paperclipJsFooterVerified: paperclipJsFormat,
     archiveSha256: createHash('sha256').update(bytes).digest('hex'),
     compressedBytes: bytes.length,
     sqlBytes: sql.length,
