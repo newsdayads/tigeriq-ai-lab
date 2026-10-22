@@ -17,7 +17,9 @@ function candidateFrom(row){
   if(!key.startsWith(prefix)||!SHA.test(key.slice(prefix.length)))return null;
   const sha=key.slice(prefix.length);
   if(kind==='RUNTIME_SHA_CHANGE'){
-    if(info.currentSha&&info.currentSha!==sha)return null;
+    // A runtime recovery must prove the installed revision in the durable receipt.
+    // The key alone is not source identity; missing currentSha fails closed.
+    if(info.currentSha!==sha)return null;
     return {trigger:true,kind,key,currentSha:sha};
   }
   if(info.sourceSha!==sha)return null;
