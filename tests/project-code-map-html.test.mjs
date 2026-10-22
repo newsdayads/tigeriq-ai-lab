@@ -23,7 +23,9 @@ test('offline HTML embeds inert JSON and escapes hostile module names', () => {
   assert.equal((html.match(/<script/g) || []).length, 2, 'Only inert data and app script are present');
   assert.equal(html.includes(dangerous), false, 'No unescaped data may break a script tag');
   assert.ok(html.includes('\\u003c/script\\u003e'));
-  assert.ok(html.includes('$&'), 'Dollar replacement tokens must stay literal');
+  const match = html.match(/<script type="application\/json" id="code-map-data">([\s\S]*?)<\/script>/);
+  assert.ok(match, 'Embedded JSON data must exist');
+  assert.equal(JSON.parse(match[1]).edges[0].to, dangerous, 'Decoded module text must remain exact');
   assert.ok(html.includes('id="search"'));
   assert.ok(html.includes('type="application/json"'));
   assert.throws(() => buildHtmlReport({ schemaVersion: 2, nodes: [], edges: [], summary: {} }), /CODE_MAP_INVALID_REPORT/);
