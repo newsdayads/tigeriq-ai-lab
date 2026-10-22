@@ -5,7 +5,7 @@ Yêu cầu Node.js >= 20. Không cần cài thêm gói cho công cụ.
 Chạy trực tiếp trong repository:
 
 ```bash
-npm run code-map -- --root . --output code-map.json
+npm run code-map -- --root . --output code-map.json --html code-map.html
 ```
 
 Hoặc xuất kết quả ra dòng lệnh:
@@ -25,3 +25,11 @@ Kiểm thử offline:
 ```bash
 node --test tests/project-code-map-cli.test.mjs
 ```
+
+## Xem sơ đồ trực quan offline
+
+Mở `code-map.html` bằng Chrome/Edge: tìm kiếm theo tên tệp, bật lọc tệp có import, chạm tên tệp để xem import đi/đến. Phần mềm không cần máy chủ, CDN, token hay kết nối Internet; HTML chứa sơ đồ dưới dạng dữ liệu JSON inert đã escape, không chứa mã nguồn thực tế. Bấm tên module nội bộ để đi tiếp.
+
+Bộ kiểm thử UI có trong `tests/e2e/project-code-map-offline.spec.ts`, chạy bằng `npm run test:e2e` (Chrome). GitHub Actions xuất cả `tigeriq-code-map.json` lẫn `tigeriq-code-map.html` từ cùng một revision thực; giải nén và mở HTML trực tiếp.
+
+Đây là bản đồ module dựa trên biểu thức import có tên cố định, không phải trình phân tích phụ thuộc toàn diện. Đường dẫn import khác thường, alias TypeScript và dynamic import dùng biến có thể không phân giải được; UI phân biệt rõ module nội bộ và module ngoài/chưa phân giải.
