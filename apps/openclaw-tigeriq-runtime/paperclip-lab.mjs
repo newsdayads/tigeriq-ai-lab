@@ -322,6 +322,12 @@ export function paperclipBrokerHeartbeatAgeMs(value, nowMs = Date.now()) {
 export function paperclipBrokerHeartbeatProvenancePresent(heartbeat) {
   return Number.isSafeInteger(heartbeat?.pid)
     && heartbeat.pid > 0
+    // Session and keepalive process IDs must be actual positive integers,
+    // never numeric strings or fractional values silently coerced by Number().
+    && Number.isSafeInteger(heartbeat?.sessionId)
+    && heartbeat.sessionId > 0
+    && Number.isSafeInteger(heartbeat?.wslKeepalivePid)
+    && heartbeat.wslKeepalivePid > 0
     && typeof heartbeat?.sourceSha256 === 'string'
     && /^[a-f0-9]{64}$/.test(heartbeat.sourceSha256);
 }
@@ -339,10 +345,8 @@ async function brokerStatus() {
     const ready = heartbeat?.schema === 'TIGERIQ_PAPERCLIP_WSL_HEARTBEAT_V1'
       && String(heartbeat?.distro || '') === PAPERCLIP_LAB_WSL_DISTRO
       && String(heartbeat?.version || '') === BROKER_EXPECTED_VERSION
-      && Number(heartbeat?.sessionId || 0) > 0
       && Boolean(String(heartbeat?.user || '').trim())
       && heartbeat?.wslKeepaliveRunning === true
-      && Number(heartbeat?.wslKeepalivePid || 0) > 0
       && paperclipBrokerHeartbeatProvenancePresent(heartbeat)
       && Number.isFinite(ageMs) && ageMs <= 15000;
     return {
