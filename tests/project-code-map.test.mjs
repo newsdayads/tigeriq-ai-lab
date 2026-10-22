@@ -57,5 +57,31 @@ async function withTempProject(structure, fn) {
     assert.deepStrictEqual(graph.edges.filter(e => e.from === path.join(root, 'main.mjs')).map(e => e.to), ['./real.mjs']);
   });
 
+  // Never traverse VCS internals, dependencies or generated trees, even when
+  // those directories are nested inside an otherwise indexed source folder.
+  await withTempProject({
+    'src/entry.js': "import { helper } from './helper.js'; export const entry = helper;",
+    'src/helper.js': 'export const helper = 1;',
+    'src/node_modules/hidden.js': 'export const ignored = true;',
+    'node_modules/vendor/index.js': 'export const vendor = true;',
+    '.git/hooks/fake.js': 'export const gitHook = true;',
+    'dist/index.js': 'export const bundle = true;',
+    'build/index.mjs': 'export const built = true;',
+    'coverage/results.js': 'export const coverage = true;',
+    '.next/build.js': 'export const nextBuild = true;',
+    '.nuxt/output.js': 'export const nuxtOutput = true;',
+    '.turbo/cache.js': 'export const turboCache = true;',
+    '.cache/module.ts': 'export const cache = true;',
+  }, async (root) => {
+    const { fileMap, importMap, exportMap } = await scanProject(root);
+    const indexed = [...fileMap.keys()].map(file => path.relative(root, file)).sort();
+    assert.deepStrictEqual(indexed, ['src/entry.js', 'src/helper.js']);
+    assert.deepStrictEqual([...importMap.keys()].sort(), [...fileMap.keys()].sort());
+    assert.deepStrictEqual([...exportMap.keys()].sort(), [...fileMap.keys()].sort());
+    assert.deepStrictEqual(importMap.get(path.join(root, 'src/entry.js')), ['./helper.js']);
+    const graph = await generateImportExportGraph(root);
+    assert.deepStrictEqual(graph.nodes.map(file => path.relative(root, file)).sort(), indexed);
+  });
+
   console.log('All tests passed');
 })();
