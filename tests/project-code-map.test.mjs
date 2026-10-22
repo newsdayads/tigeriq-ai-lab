@@ -136,5 +136,42 @@ async function withTempProject(structure, fn) {
     ]);
   });
 
+
+  // Do not silently omit modern JS/TS source extensions from the code map.
+  // This is independent of excluded dependency/generated directory behavior.
+  await withTempProject({
+    'src/index.js': "import './widget.jsx'; import './panel.tsx'; import './esm.mts'; import './common.cts';",
+    'src/widget.jsx': 'export const widget = 1;',
+    'src/panel.tsx': 'export const panel = 2;',
+    'src/esm.mts': 'export const esm = 3;',
+    'src/common.cts': 'export const common = 4;',
+    'src/legacy.js': 'export const legacy = 5;',
+    'src/legacy.mjs': 'export const legacyMjs = 6;',
+    'src/legacy.cjs': 'export const legacyCjs = 7;',
+    'src/legacy.ts': 'export const legacyTs = 8;',
+    'src/skip.md': '# Not source',
+    'src/node_modules/excluded.tsx': 'export const excluded = true;',
+    'dist/generated.jsx': 'export const generated = true;',
+  }, async (root) => {
+    const expected = [
+      'src/common.cts', 'src/esm.mts', 'src/index.js', 'src/legacy.cjs',
+      'src/legacy.js', 'src/legacy.mjs', 'src/legacy.ts', 'src/panel.tsx', 'src/widget.jsx',
+    ];
+    const { fileMap, importMap, exportMap } = await scanProject(root);
+    const actual = [...fileMap.keys()].map(file => path.relative(root, file)).sort();
+    assert.deepStrictEqual(actual, expected);
+    assert.deepStrictEqual([...importMap.keys()].sort(), [...fileMap.keys()].sort());
+    assert.deepStrictEqual([...exportMap.keys()].sort(), [...fileMap.keys()].sort());
+    const entry = path.join(root, 'src/index.js');
+    assert.deepStrictEqual(importMap.get(entry), [
+      './widget.jsx', './panel.tsx', './esm.mts', './common.cts',
+    ]);
+    const graph = await generateImportExportGraph(root);
+    assert.deepStrictEqual(graph.nodes.map(file => path.relative(root, file)).sort(), expected);
+    assert.deepStrictEqual(graph.edges.filter(edge => edge.from === entry).map(edge => edge.to), [
+      './widget.jsx', './panel.tsx', './esm.mts', './common.cts',
+    ]);
+  });
+
   console.log('All tests passed');
 })();
