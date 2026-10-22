@@ -94,6 +94,16 @@ test('targeted CLI query returns real scoped incoming/outgoing edges and rejects
     assert.equal(scoped.sourceRef, 'src/main.mjs');
     assert.equal(scoped.sourceRevision, revision);
     assert.equal(scoped.revisionChecked, true);
+    const unchecked = run('--query', 'src/main.mjs');
+    assert.equal(unchecked.status, 0, unchecked.stderr);
+    assert.equal(JSON.parse(unchecked.stdout).revisionChecked, false,
+      'Queries without a SHA guard must never claim freshness');
+    const savedQuery = path.join(tmp, 'saved-query.json');
+    const persisted = run('--query', 'src/main.mjs', '--expect-sha', revision,
+      '--output', savedQuery);
+    assert.equal(persisted.status, 0, persisted.stderr);
+    assert.match(persisted.stderr, /CODE_MAP_QUERY_OK/);
+    assert.equal(JSON.parse(await fs.readFile(savedQuery, 'utf8')).sourceRef, 'src/main.mjs');
     assert.deepEqual(scoped.outgoing, [
       { specifier: '../../out-of-root', resolvedTarget: null },
       { specifier: './component', resolvedTarget: 'src/component.tsx' },
