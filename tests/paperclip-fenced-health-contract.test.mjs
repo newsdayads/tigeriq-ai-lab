@@ -63,6 +63,30 @@ describe('GH-2054: fenced Docker/PostgreSQL native proof',()=>{
     expect(paperclipFencedHealthNativeAccepted(noBackup)).toBe(false);
     const fakeBackup=validNative();fakeBackup.data.backup.gzipCrcVerified=false;
     expect(paperclipFencedHealthNativeAccepted(fakeBackup)).toBe(false);
+    const js=validNative();
+    js.data.backup={
+      verified:true,gzipCrcVerified:true,
+      backupFormat:'paperclip_javascript_sql',
+      paperclipJsHeaderVerified:true,paperclipJsFooterVerified:true,
+      pgDumpHeaderVerified:false,pgDumpFooterVerified:false,
+      restoreTested:false,archiveSha256:'b'.repeat(64),
+    };
+    expect(paperclipFencedHealthNativeAccepted(js)).toBe(true);
+    const missingFooter=structuredClone(js);
+    missingFooter.data.backup.paperclipJsFooterVerified=false;
+    expect(paperclipFencedHealthNativeAccepted(missingFooter)).toBe(false);
+    const mixedFormat=structuredClone(js);
+    mixedFormat.data.backup.pgDumpFooterVerified=true;
+    expect(paperclipFencedHealthNativeAccepted(mixedFormat)).toBe(false);
+    const fakeFormat=structuredClone(js);
+    fakeFormat.data.backup.backupFormat='untrusted_sql';
+    expect(paperclipFencedHealthNativeAccepted(fakeFormat)).toBe(false);
+    const noCrc=structuredClone(js);
+    noCrc.data.backup.gzipCrcVerified=false;
+    expect(paperclipFencedHealthNativeAccepted(noCrc)).toBe(false);
+    const noSha=structuredClone(js);
+    noSha.data.backup.archiveSha256='';
+    expect(paperclipFencedHealthNativeAccepted(noSha)).toBe(false);
   });
   it('allows exactly one live proof after the NV06 atomic lease with fencing and confirmed release',async()=>{
     const h=harness(),r=await h.call();
