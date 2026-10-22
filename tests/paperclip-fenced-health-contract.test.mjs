@@ -9,6 +9,7 @@ import {
 const validNative=()=>({ok:true,action:'paperclip_lab_fenced_health',target:'pc01-local',data:{
   ok:true,http:{appOk:true},port:{reachable:true},
   docker:{transport:'wsl-ubuntu-interactive-broker',version:'29.1.3'},
+  backup:{verified:true,gzipCrcVerified:true,pgDumpHeaderVerified:true,pgDumpFooterVerified:true,restoreTested:false,archiveSha256:'a'.repeat(64)},
   database:{present:true,running:true,healthStatus:'healthy'},
   container:{identityOk:true,portBindingOk:true},
   broker:{ready:true,sourceVerified:true,version:'1.7-openai-device-auth',sessionId:1,ageMs:250,wslKeepaliveRunning:true},
@@ -58,6 +59,10 @@ describe('GH-2054: fenced Docker/PostgreSQL native proof',()=>{
     expect(paperclipFencedHealthNativeAccepted(mount)).toBe(false);
     const docker=validNative();docker.data.docker.version='';
     expect(paperclipFencedHealthNativeAccepted(docker)).toBe(false);
+    const noBackup=validNative();delete noBackup.data.backup;
+    expect(paperclipFencedHealthNativeAccepted(noBackup)).toBe(false);
+    const fakeBackup=validNative();fakeBackup.data.backup.gzipCrcVerified=false;
+    expect(paperclipFencedHealthNativeAccepted(fakeBackup)).toBe(false);
   });
   it('allows exactly one live proof after the NV06 atomic lease with fencing and confirmed release',async()=>{
     const h=harness(),r=await h.call();
