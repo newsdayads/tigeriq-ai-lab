@@ -31,6 +31,15 @@ export function paperclipFencedHealthNativeAccepted(receipt) {
     && data.broker.ageMs>=0 && data.broker.ageMs<=15000
     && data?.http?.appOk===true
     && data?.port?.reachable===true
+    // R03 must not infer backup recoverability from /api/health backup.status=ok.
+    // Native proof must have read and CRC-validated the actual hourly SQL dump.
+    && data?.backup?.verified===true
+    && data.backup.gzipCrcVerified===true
+    && data.backup.pgDumpHeaderVerified===true
+    && data.backup.pgDumpFooterVerified===true
+    && data.backup.restoreTested===false
+    && typeof data.backup.archiveSha256==='string'
+    && /^[a-f0-9]{64}$/.test(data.backup.archiveSha256)
     && typeof data?.docker?.version==='string' && data.docker.version.trim().length>0;
 }
 
