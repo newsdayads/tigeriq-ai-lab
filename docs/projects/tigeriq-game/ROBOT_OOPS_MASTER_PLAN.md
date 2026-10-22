@@ -17,7 +17,7 @@ Mục tiêu kiểm chứng: 5 màn chạy trên trình duyệt điện thoại t
 
 ## B. Ranh giới dự án mới
 - Mã dự án riêng: TIGERIQ_GAME_ROBOT_OOPS; có thư mục tài liệu `docs/projects/tigeriq-game` và bộ issue G01–G14.
-- Mã nguồn game tách repository `newsdayads/tigeriq-game` khi có công cụ tạo repository và quyền tạo cụ thể; không tạo nguồn game lẫn vào TigerIQ Driver/Chrome/App hệ thống. Hiện kết nối GitHub trong cuộc trò chuyện **chưa có hành động tạo kho mã nguồn**, nên bước tạo repo thực tế thuộc G01 và **chưa xác minh DONE**.
+- Mã nguồn game giai đoạn đầu đặt tại **`apps/tigeriq-game/` như một ứng dụng/gói độc lập trong kho chuẩn**, không dùng chung mã hoặc dữ liệu với Driver/Chrome/App hệ thống; việc tạo kho mã nguồn GitHub riêng chỉ là phương án tách sau, không khóa việc G01–G14 khi kết nối chưa có hành động tạo repository.
 - Không tạo một queue điều phối song song với CENTRAL; Issue dự án là hồ sơ sản phẩm, mỗi Gxx là Work Order phụ thuộc; executor phải claim trên hệ thống hợp lệ trước khi ghi runtime.
 - Không tự thay bootstrap/Loader vì dự án mới không thay chính sách; DRIVE_SYNC=NOT_REQUIRED.
 
@@ -113,3 +113,6 @@ Không mở công việc G11–G14 khi nghiệm thu tiền đề chưa đạt. M
 2. G02/G04: đặc tả luật và trình dựng Web 2D.
 3. G05/G06: viết mã mô phỏng và thử 5 màn, test trên thiết bị thật.
 Không tuyên bố GO, release, doanh thu hay 100% nếu các cổng trên chưa có biên nhận.
+
+## MÔ HÌNH THỰC THI HIỆN HÀNH (23/10/2026)
+Xem [ROBOT_OOPS_WORKFLOW_V2.md](./ROBOT_OOPS_WORKFLOW_V2.md): một thẻ tổng đọc và 14 thẻ thực thi V2 có phụ thuộc bằng số Issue; nhân sự nhận việc theo đúng năng lực, một phạm vi một chủ ghi; giới hạn số lần thử, nghiệm thu và STOP/GO rõ. Nhóm dự án khai báo tại `projects/tigeriq-game/project.yaml`, không tạo hàng đợi cạnh tranh.
