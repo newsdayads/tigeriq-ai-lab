@@ -25,6 +25,31 @@ function partialAuditProof() {
   };
 }
 
+test('downloaded Markdown never contains live HTML from untrusted SEO titles', async () => {
+  const malicious = partialAuditProof();
+  // A public page can place &lt;img&gt; in its <title>; the crawler decodes
+  // HTML entities for readability before the report is generated.
+  malicious.pages[0].seo.title = 'ACME & <img src=x onerror=1>';
+  const { server, origin } = await startWebsiteAuditUi({ auditFn: async () => malicious });
+  try {
+    const response = await fetch(origin + '/api/audit', {
+      method: 'POST',
+      headers: { origin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'https://example.com/', maxPages: 2 }),
+    });
+    assert.equal(response.status, 200);
+    const json = await response.json();
+    assert.equal(json.format, 'markdown');
+    assert.match(json.markdown, /Title: ACME &amp; &lt;img src=x onerror=1&gt;/);
+    assert.doesNotMatch(json.markdown, /<img\b|<svg\b|<script\b/i);
+    assert.match(json.markdown, /MISSING_META_DESCRIPTION/);
+    assert.doesNotMatch(json.markdown, /PRIVATE_VALUE/);
+    assert.equal(json.platformBillingVerified, false);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
 test('HTTP API exposes genuine partial audit and useful report without leaking failing URLs', async () => {
   const { server, origin } = await startWebsiteAuditUi({
     auditFn: async () => partialAuditProof(),
