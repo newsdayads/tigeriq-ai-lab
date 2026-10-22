@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { inspectPaperclipBackupProvenance } from './paperclip-backup-provenance.mjs';
 
 const win = path.win32;
 export const PAPERCLIP_LAB_ROOT = 'D:\\TigerIQ-Paperclip-Lab';
@@ -1545,7 +1546,11 @@ export async function readFencedPaperclipHealth(signal = null) {
     return paperclipUnverifiedDockerHealth({ docker, port, http });
   }
   const data = await health(signal, docker.kind, { diagnostics: false });
-  return { ...data, docker: { transport: docker.kind, version: docker.version } };
+  // The Paperclip application mounts HOME=/paperclip from the Lab data bind:
+  // automatic SQL backups live in data/instances/default/data/backups, not in
+  // the separate empty Lab backup/ directory. Inspect only existing archives.
+  const backup = await inspectPaperclipBackupProvenance();
+  return { ...data, docker: { transport: docker.kind, version: docker.version }, backup };
 }
 
 export async function executePaperclipLabAction(input = {}, options = {}) {
