@@ -85,6 +85,20 @@ describe('GH-5176 persisted Continuous Verify crash recovery',()=>{
       'GITHUB_EVENT_RECEIVED')],{nowMs:now})).toEqual([]);
   });
 
+  it('retains legitimate OIDC-attributed GitHub merge recovery after cross-origin rejection',()=>{
+    const key='github-main:'+B;
+    const merge={kind:'GITHUB_MAIN_MERGE',key,sourceSha:B};
+    const rows=[rec(2,'GITHUB_EVENT_RECEIVED',{
+      deliveryId:'oidc-merge-fixture',continuousVerifyTrigger:merge,
+    })];
+    expect(planContinuousVerifyRecovery(rows,{nowMs:now})).toEqual([
+      {...merge,trigger:true,attempt:0},
+    ]);
+    expect(planContinuousVerifyRecovery([...rows,
+      rec(3,'CONTINUOUS_VERIFY_RUN',{key})
+    ],{nowMs:now})).toEqual([]);
+  });
+
   it('bounds recovery to recent receipts, caps batch and supports verified runtime triggers',()=>{
     const recent=[
       rec(1,'CONTINUOUS_VERIFY_TRIGGER_QUEUED',push(A),'2026-10-21T00:00:00Z'),
