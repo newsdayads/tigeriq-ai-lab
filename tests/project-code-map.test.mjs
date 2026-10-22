@@ -83,5 +83,29 @@ async function withTempProject(structure, fn) {
     assert.deepStrictEqual(graph.nodes.map(file => path.relative(root, file)).sort(), indexed);
   });
 
+  // Literal dynamic imports are real dependencies; quoted and commented calls are not.
+  await withTempProject({
+    'entry.mjs': [
+      'import { eager } from "./eager.mjs";',
+      'const lazy = () => import("./lazy.mjs");',
+      "const extra = () => import ( /* chunk */ './extra.mjs' );",
+      'const computed = () => import(dynamicTarget);',
+      'const method = obj.import("./member-fake.mjs");',
+      'const quoted = "import(\\"./quoted-fake.mjs\\")";',
+      'const template = `import("./template-fake.mjs")`;',
+      '// import("./comment-fake.mjs");',
+      '/* import("./block-fake.mjs"); */',
+    ].join('\n'),
+    'eager.mjs': 'export const eager = true;',
+    'lazy.mjs': 'export const lazy = true;',
+    'extra.mjs': 'export const extra = true;',
+  }, async (root) => {
+    const { importMap } = await scanProject(root);
+    const entry = path.join(root, 'entry.mjs');
+    const expected = ['./eager.mjs', './lazy.mjs', './extra.mjs'];
+    assert.deepStrictEqual(importMap.get(entry), expected);
+    const graph = await generateImportExportGraph(root);
+    assert.deepStrictEqual(graph.edges.filter(edge => edge.from === entry).map(edge => edge.to), expected);
+  });
   console.log('All tests passed');
 })();
