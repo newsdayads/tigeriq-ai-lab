@@ -126,8 +126,9 @@ function renderCards(container,rows,options){
   const checked=Number.isInteger(count)&&count>0&&Number.isInteger(done)&&done>=0&&done<=count;
   // Only verified numeric progress belongs on the overview; GitHub plans and
   // source diagnostics live in the work detail panel.
+  const verifiedUnit=row.progressSource==='github_gates_verified'?'cổng GitHub':'bước';
   const steps=checked&&row.progressChecklistVerified===true&&opt.fresh!==false
-   ?'<div class="work-step-summary"><span>'+done+'/'+count+' bước đã xác minh</span><span class="step-remaining">Còn '+(count-done)+' bước</span></div>':'';
+   ?'<div class="work-step-summary"><span>'+done+'/'+count+' '+verifiedUnit+' đã xác minh</span><span class="step-remaining">Còn '+(count-done)+' bước</span></div>':'';
   const activeWithoutPercent=['WORKING','REVIEW','VERIFY'].includes(s);
   const bar=pr.verified?'<div class="progress"><div class="progress-track"><div class="progress-fill" style="width:'+pr.percent+'%"></div></div><span class="progress-text">'+pr.percent+'%</span></div>':activeWithoutPercent
     ?'<div class="progress indeterminate"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">Chưa đủ dữ liệu để tính %</span></div>':'';
