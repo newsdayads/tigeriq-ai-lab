@@ -172,7 +172,7 @@ function renderCards(container,rows,options){
   const open=()=>{if(typeof opt.onOpen==='function')opt.onOpen(row,el);else openModal(row,opt)};
   const toggle=el.querySelector('.tiq-project-children-toggle');
   if(toggle)toggle.addEventListener('click',event=>{event.stopPropagation();if(expandedProjectParents.has(number))expandedProjectParents.delete(number);else expandedProjectParents.add(number);renderCards(container,data,opt)});
-  el.addEventListener('click',open);el.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();open()}});
+  el.addEventListener('click',open);el.addEventListener('keydown',event=>{if(event.target!==el)return;if(event.key==='Enter'||event.key===' '){event.preventDefault();open()}});
   const original=container.querySelector('.work-row[data-work-number="'+number+'"]');
   if(original&&original.dataset.signature===signature){fragment.push(original);return;}
   el.dataset.signature=signature;
