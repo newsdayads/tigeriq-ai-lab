@@ -36,6 +36,47 @@ describe('Continuous Capability Verification trigger policy', () => {
     expect(pr).toMatchObject({trigger:true,kind:'GITHUB_MAIN_MERGE',key:'github-main:merge123'});
   });
 
+  it('GH-5169 detects a shared-module-only GitHub push and merged PR', () => {
+    const shared='apps/shared/work-center-history.mjs';
+    expect(continuousVerifyRelevantPath(shared)).toBe(true);
+    expect(continuousVerifyRelevantPath('apps/shared/rdc-account-preflight.mjs')).toBe(true);
+    const push=githubContinuousVerifyTrigger({
+      eventName:'push',
+      payload:{
+        ref:'refs/heads/main',after:'main-shared-5169',
+        commits:[{modified:[shared]}],
+      },
+    });
+    expect(push).toMatchObject({
+      trigger:true,kind:'GITHUB_MAIN_PUSH',key:'github-main:main-shared-5169',
+      relevantPaths:[shared],
+    });
+    const merge=githubContinuousVerifyTrigger({
+      eventName:'pull_request',
+      payload:{
+        action:'closed',
+        changedPaths:['apps/shared/rdc-account-preflight.mjs'],
+        pull_request:{merged:true,merge_commit_sha:'merge-shared-5169',base:{ref:'main'}},
+      },
+    });
+    expect(merge).toMatchObject({
+      trigger:true,kind:'GITHUB_MAIN_MERGE',key:'github-main:merge-shared-5169',
+      relevantPaths:['apps/shared/rdc-account-preflight.mjs'],
+    });
+  });
+
+  it('GH-5169 still ignores unrelated changes and non-main shared branches', () => {
+    expect(continuousVerifyRelevantPath('docs/notes.md')).toBe(false);
+    expect(githubContinuousVerifyTrigger({
+      eventName:'push',
+      payload:{ref:'refs/heads/feature/shared',after:'sha',commits:[{modified:['apps/shared/work-center-history.mjs']}]},
+    })).toMatchObject({trigger:false,kind:'GITHUB_UNRELATED'});
+    expect(githubContinuousVerifyTrigger({
+      eventName:'push',
+      payload:{ref:'refs/heads/main',after:'sha',commits:[{modified:['docs/notes.md']}]},
+    })).toMatchObject({trigger:false,kind:'GITHUB_CHANGE_UNRELATED'});
+  });
+
   it('D2 ignores unrelated or unknown-scope main changes', () => {
     expect(githubContinuousVerifyTrigger({eventName:'issues',payload:{action:'edited'}}).trigger).toBe(false);
     expect(githubContinuousVerifyTrigger({
