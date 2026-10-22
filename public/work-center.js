@@ -181,7 +181,7 @@ function auditMarkup(row,events){
   }
   if(hasGithubActivity){
    html+='<div><small>Nhật ký GitHub gần nhất</small><strong>'+esc(fmt(row.lastActivityAt))+'</strong></div>'
-    +'<div><small>Nội dung GitHub</small><strong>'+esc(String(row.lastActivitySummary||'Đã ghi nhận sự kiện').replace(/\\s+/g,' ').trim().slice(0,500))+'</strong></div>';
+    +'<div><small>Nội dung GitHub</small><strong>'+esc(String(row.lastActivitySummary||'Đã ghi nhận sự kiện').replace(/\s+/g,' ').trim().slice(0,500))+'</strong></div>';
   }
   html+='</div>';
  }
