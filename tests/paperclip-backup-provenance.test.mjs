@@ -35,6 +35,20 @@ function fakeIo({bytes=archive(),files=[name],symlink='',mtimeMs=modified,change
   return io;
 }
 describe('GH-2054: actual Paperclip HOME-mounted PostgreSQL backup provenance',()=>{
+  it('Core local-only backup diagnostics are bounded, read-only and do not expose dump bytes',()=>{
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const from=core.indexOf("url.pathname==='/api/pc01/paperclip-backup-integrity'");
+    const to=core.indexOf("if(req.method==='POST'&&url.pathname==='/api/github-event')",from);
+    expect(from).toBeGreaterThan(0);
+    expect(to).toBeGreaterThan(from);
+    const route=core.slice(from,to);
+    expect(route).toContain('if(!localSelf(req)&&!auth(req))');
+    expect(route).toContain('const backup=await inspectPaperclipBackupProvenance()');
+    expect(route).toContain('JSON.stringify({ok:backup.verified===true,backup})');
+    expect(route).not.toContain('runBrokerRequest');
+    expect(route).not.toContain('writeFile');
+    expect(route).not.toContain('startProcess');
+  });
   it('exposes safe backup reason only within the existing read-only preflight',()=>{
     const source=readFileSync(new URL('../apps/openclaw-tigeriq-runtime/paperclip-lab.mjs',import.meta.url),'utf8');
     const section=source.slice(source.indexOf('async function preflight(signal = null) {'),

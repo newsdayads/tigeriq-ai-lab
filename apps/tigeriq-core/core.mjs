@@ -1,5 +1,6 @@
 import { executeFencedPaperclipBrokerInstall, executeFencedPaperclipHealth } from './paperclip-direct-lease.mjs';
 import { readFencedPaperclipHealth } from '../openclaw-tigeriq-runtime/paperclip-lab.mjs';
+import { inspectPaperclipBackupProvenance } from '../openclaw-tigeriq-runtime/paperclip-backup-provenance.mjs';
 import {installedLabVersion} from './installed-lab-version.mjs';
 import { createServer } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
@@ -3268,6 +3269,20 @@ const server=createServer(async(req,res)=>{
     if(req.method==='GET'&&url.pathname==='/api/health-live-work'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await apiHealthLiveWorkProjection()));}
     if(req.method==='GET'&&url.pathname==='/api/work-projection'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await apiHealthWorkProjection()));}
     if(req.method==='GET'&&url.pathname==='/api/work-orders'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await githubWorkOrders()));}
+    // GH-2054: bounded, non-mutating backup diagnostic in the already running
+    // PC01 Core. Avoid the separately cached PC Operator MCP process, which can
+    // retain old code after an approved Core release. No broker write or SQL
+    // archive bytes are exposed, and the route only accepts local-self/auth.
+    if(req.method==='GET'&&url.pathname==='/api/pc01/paperclip-backup-integrity'){
+      if(!localSelf(req)&&!auth(req)){
+        res.writeHead(401,{'content-type':'application/json','cache-control':'no-store'});
+        return res.end(JSON.stringify({ok:false,error:'LOCAL_CORE_AUTH_REQUIRED'}));
+      }
+      const backup=await inspectPaperclipBackupProvenance();
+      res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
+      return res.end(JSON.stringify({ok:backup.verified===true,backup}));
+    }
+
     if(req.method==='POST'&&url.pathname==='/api/github-event'){
       const authorization=String(req.headers.authorization||'');
       const match=authorization.match(/^Bearer\s+(.+)$/i);
