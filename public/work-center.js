@@ -124,11 +124,11 @@ function renderCards(container,rows,options){
   const summary=blocker?'Bị chặn: '+blocker:txt(truth?.next||row.nextStep||row.currentStep||'').trim();
   const count=Number(row.progressTotal),done=Number(row.progressDone);
   const checked=Number.isInteger(count)&&count>0&&Number.isInteger(done)&&done>=0&&done<=count;
-  const gate=row.progressSource==='github_gates_verified'?'cổng GitHub':'bước';
-  const steps=checked?(row.progressChecklistVerified===true&&opt.fresh!==false
-    ?'<div class="work-step-summary"><span>'+done+'/'+count+' '+gate+' đã xác minh</span><span class="step-remaining">Còn '+(count-done)+' bước</span></div>'
-    :'<div class="work-step-summary unverified">Có '+count+' bước theo GitHub · chưa xác minh</div>')
-   :Array.isArray(row.executionSteps)&&row.executionSteps.length?'<div class="work-step-summary unverified">Có '+row.executionSteps.length+' bước theo GitHub · chưa xác minh</div>':'';
+  // Only verified numeric progress belongs on the overview; GitHub plans and
+  // source diagnostics live in the work detail panel.
+  const verifiedUnit=row.progressSource==='github_gates_verified'?'cổng GitHub':'bước';
+  const steps=checked&&row.progressChecklistVerified===true&&opt.fresh!==false
+   ?'<div class="work-step-summary"><span>'+done+'/'+count+' '+verifiedUnit+' đã xác minh</span><span class="step-remaining">Còn '+(count-done)+' bước</span></div>':'';
   const activeWithoutPercent=['WORKING','REVIEW','VERIFY'].includes(s);
   const bar=pr.verified?'<div class="progress"><div class="progress-track"><div class="progress-fill" style="width:'+pr.percent+'%"></div></div><span class="progress-text">'+pr.percent+'%</span></div>':activeWithoutPercent
     ?'<div class="progress indeterminate"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">Chưa đủ dữ liệu để tính %</span></div>':'';
@@ -140,22 +140,12 @@ function renderCards(container,rows,options){
   const showNext=!blocker&&Boolean(row.nextStep);
   const stripped=showNext?summary.replace(/^(?:bước\s+tiếp(?:\s+theo)?|next(?:\s+step)?)\s*[:：–—-]\s*/i,''):summary;
   const arrow='<svg class="next-step-icon" role="img" aria-label="Bước tiếp theo" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="m13 5 7 7-7 7"/></svg>';
-  const truthLine=truth?'<div class="tiq-work-truth" aria-label="Tình trạng đã đối chiếu">'
-    +'<span class="tiq-truth-source">'+esc(truth.sourceLabel||'CHƯA XÁC MINH NGUỒN')+'</span>'
-    +(truth.checkedAt?'<span>Đối chiếu '+esc(fmt(truth.checkedAt))+'</span>':'')
-    +(truth.runtimeVerified&&truth.worker?'<span>Job Core: '+esc(truth.worker)+'</span>':'')
-    +(truth.next&&blocker?'<span class="tiq-truth-next">BƯỚC TỚI: '+esc(truth.next)+'</span>':'')
-    +'</div>':'';
-  const activityAt=['github_issue_comment','github_issue_created'].includes(row.lastActivitySource)?time(row.lastActivityAt):null;
-  const activityLine=activityAt!==null?'<div class="work-activity" title="'+esc(String(row.lastActivitySummary||'').slice(0,300))+'">'
-   +'<span>Nhật ký GitHub '+esc(fmt(row.lastActivityAt))+'</span><span>'+esc(String(row.lastActivitySummary||'').replace(/\s+/g,' ').trim().slice(0,90)||'Đã ghi nhận sự kiện')+'</span></div>':'';
-  const signature=JSON.stringify([s,p,person(row),pr.percent,summary,project,stream,row.parentNumber,steps,bar,started,ended,activityLine,truthLine,opt.compact]);
+  const signature=JSON.stringify([s,p,person(row),pr.percent,summary,project,stream,row.parentNumber,steps,bar,started,ended,row.lastActivityAt,row.lastActivitySummary,truth,opt.compact]);
   const past=lastSignatures.get(number);lastSignatures.set(number,signature);
   if(past&&past!==signature)el.classList.add('recently-updated');
   el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+txt(index+1).padStart(2,'0')+'</span><span class="work-id">#'+esc(number)+'</span><span class="priority '+p.toLowerCase()+'">'+esc(p)+'</span><span class="work-nv">'+esc(person(row))+'</span><span class="state '+s.toLowerCase()+'">'+badgeIcon(s)+esc(s==='VERIFY'&&status(row)==='DONE'?'CHỜ NGHIỆM THU':LABELS[s]||s)+'</span></div>'
    +'<div class="work-hierarchy">'+esc(project)+' <span aria-hidden="true">›</span> '+esc(stream)+'</div>'+parentLine
    +'<div class="work-title">'+esc(title(row))+'</div>'
-   +activityLine+truthLine
    +(summary?'<div class="work-quick '+(blocker?'blocked':'next')+'">'+(showNext?arrow:'')+'<span>'+esc(stripped)+'</span></div>':'')
    +(steps||bar?'<div class="work-progress-bottom">'+steps+bar+'</div>':'')
    +'<div class="tiq-work-times"><span>Bắt đầu: '+esc(started)+'</span><span>Kết thúc: '+esc(ended)+'</span></div></div>';
@@ -179,6 +169,23 @@ function auditMarkup(row,events){
  const end=completion(row)?fmt(timing.finishedAt):'Chưa nghiệm thu';
  const elapsed=timing.startVerified&&completion(row)&&time(timing.finishedAt)>=time(timing.startedAt)?Math.round((time(timing.finishedAt)-time(timing.startedAt))/60000)+' phút':'Chưa xác minh';
  let html='<div class="tiq-audit-grid"><div><small>Bắt đầu thật</small><strong>'+esc(start)+'</strong></div><div><small>Kết thúc thật</small><strong>'+esc(end)+'</strong></div><div><small>Thời lượng</small><strong>'+esc(elapsed)+'</strong></div><div><small>Nhân sự / quyền giữ việc</small><strong>'+esc(person(row))+'</strong></div></div>';
+ const truth=row&&row.liveTruth&&typeof row.liveTruth==='object'?row.liveTruth:null;
+ const activitySource=String(row?.lastActivitySource||'');
+ const hasGithubActivity=['github_issue_comment','github_issue_created'].includes(activitySource)&&time(row?.lastActivityAt)!==null;
+ if(truth||hasGithubActivity){
+  html+='<h4>NGUỒN GITHUB VÀ CORE</h4><div class="tiq-audit-grid">';
+  if(truth){
+   html+='<div><small>Đối chiếu nguồn</small><strong>'+esc(truth.sourceLabel||'CHƯA XÁC MINH NGUỒN')+'</strong></div>'
+    +'<div><small>Thời điểm đối chiếu</small><strong>'+esc(truth.checkedAt?fmt(truth.checkedAt):'Chưa xác minh')+'</strong></div>'
+    +'<div><small>Job Core</small><strong>'+esc(truth.runtimeVerified===true?(truth.worker||'Có xác minh; chưa rõ nhân sự'):'CHƯA XÁC MINH JOB SỐNG')+'</strong></div>';
+   if(truth.next)html+='<div><small>Bước tiếp theo theo nguồn</small><strong>'+esc(truth.next)+'</strong></div>';
+  }
+  if(hasGithubActivity){
+   html+='<div><small>Nhật ký GitHub gần nhất</small><strong>'+esc(fmt(row.lastActivityAt))+'</strong></div>'
+    +'<div><small>Nội dung GitHub</small><strong>'+esc(String(row.lastActivitySummary||'Đã ghi nhận sự kiện').replace(/\s+/g,' ').trim().slice(0,500))+'</strong></div>';
+  }
+  html+='</div>';
+ }
  const list=Array.isArray(events)?events:[];
  html+='<h4>NHẬT KÝ HOẠT ĐỘNG ('+list.length+')</h4>';
  if(!list.length)return html+'<p class="tiq-audit-empty">Chưa có sự kiện gắn biên nhận được xác minh. Không suy diễn từ trạng thái hoặc thời gian cập nhật GitHub.</p>';

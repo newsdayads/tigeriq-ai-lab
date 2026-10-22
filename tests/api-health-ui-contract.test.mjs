@@ -10,6 +10,18 @@ describe('#3918 API Health shared Work UI contract',()=>{
   const visual=readFileSync(new URL('../public/work-center-visual.css',import.meta.url),'utf8');
   const workCenter=readFileSync(new URL('../public/work-center.js',import.meta.url),'utf8');
 
+  it('keeps verbose GitHub provenance and journal inside work details, not overview cards',()=>{
+    const overview=workCenter.slice(workCenter.indexOf('function renderCards('),workCenter.indexOf('function auditMarkup('));
+    const detail=workCenter.slice(workCenter.indexOf('function auditMarkup('),workCenter.indexOf('function renderAudit('));
+    expect(overview).not.toContain('tiq-truth-source');
+    expect(overview).not.toContain('Nhật ký GitHub');
+    expect(overview).not.toContain('bước theo GitHub · chưa xác minh');
+    expect(detail).toContain('NGUỒN GITHUB VÀ CORE');
+    expect(detail).toContain('Nhật ký GitHub gần nhất');
+    expect(detail).toContain('CHƯA XÁC MINH JOB SỐNG');
+    expect(dashboard).toContain("TigerIQWorkCenter.renderAudit(document.getElementById('workDetailAudit')");
+  });
+
   it('links the same approved card CSS last on Live, Health, Web Control',()=>{
     expect(dashboard).toContain('href="/work-center-visual.css"');
     expect(live).toContain('href="/work-center-visual.css"');

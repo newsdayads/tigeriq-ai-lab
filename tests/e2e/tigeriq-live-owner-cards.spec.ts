@@ -493,7 +493,7 @@ test('V2.4 unchecked validation never fabricates a percentage, even when steps a
   await page.goto('https://tigeriq.test/command-center');
   const card=page.locator('.work-row[data-work-number="111"]');
   await expect(card.locator('.progress-text')).toHaveCount(0);
-  await expect(card.locator('.work-step-summary')).toContainText('chưa xác minh');
+  await expect(card.locator('.work-step-summary')).toHaveCount(0);
   await card.click();
   await expect(page.locator('#drawerChecklistSection')).toBeVisible();
   await expect(page.locator('#drawerChecklistHint')).toContainText('chưa có xác nhận');
@@ -510,7 +510,7 @@ test('GitHub NEXT steps appear even with no verified checklist; no fabricated pe
   await routeTiger(page,{...snapshot,openWork:[row],activeWork:[],nextQueue:[]});
   await page.goto('https://tigeriq.test/command-center');
   const card=page.locator('.work-row[data-work-number="111"]');
-  await expect(card.locator('.work-step-summary')).toContainText('2 bước theo GitHub');
+  await expect(card.locator('.work-step-summary')).toHaveCount(0);
   await expect(card.locator('.progress-text')).toContainText('Chưa đủ dữ liệu để tính %');
   await card.click();
   await expect(page.locator('#drawerChecklistMeta')).toContainText('2 bước theo GitHub');
