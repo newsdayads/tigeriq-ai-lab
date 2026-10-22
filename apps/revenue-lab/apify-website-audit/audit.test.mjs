@@ -66,6 +66,14 @@ before(async () => {
       res.writeHead(302, { location: '/' });
       return res.end();
     }
+    const quotedTitleFixtures = {
+      '/title-gt-double': '<html><head><title data-note="3 > 2">Accurate page title</title><meta name="description" content="Valid"></head><body><h1>Actual heading</h1></body></html>',
+      '/title-gt-single': "<html><head><title aria-label='5 > 4'>Nested page title</title><meta name='description' content='Valid'></head><body><h1>Actual heading</h1></body></html>",
+    };
+    if (Object.hasOwn(quotedTitleFixtures, req.url)) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end(quotedTitleFixtures[req.url]);
+    }
     const quotedH1Fixtures = {
       '/h1-gt-double': '<html><head><title>H1 quoted GT</title><meta name="description" content="Valid"></head><body><h1 data-note="3 > 2">Accurate heading</h1></body></html>',
       '/h1-gt-single': "<html><head><title>H1 quoted GT</title><meta name='description' content='Valid'></head><body><h1 aria-label='5 > 4'><span>Nested heading</span></h1></body></html>",
@@ -253,6 +261,21 @@ before(async () => {
 
 after(async () => {
   if (server) await new Promise(resolve => server.close(resolve));
+});
+
+test('SEO title with a quoted greater-than attribute retains only its visible text', async () => {
+  for (const [route, expectedTitle] of [
+    ['/title-gt-double', 'Accurate page title'],
+    ['/title-gt-single', 'Nested page title'],
+  ]) {
+    const result = await auditWebsite(baseUrl + route, {
+      maxPages: 1, resolveTargetFn: localResolver,
+    });
+    assert.equal(result.status, 'success', route);
+    assert.equal(result.metrics.pagesAudited, 1, route);
+    assert.equal(result.pages[0].seo.title, expectedTitle, route);
+    assert.deepEqual(result.pages[0].findings, [], route);
+  }
 });
 
 test('H1 with a quoted greater-than attribute retains only visible heading text', async () => {
