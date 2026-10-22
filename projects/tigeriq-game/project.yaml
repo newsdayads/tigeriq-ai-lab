@@ -1,0 +1,30 @@
+schema: tigeriq.project.v2
+id: tigeriq-game
+name: TigerIQ Game
+kind: project
+portfolio_group_id: tigeriq-ai
+order: 90
+owner_issue: 5179
+state: planning
+source_roots:
+  - apps/tigeriq-game
+  - docs/projects/tigeriq-game
+workstreams:
+  - id: setup
+    name: Khởi tạo độc lập
+    order: 10
+  - id: design
+    name: Thiết kế game và trải nghiệm
+    order: 20
+  - id: build
+    name: Lập trình Web 2D
+    order: 30
+  - id: validation
+    name: Kiểm thử và trải nghiệm người chơi
+    order: 40
+  - id: expansion
+    name: Mở rộng và Android thử nghiệm
+    order: 50
+  - id: business
+    name: Pháp lý, doanh thu và vận hành
+    order: 60
