@@ -75,7 +75,7 @@ export async function scanProject(root) {
         if (!IGNORED_DIRECTORIES.has(entry.name)) {
           await walk(full);
         }
-      } else if (/\.(js|mjs|cjs|ts)$/.test(entry.name)) {
+      } else if (/\.(?:js|jsx|mjs|mts|cjs|cts|ts|tsx)$/.test(entry.name)) {
         const code = await fs.readFile(full, 'utf8');
         const { sanitized, quotedOffsets } = maskNonCodeImports(code);
         fileMap.set(full, code);
