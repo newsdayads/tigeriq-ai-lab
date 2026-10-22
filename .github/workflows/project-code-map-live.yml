@@ -89,6 +89,37 @@ jobs:
             ' query_bytes=' + selectedBytes + ' reduced_pct=' +
             Math.round(100 * (fullBytes - selectedBytes) / fullBytes));
           NODE
+      - name: Verify real exported-symbol lookup with exact HEAD and source-ref benchmark
+        env:
+          TIGERIQ_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          REPORT: ${{ runner.temp }}/tigeriq-code-map.json
+          SYMBOL_REPORT: ${{ runner.temp }}/tigeriq-code-map-symbol.json
+        run: |
+          node tools/project-code-map/cli.mjs --root . --symbol scanProject --expect-sha "$TIGERIQ_SOURCE_SHA" --output "$SYMBOL_REPORT"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const full = JSON.parse(readFileSync(process.env.REPORT, 'utf8'));
+          const symbol = JSON.parse(readFileSync(process.env.SYMBOL_REPORT, 'utf8'));
+          if (symbol.sourceRevision !== process.env.TIGERIQ_SOURCE_SHA ||
+              !symbol.revisionChecked || symbol.symbol !== 'scanProject') {
+            throw Error('CODE_MAP_SYMBOL_REVISION_OR_NAME_MISMATCH');
+          }
+          if (symbol.matches.length !== 1 ||
+              symbol.matches[0].sourceRef !== 'tools/project-code-map/scanner.mjs' ||
+              !full.nodes.includes(symbol.matches[0].sourceRef)) {
+            throw Error('CODE_MAP_SYMBOL_REAL_SOURCE_REF_MISMATCH');
+          }
+          if (JSON.stringify(symbol).includes('export const') ||
+              JSON.stringify(symbol).includes(process.env.RUNNER_TEMP)) {
+            throw Error('CODE_MAP_SYMBOL_SOURCE_OR_ABSOLUTE_PATH_LEAK');
+          }
+          const fullBytes = Buffer.byteLength(JSON.stringify(full));
+          const symbolBytes = Buffer.byteLength(JSON.stringify(symbol));
+          if (symbolBytes * 2 >= fullBytes) throw Error('CODE_MAP_SYMBOL_NOT_TARGETED');
+          console.log('REAL_REPO_CODE_MAP_SYMBOL_PASS source_sha=' + symbol.sourceRevision +
+            ' symbol=' + symbol.symbol + ' source_ref=' + symbol.matches[0].sourceRef +
+            ' full_bytes=' + fullBytes + ' symbol_bytes=' + symbolBytes);
+          NODE
       - name: Publish real repository JSON graph
         uses: actions/upload-artifact@v4
         with:
@@ -97,5 +128,6 @@ jobs:
             ${{ runner.temp }}/tigeriq-code-map.json
             ${{ runner.temp }}/tigeriq-code-map.html
             ${{ runner.temp }}/tigeriq-code-map-query.json
+            ${{ runner.temp }}/tigeriq-code-map-symbol.json
           if-no-files-found: error
           retention-days: 14

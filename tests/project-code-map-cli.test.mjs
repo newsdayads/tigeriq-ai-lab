@@ -146,3 +146,78 @@ test('targeted CLI query returns real scoped incoming/outgoing edges and rejects
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
+
+
+test('exported-symbol lookup returns exact first-party source refs with SHA and strict errors', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'tigeriq-code-map-symbol-'));
+  const root = path.join(tmp, 'repo');
+  const revision = 'c'.repeat(40);
+  const run = (envSha, ...args) => spawnSync(process.execPath, [CLI, '--root', root, ...args], {
+    encoding: 'utf8', env: { ...process.env, TIGERIQ_SOURCE_SHA: envSha },
+  });
+  try {
+    await fs.mkdir(path.join(root, 'src'), { recursive: true });
+    await fs.mkdir(path.join(root, 'dist'), { recursive: true });
+    await fs.mkdir(path.join(root, 'node_modules', 'vendor'), { recursive: true });
+    await fs.writeFile(path.join(root, 'src', 'zeta.mts'),
+      'export async function* scanProject() { yield 1; }\n');
+    await fs.writeFile(path.join(root, 'src', 'alpha.js'),
+      'export const scanProject = () => true;\n');
+    await fs.writeFile(path.join(root, 'src', 'other.ts'), [
+      'export const scanProjectExtra = true;',
+      '// export const scanProject = "comment phantom";',
+      '/* export async function scanProject() {} */',
+      'const fake = "export const scanProject = 0";',
+      'const template = \`export function scanProject() {}\`;',
+    ].join('\n'));
+    await fs.writeFile(path.join(root, 'dist', 'generated.js'),
+      'export const scanProject = "generated";');
+    await fs.writeFile(path.join(root, 'node_modules', 'vendor', 'index.js'),
+      'export const scanProject = "dependency";');
+    const target = run(revision, '--symbol', 'scanProject', '--expect-sha', revision);
+    assert.equal(target.status, 0, target.stderr);
+    const doc = JSON.parse(target.stdout);
+    assert.deepEqual(doc, {
+      schemaVersion: 1, sourceRevision: revision, revisionChecked: true,
+      symbol: 'scanProject',
+      matches: [{ sourceRef: 'src/alpha.js' }, { sourceRef: 'src/zeta.mts' }],
+    });
+    assert.ok(!target.stdout.includes(tmp), 'Never expose absolute source paths');
+    assert.ok(!target.stdout.includes('export const'), 'Never expose source code');
+    const unchecked = run('', '--symbol', 'scanProject');
+    assert.equal(unchecked.status, 0, unchecked.stderr);
+    assert.equal(JSON.parse(unchecked.stdout).revisionChecked, false);
+    assert.equal(JSON.parse(unchecked.stdout).sourceRevision, null);
+    const output = path.join(tmp, 'symbol.json');
+    const saved = run(revision, '--symbol', 'scanProject', '--expect-sha', revision,
+      '--output', output);
+    assert.equal(saved.status, 0, saved.stderr);
+    assert.match(saved.stderr, /CODE_MAP_SYMBOL_OK/);
+    assert.deepEqual(JSON.parse(await fs.readFile(output, 'utf8')), doc);
+    const full = run(revision);
+    assert.equal(full.status, 0, full.stderr);
+    assert.ok(Buffer.byteLength(target.stdout) < Buffer.byteLength(full.stdout));
+    for (const [args, exitCode, error] of [
+      [['--symbol', 'missingName'], 1, 'CODE_MAP_SYMBOL_NOT_FOUND'],
+      [['--symbol', 'scanProject', '--expect-sha', 'd'.repeat(40)], 1, 'CODE_MAP_STALE_REVISION'],
+      [['--symbol', 'scanProject()', '--expect-sha', revision], 2, 'Invalid --symbol identifier'],
+      [['--symbol', 'scanProject', '--query', 'src/alpha.js'], 2, 'Cannot combine --query with --symbol'],
+      [['--symbol', 'scanProject', '--html', path.join(tmp, 'graph.html')], 2, 'Cannot combine --symbol with --html'],
+      [['--symbol', 'scanProject', '--expect-sha', 'invalid'], 2, 'Invalid --expect-sha'],
+      [['--expect-sha', revision], 2, '--expect-sha requires --query or --symbol'],
+      [['--symbol'], 2, 'Missing value for --symbol'],
+    ]) {
+      const result = run(revision, ...args);
+      assert.equal(result.status, exitCode, result.stderr);
+      assert.ok(result.stderr.includes(error), result.stderr);
+    }
+    const absentSha = run('', '--symbol', 'scanProject', '--expect-sha', revision);
+    assert.equal(absentSha.status, 1, absentSha.stderr);
+    assert.match(absentSha.stderr, /CODE_MAP_STALE_REVISION/);
+    const moduleQuery = run(revision, '--query', 'src/alpha.js', '--expect-sha', revision);
+    assert.equal(moduleQuery.status, 0, moduleQuery.stderr);
+    assert.equal(JSON.parse(moduleQuery.stdout).sourceRef, 'src/alpha.js');
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
