@@ -18,7 +18,7 @@ function completion(row){
  if(t.finishVerified!==true||!t.finishedAt)return false;
  return row.lifecycleContract&&row.lifecycleContract.valid===true&&row.progressChecklistVerified===true&&Number(row.progressDone)>0&&Number(row.progressDone)===Number(row.progressTotal);
 }
-function viewStatus(row){return status(row)==='DONE'&&!completion(row)?'VERIFY':status(row)}
+function viewStatus(row){const canonical=String(row?.liveTruth?.status||'').toUpperCase();if(canonical&&LABELS[canonical])return canonical;return status(row)==='DONE'&&!completion(row)?'VERIFY':status(row)}
 function priority(row){const p=txt(row&& (row.effectivePriority||row.priority)||'META').toUpperCase();return /^P[0-5]$/.test(p)?p:'META'}
 function title(row){let t=txt(row&&row.title||'Chưa có tên việc').replace(/^\s*#?\d+\s*[-–—:]?\s*/,'').trim();while(/^\[[^\]]+\]\s*/.test(t))t=t.replace(/^\[[^\]]+\]\s*/,'');return t||'Chưa có tên việc'}
 function person(row){const verified=txt(row&&row.activeWorker||'').toUpperCase();if(row&&row.activeLease===true&&row.heartbeatFresh===true&&/^NV\d{2}$/.test(verified))return verified;
@@ -117,9 +117,10 @@ function renderCards(container,rows,options){
   const el=document.createElement('article');el.className='work-row tiq-work-card status-'+s.toLowerCase()+' priority-'+p.toLowerCase()+(opt.compact?' tiq-compact':'');
   el.style.setProperty('--status-color',COLORS[s]||COLORS.UNKNOWN);el.setAttribute('data-work-number',txt(number));el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label','Mở chi tiết công việc '+number+' '+title(row));
   const project=txt(row.projectName||'Chưa phân dự án'),stream=txt(row.workstreamName||row.workPackageName||'Chưa phân nhánh');
-  const rawBlocker=txt(row.blocker||row.waitReason||'').trim();
+  const truth=row.liveTruth&&typeof row.liveTruth==='object'?row.liveTruth:null;
+  const rawBlocker=txt(truth?.blocker||row.blocker||row.waitReason||'').trim();
    const blocker=/^(?:none|no(?:ne)?|null|undefined|không(?: có)?|khong(?: co)?|n\/?a|[-—–])$/i.test(rawBlocker)?'':rawBlocker;
-  const summary=blocker?'Bị chặn: '+blocker:txt(row.nextStep||row.currentStep||'').trim();
+  const summary=blocker?'Bị chặn: '+blocker:txt(truth?.next||row.nextStep||row.currentStep||'').trim();
   const count=Number(row.progressTotal),done=Number(row.progressDone);
   const checked=Number.isInteger(count)&&count>0&&Number.isInteger(done)&&done>=0&&done<=count;
   const gate=row.progressSource==='github_gates_verified'?'cổng GitHub':'bước';
@@ -138,16 +139,22 @@ function renderCards(container,rows,options){
   const showNext=!blocker&&Boolean(row.nextStep);
   const stripped=showNext?summary.replace(/^(?:bước\s+tiếp(?:\s+theo)?|next(?:\s+step)?)\s*[:：–—-]\s*/i,''):summary;
   const arrow='<svg class="next-step-icon" role="img" aria-label="Bước tiếp theo" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="m13 5 7 7-7 7"/></svg>';
+  const truthLine=truth?'<div class="tiq-work-truth" aria-label="Tình trạng đã đối chiếu">'
+    +'<span class="tiq-truth-source">'+esc(truth.sourceLabel||'CHƯA XÁC MINH NGUỒN')+'</span>'
+    +(truth.checkedAt?'<span>Đối chiếu '+esc(fmt(truth.checkedAt))+'</span>':'')
+    +(truth.runtimeVerified&&truth.worker?'<span>Job Core: '+esc(truth.worker)+'</span>':'')
+    +(truth.next&&blocker?'<span class="tiq-truth-next">BƯỚC TỚI: '+esc(truth.next)+'</span>':'')
+    +'</div>':'';
   const activityAt=['github_issue_comment','github_issue_created'].includes(row.lastActivitySource)?time(row.lastActivityAt):null;
   const activityLine=activityAt!==null?'<div class="work-activity" title="'+esc(String(row.lastActivitySummary||'').slice(0,300))+'">'
-   +'<span>Nhật ký '+esc(fmt(row.lastActivityAt))+'</span><span>'+esc(String(row.lastActivitySummary||'').replace(/\s+/g,' ').trim().slice(0,90)||'Đã ghi nhận sự kiện')+'</span></div>':'';
-  const signature=JSON.stringify([s,p,person(row),pr.percent,summary,project,stream,row.parentNumber,steps,bar,started,ended,activityLine,opt.compact]);
+   +'<span>Nhật ký GitHub '+esc(fmt(row.lastActivityAt))+'</span><span>'+esc(String(row.lastActivitySummary||'').replace(/\s+/g,' ').trim().slice(0,90)||'Đã ghi nhận sự kiện')+'</span></div>':'';
+  const signature=JSON.stringify([s,p,person(row),pr.percent,summary,project,stream,row.parentNumber,steps,bar,started,ended,activityLine,truthLine,opt.compact]);
   const past=lastSignatures.get(number);lastSignatures.set(number,signature);
   if(past&&past!==signature)el.classList.add('recently-updated');
   el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+txt(index+1).padStart(2,'0')+'</span><span class="work-id">#'+esc(number)+'</span><span class="priority '+p.toLowerCase()+'">'+esc(p)+'</span><span class="work-nv">'+esc(person(row))+'</span><span class="state '+s.toLowerCase()+'">'+badgeIcon(s)+esc(s==='VERIFY'&&status(row)==='DONE'?'CHỜ NGHIỆM THU':LABELS[s]||s)+'</span></div>'
    +'<div class="work-hierarchy">'+esc(project)+' <span aria-hidden="true">›</span> '+esc(stream)+'</div>'+parentLine
    +'<div class="work-title">'+esc(title(row))+'</div>'
-   +activityLine
+   +activityLine+truthLine
    +(summary?'<div class="work-quick '+(blocker?'blocked':'next')+'">'+(showNext?arrow:'')+'<span>'+esc(stripped)+'</span></div>':'')
    +(steps||bar?'<div class="work-progress-bottom">'+steps+bar+'</div>':'')
    +'<div class="tiq-work-times"><span>Bắt đầu: '+esc(started)+'</span><span>Kết thúc: '+esc(ended)+'</span></div></div>';
