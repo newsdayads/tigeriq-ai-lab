@@ -10,7 +10,7 @@ import { buildHtmlReport } from '../tools/project-code-map/html-report.mjs';
 const CLI = fileURLToPath(new URL('../tools/project-code-map/cli.mjs', import.meta.url));
 
 test('offline HTML embeds inert JSON and escapes hostile module names', () => {
-  const dangerous = '</script><script>window.pwned=true</script>const dangerous = '</script><script>window.pwned=true</script>';';
+  const dangerous = '</script><script>window.pwned=true</script>$&';
   const doc = {
     schemaVersion: 1,
     sourceRevision: 'fixture',
