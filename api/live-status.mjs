@@ -979,12 +979,12 @@ export function pullWorkOrderNumber(pull = {}) {
   if (titleNumber) return titleNumber;
 
   const branch = String(pull?.head?.ref || '');
-  const branchMatch = /(?:^|[\\/_-])(?:gh|issue|wo)[_-]?(\\d{2,6})(?!\\d)(?=$|[\\/_-])/i.exec(branch);
+  const branchMatch = /(?:^|[\/_-])(?:gh|issue|wo)[_-]?(\d{2,6})(?!\d)(?=$|[\/_-])/i.exec(branch);
   if (branchMatch) return Number(branchMatch[1]);
 
   const body = String(pull?.body || '');
-  const explicit = body.match(/^\\s*(?:WORK_ORDER|CANONICAL_ISSUE|TARGET_ISSUE)\\s*[:=]\\s*(?:GH-|#)?(\\d{2,6})(?!\\d)/mi)
-    || body.match(/^\\s*(?:Fix(?:es|ed)?|Clos(?:e|es|ed)|Resolv(?:e|es|ed)|Refs?|Relates? to|Liên quan(?: đến)?)\\s+(?:GH-|#)(\\d{2,6})(?!\\d)/mi);
+  const explicit = body.match(/^\s*(?:WORK_ORDER|CANONICAL_ISSUE|TARGET_ISSUE)\s*[:=]\s*(?:GH-|#)?(\d{2,6})(?!\d)/mi)
+    || body.match(/^\s*(?:Fix(?:es|ed)?|Clos(?:e|es|ed)|Resolv(?:e|es|ed)|Refs?|Relates? to|Liên quan(?: đến)?)\s+(?:GH-|#)(\d{2,6})(?!\d)/mi);
   return explicit ? Number(explicit[1]) : null;
 }
 
