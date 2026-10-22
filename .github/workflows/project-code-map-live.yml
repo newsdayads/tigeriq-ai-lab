@@ -36,16 +36,20 @@ jobs:
         with:
           node-version: 22
       - name: Verify runnable CLI on real isolated filesystem fixtures
-        run: node --test tests/project-code-map-cli.test.mjs
+        run: node --test tests/project-code-map-cli.test.mjs tests/project-code-map-html.test.mjs
       - name: Scan the actual checked-out repository
         env:
           TIGERIQ_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           REPORT: ${{ runner.temp }}/tigeriq-code-map.json
+          REPORT_HTML: ${{ runner.temp }}/tigeriq-code-map.html
         run: |
-          node tools/project-code-map/cli.mjs --root . --output "$REPORT"
+          node tools/project-code-map/cli.mjs --root . --output "$REPORT" --html "$REPORT_HTML"
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const doc = JSON.parse(readFileSync(process.env.REPORT, 'utf8'));
+          const html = readFileSync(process.env.REPORT_HTML, 'utf8');
+          if (!html.includes('id="code-map-data"') || !html.includes('Sơ đồ mã nguồn')) throw Error('HTML_VIEWER_MISSING');
+          if (!html.includes(doc.sourceRevision)) throw Error('HTML_REVISION_MISMATCH');
           if (doc.sourceRevision !== process.env.TIGERIQ_SOURCE_SHA) throw Error('SOURCE_REVISION_MISMATCH');
           if (doc.summary.sourceFiles < 10 || doc.summary.dependencyEdges < 10) throw Error('REAL_REPOSITORY_GRAPH_EMPTY');
           if (!doc.nodes.includes('tools/project-code-map/scanner.mjs')) throw Error('REAL_SCANNER_MISSING');
@@ -58,6 +62,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: TigerIQ-Code-Map-${{ github.event.pull_request.head.sha || github.sha }}
-          path: ${{ runner.temp }}/tigeriq-code-map.json
+          path: |
+            ${{ runner.temp }}/tigeriq-code-map.json
+            ${{ runner.temp }}/tigeriq-code-map.html
           if-no-files-found: error
           retention-days: 14

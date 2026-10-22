@@ -3,28 +3,32 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { scanProject } from './scanner.mjs';
+import { buildHtmlReport } from './html-report.mjs';
 
 const USAGE = [
   'TigerIQ Project Code Map (Node >=20)',
-  'Usage: node tools/project-code-map/cli.mjs [--root DIR] [--output FILE]',
+  'Usage: node tools/project-code-map/cli.mjs [--root DIR] [--output FILE] [--html FILE]',
   '  --root DIR     Folder to scan (default: current working directory)',
   '  --output FILE  Write UTF-8 JSON; without it, emit JSON to stdout',
+  '  --html FILE    Generate an offline interactive HTML explorer',
   '  --help         Show this help',
 ].join('\n');
 
 function optionsFromArgs(args) {
   let root = process.cwd();
   let output = null;
+  let html = null;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--help' || arg === '-h') return { help: true };
-    if (arg !== '--root' && arg !== '--output') throw new Error('Unknown option: ' + arg);
+    if (arg !== '--root' && arg !== '--output' && arg !== '--html') throw new Error('Unknown option: ' + arg);
     const value = args[++i];
     if (!value || value.startsWith('--')) throw new Error('Missing value for ' + arg);
     if (arg === '--root') root = value;
-    else output = value;
+    else if (arg === '--output') output = value;
+    else html = value;
   }
-  return { root: path.resolve(root), output: output ? path.resolve(output) : null };
+  return { root: path.resolve(root), output: output ? path.resolve(output) : null, html: html ? path.resolve(html) : null };
 }
 
 function relativeUnix(root, filename) {
@@ -73,6 +77,11 @@ async function main() {
   try {
     const report = await buildCodeMap(opts.root);
     const json = JSON.stringify(report, null, 2) + '\n';
+    if (opts.html) {
+      await fs.mkdir(path.dirname(opts.html), { recursive: true });
+      await fs.writeFile(opts.html, buildHtmlReport(report), 'utf8');
+      console.error('CODE_MAP_HTML_OK output=' + opts.html);
+    }
     if (opts.output) {
       await fs.mkdir(path.dirname(opts.output), { recursive: true });
       await fs.writeFile(opts.output, json, 'utf8');
