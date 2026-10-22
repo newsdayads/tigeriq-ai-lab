@@ -66,6 +66,14 @@ before(async () => {
       res.writeHead(302, { location: '/' });
       return res.end();
     }
+    if (req.url === '/word-count-visible-body') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Metadata Words Are Not Body Text</title><meta name="description" content="SEO metadata only"></head><body><h1>Actual Body</h1><p>Just text</p></body></html>');
+    }
+    if (req.url === '/word-count-implicit-body') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>Head Metadata Only</title></head><h1>Actual Body</h1><p>Just text</p></html>');
+    }
     if (req.url === '/seo-literal-comparison') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><title>2 < 3 > 1</title><meta name="description" content="Valid comparison"></head><body><h1><span data-note="3 > 2">2 < 3 > 1</span></h1></body></html>');
@@ -265,6 +273,21 @@ before(async () => {
 
 after(async () => {
   if (server) await new Promise(resolve => server.close(resolve));
+});
+
+test('SEO wordCount counts the body, not title or other head metadata (real local HTTP)', async () => {
+  for (const route of ['/word-count-visible-body', '/word-count-implicit-body']) {
+    const result = await auditWebsite(baseUrl + route, {
+      maxPages: 1, resolveTargetFn: localResolver,
+    });
+    assert.equal(result.status, 'success', route);
+    assert.equal(result.pages[0].seo.title,
+      route.endsWith('implicit-body') ? 'Head Metadata Only' : 'Metadata Words Are Not Body Text');
+    assert.equal(result.pages[0].seo.wordCount, 4, route);
+    assert.equal(result.summary.wordCount, 4, route);
+    assert.equal(result.metrics.externalApiCostUSD, 0);
+    assert.equal(result.metrics.platformCostUSD, null);
+  }
 });
 
 test('SEO text preserves literal less-than comparisons and removes complete quoted inline tags', async () => {
