@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 257,
-  "latestVersionName": "TigerIQ_HCM_v1.0.16",
+  "latestVersionCode": 258,
+  "latestVersionName": "TigerIQ_HCM_v1.0.17",
   "apkUrl": "https://github.com/newsdayads/tigeriq-ai-lab/releases/latest/download/UltraCar_TigerIQ_HCM_latest.apk",
-  "sha256": "8F85671D9E5A6CBA8E98DF4A8B333F935D5DA2B0421216122AE2F3ED96C25DF2",
-  "releaseNotes": "v1.0.16: Thêm mục CẬP NHẬT PHIÊN BẢN MỚI trong Hồ sơ người lái → Thông báo. Chạm để tải APK mới nhất trực tiếp từ GitHub Releases, sau đó Android yêu cầu xác nhận cài đặt. Sửa bộ kiểm tra phiên bản và đường dẫn tải cũ, hiển thị nhãn phiên bản đúng. Giữ nguyên các chức năng camera, USB, DeX khác.",
+  "sha256": "E912E8B14503F55405A2F5A0F304DBE0B64E9F7BE5EBBC0C8C4D9ED147C87F33",
+  "releaseNotes": "v1.0.17: Camera nổi chỉ chọn màn hình DeX/màn hình ngoài hợp lệ, không đặt lên màn hình điện thoại; cải thiện tự khởi động lại dịch vụ và ghi log lỗi. Nút cập nhật trong tab Thông báo kiểm tra versionCode trên luồng nền, chỉ tải APK khi có bản mới và hiển thị trạng thái. Nhãn phiên bản căn giữa phía dưới nhóm điều khiển. Giữ nguyên chức năng Camera lùi USB và các chức năng khác. Chưa nghiệm thu thực tế trên Samsung DeX.",
   "mandatory": false
 }
