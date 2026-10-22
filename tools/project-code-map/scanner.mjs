@@ -14,10 +14,26 @@ function maskNonCodeImports(code) {
   const quotedOffsets = new Set();
   let quote = null;
   let comment = null;
+  let regexLiteral = false;
+  let regexClass = false;
 
   for (let i = 0; i < chars.length; i++) {
     const ch = chars[i];
     const next = chars[i + 1];
+
+    // Regex literals are data, not source declarations or imports. Mask them
+    // at conservative expression-start positions without swallowing division.
+    if (regexLiteral) {
+      if (ch === '\\' && i + 1 < chars.length) {
+        chars[i] = chars[++i] = ' ';
+        continue;
+      }
+      if (ch === '[') regexClass = true;
+      else if (ch === ']') regexClass = false;
+      else if (ch === '/' && !regexClass) regexLiteral = false;
+      if (ch !== '\n' && ch !== '\r') chars[i] = ' ';
+      continue;
+    }
 
     if (comment === 'line') {
       if (ch === '\n' || ch === '\r') {
@@ -57,6 +73,16 @@ function maskNonCodeImports(code) {
       chars[i] = chars[i + 1] = ' ';
       i++;
       comment = 'block';
+    } else if (ch === '/' && next !== '/' && next !== '*') {
+      let before = i - 1;
+      while (before >= 0 && /\s/.test(chars[before])) before--;
+      // Only unambiguous expression starts: never classify `left / right`
+      // as a RegExp. This is a lexical guard, not a full JS/TS parser.
+      if (before < 0 || /[=([{:,;!?]/.test(chars[before])) {
+        regexLiteral = true;
+        regexClass = false;
+        chars[i] = ' ';
+      }
     }
   }
   return { sanitized: chars.join(''), quotedOffsets };

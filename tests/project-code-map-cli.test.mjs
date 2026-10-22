@@ -165,6 +165,8 @@ test('exported-symbol lookup returns exact first-party source refs with SHA and 
       'export const scanProject = () => true;\n');
     await fs.writeFile(path.join(root, 'src', 'other.ts'), [
       'export const scanProjectExtra = true;',
+      'const regexPhantom = /export const scanProject/;',
+      'const regexPhantomOnly = /export const phantomOnly/;',
       '// export const scanProject = "comment phantom";',
       '/* export async function scanProject() {} */',
       'const fake = "export const scanProject = 0";',
@@ -211,12 +213,42 @@ test('exported-symbol lookup returns exact first-party source refs with SHA and 
       assert.equal(result.status, exitCode, result.stderr);
       assert.ok(result.stderr.includes(error), result.stderr);
     }
+    // A valid regex literal containing export-shaped text is not a declaration.
+    const regexOnly = run(revision, '--symbol', 'phantomOnly', '--expect-sha', revision);
+    assert.equal(regexOnly.status, 1, regexOnly.stderr);
+    assert.match(regexOnly.stderr, /CODE_MAP_SYMBOL_NOT_FOUND/);
     const absentSha = run('', '--symbol', 'scanProject', '--expect-sha', revision);
     assert.equal(absentSha.status, 1, absentSha.stderr);
     assert.match(absentSha.stderr, /CODE_MAP_STALE_REVISION/);
     const moduleQuery = run(revision, '--query', 'src/alpha.js', '--expect-sha', revision);
     assert.equal(moduleQuery.status, 0, moduleQuery.stderr);
     assert.equal(JSON.parse(moduleQuery.stdout).sourceRef, 'src/alpha.js');
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+
+test('export scanner ignores regex-shaped declarations while preserving division', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'tigeriq-code-map-regex-'));
+  try {
+    await fs.writeFile(path.join(tmp, 'one.mjs'), [
+      'const regex = /export const phantomExport/;',
+      'const escaped = /foo\\/export const phantomEscaped/;',
+      'const ratio = 12 / 3;',
+      'export const genuine = ratio;',
+    ].join('\n'));
+    const env = { ...process.env, TIGERIQ_SOURCE_SHA: 'e'.repeat(40) };
+    const run = (...args) => spawnSync(process.execPath, [CLI, '--root', tmp, ...args],
+      { encoding: 'utf8', env });
+    const genuine = run('--symbol', 'genuine', '--expect-sha', env.TIGERIQ_SOURCE_SHA);
+    assert.equal(genuine.status, 0, genuine.stderr);
+    assert.deepEqual(JSON.parse(genuine.stdout).matches, [{ sourceRef: 'one.mjs' }]);
+    for (const symbol of ['phantomExport', 'phantomEscaped']) {
+      const missing = run('--symbol', symbol, '--expect-sha', env.TIGERIQ_SOURCE_SHA);
+      assert.equal(missing.status, 1, missing.stderr);
+      assert.match(missing.stderr, /CODE_MAP_SYMBOL_NOT_FOUND/);
+    }
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
