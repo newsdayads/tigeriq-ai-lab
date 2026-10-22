@@ -38,6 +38,11 @@ describe('TigerIQ Game: parent summary keeps independently executable children',
   expect(opened.rows.map(x=>x.number)).toEqual([5179,5180,5181,2054]);
   expect(wc.visibleProjectRows([children[0],separate],new Set()).rows).toHaveLength(2);
   expect(source.map(x=>x.number)).toEqual([5179,5180,5181,2054]);
+  const acrossTabs=wc.rowsFor({openWork:[parent,children[0]],recentWork:[children[1]]},'action');
+  const projectedParent=acrossTabs.find(x=>x.number===5179);
+  expect(projectedParent).toMatchObject({projectChildTotal:2,projectChildAccepted:1});
+  expect(wc.visibleProjectRows(acrossTabs,new Set()).groups.get(5179)).toMatchObject({count:2,done:1,visible:1});
+
  });
 });
 describe('TigerIQ Work Center V1 — one shared source of truth',()=>{
