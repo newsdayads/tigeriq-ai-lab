@@ -65,6 +65,40 @@ describe('GH-5176 persisted Continuous Verify crash recovery',()=>{
     expect(planContinuousVerifyRecovery(rows,{nowMs:now})).toEqual([]);
   });
 
+  it('fails closed for runtime SHA receipts missing or contradicting currentSha',()=>{
+    const runtimeKey='runtime:'+A;
+    const runtime=(data,type='CONTINUOUS_VERIFY_TRIGGER_QUEUED')=>rec(1,type,data);
+    const valid={kind:'RUNTIME_SHA_CHANGE',key:runtimeKey,currentSha:A};
+    expect(planContinuousVerifyRecovery([runtime(valid)],{nowMs:now})).toEqual([
+      {trigger:true,kind:'RUNTIME_SHA_CHANGE',key:runtimeKey,currentSha:A,attempt:0},
+    ]);
+    for(const invalid of [
+      {kind:'RUNTIME_SHA_CHANGE',key:runtimeKey},
+      {kind:'RUNTIME_SHA_CHANGE',key:runtimeKey,currentSha:null},
+      {kind:'RUNTIME_SHA_CHANGE',key:runtimeKey,currentSha:''},
+      {kind:'RUNTIME_SHA_CHANGE',key:runtimeKey,currentSha:B},
+    ]){
+      expect(planContinuousVerifyRecovery([runtime(invalid)],{nowMs:now})).toEqual([]);
+    }
+    // A GitHub receipt cannot smuggle an unrelated runtime trigger either.
+    expect(planContinuousVerifyRecovery([runtime({continuousVerifyTrigger:valid},
+      'GITHUB_EVENT_RECEIVED')],{nowMs:now})).toEqual([]);
+  });
+
+  it('retains legitimate OIDC-attributed GitHub merge recovery after cross-origin rejection',()=>{
+    const key='github-main:'+B;
+    const merge={kind:'GITHUB_MAIN_MERGE',key,sourceSha:B};
+    const rows=[rec(2,'GITHUB_EVENT_RECEIVED',{
+      deliveryId:'oidc-merge-fixture',continuousVerifyTrigger:merge,
+    })];
+    expect(planContinuousVerifyRecovery(rows,{nowMs:now})).toEqual([
+      {...merge,trigger:true,attempt:0},
+    ]);
+    expect(planContinuousVerifyRecovery([...rows,
+      rec(3,'CONTINUOUS_VERIFY_RUN',{key})
+    ],{nowMs:now})).toEqual([]);
+  });
+
   it('bounds recovery to recent receipts, caps batch and supports verified runtime triggers',()=>{
     const recent=[
       rec(1,'CONTINUOUS_VERIFY_TRIGGER_QUEUED',push(A),'2026-10-21T00:00:00Z'),

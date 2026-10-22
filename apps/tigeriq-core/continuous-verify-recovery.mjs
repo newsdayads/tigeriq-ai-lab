@@ -13,11 +13,16 @@ function candidateFrom(row){
   if(!info||typeof info!=='object')return null;
   const kind=String(info.kind||''),key=String(info.key||'');
   if(!VALID_KIND.has(kind))return null;
+  // A signed GitHub webhook can attest only GitHub events, not a local
+  // runtime installation. Reject cross-origin recovery envelopes.
+  if(row.type==='GITHUB_EVENT_RECEIVED'&&kind==='RUNTIME_SHA_CHANGE')return null;
   const prefix=kind==='RUNTIME_SHA_CHANGE'?'runtime:':'github-main:';
   if(!key.startsWith(prefix)||!SHA.test(key.slice(prefix.length)))return null;
   const sha=key.slice(prefix.length);
   if(kind==='RUNTIME_SHA_CHANGE'){
-    if(info.currentSha&&info.currentSha!==sha)return null;
+    // A runtime recovery must prove the installed revision in the durable receipt.
+    // The key alone is not source identity; missing currentSha fails closed.
+    if(info.currentSha!==sha)return null;
     return {trigger:true,kind,key,currentSha:sha};
   }
   if(info.sourceSha!==sha)return null;
