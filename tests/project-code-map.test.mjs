@@ -122,7 +122,7 @@ async function withTempProject(structure, fn) {
       '// export * from "./fake-comment.mjs";',
       '/* export { z } from "./fake-block.mjs"; */',
       "import './side-effect.mjs';",
-    ].join('\\n'),
+    ].join('\n'),
   }, async (root) => {
     const file = path.join(root, 'barrel.mjs');
     const { importMap, exportMap } = await scanProject(root);
