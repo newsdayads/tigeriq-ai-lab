@@ -6,7 +6,7 @@ groups:
   - id: tigeriq-ai
     name: TigerIQ AI
     order: 10
-    children: [tigeriq-platform, tigeriq-mobile-worker, tigeriq-live, tigeriq-workflow-lab, tigeriq-app-chrome]
+    children: [tigeriq-platform, tigeriq-mobile-worker, tigeriq-live, tigeriq-workflow-lab, tigeriq-app-chrome, tigeriq-game]
   - id: tigeriq-news
     name: TigerIQ News / Media
     order: 20
