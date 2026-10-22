@@ -13,6 +13,15 @@ assert.equal(config?.cleanUrls, true);
 assert.equal(config?.rewrites?.find((route) => route?.source === '/')?.destination, '/api/health-view?resource=');
 assert.equal(config?.rewrites?.find((route) => route?.source === '/pc01/:path*')?.destination, '/api/health-view?resource=:path*');
 assert.match(readFileSync('apps/tigeriq-core/dashboard.html','utf8'), /TigerIQ AI/);
+// Compact UI is scoped to API Health cards and retains the existing work detail modal.
+const apiHealthDashboard = readFileSync('apps/tigeriq-core/dashboard.html','utf8');
+assert.match(apiHealthDashboard, /Owner 2026-10-22: compact work cards/);
+assert.match(apiHealthDashboard, /#workList\.wo-list>\.work-row\.tiq-work-card/);
+assert.match(apiHealthDashboard, /grid-auto-rows:max-content!important/);
+assert.match(apiHealthDashboard, /#workList \.work-title/);
+assert.match(apiHealthDashboard, /function openWorkDetail\(row,trigger\)/);
+assert.match(apiHealthDashboard, /TigerIQWorkCenter\.renderCards\(workList,rows/);
+
 assert.equal(deployedView, publicView, 'Vercel public command-center must match canonical TigerIQ Live view');
 
 assert.match(publicView, /TigerIQ Live/);
