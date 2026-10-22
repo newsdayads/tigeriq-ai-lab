@@ -107,5 +107,34 @@ async function withTempProject(structure, fn) {
     const graph = await generateImportExportGraph(root);
     assert.deepStrictEqual(graph.edges.filter(edge => edge.from === entry).map(edge => edge.to), expected);
   });
+
+  // Re-export declarations are real source-module dependencies, not default
+  // exports. Ignore fake re-exports in comments and quoted strings.
+  await withTempProject({
+    'barrel.mjs': [
+      "export { foo as alias } from './named.mjs';",
+      "export * from './star.mjs';",
+      "export * as ns from './namespace.mjs';",
+      "export type { Data } from './types.mjs';",
+      'export const own = true;',
+      'const fake = "export * from \'./fake-string.mjs\'";',
+      'const template = `export { x } from "./fake-template.mjs"`;',
+      '// export * from "./fake-comment.mjs";',
+      '/* export { z } from "./fake-block.mjs"; */',
+      "import './side-effect.mjs';",
+    ].join('\\n'),
+  }, async (root) => {
+    const file = path.join(root, 'barrel.mjs');
+    const { importMap, exportMap } = await scanProject(root);
+    assert.deepStrictEqual(importMap.get(file), [
+      './named.mjs', './star.mjs', './namespace.mjs', './types.mjs', './side-effect.mjs',
+    ]);
+    assert.deepStrictEqual(exportMap.get(file), ['own']);
+    const graph = await generateImportExportGraph(root);
+    assert.deepStrictEqual(graph.edges.filter(edge => edge.from === file).map(edge => edge.to), [
+      './named.mjs', './star.mjs', './namespace.mjs', './types.mjs', './side-effect.mjs',
+    ]);
+  });
+
   console.log('All tests passed');
 })();
