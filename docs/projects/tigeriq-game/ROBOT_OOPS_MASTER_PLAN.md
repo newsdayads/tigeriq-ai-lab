@@ -116,3 +116,5 @@ Không tuyên bố GO, release, doanh thu hay 100% nếu các cổng trên chưa
 
 ## MÔ HÌNH THỰC THI HIỆN HÀNH (23/10/2026)
 Xem [ROBOT_OOPS_WORKFLOW_V2.md](./ROBOT_OOPS_WORKFLOW_V2.md): một thẻ tổng đọc và 14 thẻ thực thi V2 có phụ thuộc bằng số Issue; nhân sự nhận việc theo đúng năng lực, một phạm vi một chủ ghi; giới hạn số lần thử, nghiệm thu và STOP/GO rõ. Nhóm dự án khai báo tại `projects/tigeriq-game/project.yaml`, không tạo hàng đợi cạnh tranh.
+
+**Điều kiện nhánh phát triển sau thử nghiệm:** G11–G14 giữ `WAIT_GO_DECISION` cho đến khi có biên nhận G10 GO; đóng G10 alone không tự mở việc phát triển. STOP/PIVOT không mở G11–G14, chỉ được chuyển trạng thái bằng điều phối có quyền và ghi biên nhận. Đây là cổng quản trị hữu hạn, không giả Core đã tự hiểu kết quả GO/STOP.
