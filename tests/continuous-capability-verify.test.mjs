@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   managerJobMaterializationDecision,
@@ -6,6 +7,7 @@ import {
 } from '../apps/tigeriq-core/manager-job-policy.mjs';
 import {
   CONTINUOUS_VERIFY_CADENCE_MS,
+  createContinuousVerifyPendingQueue,
   cadenceContinuousVerifyDue,
   continuousVerifyRelevantPath,
   githubChangedPaths,
@@ -107,6 +109,59 @@ describe('Continuous Capability Verification trigger policy', () => {
     expect(shouldQueueContinuousVerify(trigger,{runningKey:'runtime:sha-b'})).toBe(false);
     expect(shouldQueueContinuousVerify(trigger,{lastRunKey:'runtime:sha-b'})).toBe(false);
     expect(shouldQueueContinuousVerify(trigger,{lastRunKey:'runtime:sha-a'})).toBe(true);
+  });
+
+  it('GH-5174 preserves distinct main events in bounded FIFO without overwriting earlier keys', () => {
+    const q=createContinuousVerifyPendingQueue({capacity:3,now:()=> '2026-10-23T00:00:00Z'});
+    const mk=key=>({trigger:true,key,kind:'GITHUB_MAIN_PUSH'});
+    expect(q.enqueue(mk('github-main:a'))).toMatchObject({accepted:true,depth:1});
+    expect(q.enqueue(mk('github-main:b'))).toMatchObject({accepted:true,depth:2});
+    expect(q.enqueue(mk('github-main:a'))).toMatchObject({accepted:false,reason:'DUPLICATE_OR_INVALID'});
+    expect(q.enqueue(mk('github-main:c'))).toMatchObject({accepted:true,depth:3});
+    expect(q.keys()).toEqual(['github-main:a','github-main:b','github-main:c']);
+    expect(q.enqueue(mk('github-main:d'))).toMatchObject({accepted:false,reason:'CAPACITY_REACHED',depth:3});
+    expect([q.take()?.key,q.take()?.key,q.take()?.key]).toEqual([
+      'github-main:a','github-main:b','github-main:c',
+    ]);
+    expect(q.take()).toBeNull();
+    expect(q.size).toBe(0);
+  });
+
+  it('GH-5174 dedupes running and terminal keys and prioritizes one bounded retry', () => {
+    const q=createContinuousVerifyPendingQueue({capacity:2,now:()=> '2026-10-23T00:00:00Z'});
+    const mk=key=>({trigger:true,key,kind:'GITHUB_MAIN_PUSH'});
+    q.enqueue(mk('github-main:old'));
+    const active=q.take();
+    expect(q.enqueue(mk('github-main:old'),{runningKey:active.key})).toMatchObject({
+      accepted:false,reason:'DUPLICATE_OR_INVALID',
+    });
+    q.enqueue(mk('github-main:new'));
+    q.enqueue(mk('github-main:last'));
+    expect(q.enqueue(mk('github-main:overflow'))).toMatchObject({reason:'CAPACITY_REACHED'});
+    expect(q.retryFirst(active)).toMatchObject({accepted:true,depth:3});
+    expect(q.keys()).toEqual(['github-main:old','github-main:new','github-main:last']);
+    const retry=q.take();
+    expect(retry.attempt).toBe(1);
+    expect(q.retryFirst(retry)).toMatchObject({accepted:false,reason:'RETRY_DENIED'});
+    expect(q.enqueue(mk('github-main:old'),{lastRunKey:'github-main:old'})).toMatchObject({
+      accepted:false,reason:'DUPLICATE_OR_INVALID',
+    });
+    expect([q.take()?.key,q.take()?.key]).toEqual(['github-main:new','github-main:last']);
+  });
+
+  it('GH-5174 serializes terminal lookup before the next Core queue dequeue', () => {
+    const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const start=source.indexOf('async function runPendingContinuousVerify()');
+    const end=source.indexOf('function selfAuditStateFresh(',start);
+    const body=source.slice(start,end);
+    expect(start).toBeGreaterThan(0);
+    expect(body.indexOf('continuousVerifyRunning=true;')).toBeLessThan(
+      body.indexOf('await continuousVerifyAlreadyTerminal(trigger.key)')
+    );
+    expect(body).toContain('continuousVerifyPending.take()');
+    expect(body).toContain('continuousVerifyPending.retryFirst(trigger)');
+    expect(body).toContain('finally{');
+    expect(source).toContain("CONTINUOUS_VERIFY_QUEUE_OVERFLOW");
   });
 
   it('D3 keeps bounded cadence verification when no change occurs', () => {

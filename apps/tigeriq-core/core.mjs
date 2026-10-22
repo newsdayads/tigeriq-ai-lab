@@ -29,7 +29,7 @@ import { buildSkillOutcomeObservation, recordSkillOutcome, skillFailureLoopDecis
 import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
 import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolutionSignatures, evaluateSelfAudit, resolveRuntimeSourceIdentity, selfAuditFunctionalFailureKeys, syntheticSelfAuditCanary } from './self-audit.mjs';
-import { CONTINUOUS_VERIFY_CADENCE_MS, cadenceContinuousVerifyDue, githubContinuousVerifyTrigger, runtimeContinuousVerifyTrigger, shouldQueueContinuousVerify } from './continuous-verify.mjs';
+import { CONTINUOUS_VERIFY_CADENCE_MS, cadenceContinuousVerifyDue, githubContinuousVerifyTrigger, runtimeContinuousVerifyTrigger, createContinuousVerifyPendingQueue } from './continuous-verify.mjs';
 import { autonomousRcaCanonicalAction, autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
 import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt } from './campaign-runner.mjs';
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
@@ -3515,7 +3515,8 @@ function getDynamicMaxParallel() {
   return Math.max(3, Math.min(20, healthyCount));
 }
 let lastLightAudit = 0, lastDeepAudit = 0, activeDeepAudit = false;
-let continuousVerifyPending = null, continuousVerifyRunning = false, continuousVerifyRunningKey = '', continuousVerifyLastRunKey = '', continuousVerifyRuntimeSha = '';
+const continuousVerifyPending = createContinuousVerifyPendingQueue();
+let continuousVerifyRunning = false, continuousVerifyRunningKey = '', continuousVerifyLastRunKey = '', continuousVerifyRuntimeSha = '';
 
 const CORE_RUNTIME_UPDATER_STATE=process.env.TIGERIQ_CORE_RUNTIME_UPDATER_STATE?.trim()||'D:\\TigerIQ\\State\\core-runtime-updater.json';
 const CORE_RUNTIME_SOURCE_STATE=process.env.TIGERIQ_CORE_RUNTIME_SOURCE_STATE?.trim()||'D:\\TigerIQ\\State\\core-runtime-source.json';
@@ -3526,9 +3527,17 @@ function readSelfAuditJsonState(path){
   try{return JSON.parse(readFileSync(path,'utf8'));}catch{return null;}
 }
 function queueContinuousVerify(trigger){
-  if(!shouldQueueContinuousVerify(trigger,{pendingKey:continuousVerifyPending?.key||'',runningKey:continuousVerifyRunningKey,lastRunKey:continuousVerifyLastRunKey}))return false;
-  continuousVerifyPending={...trigger,attempt:Number(trigger?.attempt||0),queuedAt:nowIso()};
-  return true;
+  const result=continuousVerifyPending.enqueue(trigger,{
+    runningKey:continuousVerifyRunningKey,lastRunKey:continuousVerifyLastRunKey,
+  });
+  // Capacity is deliberately bounded. Record a durable alarm instead of
+  // silently replacing a previously accepted event.
+  if(result.reason==='CAPACITY_REACHED'){
+    void event('CONTINUOUS_VERIFY_QUEUE_OVERFLOW',{
+      key:trigger?.key||null,kind:trigger?.kind||null,depth:result.depth,
+    }).catch(()=>{});
+  }
+  return result.accepted;
 }
 async function continuousVerifyAlreadyTerminal(key){
   const value=String(key||'').trim();
@@ -3562,31 +3571,44 @@ function observeRuntimeContinuousVerify(){
   }
   const trigger=runtimeContinuousVerifyTrigger(continuousVerifyRuntimeSha,currentSha,{installedSha,coreImpact:updater?.impact?.core});
   if(trigger.kind==='RUNTIME_INSTALL_PENDING')return null;
+  if(!trigger.trigger){continuousVerifyRuntimeSha=currentSha;return null;}
+  // Do not consume the runtime SHA when the bounded queue is full; the next
+  // cycle can retry admission instead of dropping the change permanently.
+  if(!queueContinuousVerify(trigger))return null;
   continuousVerifyRuntimeSha=currentSha;
-  return queueContinuousVerify(trigger)?trigger:null;
+  return trigger;
 }
 async function runPendingContinuousVerify(){
-  if(continuousVerifyRunning||activeDeepAudit||!continuousVerifyPending)return false;
-  const trigger=continuousVerifyPending;
-  continuousVerifyPending=null;
-  if(await continuousVerifyAlreadyTerminal(trigger.key)){continuousVerifyLastRunKey=trigger.key;return false;}
+  if(continuousVerifyRunning||activeDeepAudit||!continuousVerifyPending.size)return false;
+  const trigger=continuousVerifyPending.take();
+  // Set the single-run guard BEFORE the asynchronous terminal lookup.
+  // Otherwise a second loop tick could dequeue a different key concurrently.
   continuousVerifyRunning=true;
   continuousVerifyRunningKey=trigger.key;
-  activeDeepAudit=true;
-  lastDeepAudit=Date.now();
   try{
-    const result=await runSelfAuditScan({store:pool,nowMs:lastDeepAudit});
-    continuousVerifyLastRunKey=trigger.key;
-    await event('CONTINUOUS_VERIFY_RUN',{
-      kind:trigger.kind,key:trigger.key,attempt:trigger.attempt||0,sourceSha:trigger.sourceSha||null,currentSha:trigger.currentSha||null,
-      contractCount:result.contractCount,anomalyCount:result.anomalies.length,materialized:result.materialized,deduped:result.deduped,resolved:result.resolved
-    });
-    return true;
-  }catch(error){
-    if((trigger.attempt||0)<1)continuousVerifyPending={...trigger,attempt:(trigger.attempt||0)+1,queuedAt:nowIso()};
-    else continuousVerifyLastRunKey=trigger.key;
-    await event('CONTINUOUS_VERIFY_RUN_FAILED',{kind:trigger.kind,key:trigger.key,attempt:trigger.attempt||0,error:String(error?.message||error).slice(0,240)});
-    return false;
+    if(await continuousVerifyAlreadyTerminal(trigger.key)){
+      continuousVerifyLastRunKey=trigger.key;
+      return false;
+    }
+    activeDeepAudit=true;
+    lastDeepAudit=Date.now();
+    try{
+      const result=await runSelfAuditScan({store:pool,nowMs:lastDeepAudit});
+      continuousVerifyLastRunKey=trigger.key;
+      await event('CONTINUOUS_VERIFY_RUN',{
+        kind:trigger.kind,key:trigger.key,attempt:trigger.attempt||0,sourceSha:trigger.sourceSha||null,currentSha:trigger.currentSha||null,
+        contractCount:result.contractCount,anomalyCount:result.anomalies.length,materialized:result.materialized,deduped:result.deduped,resolved:result.resolved
+      });
+      return true;
+    }catch(error){
+      if((trigger.attempt||0)<1)continuousVerifyPending.retryFirst(trigger);
+      else continuousVerifyLastRunKey=trigger.key;
+      await event('CONTINUOUS_VERIFY_RUN_FAILED',{
+        kind:trigger.kind,key:trigger.key,attempt:trigger.attempt||0,
+        error:String(error?.message||error).slice(0,240),
+      });
+      return false;
+    }
   }finally{
     activeDeepAudit=false;
     continuousVerifyRunning=false;
