@@ -12,10 +12,17 @@ const KNOWN_FINDINGS = Object.freeze({
 });
 
 function markdownText(value, max = 160) {
+  // Source HTML character references may have been decoded into literal tags.
+  // Markdown can allow raw HTML, so escape HTML-sensitive characters before
+  // Markdown punctuation; otherwise an untrusted title can inject markup into
+  // a downloaded report even though the browser preview uses textContent.
   return String(value ?? '')
     .replace(/[\u0000-\u001f\u007f]/g, ' ')
     .slice(0, max)
-    .replace(/([\\\`*_{}\[\]()#+.!|>~-])/g, '\\$1');
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/([\\\`*_{}\[\]()#+.!|~-])/g, '\\$1');
 }
 
 function displayPageUrl(value) {
