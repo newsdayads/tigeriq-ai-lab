@@ -30,6 +30,7 @@ import { buildManagerHistoryContext } from './context-gateway.mjs';
 import { buildFailureLearningCandidates, failureLearningEventTypes } from './failure-learning.mjs';
 import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolutionSignatures, evaluateSelfAudit, resolveRuntimeSourceIdentity, selfAuditFunctionalFailureKeys, syntheticSelfAuditCanary } from './self-audit.mjs';
 import { CONTINUOUS_VERIFY_CADENCE_MS, cadenceContinuousVerifyDue, githubContinuousVerifyTrigger, runtimeContinuousVerifyTrigger, createContinuousVerifyPendingQueue } from './continuous-verify.mjs';
+import { planContinuousVerifyRecovery, CONTINUOUS_VERIFY_RECOVERY_EVENT_LIMIT } from './continuous-verify-recovery.mjs';
 import { autonomousRcaCanonicalAction, autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
 import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt } from './campaign-runner.mjs';
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
@@ -3317,6 +3318,7 @@ const server=createServer(async(req,res)=>{
       const raw=await readRawBody(req,512*1024);
       let payload;try{payload=raw?JSON.parse(raw):{}}catch{res.writeHead(400,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'github_event_json_invalid'}));}
       if(String(payload?.repository?.full_name||'')!=='newsdayads/tigeriq-ai-lab'){res.writeHead(403,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'github_event_repository_invalid'}));}
+      const durableVerifyTrigger=githubContinuousVerifyTrigger({eventName,deliveryId,payload});
       // Delegation is default-OFF. Only a newly authenticated Owner GitHub/OIDC
       // comment can arm the fixed bounded local policy; a code merge never can.
       if(eventName==='issue_comment'&&
@@ -3377,7 +3379,11 @@ const server=createServer(async(req,res)=>{
             runId:identity.runId||null,receivedAt:new Date().toISOString(),
             ...(eventName==='push'&&/^[a-f0-9]{40}$/i.test(String(payload?.after||''))?{
               key:'github-main:'+payload.after,sourceSha:payload.after
-            }:{})
+            }:{}),
+            ...(durableVerifyTrigger.trigger?{continuousVerifyTrigger:{
+              key:durableVerifyTrigger.key,kind:durableVerifyTrigger.kind,
+              sourceSha:durableVerifyTrigger.sourceSha||null,
+            }}:{})
           })]);
         }
         await client.query('commit');
@@ -3517,6 +3523,7 @@ function getDynamicMaxParallel() {
 let lastLightAudit = 0, lastDeepAudit = 0, activeDeepAudit = false;
 const continuousVerifyPending = createContinuousVerifyPendingQueue();
 let continuousVerifyRunning = false, continuousVerifyRunningKey = '', continuousVerifyLastRunKey = '', continuousVerifyRuntimeSha = '';
+let lastContinuousVerifyRecovery = 0;
 
 const CORE_RUNTIME_UPDATER_STATE=process.env.TIGERIQ_CORE_RUNTIME_UPDATER_STATE?.trim()||'D:\\TigerIQ\\State\\core-runtime-updater.json';
 const CORE_RUNTIME_SOURCE_STATE=process.env.TIGERIQ_CORE_RUNTIME_SOURCE_STATE?.trim()||'D:\\TigerIQ\\State\\core-runtime-source.json';
@@ -3557,6 +3564,23 @@ subscribeGithubEvents(envelope=>{
     kind:trigger.kind,key:trigger.key,sourceSha:trigger.sourceSha||null,deliveryId:envelope.deliveryId||null
   }).catch(()=>{});
 });
+async function recoverPersistedContinuousVerify(){
+  // One bounded read of durable receipts; no CLI/PC01 action or new scheduler.
+  // Retry candidates are admitted through the exact existing FIFO/dedupe gate.
+  const rows=(await pool.query(
+    "select seq,ts,type,data from tigeriq_events where type=any($1::text[]) order by seq desc limit $2",
+    [['GITHUB_EVENT_RECEIVED','CONTINUOUS_VERIFY_TRIGGER_QUEUED',
+      'CONTINUOUS_VERIFY_RUN','CONTINUOUS_VERIFY_RUN_FAILED'],
+      CONTINUOUS_VERIFY_RECOVERY_EVENT_LIMIT]
+  )).rows;
+  for(const trigger of planContinuousVerifyRecovery(rows)){
+    if(!queueContinuousVerify(trigger))continue;
+    await event('CONTINUOUS_VERIFY_TRIGGER_RECOVERED',{
+      key:trigger.key,kind:trigger.kind,sourceSha:trigger.sourceSha||null,
+      currentSha:trigger.currentSha||null,attempt:trigger.attempt||0,
+    });
+  }
+}
 function observeRuntimeContinuousVerify(){
   const state=readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE);
   const updater=readSelfAuditJsonState(CORE_RUNTIME_UPDATER_STATE);
@@ -4105,6 +4129,10 @@ async function loop(){
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
       if(!apiDoctorScanRunning&&t-lastApiDoctor>API_DOCTOR_INTERVAL_MS){lastApiDoctor=t;apiDoctorScanRunning=true;void runApiDoctorScan().catch(error=>console.error(JSON.stringify({event:'API_DOCTOR_SCAN_ERROR',error:String(error?.message||error)}))).finally(()=>{apiDoctorScanRunning=false;});}
       if(t-lastFailureLearning>FAILURE_LEARNING_INTERVAL_MS){lastFailureLearning=t;await runFailureLearningScan();}
+      if(t-lastContinuousVerifyRecovery>=60000){
+        lastContinuousVerifyRecovery=t;
+        await recoverPersistedContinuousVerify();
+      }
       const runtimeTrigger=observeRuntimeContinuousVerify();
       if(runtimeTrigger)await event('CONTINUOUS_VERIFY_TRIGGER_QUEUED',{kind:runtimeTrigger.kind,key:runtimeTrigger.key,previousSha:runtimeTrigger.previousSha||null,currentSha:runtimeTrigger.currentSha||null});
       await runPendingContinuousVerify();
