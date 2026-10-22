@@ -66,6 +66,14 @@ before(async () => {
       res.writeHead(302, { location: '/' });
       return res.end();
     }
+    const quotedH1Fixtures = {
+      '/h1-gt-double': '<html><head><title>H1 quoted GT</title><meta name="description" content="Valid"></head><body><h1 data-note="3 > 2">Accurate heading</h1></body></html>',
+      '/h1-gt-single': "<html><head><title>H1 quoted GT</title><meta name='description' content='Valid'></head><body><h1 aria-label='5 > 4'><span>Nested heading</span></h1></body></html>",
+    };
+    if (Object.hasOwn(quotedH1Fixtures, req.url)) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end(quotedH1Fixtures[req.url]);
+    }
     if (req.url === '/tag-prefix-only') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><head><titlex>Fake title</title></head><body><h1fake>Fake heading</h1></body></html>');
@@ -245,6 +253,22 @@ before(async () => {
 
 after(async () => {
   if (server) await new Promise(resolve => server.close(resolve));
+});
+
+test('H1 with a quoted greater-than attribute retains only visible heading text', async () => {
+  for (const [route, expectedH1] of [
+    ['/h1-gt-double', 'Accurate heading'],
+    ['/h1-gt-single', 'Nested heading'],
+  ]) {
+    const result = await auditWebsite(baseUrl + route, {
+      maxPages: 1, resolveTargetFn: localResolver,
+    });
+    assert.equal(result.status, 'success', route);
+    assert.equal(result.metrics.pagesAudited, 1, route);
+    assert.equal(result.pages[0].seo.h1Count, 1, route);
+    assert.deepEqual(result.pages[0].seo.h1, [expectedH1], route);
+    assert.deepEqual(result.pages[0].findings, [], route);
+  }
 });
 
 test('SEO metadata is head-scoped: SVG titles and body meta never conceal missing SEO', async () => {
