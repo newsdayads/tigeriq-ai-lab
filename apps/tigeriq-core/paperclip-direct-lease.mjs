@@ -35,8 +35,19 @@ export function paperclipFencedHealthNativeAccepted(receipt) {
     // Native proof must have read and CRC-validated the actual hourly SQL dump.
     && data?.backup?.verified===true
     && data.backup.gzipCrcVerified===true
-    && data.backup.pgDumpHeaderVerified===true
-    && data.backup.pgDumpFooterVerified===true
+    // R03 accepts exactly the two bounded formats already validated by
+    // inspectPaperclipBackupProvenance(). Do not require pg_dump comments
+    // for Paperclip's own JavaScript SQL backup engine.
+    && (
+      (data.backup.pgDumpHeaderVerified===true
+        && data.backup.pgDumpFooterVerified===true
+        && data.backup.backupFormat!=='paperclip_javascript_sql')
+      || (data.backup.backupFormat==='paperclip_javascript_sql'
+        && data.backup.paperclipJsHeaderVerified===true
+        && data.backup.paperclipJsFooterVerified===true
+        && data.backup.pgDumpHeaderVerified===false
+        && data.backup.pgDumpFooterVerified===false)
+    )
     && data.backup.restoreTested===false
     && typeof data.backup.archiveSha256==='string'
     && /^[a-f0-9]{64}$/.test(data.backup.archiveSha256)
