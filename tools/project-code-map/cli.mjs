@@ -39,7 +39,8 @@ function optionsFromArgs(args) {
   }
   if (symbol && !/^[A-Za-z_$][\w$]*$/.test(symbol)) throw new Error('Invalid --symbol identifier');
   if (query && symbol) throw new Error('Cannot combine --query with --symbol');
-  if ((query || symbol) && html) throw new Error('Cannot combine --query/--symbol with --html');
+  if (query && html) throw new Error('Cannot combine --query with --html');
+  if (symbol && html) throw new Error('Cannot combine --symbol with --html');
   if (expectedSha && !query && !symbol) throw new Error('--expect-sha requires --query or --symbol');
   if (expectedSha && !/^[0-9a-f]{40}$/i.test(expectedSha)) throw new Error('Invalid --expect-sha (requires 40 hex characters)');
   return { root: path.resolve(root), output: output ? path.resolve(output) : null,

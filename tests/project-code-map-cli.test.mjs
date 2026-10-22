@@ -202,7 +202,7 @@ test('exported-symbol lookup returns exact first-party source refs with SHA and 
       [['--symbol', 'scanProject', '--expect-sha', 'd'.repeat(40)], 1, 'CODE_MAP_STALE_REVISION'],
       [['--symbol', 'scanProject()', '--expect-sha', revision], 2, 'Invalid --symbol identifier'],
       [['--symbol', 'scanProject', '--query', 'src/alpha.js'], 2, 'Cannot combine --query with --symbol'],
-      [['--symbol', 'scanProject', '--html', path.join(tmp, 'graph.html')], 2, 'Cannot combine --query/--symbol with --html'],
+      [['--symbol', 'scanProject', '--html', path.join(tmp, 'graph.html')], 2, 'Cannot combine --symbol with --html'],
       [['--symbol', 'scanProject', '--expect-sha', 'invalid'], 2, 'Invalid --expect-sha'],
       [['--expect-sha', revision], 2, '--expect-sha requires --query or --symbol'],
       [['--symbol'], 2, 'Missing value for --symbol'],
