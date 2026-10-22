@@ -996,7 +996,12 @@ export async function paperclipReadOnlyPreflight({
 }
 
 async function preflight(signal = null) {
-  return await paperclipReadOnlyPreflight({ signal });
+  const environment = await paperclipReadOnlyPreflight({ signal });
+  // R03 read-only diagnostic: the mounted PostgreSQL archive can be inspected
+  // without Core's NV06 mutation lease, because no broker request is written.
+  // Return only fixed-root non-secret backup metadata or a bounded reason code.
+  const backup = await inspectPaperclipBackupProvenance();
+  return { ...environment, backup };
 }
 
 function redactPaperclipDiagnosticText(value = '') {
