@@ -1,0 +1,63 @@
+name: Project Code Map Real Repository
+
+on:
+  pull_request:
+    paths:
+      - 'tools/project-code-map/**'
+      - 'tests/project-code-map*.mjs'
+      - 'package.json'
+      - '.github/workflows/project-code-map-live.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/project-code-map/**'
+      - 'tests/project-code-map*.mjs'
+      - 'package.json'
+      - '.github/workflows/project-code-map-live.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-repository-scan:
+    name: Real Repository Code Map
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact repository revision
+        env:
+          TIGERIQ_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$TIGERIQ_SOURCE_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify runnable CLI on real isolated filesystem fixtures
+        run: node --test tests/project-code-map-cli.test.mjs
+      - name: Scan the actual checked-out repository
+        env:
+          TIGERIQ_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          REPORT: ${{ runner.temp }}/tigeriq-code-map.json
+        run: |
+          node tools/project-code-map/cli.mjs --root . --output "$REPORT"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const doc = JSON.parse(readFileSync(process.env.REPORT, 'utf8'));
+          if (doc.sourceRevision !== process.env.TIGERIQ_SOURCE_SHA) throw Error('SOURCE_REVISION_MISMATCH');
+          if (doc.summary.sourceFiles < 10 || doc.summary.dependencyEdges < 10) throw Error('REAL_REPOSITORY_GRAPH_EMPTY');
+          if (!doc.nodes.includes('tools/project-code-map/scanner.mjs')) throw Error('REAL_SCANNER_MISSING');
+          if (!doc.edges.some(e => e.from === 'tools/project-code-map/scanner.mjs' && e.to === 'fs')) throw Error('REAL_SCANNER_EDGE_MISSING');
+          if (doc.nodes.some(name => name.includes('node_modules/') || name.includes('dist/'))) throw Error('GENERATED_SOURCE_LEAK');
+          console.log('REAL_REPO_CODE_MAP_PASS source_sha=' + doc.sourceRevision +
+            ' files=' + doc.summary.sourceFiles + ' edges=' + doc.summary.dependencyEdges);
+          NODE
+      - name: Publish real repository JSON graph
+        uses: actions/upload-artifact@v4
+        with:
+          name: TigerIQ-Code-Map-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/tigeriq-code-map.json
+          if-no-files-found: error
+          retention-days: 14
