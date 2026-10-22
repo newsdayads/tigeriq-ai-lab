@@ -8,6 +8,16 @@ $Heartbeat=Join-Path $BrokerRoot 'heartbeat.json'
 $ExpectedBrokerVersion='1.7-openai-device-auth'
 $InstallStartedAt=(Get-Date).ToUniversalTime()
 
+# ConvertFrom-Json must not coerce strings, booleans, decimals or unsafe
+# integer values into a valid Windows process/session identity (R07).
+function Test-PositiveHeartbeatId($Value) {
+  if ($Value -isnot [int] -and $Value -isnot [long]) { return $false }
+  return ($Value -gt 0 -and $Value -le 9007199254740991)
+}
+function Test-TrueHeartbeatFlag($Value) {
+  return ($Value -is [bool] -and $Value -eq $true)
+}
+
 if(-not (Test-Path -LiteralPath $Broker -PathType Leaf)){ throw 'TIGERIQ_PAPERCLIP_WSL_BROKER_SCRIPT_MISSING' }
 $ExpectedBrokerSha256=(Get-FileHash -LiteralPath $Broker -Algorithm SHA256).Hash.ToLowerInvariant()
 $user=(Get-CimInstance Win32_ComputerSystem).UserName
@@ -32,10 +42,10 @@ if($existing -and [string]$existing.State -eq 'Running' -and (Test-Path -Literal
        [string]$live.version -eq $ExpectedBrokerVersion -and
        [string]$live.sourceSha256 -ceq $ExpectedBrokerSha256 -and
        [string]$live.user -ieq $expectedUserName -and
-       [int]$live.sessionId -gt 0 -and
-       [int]$live.pid -gt 0 -and
-       [bool]$live.wslKeepaliveRunning -eq $true -and
-       [int]$live.wslKeepalivePid -gt 0 -and
+       (Test-PositiveHeartbeatId $live.sessionId) -and
+       (Test-PositiveHeartbeatId $live.pid) -and
+       (Test-TrueHeartbeatFlag $live.wslKeepaliveRunning) -and
+       (Test-PositiveHeartbeatId $live.wslKeepalivePid) -and
        $ageSec -ge -2 -and $ageSec -le 15){
       Write-Output ('TASK='+$TaskName)
       Write-Output ('USER='+$user)
@@ -75,9 +85,10 @@ for($i=0;$i -lt 80;$i++){
          [string]$h.version -eq $ExpectedBrokerVersion -and
          [string]$h.sourceSha256 -ceq $ExpectedBrokerSha256 -and
          [string]$h.user -and
-         [int]$h.pid -gt 0 -and
-         [bool]$h.wslKeepaliveRunning -eq $true -and
-         [int]$h.wslKeepalivePid -gt 0 -and
+         (Test-PositiveHeartbeatId $h.sessionId) -and
+         (Test-PositiveHeartbeatId $h.pid) -and
+         (Test-TrueHeartbeatFlag $h.wslKeepaliveRunning) -and
+         (Test-PositiveHeartbeatId $h.wslKeepalivePid) -and
          $heartbeatAt -ge $InstallStartedAt){
         $ready=$true
         break
