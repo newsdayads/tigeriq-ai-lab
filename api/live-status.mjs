@@ -9,6 +9,7 @@ import { hasTerminalBlockedLabel } from '../apps/tigeriq-core/github-lifecycle-l
 import { loadSkillPromotionState } from '../apps/tigeriq-core/skill-promotion.mjs';
 import { githubRequestJson, githubTransportSnapshot } from '../apps/tigeriq-core/github-shared-client.mjs';
 import { localizeOwnerFacingText, ownerFacingWorkRow } from '../apps/tigeriq-core/owner-facing-vietnamese.mjs';
+import { projectOwnerLiveTruth } from '../apps/shared/owner-live-truth.mjs';
 import { annotatePortfolioRows, buildProjectPortfolio, buildPortfolioGroups, mergePortfolioWorkRows } from '../apps/tigeriq-core/project-portfolio.mjs';
 
 const EXTERNAL_ROLE_CLAIMED_LABEL='tigeriq:role-claimed';
@@ -2119,7 +2120,14 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     return {
       ...base,
       skillPromotion: skillPromotionSnapshot(),
-      openWork: openWork.map(ownerFacingWorkRow),
+      openWork: openWork.map(row => {
+        const localized=ownerFacingWorkRow(row);
+        return {...localized,liveTruth:projectOwnerLiveTruth(localized,{
+          sourceFresh:issuesComplete===true&&!projectionStale,
+          sourceCheckedAt:githubProjectionCache.verifiedAt,
+          runtimeConnected:base.liveConnected===true,
+        })};
+      }),
       openSummary,
       portfolioProgress,
       completionProgress,
