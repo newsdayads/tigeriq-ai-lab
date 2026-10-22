@@ -393,7 +393,8 @@ function extractSeo(html) {
     // HTML permits omitted <head>; elements before <body> still form its head.
     metadataHtml = html.slice(0, bodyOpen.index);
   }
-  const titleMatch = metadataHtml.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+  // A quoted greater-than belongs to a title attribute, not its visible text.
+  const titleMatch = metadataHtml.match(/<title\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/title\s*>/i);
   // Extract exact attribute names from <meta>, not substrings such as
   // data-name. HTML permits unquoted attribute values and either order.
   let metaDescription = null;
