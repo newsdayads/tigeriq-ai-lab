@@ -420,8 +420,14 @@ function extractSeo(html) {
   }
   // A quoted '>' belongs to the opening tag attribute, not the H1 text.
   const h1Matches = [...html.matchAll(/<h1\b(?:[^>"']|"[^"]*"|'[^']*')*>([\s\S]*?)<\/h1\s*>/gi)];
+  // Count visible page content, not SEO metadata inside <head>.
+  // Without an explicit <body>, HTML after </head> is the implicit body;
+  // keep the fragment fallback for standalone HTML snippets.
+  const visibleDocument = bodyOpen
+    ? html.slice(bodyOpen.index + bodyOpen[0].length)
+    : headClose ? html.slice(headClose.index + headClose[0].length) : html;
   const visible = cleanText(
-    html
+    visibleDocument
       .replace(/<script[\s\S]*?<\/script>/gi, ' ')
       .replace(/<style[\s\S]*?<\/style>/gi, ' ')
   );
