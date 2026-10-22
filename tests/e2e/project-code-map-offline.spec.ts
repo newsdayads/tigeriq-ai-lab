@@ -69,13 +69,13 @@ test('offline viewer navigates extensionless JS/TS modules and their reverse dep
     await page.goto(pathToFileURL(filename).href);
 
     for (const { spec, target } of mappings) {
-      await page.getByRole('button', { name: 'src/main.mjs', exact: true }).click();
+      await page.locator('#module-list').getByRole('button', { name: 'src/main.mjs', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Import từ tệp (5)' })).toBeVisible();
       await page.getByRole('button', { name: spec, exact: true }).click();
       await expect(page.getByRole('heading', { name: target, exact: true })).toBeVisible();
       await expect(page.getByRole('heading', { name: 'Tệp đang phụ thuộc vào tệp này (1)' })).toBeVisible();
     }
-    await page.getByRole('button', { name: 'src/main.mjs', exact: true }).click();
+    await page.locator('#module-list').getByRole('button', { name: 'src/main.mjs', exact: true }).click();
     await expect(page.getByText('module ngoài hoặc chưa phân giải')).toBeVisible();
     await expect(page.getByRole('button', { name: './missing', exact: true })).toHaveCount(0);
   } finally {
