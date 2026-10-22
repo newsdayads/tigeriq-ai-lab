@@ -1,5 +1,7 @@
 export const CONTINUOUS_VERIFY_RELEVANT_PREFIXES = Object.freeze([
   'apps/tigeriq-core/',
+  // Core and API import helpers from apps/shared; shared-only merges can change live behavior.
+  'apps/shared/',
   'api/',
   'bootstrap/',
   'scripts/',
