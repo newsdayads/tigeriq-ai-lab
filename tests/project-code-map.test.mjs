@@ -185,7 +185,7 @@ async function withTempProject(structure, fn) {
       "const member = pkg.require('./fake-member.cjs');",
       "const prefixed = myrequire('./fake-prefix.cjs');",
       "const resolved = require.resolve('./fake-resolve.cjs');",
-      'const quoted = "require(\\'./fake-quoted.cjs\\')";',
+      "const quoted = \"require('./fake-quoted.cjs')\";",
       'const template = `require("./fake-template.cjs")`;',
       "// require('./fake-comment.cjs');",
       "/* require('./fake-block.cjs'); */",
