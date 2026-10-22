@@ -347,8 +347,11 @@ function decodeSeoTextEntities(value) {
       (code < 0xd800 || code > 0xdfff) ? String.fromCodePoint(code) : ref;
   });
 }
+// Only actual tag-shaped openers delimit markup. A literal comparison such as
+// "2 < 3 > 1" is text, while quoted > inside an inline tag must not truncate
+// the tag and leak its remaining attribute into visible SEO text.
 const cleanText = value => decodeSeoTextEntities(
-  String(value || '').replace(/<[^>]*>/g, ' '),
+  String(value || '').replace(/<(?=[A-Za-z!/])(?:[^>"']|"[^"]*"|'[^']*')*>/g, ' '),
 ).replace(/\s+/g, ' ').trim();
 
 // Strip inert HTML in document order. A <template> may contain other

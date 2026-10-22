@@ -66,6 +66,10 @@ before(async () => {
       res.writeHead(302, { location: '/' });
       return res.end();
     }
+    if (req.url === '/seo-literal-comparison') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end('<html><head><title>2 < 3 > 1</title><meta name="description" content="Valid comparison"></head><body><h1><span data-note="3 > 2">2 < 3 > 1</span></h1></body></html>');
+    }
     const quotedTitleFixtures = {
       '/title-gt-double': '<html><head><title data-note="3 > 2">Accurate page title</title><meta name="description" content="Valid"></head><body><h1>Actual heading</h1></body></html>',
       '/title-gt-single': "<html><head><title aria-label='5 > 4'>Nested page title</title><meta name='description' content='Valid'></head><body><h1>Actual heading</h1></body></html>",
@@ -261,6 +265,19 @@ before(async () => {
 
 after(async () => {
   if (server) await new Promise(resolve => server.close(resolve));
+});
+
+test('SEO text preserves literal less-than comparisons and removes complete quoted inline tags', async () => {
+  const result = await auditWebsite(baseUrl + '/seo-literal-comparison', {
+    maxPages: 1, resolveTargetFn: localResolver,
+  });
+  assert.equal(result.status, 'success');
+  assert.equal(result.metrics.pagesAudited, 1);
+  assert.equal(result.pages[0].seo.title, '2 < 3 > 1');
+  assert.equal(result.pages[0].seo.metaDescription, 'Valid comparison');
+  assert.equal(result.pages[0].seo.h1Count, 1);
+  assert.deepEqual(result.pages[0].seo.h1, ['2 < 3 > 1']);
+  assert.deepEqual(result.pages[0].findings, []);
 });
 
 test('SEO title with a quoted greater-than attribute retains only its visible text', async () => {
