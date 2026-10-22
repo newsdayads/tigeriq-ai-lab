@@ -83,12 +83,18 @@ export async function scanProject(root) {
         // The sanitizer removes comments and identifies fake calls inside strings.
         const staticImports = [...sanitized.matchAll(/import\s+(?:[^'\"]+?\s+from\s+)?['\"]([^'\"]+)['\"]/g)];
         const dynamicImports = [...sanitized.matchAll(/(?<![.\w$])import\s*\(\s*(['\"])([^'\"]+)\1\s*\)/g)];
-        const imports = [...staticImports, ...dynamicImports]
+        // A re-export also depends on its source module even without "import".
+        // Only literal sources are collected; comments/strings remain excluded.
+        const reExports = [...sanitized.matchAll(
+          /(?<![.\w$])export\s+(?:type\s+)?(?:\*\s*(?:as\s+[A-Za-z_$][\w$]*\s*)?|\{[^}]*\}\s*)from\s*(['"])([^'"]+)\1/g
+        )];
+        const imports = [...staticImports, ...dynamicImports, ...reExports]
           .filter(m => !quotedOffsets.has(m.index))
           .sort((a, b) => a.index - b.index)
           .map(m => m[2] ?? m[1]);
         const exports = [...sanitized.matchAll(/export\s+(?:default\s+)?(?:class|function|const|let|var)?\s*([A-Za-z0-9_$]*)/g)]
-          .filter(m => !quotedOffsets.has(m.index))
+          .filter(m => !quotedOffsets.has(m.index)
+            && !/^(?:type\s+)?(?:\*|\{)/.test(sanitized.slice(m.index + 6).trimStart()))
           .map(m => m[1] || 'default');
         importMap.set(full, imports);
         exportMap.set(full, exports);
