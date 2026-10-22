@@ -3372,7 +3372,13 @@ const server=createServer(async(req,res)=>{
         duplicate=(await client.query("select 1 from tigeriq_events where type='GITHUB_EVENT_RECEIVED' and data->>'deliveryId'=$1 limit 1",[deliveryId])).rowCount>0;
         if(!duplicate){
           const issueNumber=Number(payload?.issue?.number||payload?.pull_request?.number||0)||null;
-          await client.query("insert into tigeriq_events(type,data) values('GITHUB_EVENT_RECEIVED',$1)",[JSON.stringify({deliveryId,eventName,issueNumber,repository:'newsdayads/tigeriq-ai-lab',runId:identity.runId||null,receivedAt:new Date().toISOString()})]);
+          await client.query("insert into tigeriq_events(type,data) values('GITHUB_EVENT_RECEIVED',$1)",[JSON.stringify({
+            deliveryId,eventName,issueNumber,repository:'newsdayads/tigeriq-ai-lab',
+            runId:identity.runId||null,receivedAt:new Date().toISOString(),
+            ...(eventName==='push'&&/^[a-f0-9]{40}$/i.test(String(payload?.after||''))?{
+              key:'github-main:'+payload.after,sourceSha:payload.after
+            }:{})
+          })]);
         }
         await client.query('commit');
       }catch(error){try{await client.query('rollback')}catch{};throw error}
