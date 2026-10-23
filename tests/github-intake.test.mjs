@@ -288,6 +288,34 @@ test('resource fallback rearm is bounded and cannot become an infinite same-revi
   );
 });
 
+test('source revision rearm allocates a distinct real autowork job ID despite the completed original ID',async()=>{
+  const pool=coreBacklogPool();
+  pool.objectives.push({
+    id:'OBJ-GH-5235',status:'blocked',
+    metadata:{source:'github',issueNumber:5235,sourceRevision:'old-revision',resourceScope:'REARM_SCOPE'},
+  });
+  pool.jobs.push({id:'JOB-GH-5235-API-AUTOWORK',objective_id:'OBJ-GH-5235',kind:'github_api_autowork',status:'done'});
+  const body=[
+    SAFE_AUTO_POLICY_BASE
+      .replace('CAPABILITY=coding','CAPABILITY=reasoning')
+      .replace('EXECUTION_SURFACE=CODING','EXECUTION_SURFACE=CORE_REASONING')
+      .replace('RESOURCE_SCOPE=SAFE_AUTO_TEST','RESOURCE_SCOPE=REARM_SCOPE'),
+    'OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED','MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+    'NEXT_ACTION=Complete Q01-Q14 native report with current GitHub evidence',
+  ].join('\n');
+  const issue={number:5235,state:'open',title:'[P1][CORE] revived Q01-Q14 report',body,labels:[],comments:0,html_url:'https://example/5235'};
+  const out=await materializeGithubIssues({pool,openIssues:[issue],token:'fake'});
+  assert.equal(out.created,1);
+  assert.equal(pool.objectives.length,2);
+  assert.equal(pool.jobs.length,2);
+  const second=pool.jobs[1];
+  assert.notEqual(second.id,pool.jobs[0].id);
+  assert.equal(second.objective_id,pool.objectives[1].id);
+  assert.equal(second.id,`JOB-${second.objective_id}-API-AUTOWORK`);
+  assert.match(second.id,/^JOB-OBJ-GH-5235-R/);
+  assert.match(second.prompt,/NEXT_ACTION=Complete Q01-Q14 native report/);
+});
+
 test('active writer blocks only its scope while queue continues to another compatible scope',async()=>{
   const pool=coreBacklogPool();
   pool.objectives.push({id:'OBJ-ACTIVE-4384',status:'active',metadata:{source:'github',issueNumber:43842,resourceScope:'SCOPE_HELD'}});
