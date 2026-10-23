@@ -88,11 +88,14 @@ export function managerAcceptanceWakePlan({awaitingRevision='',sourceRevision=''
  * spend unlimited decisions creating local candidates/checkpoint versions.
  * This is advisory until enforced by the Core manager's guarded SQL transition.
  */
-export function managerIdleStepStopPlan({consecutiveNoProgressDecisions=0,activeChildren=0,limit=2}={}){
+export function managerIdleStepStopPlan({consecutiveNoProgressDecisions=0,activeChildren=0,completedChildren=0,source='',sourceRevision='',limit=2}={}){
   const cycles=Math.max(0,Math.trunc(Number(consecutiveNoProgressDecisions)||0));
   const active=Math.max(0,Math.trunc(Number(activeChildren)||0));
   const cap=Math.max(1,Math.min(2,Math.trunc(Number(limit)||2)));
   if(cycles<cap)return {action:'continue',reason:'bounded_decision_budget_available',cycles,limit:cap};
   if(active>0)return {action:'wait',reason:'await_existing_child_receipt',cycles,limit:cap};
+  // A completed child is an execution receipt, but never product acceptance.
+  if(Number(completedChildren)>0&&source==='github'&&String(sourceRevision||'').trim())
+    return {action:'park',reason:'await_verified_child_acceptance',cycles,limit:cap};
   return {action:'block',reason:'no_progress_decision_budget_exhausted',cycles,limit:cap};
 }
