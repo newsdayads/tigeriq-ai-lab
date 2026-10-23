@@ -188,7 +188,7 @@ function renderCards(container,rows,options){
   const s=viewStatus(row),p=priority(row),pr=progress(row,opt),number=Number(row.number)||0;
   const childGroup=hierarchy.groups.get(number)||null,childrenExpanded=expandedProjectParents.has(number);
   const el=document.createElement('article');el.className='work-row tiq-work-card status-'+s.toLowerCase()+' priority-'+p.toLowerCase()+(opt.compact?' tiq-compact':'')+(row.closureConflict===true?' closure-conflict':'');
-  el.style.setProperty('--status-color',row.closureConflict===true?COLORS.BLOCKED:COLORS[s]||COLORS.UNKNOWN);el.setAttribute('data-work-number',txt(number));el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label','Mở chi tiết công việc '+number+' '+title(row));
+  el.style.setProperty('--status-color',COLORS[s]||COLORS.UNKNOWN);if(row.closureConflict===true)el.style.setProperty('--status-color',COLORS.BLOCKED);el.setAttribute('data-work-number',txt(number));el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label','Mở chi tiết công việc '+number+' '+title(row));
   const project=txt(row.projectName||'Chưa phân dự án'),stream=txt(row.workstreamName||row.workPackageName||'Chưa phân nhánh');
   const truth=row.liveTruth&&typeof row.liveTruth==='object'?row.liveTruth:null;
   const rawBlocker=childGroup?'':txt(truth?.blocker||row.blocker||row.waitReason||'').trim(); // Project supervisor is intentionally not dispatched.
