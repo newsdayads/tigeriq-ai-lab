@@ -635,6 +635,24 @@ describe('#1255 routing/runtime integration',()=>{
     expect(watsonxRetryDecision({unexpected:true},0,2)).toEqual({action:'fail',code:'WATSONX_SHAPE_MISMATCH'});
   });
 
+  it('keeps Mercury 2.5 visible-output budget bounded only on native Inception',()=>{
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const start=core.indexOf('export function inceptionReasoningPolicy(');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const end=core.indexOf('\n}\n',start);
+    expect(end).toBeGreaterThan(start);
+    const policy=new Function(core.slice(start,end+2).replace(/^export /,'')+'\nreturn inceptionReasoningPolicy;')();
+    expect(policy('api.inceptionlabs.ai','mercury-2.5')).toEqual({reasoning_effort:'low'});
+    expect(policy('api.inceptionlabs.ai','mercury-2.5-preview')).toEqual({reasoning_effort:'low'});
+    expect(policy('api.inceptionlabs.ai','mercury-coder-small')).toEqual({});
+    expect(policy('api.groq.com','mercury-2.5')).toEqual({});
+    expect(policy('api.inceptionlabs.ai',null)).toEqual({});
+    expect(core).toContain('...inceptionReasoningPolicy(host,model), ...providerBody');
+    expect(core).toContain("const text = body?.choices?.[0]?.message?.content");
+    expect(core).toContain("new Error('EMPTY_RESPONSE')");
+    expect(core).not.toContain('body?.choices?.[0]?.message?.reasoning_content');
+  });
+
   it('forces non-empty NVIDIA chat content without consuming reasoning content as the answer',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     expect(core).toContain("const providerBody=managerProviderBodyForHost(host,prompt)");
