@@ -15,7 +15,7 @@ const managerProviderBodyForHost = (provider, ...args) => {
   return _managerProviderBodyForHost(normalized, ...args);
 };
 import { MANAGER_PENDING_JOB_STATUSES } from './manager-batch-policy.mjs';
-import { normalizeObjectiveRoutingProfile, objectiveJobRoutingProfile, mayWaitAfterLocalFailure, effectiveCoreJobRoutingProfile } from './objective-local-routing.mjs';
+import { normalizeObjectiveRoutingProfile, objectiveJobRoutingProfile, mayWaitAfterLocalFailure, effectiveCoreJobRoutingProfile, githubAutoworkEmployeeAllowlist, githubAutoworkZeroCostResource } from './objective-local-routing.mjs';
 import { parseOwnerBacklogOrder, objectiveBacklogRank } from './owner-backlog-order.mjs';
 import { managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, NV09_ENDPOINT, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
@@ -838,6 +838,7 @@ async function claimResource(capability,jobId,excluded=[],options={}){
   let candidates=q.rows
     .filter(x=>!excluded.includes(x.resource_id))
     .filter(x=>!excludedProviders.has(String(x.provider||'').trim().toLowerCase()))
+    .filter(x=>githubAutoworkZeroCostResource({kind:taskKind},x))
     .filter(x=>apiDoctorResourceEligibleForCapability({employeeId:x.employee_id,healthState:x.health_state,capability}));
   if(employeeAllowlist.size)candidates=candidates.filter(x=>employeeAllowlist.has(String(x.employee_id||'').toUpperCase()));
   if(preferredEmployeeId)candidates=candidates.filter(x=>String(x.employee_id||'').toUpperCase()===preferredEmployeeId);
@@ -2015,7 +2016,7 @@ async function runJob(j) {
     const compiledPacket=String(j.kind||'').startsWith('compiled_')?executionPacketFromPrompt(j.prompt):null;
     const validateText=compiledPacket?(text)=>assertExecutionResultAccepted(text,compiledPacket):null;
     const stabilityAllowlist=stabilityV2EmployeeAllowlist(j.objective_metadata);
-    const employeeAllowlist=j.kind==='github_api_autowork'?CORE_AUTOWORK_EMPLOYEES:stabilityAllowlist;
+    const employeeAllowlist=j.kind==='github_api_autowork'?githubAutoworkEmployeeAllowlist(j,CORE_AUTOWORK_EMPLOYEES):stabilityAllowlist;
     let routed=await invokeRouted(routedPrompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:effectiveCoreJobRoutingProfile(j),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist,validateText,compiledPacket});
     let executionGate=null;
     if(String(j.kind||'').startsWith('compiled_')){
@@ -3742,13 +3743,14 @@ async function collectSelfAuditSnapshot(store=pool){
       : deriveRoutingProfile({requested:job.routing_profile,taskKind,capability});
     const targetWorker=String(job.objective_metadata?.targetWorker||'').trim().toUpperCase();
     const employeeAllowlist=taskKind==='github_api_autowork'
-      ? new Set(CORE_AUTOWORK_EMPLOYEES)
+      ? new Set(githubAutoworkEmployeeAllowlist(job,CORE_AUTOWORK_EMPLOYEES))
       : null;
     const reviewerResourceIds=capability==='review'?new Set(await reviewerResourceIdsForJob(job)):new Set();
     const candidateResources=idleResources.filter(resource=>{
       const employeeId=String(resource.employee_id||'').trim().toUpperCase();
       const resourceId=String(resource.resource_id||'').trim();
       if(targetWorker&&employeeId!==targetWorker)return false;
+      if(!githubAutoworkZeroCostResource({kind:taskKind},resource))return false;
       if(employeeAllowlist&&!employeeAllowlist.has(employeeId))return false;
       if(reviewerResourceIds.has(resourceId))return false;
       return true;

@@ -31,3 +31,27 @@ export function effectiveCoreJobRoutingProfile(job={}) {
     ? (String(job?.routing_profile||'AUTO').toUpperCase()==='LOCAL'?'LOCAL':'AUTO')
     : String(job?.routing_profile||'AUTO');
 }
+
+
+// A direct Owner Work Order may pin a genuinely provisioned FREE worker even
+// when it is outside the small default GitHub coordination pool. Never widen
+// untargeted autowork, legacy intake, or another worker's allowed scope.
+export function githubAutoworkEmployeeAllowlist(job={},baseline=[]){
+  const defaults=[...new Set((Array.isArray(baseline)?baseline:[])
+    .map(id=>String(id||'').trim().toUpperCase()).filter(Boolean))];
+  const meta=job?.objective_metadata||{};
+  const target=String(meta.targetWorker||'').trim().toUpperCase();
+  return job?.kind==='github_api_autowork'
+    && meta.ownerDirect===true
+    && meta.admissionMode==='SAFE_P1_P5_POLICY'
+    && target==='NV17'
+    ? ['NV17']
+    : defaults;
+}
+
+// The source-level target override cannot authorize a paid resource. Keep
+// this invariant identical for actual claims and scheduler visibility.
+export function githubAutoworkZeroCostResource(job={},resource={}){
+  if(job?.kind!=='github_api_autowork')return true;
+  return ['FREE','LOCAL'].includes(String(resource?.cost_tier||resource?.costTier||'').trim().toUpperCase());
+}
