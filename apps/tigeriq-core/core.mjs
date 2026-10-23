@@ -311,13 +311,22 @@ function shrinkGroq413Prompt(prompt) {
   const tail=Math.max(0,usable-head);
   return `${text.slice(0,head)}${marker}${tail?text.slice(-tail):''}`;
 }
+export function inceptionReasoningPolicy(host,model){
+  // Mercury 2.5 is a reasoning model: bound thinking within the existing
+  // 800/1200-token output cap so it can still produce user-visible content.
+  // Never treat reasoning_content as a completed Core answer.
+  if(host==='api.inceptionlabs.ai'&&/^mercury-2\.5(?:$|[-.:])/i.test(String(model??''))){
+    return {reasoning_effort:'low'};
+  }
+  return {};
+}
 async function openAiCompat(endpoint, key, model, prompt, extraHeaders = {}, timeoutMs = 90000, resource = null) {
   const host=new URL(endpoint).hostname;
   let requestPrompt=String(prompt??'');
   let groq413RetryUsed=false;
   while(true){
     const providerBody=managerProviderBodyForHost(host,prompt);
-    const requestBody={ model, messages:[{role:'user',content:requestPrompt}], temperature:0, max_tokens:isManagerPrompt(prompt)?800:1200, stream:false, ...(host==='openrouter.ai'?{reasoning:{enabled:false}}:{}), ...providerBody };
+    const requestBody={ model, messages:[{role:'user',content:requestPrompt}], temperature:0, max_tokens:isManagerPrompt(prompt)?800:1200, stream:false, ...(host==='openrouter.ai'?{reasoning:{enabled:false}}:{}), ...inceptionReasoningPolicy(host,model), ...providerBody };
     if(host==='integrate.api.nvidia.com'){
       requestBody.chat_template_kwargs={...(providerBody.chat_template_kwargs||{}),force_nonempty_content:true};
     }
