@@ -2,7 +2,7 @@ import { timingSafeEqual, randomUUID, createHash } from 'node:crypto';
 import { decideWithChief } from './chief.mjs';
 import { isOwnerAuthorized } from './owner-auth.mjs';
 import ownerDecisionHandler from '../apps/tigeriq-core/owner-decision-handler.mjs';
-import { validateOwnerWorkRequest, makeOwnerRequestReceipt, makeOwnerResultReceipt, ownerWorkRequestHistory, ownerWorkRequestResolved, ownerWorkRequestReplayPlan } from '../apps/shared/owner-work-request.mjs';
+import { validateOwnerWorkRequest, makeOwnerRequestReceipt, makeOwnerResultReceipt, ownerWorkRequestHistory, ownerWorkRequestResolved, ownerWorkRequestReplayPlan, ownerWorkRequestTriageStatus } from '../apps/shared/owner-work-request.mjs';
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const COMMAND_SECRET = process.env.TIGERIQ_COMMAND_SECRET || '';
@@ -501,9 +501,11 @@ async function ownerRequestApi(req,res,payload,readOnly=false){
   try{
     const context='Thẻ công việc #'+issueNumber+' — '+String(issue.title||'')+'. Đọc yêu cầu của anh Sơn, phân tích và đưa hướng xử lý trước thực thi. Không tuyên bố đã chạy, không vượt quyền/lease. Nội dung: ';
     const decision=await decideWithChief({message:context+request.message,history:[]});
-    const answered=decision?.mode==='reply'||decision?.mode==='status';
-    const status=answered?'ANSWERED':decision?.mode==='clarify'?'WAITING':'PLAN_SHOWN';
-    const reply=String(decision?.reply|| (answered?'Đã trả lời.':'Đã ghi chỉ đạo vào thẻ; cần nhân sự có quyền thực thi tiếp nhận.')).trim();
+    const status=ownerWorkRequestTriageStatus(request.message,decision?.mode);
+    const triageReply=String(decision?.reply||'').trim();
+    const reply=status==='PLAN_SHOWN'
+      ?'CHƯA THỰC THI — '+(triageReply||'Đã ghi chỉ đạo vào thẻ; chờ nhân sự có quyền, lease và biên nhận kết quả Core.')
+      :String(triageReply|| (status==='ANSWERED'?'Đã trả lời câu hỏi.':'Cần làm rõ chỉ đạo trước thực thi.')).trim();
     const terminal=await gh(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({body:makeOwnerResultReceipt(request.requestId,status,reply)})},token);
     result={...result,status,reply,resultUrl:terminal.html_url||null,resolved:ownerWorkRequestResolved(status)};
   }catch{
