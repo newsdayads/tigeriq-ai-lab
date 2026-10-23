@@ -48,7 +48,7 @@ test('Core Manager, API Doctor, NV API repair and Coding share gate without role
   const coding=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
   assert.match(core,/withPc01LocalInferenceSlot\(pool,async\(\)=>/);
   assert.match(core,/runApiDoctorAnalysisJobInSlot/);
-  assert.match(core,/CORE_LOCAL_AUTOWORK_EMPLOYEES = Object\.freeze\(\[OLLAMA_EMPLOYEE_ID\]\)/);
+  assert.match(core,/CORE_AUTOWORK_EMPLOYEES = Object\.freeze\(\[OLLAMA_EMPLOYEE_ID,'NV11','NV12'\]\)/);
   assert.match(coding,/selectCodingWorker/);
   assert.match(coding,/withPc01LocalInferenceSlot\(pool,/);
   assert.match(coding,/const ordered=\[initial,\.\.\.eligible\.filter/);
