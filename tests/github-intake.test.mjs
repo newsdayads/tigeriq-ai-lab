@@ -559,6 +559,28 @@ test('safe coding Work Order materializes one API coordination job without takin
   assert.strictEqual(pool.jobs[0].kind,'github_api_autowork');
   assert.strictEqual(pool.jobs[0].capability,'reasoning');
   assert.match(pool.jobs[0].prompt,/without repository mutation/);
+  assert.match(pool.jobs[0].prompt,/SOURCE WORK ORDER CONTEXT:/);
+  assert.match(pool.jobs[0].prompt,/SOURCE ISSUE #2474:/);
+  assert.match(pool.jobs[0].prompt,/RESOURCE_SCOPE=SAFE_AUTO_TEST/);
+});
+
+test('safe read-only Core autowork job includes source NEXT_ACTION and does not invent a complete result',async()=>{
+  const pool=coreBacklogPool();
+  const task='Answer Q01 through Q14 using source evidence and mark missing receipts UNKNOWN';
+  const body=[
+    SAFE_AUTO_POLICY_BASE.replace('CAPABILITY=coding','CAPABILITY=reasoning').replace('EXECUTION_SURFACE=CODING','EXECUTION_SURFACE=CORE_REASONING'),
+    'NEXT_ACTION='+task,
+    'OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED','MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+  ].join('\n');
+  const issue={number:5235,state:'open',title:'[P1][CORE][R04] Native Q01–Q14 report',body,labels:[],comments:0,html_url:'https://example/5235'};
+  const out=await materializeGithubIssues({pool,openIssues:[issue],token:'fake'});
+  assert.equal(out.created,1);
+  assert.equal(pool.jobs.length,1);
+  assert.equal(pool.jobs[0].kind,'github_api_autowork');
+  assert.match(pool.jobs[0].prompt,/SOURCE WORK ORDER CONTEXT:/);
+  assert.ok(pool.jobs[0].prompt.includes(task),'actual native prompt includes source-specific acceptance task');
+  assert.match(pool.jobs[0].prompt,/Do not mutate source, use PC01 shell/);
+  assert.ok(pool.jobs[0].prompt.indexOf('Do not mutate source')<pool.jobs[0].prompt.indexOf('SOURCE WORK ORDER CONTEXT:'));
 });
 
 test('blocked Core coordination for coding handoff clears terminal label and leaves source Work Order non-terminal',async()=>{
