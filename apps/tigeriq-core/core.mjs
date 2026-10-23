@@ -2685,19 +2685,29 @@ async function managerTick() {
   // attempt. If a child is still queued/leased/running, do not pre-empt it.
   // A blocked objective leaves other eligible objectives to the normal queue.
   if(managerGuard.effectiveCycles>=2){
-    const activeChildrenRow=(await pool.query(
-      "select count(*)::int as n from tigeriq_jobs where objective_id=$1 and phase_index=$2 and status not in ('done','failed')",
+    const childrenRow=(await pool.query(
+      "select count(*) filter (where status not in ('done','failed'))::int as active, count(*) filter (where status='done')::int as completed from tigeriq_jobs where objective_id=$1 and phase_index=$2",
       [o.id,currentPhase],
     )).rows[0]||{};
-    const activeChildren=Number(activeChildrenRow.n)||0;
+    const activeChildren=Number(childrenRow.active)||0;
+    const completedChildren=Number(childrenRow.completed)||0;
     const idlePlan=managerIdleStepStopPlan({
-      consecutiveNoProgressDecisions:managerGuard.effectiveCycles,activeChildren,limit:2,
+      consecutiveNoProgressDecisions:managerGuard.effectiveCycles,activeChildren,completedChildren,
+      source:o.metadata?.source,sourceRevision:o.metadata?.sourceRevision,limit:2,
     });
     if(idlePlan.action==='wait'){
       await pool.query(
         "update tigeriq_objectives set next_check_at=now()+interval '30 seconds' where id=$1 and status='active' and (metadata->>'sourceRevision') is not distinct from $2::text",
         [o.id,o.metadata?.sourceRevision??null],
       );
+      return;
+    }
+    if(idlePlan.action==='park'){
+      const parked=await pool.query(
+        "update tigeriq_objectives set manager_cycles=0,summary=$2,next_check_at='infinity'::timestamptz,metadata=jsonb_set(coalesce(metadata,'{}'::jsonb),'{managerAwaitingAcceptanceRevision}',$3::jsonb,true),updated_at=now() where id=$1 and status='active' and (metadata->>'sourceRevision') is not distinct from $4::text and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and not exists(select 1 from tigeriq_jobs j where j.objective_id=$1 and j.phase_index=$5 and j.status not in ('done','failed')) and exists(select 1 from tigeriq_jobs j where j.objective_id=$1 and j.phase_index=$5 and j.status='done')",
+        [o.id,'Core child done; awaiting source-verified acceptance or material revision',JSON.stringify(o.metadata?.sourceRevision),o.metadata?.sourceRevision??null,currentPhase],
+      );
+      if(parked.rowCount===1)await event('OBJECTIVE_AWAITING_CHILD_ACCEPTANCE',{objectiveId:o.id,phaseIndex:currentPhase,completedChildren,sourceRevision:o.metadata?.sourceRevision});
       return;
     }
     if(idlePlan.action==='block'){
