@@ -851,7 +851,12 @@ export function parseQueueIssue(issue) {
   if (!coreSpec && !codingSpec) return null;
   const terminalBlocked = hasTerminalBlockedLabel(issue);
   const roleClaimed = hasRoleClaimedLabel(issue);
-  const holdReason = terminalBlocked ? 'TigerIQ terminal BLOCKED' : roleClaimed ? 'External role claim' : queueWaitReason(issue);
+  // A V2 lifecycle rejection is non-executable even when its source says READY.
+  // Align the Owner queue projection with the existing Core intake guard.
+  const invalidLifecycle = !admission.eligible && admission.reason === 'LIFECYCLE_V2_CONTRACT_INVALID';
+  const holdReason = terminalBlocked ? 'TigerIQ terminal BLOCKED'
+    : roleClaimed ? 'External role claim'
+    : invalidLifecycle ? 'LIFECYCLE_V2_CONTRACT_INVALID' : queueWaitReason(issue);
   const effectivePriority = codingSpec?.priority || coreSpec?.priority || issuePriority(issue) || 'P3';
   const sourcePriority = codingSpec?.sourcePriority || coreSpec?.sourcePriority || issuePriority(issue) || effectivePriority;
   return {
