@@ -39,20 +39,22 @@ describe('GH-5135 R01 source-only gate (not native Android CI)', () => {
     expect(label).toContain('<string name="app_name">UltraCarHCM V2</string>');
   });
 
-  it('preserves six unresolved V1 media dependencies, without fake substitutes', () => {
+  it('audits V1 media without demanding absence after authorized private staging', () => {
     const probe = spawnSync(process.execPath, [
       fromRoot('tests/ultracarhcm-v2/r01-preflight.mjs'), root
     ], { cwd: root, encoding: 'utf8', timeout: 15000 });
-    // Intentionally nonzero: original artwork/video is not in the GitHub source yet.
-    expect(probe.status).toBe(2);
     const report = JSON.parse(probe.stdout) as {
       ok: boolean;
       missingFiles: string[];
       missingResources: string[];
     };
-    expect(report.ok).toBe(false);
-    expect(report.missingFiles).toEqual([]); // Gradle wrapper/module now complete.
-    expect(report.missingResources).toEqual([...media].sort());
+    const expected = new Set(media);
+    expect(report.missingFiles).toEqual([]);
+    expect(report.missingResources.every(x => expected.has(x))).toBe(true);
+    // A proper locally staged asset set must turn this preflight green.
+    // A source checkout without V1 media remains an explicit incomplete R01 gate.
+    expect(probe.status).toBe(report.ok ? 0 : 2);
+    expect(report.ok).toBe(report.missingResources.length === 0);
   });
 
   it('runs all nine Node-native R01 regression tests on the exact CI checkout', () => {
