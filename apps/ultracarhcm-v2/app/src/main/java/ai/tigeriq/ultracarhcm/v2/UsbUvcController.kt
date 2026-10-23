@@ -43,8 +43,8 @@ class UsbUvcController(
                     .any { usb.getInterface(it).interfaceClass == 14 }
             }
             if (device == null) {
-                report("Không thấy thiết bị Camera UVC qua USB Host", false)
                 stop()
+                report("Không thấy thiết bị Camera UVC qua USB Host", false)
                 return
             }
             target = device
@@ -52,8 +52,8 @@ class UsbUvcController(
             h.selectDevice(device)
         } catch (t: Throwable) {
             Log.e(logTag, "UVC init/select failed", t)
-            report("Không khởi tạo được UVC: ${t.javaClass.simpleName}", false)
             stop()
+            report("Không khởi tạo được UVC: ${t.javaClass.simpleName}", false)
         }
     }
 
@@ -73,9 +73,9 @@ class UsbUvcController(
             Log.e(logTag, "UVC preview failed", t)
             // addSurface may already have succeeded. Release its Surface on failure.
             releasePreview()
-            report("Lỗi hình Camera UVC: ${t.javaClass.simpleName}", false)
-            // A failed preview must leave the controller retryable, not "requested" forever.
+            // Reset requested before notifying UI; otherwise its retry button stays "Close".
             stop()
+            report("Lỗi hình Camera UVC: ${t.javaClass.simpleName}", false)
         }
     }
 
@@ -90,8 +90,8 @@ class UsbUvcController(
                 Log.e(logTag, "UVC open failed", t)
                 main.post {
                     if (requested && device == target) {
-                        report("Không mở được Camera UVC", false)
                         stop()
+                        report("Không mở được Camera UVC", false)
                     }
                 }
             }
@@ -119,8 +119,8 @@ class UsbUvcController(
     override fun onDetach(device: UsbDevice) {
         main.post {
             if (device == target) {
-                report("Đã rút Camera USB", false)
                 stop()
+                report("Đã rút Camera USB", false)
             }
         }
     }
@@ -128,8 +128,8 @@ class UsbUvcController(
         main.post {
             // Another USB device may cancel while the selected camera is in use.
             if (requested && device == target) {
-                report("Quyền USB bị từ chối", false)
                 stop()
+                report("Quyền USB bị từ chối", false)
             }
         }
     }
@@ -138,8 +138,8 @@ class UsbUvcController(
         main.post {
             if (device == target && requested) {
                 releasePreview()
-                report("Lỗi UVC: ${e.message}", false)
                 stop()
+                report("Lỗi UVC: ${e.message}", false)
             }
         }
     }
