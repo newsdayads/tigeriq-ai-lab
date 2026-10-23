@@ -11,6 +11,15 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
     expect(managerIdleStepStopPlan({consecutiveNoProgressDecisions:2,activeChildren:1}))
       .toMatchObject({action:'wait',reason:'await_existing_child_receipt'});
   });
+  it('parks a revision-scoped GitHub objective with a real completed child without asserting acceptance',()=>{
+    expect(managerIdleStepStopPlan({consecutiveNoProgressDecisions:2,activeChildren:0,completedChildren:1,source:'github',sourceRevision:'rev-abc'}))
+      .toMatchObject({action:'park',reason:'await_verified_child_acceptance'});
+    for(const input of [{source:'api',sourceRevision:'rev-abc'},{source:'github',sourceRevision:''}]){
+      expect(managerIdleStepStopPlan({consecutiveNoProgressDecisions:2,activeChildren:0,completedChildren:1,...input}).action).toBe('block');
+    }
+    expect(managerIdleStepStopPlan({consecutiveNoProgressDecisions:2,activeChildren:1,completedChildren:1,source:'github',sourceRevision:'rev-abc'}).action).toBe('wait');
+  });
+
   it('stops a jobless phase after two decisions and lets another scope be selected',()=>{
     expect(managerIdleStepStopPlan({consecutiveNoProgressDecisions:2,activeChildren:0}))
       .toMatchObject({action:'block',reason:'no_progress_decision_budget_exhausted',limit:2});
