@@ -502,7 +502,7 @@ describe('TigerIQ Live Work Order projection', () => {
       'NO_DIRECT_MAIN=true','NO_PRODUCTION_RELEASE=true','NO_PAID_COST=true',
       'NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true',
       'NO_DESTRUCTIVE=true','APP_CHROME_MUTATION=FORBIDDEN',
-    ].join('\\n'));
+    ].join('\n'));
     const queued={status:'WAITING',eligibleNow:false,waitReason:'Chờ #5185',
       dependencies:[5185],updatedAt:'2026-09-24T12:00:00Z'};
     expect(executionEligibilityForIssue(card)).toBe('READY');
@@ -527,9 +527,9 @@ describe('TigerIQ Live Work Order projection', () => {
       'NO_DIRECT_MAIN=true','NO_PRODUCTION_RELEASE=true','NO_PAID_COST=true',
       'NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true',
       'NO_DESTRUCTIVE=true','APP_CHROME_MUTATION=FORBIDDEN',
-    ].join('\\n'));
+    ].join('\n'));
     const lifecycle=parseStructuredLifecycleComment({
-      body:'CURRENT_STATE=CODING_LANE_ACTIVE\\nBLOCKER=NONE\\nMUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      body:'CURRENT_STATE=CODING_LANE_ACTIVE\nBLOCKER=NONE\nMUTATION_OWNER=CORE_DYNAMIC_LEASE',
       created_at:'2026-09-24T12:00:00Z',
     });
     const queued={status:'WAITING',eligibleNow:false,waitReason:'Chờ #5185',
