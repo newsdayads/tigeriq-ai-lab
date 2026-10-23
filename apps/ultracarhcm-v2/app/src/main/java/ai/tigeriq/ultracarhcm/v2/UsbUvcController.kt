@@ -74,6 +74,8 @@ class UsbUvcController(
             // addSurface may already have succeeded. Release its Surface on failure.
             releasePreview()
             report("Lỗi hình Camera UVC: ${t.javaClass.simpleName}", false)
+            // A failed preview must leave the controller retryable, not "requested" forever.
+            stop()
         }
     }
 
@@ -86,7 +88,12 @@ class UsbUvcController(
                 helper?.openCamera()
             } catch (t: Throwable) {
                 Log.e(logTag, "UVC open failed", t)
-                report("Không mở được Camera UVC", false)
+                main.post {
+                    if (requested && device == target) {
+                        report("Không mở được Camera UVC", false)
+                        stop()
+                    }
+                }
             }
         }
     }
@@ -118,7 +125,13 @@ class UsbUvcController(
         }
     }
     override fun onCancel(device: UsbDevice) {
-        main.post { report("Quyền USB bị từ chối", false); stop() }
+        main.post {
+            // Another USB device may cancel while the selected camera is in use.
+            if (requested && device == target) {
+                report("Quyền USB bị từ chối", false)
+                stop()
+            }
+        }
     }
     override fun onError(device: UsbDevice, e: CameraException) {
         Log.e(logTag, "UVC error", e)
@@ -126,6 +139,7 @@ class UsbUvcController(
             if (device == target && requested) {
                 releasePreview()
                 report("Lỗi UVC: ${e.message}", false)
+                stop()
             }
         }
     }
