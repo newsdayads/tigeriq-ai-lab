@@ -1728,12 +1728,12 @@ test('github_review job validates reviewer evidence before terminal done write',
   assert.match(run,/reviewEvidence/);
 });
 
-test('github_api_autowork uses NV10 local Ollama without waiting for cloud NV API',()=>{
+test('github_api_autowork may use approved FREE API roster while preserving explicit LOCAL',()=>{
   const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
-  assert.match(core,/const CORE_LOCAL_AUTOWORK_EMPLOYEES = Object\.freeze\(\[OLLAMA_EMPLOYEE_ID\]\)/);
-  assert.match(core,/const employeeAllowlist=j\.kind==='github_api_autowork'\?CORE_LOCAL_AUTOWORK_EMPLOYEES:stabilityAllowlist/);
-  assert.match(core,/profile:j\.kind==='github_api_autowork'\?'LOCAL':\(j\.routing_profile\|\|'AUTO'\)/);
-  assert.match(core,/taskKind==='github_api_autowork'\s*\? new Set\(CORE_LOCAL_AUTOWORK_EMPLOYEES\)/);
+  assert.match(core,/const CORE_AUTOWORK_EMPLOYEES = Object\.freeze\(\[OLLAMA_EMPLOYEE_ID,'NV11','NV12'\]\)/);
+  assert.match(core,/const employeeAllowlist=j\.kind==='github_api_autowork'\?CORE_AUTOWORK_EMPLOYEES:stabilityAllowlist/);
+  assert.match(core,/profile:effectiveCoreJobRoutingProfile\(j\)/);
+  assert.match(core,/taskKind==='github_api_autowork'\s*\? new Set\(CORE_AUTOWORK_EMPLOYEES\)/);
   assert.match(core,/employeeAllowlist\.size/);
   assert.match(core,/employeeAllowlist\.has\(String\(x\.employee_id\|\|''\)\.toUpperCase\(\)\)/);
 });
