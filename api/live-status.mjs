@@ -1208,6 +1208,14 @@ function nv02LocalSelfPullEligible(issue) {
   return true;
 }
 
+// A resolved queue dependency is stronger than the source card's advisory READY flag.
+// This is presentation only: native Core admission and lease ownership are untouched.
+function queueDependencyBlocked(row) {
+  return row?.eligibleNow === false
+    && ['WAITING', 'BLOCKED'].includes(String(row?.status || '').toUpperCase())
+    && Array.isArray(row?.dependencies) && row.dependencies.length > 0;
+}
+
 export function executionEligibilityForIssue(issue, overlays = {}) {
   if (!issue || issue.pull_request || issue.state !== 'open') return 'TERMINAL';
   const body = String(issue.body || '');
@@ -1258,6 +1266,7 @@ export function executionEligibilityForIssue(issue, overlays = {}) {
   if(lifecycleGate.required&&!lifecycleGate.valid)return 'PARKED_DEPENDENCY';
 
   if (overlays.active?.live === true && overlays.active?.employeeId) return 'READY';
+  if (queueDependencyBlocked(overlays.queued)) return 'PARKED_DEPENDENCY';
   if (overlays.queued?.eligibleNow === true) return 'READY';
 
   if (nv02LocalSelfPullEligible(issue)) return 'READY';
@@ -1615,7 +1624,8 @@ export function parseOpenWorkIssue(issue, overlays = {}) {
         ].join('\n'),
       })
     : null;
-  const executionEligibility = rawExecutionEligibility === 'PARKED_DEPENDENCY' && lifecycleAdmission?.eligible === true
+  const executionEligibility = rawExecutionEligibility === 'PARKED_DEPENDENCY'
+    && lifecycleAdmission?.eligible === true && !queueDependencyBlocked(queued)
     ? 'READY'
     : rawExecutionEligibility;
 

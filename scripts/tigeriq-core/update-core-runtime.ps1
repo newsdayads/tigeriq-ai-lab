@@ -74,8 +74,7 @@ function Save-RuntimeSourceState([string]$currentSha,[string]$previousSha,[strin
   $tmp="$runtimeSourceState.tmp";[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $runtimeSourceState
 }
 function Resolve-DeployedSourceSha([string]$checkedOutSha,[string]$remoteSha){
-  # A reset of the worktree can finish before the deployment commit marker and
-  # process restart. In that case HEAD==remote alone is NOT an installed release.
+  # HEAD==remote before a verified restart is not a deployed release.
   if(-not $checkedOutSha -or $checkedOutSha -ne $remoteSha){return $checkedOutSha}
   if(-not(Test-Path -LiteralPath $runtimeSourceState)){return $checkedOutSha}
   try{
@@ -792,7 +791,7 @@ function Get-Impact([string[]]$paths){
   $web=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-core/web-control(?:\.|-)' -or $_ -eq 'apps/tigeriq-core/owner-facing-vietnamese.mjs' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-web-control'}).Count)
   $coding=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-coding-lane/' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-coding-lane'}).Count)
   $openclaw=[bool](@($paths|Where-Object{$_ -match '^apps/openclaw-tigeriq-runtime/'}).Count)
-  $core=[bool](@($paths|Where-Object{($_ -match '^apps/tigeriq-core/' -and $_ -notmatch '^apps/tigeriq-core/web-control(?:\.|-)') -or $_ -eq 'api/live-status.mjs' -or $_ -match '^scripts/tigeriq-core/(?:run-core|install-core-task)\.ps1$'}).Count -or $openclaw -or $web -or @($paths|Where-Object{$_ -match '^apps/shared/owner-(interaction-v6|one-tap-approval)\.mjs$' -or $_ -eq 'apps/shared/work-center-history.mjs' -or $_ -eq 'apps/dashboard/src/bcct.mjs' -or $_ -match '^public/(work-center(-visual)?|work-ui)(\.js|\.css)$' -or $_ -eq 'scripts/package-bcct-runtime.mjs'}).Count)
+  $core=[bool](@($paths|Where-Object{($_ -match '^apps/tigeriq-core/' -and $_ -notmatch '^apps/tigeriq-core/web-control(?:\.|-)') -or $_ -eq 'api/live-status.mjs' -or $_ -match '^scripts/tigeriq-core/(?:run-core|install-core-task)\.ps1$'}).Count -or $openclaw -or $web -or @($paths|Where-Object{$_ -match '^apps/shared/owner-(interaction-v6|one-tap-approval)\.mjs$' -or $_ -eq 'apps/shared/work-center-history.mjs' -or $_ -eq 'apps/shared/owner-live-truth.mjs' -or $_ -eq 'apps/dashboard/src/bcct.mjs' -or $_ -match '^public/(work-center(-visual)?|work-ui)(\.js|\.css)$' -or $_ -eq 'scripts/package-bcct-runtime.mjs'}).Count)
   $updater=[bool](@($paths|Where-Object{$_ -in @('scripts/tigeriq-core/update-core-runtime.ps1','scripts/tigeriq-core/pc01-release-guard.ps1','scripts/tigeriq-core/pc01-release-preflight.mjs','scripts/tigeriq-core/bootstrap-watchdog.ps1','scripts/tigeriq-core/install-core-updater.ps1')}).Count)
   $liveBridge=[bool](@($paths|Where-Object{$_ -match '^apps/tigeriq-live-bridge/'}).Count)
   return @{core=$core;web=$web;coding=$coding;openclaw=$openclaw;updater=$updater;liveBridge=$liveBridge}
