@@ -512,7 +512,7 @@ async function ownerRequestApi(req,res,payload,readOnly=false){
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
-      if (new URL(req.url||'/', 'https://localhost').searchParams.get('operation') === 'owner-work-request') return ownerRequestApi(req,res,null,true);
+      if (new URL(req.url||'/', 'https://localhost').searchParams.get('operation') === 'owner-work-request') return await ownerRequestApi(req,res,null,true);
       // Reuse the existing API function quota; still require Owner session in handler.
       if (new URL(req.url || '/', 'https://tigeriq-ai-lab.vercel.app').searchParams.get('operation') === 'owner-decision')
         return ownerDecisionHandler(req, res);
@@ -526,7 +526,7 @@ export default async function handler(req, res) {
     const optionalToken = clientGithubToken(req);
 
     if (operation === 'owner-decision') return ownerDecisionHandler(req, res, payload);
-    if (operation === 'owner-work-request') return ownerRequestApi(req,res,payload);
+    if (operation === 'owner-work-request') return await ownerRequestApi(req,res,payload);
     if (operation === 'status') return json(res, 200, await statusSnapshot(optionalToken));
     if (operation === 'whoami') return json(res, 200, await githubIdentity((await writeCredential(req)).token));
     if (operation === 'work-order-status') return json(res, 200, await workOrderStatus(payload, optionalToken));
