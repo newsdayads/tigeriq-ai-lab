@@ -1269,10 +1269,18 @@ async function apiDoctorRepairLifecycleEvidence(existingHandoff){
   const base=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}`;
   const headers=apiDoctorGithubHeaders();
   const issue=await fetchJson(`${base}/issues/${issueNumber}`,{headers},10000);
-  const issueGate=apiDoctorRepairWorkOrderGate({issueNumber,state:issue?.state,stateReason:issue?.state_reason});
-  if(issueGate.action!=='validate_repair')return {ready:false,reason:issueGate.reason,issueNumber};
-
   const issueBody=String(issue?.body||'');
+  // Open source-repair issues may be staged for *validation*, never recovery:
+  // the issue fields only prompt read-only verification of the actual merged PR,
+  // independent review and protected installed runtime evidence below.
+  const openSourceCandidate=String(issue?.state||'').toLowerCase()==='open'
+    &&/^DONE=false$/m.test(issueBody)
+    &&/^R04_RELEASE_STATUS=COMMITTED$/m.test(issueBody)
+    &&/^SOURCE_MERGE_MAIN_SHA=[a-f0-9]{40}$/m.test(issueBody)
+    &&/^R04_INSTALLED_SHA=[a-f0-9]{40}$/m.test(issueBody);
+  const issueGate=apiDoctorRepairWorkOrderGate({issueNumber,state:issue?.state,stateReason:issue?.state_reason});
+  if(issueGate.action!=='validate_repair'&&!openSourceCandidate)return {ready:false,reason:issueGate.reason,issueNumber};
+
   const terminalNormalWorkRecovery=/^CURRENT_STATE=RECOVERED_BY_REAL_NORMAL_WORK$/m.test(issueBody)
     &&/^SOURCE_CHANGE_REQUIRED=false$/m.test(issueBody)
     &&/^RECOVERY_CONTRACT=SATISFIED_BY_LATER_NORMAL_CORE_WORK$/m.test(issueBody)
@@ -1315,6 +1323,12 @@ async function apiDoctorRepairLifecycleEvidence(existingHandoff){
   if(String(repairPr?.base?.ref||'')!=='main')return {ready:false,reason:'repair_pr_not_main',issueNumber,repairPrNumber};
   const repairRevision=apiDoctorSha(repairPr?.merge_commit_sha);
   if(!repairRevision)return {ready:false,reason:'repair_merge_revision_missing',issueNumber,repairPrNumber};
+  const verifiedOpenSourceRelease=openSourceCandidate
+    &&apiDoctorSha((issueBody.match(/^SOURCE_MERGE_MAIN_SHA=([a-f0-9]{40})$/m)||[])[1])===repairRevision
+    &&apiDoctorSha((issueBody.match(/^R04_INSTALLED_SHA=([a-f0-9]{40})$/m)||[])[1])===repairRevision
+    &&Number.isFinite(Date.parse(String(repairPr?.merged_at||'')));
+  if(openSourceCandidate&&!verifiedOpenSourceRelease)
+    return {ready:false,reason:'open_source_release_provenance_mismatch',issueNumber,repairPrNumber};
 
   const runtimeSourceState=readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE);
   const updaterState=readSelfAuditJsonState(CORE_RUNTIME_UPDATER_STATE);
@@ -1326,6 +1340,7 @@ async function apiDoctorRepairLifecycleEvidence(existingHandoff){
   const deployedAt=String(runtimeSourceState?.updatedAt||'').trim();
   const deploymentGate=apiDoctorRepairDeploymentGate({
     issueNumber,state:issue?.state,stateReason:issue?.state_reason,issueClosedAt:issue?.closed_at,
+    verifiedSourceRelease:verifiedOpenSourceRelease,sourceMergedAt:verifiedOpenSourceRelease?repairPr.merged_at:null,
     runtimeCurrentSha:runtimeCurrentRevision,runtimeInstalledSha:deployedRevision,runtimeUpdatedAt:deployedAt,
     updaterResult:updaterState?.result||'',updaterCandidateSha:updaterState?.candidateSha||'',
   });
@@ -1340,14 +1355,16 @@ async function apiDoctorRepairLifecycleEvidence(existingHandoff){
   }
   if(!repairContained)return {ready:false,reason:'repair_revision_not_deployed',issueNumber,repairPrNumber,repairRevision,deployedRevision};
 
-  const cutoverMs=Math.max(
+  const cutoverTimes=[
     Date.parse(String(existingHandoff?.ts||'')),
-    Date.parse(String(issue?.closed_at||'')),
+    Date.parse(String(verifiedOpenSourceRelease?repairPr.merged_at:issue?.closed_at||'')),
     Date.parse(deployedAt),
-  );
-  if(!Number.isFinite(cutoverMs))return {ready:false,reason:'repair_cutover_time_unverified',issueNumber,repairPrNumber,repairRevision,deployedRevision};
+  ];
+  if(cutoverTimes.some(ms=>!Number.isFinite(ms)))
+    return {ready:false,reason:'repair_cutover_time_unverified',issueNumber,repairPrNumber,repairRevision,deployedRevision};
+  const cutoverMs=Math.max(...cutoverTimes);
   return {
-    ready:true,reason:'repair_issue_completed_revision_deployed',issueNumber,repairPrNumber,codingObjectiveId,repairEvidenceSource,
+    ready:true,reason:verifiedOpenSourceRelease?'repair_source_released_issue_open':'repair_issue_completed_revision_deployed',issueNumber,repairPrNumber,codingObjectiveId,repairEvidenceSource,
     repairRevision,deployedRevision,deployedAt,issueClosedAt:String(issue?.closed_at||''),successAfterAt:new Date(cutoverMs).toISOString(),
   };
 }
