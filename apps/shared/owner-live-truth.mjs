@@ -46,8 +46,10 @@ export function projectOwnerLiveTruth(row,ctx={}){
   lastActivitySource:clean(row?.lastActivitySource,70)||null,
   lastActivityIsExecutionReceipt:false,
   worker:verifiedRuntime?worker:null,
+  // UI actionability must agree with the effective wait/blocker status.
+  // Source READY alone is not proof that a dependency has cleared.
   canExecuteNow:fresh&&row?.executionEligibility==="READY"&&
-    !["OWNER_GATE","WORKING","BLOCKED"].includes(state)&&row?.ownerGate!==true,
+    ["OPEN","QUEUED"].includes(state)&&!blockerPresent(blocker)&&row?.ownerGate!==true,
   blocker:blockerPresent(blocker)?blocker:null,
   next:next||null,
   progress:progressValid?{done,total,percent:done===total&&row?.completionVerified!==true?null:Math.round(100*done/total)}:null
