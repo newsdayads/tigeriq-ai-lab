@@ -736,9 +736,9 @@ export function parseRecentClosedIssue(issue, now = Date.now()) {
 // the recent-50 window. Read their IDs from GitHub's active source, never guess.
 export function closureAuditWatchNumbers(openIssues = []) {
   const parent = openIssues.find(issue => Number(issue?.number) === 5144 && issue?.state === 'open');
-  const step = String(parent?.body || '').split(/\\r?\\n/)
-    .find(line => /^- \\[ \\] R10\\b/.test(line)) || '';
-  return [...new Set([...step.matchAll(/NV\\d{2,3}\\s+#(\\d{1,8})/g)]
+  const step = String(parent?.body || '').split(/\r?\n/)
+    .find(line => /^- \[ \] R10\b/.test(line)) || '';
+  return [...new Set([...step.matchAll(/NV\d{2,3}\s+#(\d{1,8})/g)]
     .map(match => Number(match[1])).filter(Number.isSafeInteger))].slice(0, 3);
 }
 
