@@ -14,6 +14,7 @@ import {
   apiDoctorRepairLifecycleRelevant,
   apiDoctorRepairSignature,
   apiDoctorRepairWorkOrderGate,
+  apiDoctorOwnerProxyReviewStatus,
   apiDoctorResourceEligibleForCapability,
   apiDoctorScannableEmployeeId,
   apiDoctorScanSignature,
@@ -409,6 +410,18 @@ describe('#1255 NV10 API Doctor policy',()=>{
     });
   });
 
+  it('distinguishes merged scoped source awaiting review from missing PR without bypassing gates',()=>{
+    expect(apiDoctorOwnerProxyReviewStatus()).toEqual({ready:false,reason:'repair_coding_result_missing'});
+    expect(apiDoctorOwnerProxyReviewStatus({scopedMergedPrFound:true})).toEqual({ready:false,reason:'repair_independent_review_pending'});
+    expect(apiDoctorOwnerProxyReviewStatus({scopedMergedPrFound:false,reviewPassed:true})).toEqual({ready:false,reason:'repair_coding_result_missing'});
+    expect(apiDoctorOwnerProxyReviewStatus({scopedMergedPrFound:true,reviewPassed:true})).toEqual({ready:true,reason:'reviewed_source_pr'});
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    expect(core).toContain('let scopedMergedPrFound=false;');
+    expect(core).toContain("return disposition.reason==='repair_independent_review_pending'?{reason:disposition.reason}:null;");
+    expect(core).toContain("reason:fallback?.reason||'repair_coding_result_missing'");
+    expect(core).toContain('if(!reviewOk)continue;');
+    expect(core).toContain("reviewBody.includes('[TIGERIQ_INDEPENDENT_REVIEW_V1]')");
+  });
   it('permits only independently verified source-release staging while a canonical issue remains open',()=>{
     const base={issueNumber:5223,state:'open'};
     expect(apiDoctorRepairWorkOrderGate(base)).toEqual({

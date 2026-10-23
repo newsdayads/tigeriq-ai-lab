@@ -225,6 +225,12 @@ export function apiDoctorRepairSignature({employeeId,provider,failureClass,messa
   return [safeText(employeeId,32).toUpperCase(),safeText(provider,64).toLowerCase(),safeText(failureClass,64).toLowerCase(),normalized].join('|');
 }
 
+// Pure review evidence diagnostic: it never authorizes an unreviewed source PR.
+export function apiDoctorOwnerProxyReviewStatus({scopedMergedPrFound=false,reviewPassed=false}={}){
+  if(scopedMergedPrFound===true&&reviewPassed===true)return {ready:true,reason:'reviewed_source_pr'};
+  if(scopedMergedPrFound===true)return {ready:false,reason:'repair_independent_review_pending'};
+  return {ready:false,reason:'repair_coding_result_missing'};
+}
 export function apiDoctorRepairWorkOrderGate({issueNumber=0,state='unknown',stateReason=null,verifiedSourceRelease=false}={}){
   const number=Number(issueNumber||0);
   if(!Number.isInteger(number)||number<=0)return {action:'legacy',reason:'legacy_repair_handoff'};
