@@ -132,3 +132,22 @@ test('UVC error frees surface and resets requested state for retry (source guard
   assert.match(handler,/if \(device == target && requested\)/);
   assert.match(handler,/releasePreview\(\)[\s\S]*?stop\(\)/);
 });
+
+test('terminal USB errors reset requested before telling the Activity to render retry controls (source guard only)',()=>{
+  const source=readFileSync(new URL('../../apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt',import.meta.url),'utf8');
+  for (const [section,next,errorText] of [
+    ['fun start() {','private fun beginPreview()', 'Không thấy thiết bị Camera UVC'],
+    ['private fun beginPreview() {','override fun onAttach(', 'Lỗi hình Camera UVC'],
+    ['override fun onDeviceOpen(', 'override fun onCameraOpen(', 'Không mở được Camera UVC'],
+    ['override fun onDetach(', 'override fun onCancel(', 'Đã rút Camera USB'],
+    ['override fun onCancel(', 'override fun onError(', 'Quyền USB bị từ chối'],
+    ['override fun onError(', 'override fun onSurfaceTextureAvailable(', 'Lỗi UVC:']
+  ]) {
+    const sectionBody=source.split(section)[1]?.split(next)[0];
+    assert.ok(sectionBody,'missing source section '+section);
+    const errorIndex=sectionBody.indexOf(errorText);
+    assert.ok(errorIndex>=0,'missing error report: '+errorText);
+    const beforeReport=sectionBody.slice(0,errorIndex);
+    assert.ok(beforeReport.lastIndexOf('stop()') >= 0,'stop() must precede final UI report for '+errorText);
+  }
+});
