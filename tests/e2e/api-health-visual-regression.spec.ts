@@ -587,3 +587,30 @@ test('mobile work card border aligns with number and priority corner tabs', asyn
     }
   }
 });
+
+test('iPhone API Health shows one bottom-right floating reload button that reloads the document',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ await openFixture(page);
+ const reload=page.locator('#reloadPage');
+ await expect(reload).toHaveCount(1);
+ await expect(reload).toBeVisible();
+ await expect(reload).toHaveAttribute('aria-label','Tải lại trang');
+ await expect(reload.locator('svg')).toHaveCount(1);
+ const coordinates=await reload.evaluate(button=>{
+  const box=button.getBoundingClientRect();
+  return {right:box.right,bottom:box.bottom,top:box.top,left:box.left,position:getComputedStyle(button).position};
+ });
+ expect(coordinates.position).toBe('fixed');
+ expect(coordinates.right).toBeLessThanOrEqual(390);
+ expect(coordinates.right).toBeGreaterThan(325);
+ expect(coordinates.left).toBeGreaterThan(0);
+ expect(coordinates.bottom).toBeLessThanOrEqual(844);
+ expect(coordinates.top).toBeGreaterThan(700);
+ await page.evaluate(()=>(window as any).TigerIQWorkCenter.mountFloatingReload());
+ await expect(reload).toHaveCount(1);
+ const navigation=page.waitForResponse(response=>response.url()===base+'/'&&response.request().resourceType()==='document');
+ await reload.click();
+ await navigation;
+ await expect(page.locator('#workList .work-row')).toHaveCount(3);
+ await expect(page.locator('#reloadPage')).toHaveCount(1);
+});
