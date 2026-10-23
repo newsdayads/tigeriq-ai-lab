@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const kinds = ['drawable','raw','layout','xml','string','id'];
 export function referencesFromSource(source) {
   const result=new Map(kinds.map(x=>[x,new Set()]));
-  for(const [,kind,name] of source.matchAll(/\bR\.(drawable|raw|layout|xml|string|id)\.([a-zA-Z]\w*)/g)) result.get(kind).add(name);
+  for(const [,kind,name] of source.matchAll(/(?<!android\.)\bR\.(drawable|raw|layout|xml|string|id)\.([a-zA-Z]\w*)/g)) result.get(kind).add(name);
   return result;
 }
 export function inspectR01(root) {
