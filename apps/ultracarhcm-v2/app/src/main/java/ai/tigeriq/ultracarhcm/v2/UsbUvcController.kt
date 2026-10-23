@@ -102,17 +102,19 @@ class UsbUvcController(
     }
     override fun onCameraClose(device: UsbDevice) {
         main.post {
-            if (device == target) {
+            if (device == target && requested) {
                 releasePreview()
-                if (requested) report("Camera UVC đã đóng", false)
+                stop()
+                report("Camera UVC đã đóng — có thể thử lại", false)
             }
         }
     }
     override fun onDeviceClose(device: UsbDevice) {
         main.post {
-            if (device == target) {
+            if (device == target && requested) {
                 releasePreview()
-                if (requested) report("USB camera mất kết nối", false)
+                stop()
+                report("USB camera mất kết nối — có thể thử lại", false)
             }
         }
     }
