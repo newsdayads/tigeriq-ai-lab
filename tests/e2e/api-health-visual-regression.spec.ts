@@ -559,3 +559,31 @@ test('Stylesheets are consolidated without obsolete employee-hover inspector',as
  const styles=await page.evaluate(()=>[...document.styleSheets].map(s=>s.href||''));
  expect(styles.some(x=>x.includes('/work-center-visual.css'))).toBe(true);
 });
+
+test('mobile work card border aligns with number and priority corner tabs', async ({page})=>{
+  await page.setContent('<meta name="viewport" content="width=device-width, initial-scale=1">'
+    +'<style>'+sharedCss+'</style><style>'+workCenterVisualCss+'</style>'
+    +'<div id="workList" class="wo-list work-list tiq-work-center">'
+    +'<article class="work-row tiq-work-card status-review priority-p1"><div class="work-main">'
+    +'<div class="work-top"><span class="work-id">#5135</span><span class="priority p1">P1</span></div>'
+    +'<div class="work-title">Kiểm tra viền thẻ</div></div></article>'
+    +'<article class="work-row tiq-work-card status-waiting priority-p1"><div class="work-main">'
+    +'<div class="work-top"><span class="work-id">#4456</span><span class="priority p1">P1</span></div>'
+    +'<div class="work-title">Xác minh viền chờ</div></div></article></div>');
+  for(const width of [375,430]){
+    await page.setViewportSize({width,height:844});
+    for(const card of await page.locator('#workList > .tiq-work-card').all()){
+      const frame=await card.locator(':scope > .work-main').boundingBox();
+      const id=await card.locator('.work-id').boundingBox();
+      const priority=await card.locator('.priority').boundingBox();
+      expect(frame).not.toBeNull();
+      expect(id).not.toBeNull();
+      expect(priority).not.toBeNull();
+      if(!frame||!id||!priority)continue;
+      expect(Math.abs(frame.x-id.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(frame.x+frame.width-priority.x-priority.width)).toBeLessThanOrEqual(1);
+      expect(frame.x).toBeGreaterThanOrEqual(0);
+      expect(frame.x+frame.width).toBeLessThanOrEqual(width);
+    }
+  }
+});
