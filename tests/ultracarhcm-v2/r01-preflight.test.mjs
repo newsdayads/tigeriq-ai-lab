@@ -20,6 +20,10 @@ test('resource reference scan includes image, raw video and XML',()=>{
   assert.deepEqual([...refs.get('string')],['app_name']);
   assert.deepEqual([...refs.get('xml')],['device_filter']);
 });
+test('Android system drawables are not counted as missing original V1 assets',()=>{
+  const refs=referencesFromSource('android.R.drawable.ic_menu_camera R.drawable.v2_road_city_day');
+  assert.deepEqual([...refs.get('drawable')],['v2_road_city_day']);
+});
 test('missing V1 visuals or wrapper fail closed instead of false PASS',()=>{
   const root=mkdtempSync(join(tmpdir(),'gh5135-'));
   try{
