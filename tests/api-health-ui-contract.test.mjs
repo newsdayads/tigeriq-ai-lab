@@ -1,5 +1,6 @@
 import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
+import {runInNewContext} from 'node:vm';
 
 describe('#3918 API Health shared Work UI contract',()=>{
   const dashboard=readFileSync(new URL('../apps/tigeriq-core/dashboard.html',import.meta.url),'utf8');
@@ -249,6 +250,16 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('.api-health .work-panel .health-live-work-card .work-main');
     expect(shared).toContain('.api-health .work-panel .health-live-work-card .work-progress-bottom');
     expect(shared).toContain('@media(prefers-reduced-motion:reduce)');
+  });
+
+  it('round-trips legacy CP437 Vietnamese without changing valid text',()=>{
+    const sandbox={TextDecoder};sandbox.window=sandbox;
+    runInNewContext(workCenter,sandbox);
+    const readable=sandbox.TigerIQWorkCenter.readableText;
+    expect(readable('Chß╗ë nghiß╗çm thu to├án viß╗çc khi ho├án tß║Ñt')).toBe('Chỉ nghiệm thu toàn việc khi hoàn tất');
+    expect(readable('R01ΓÇôR09')).toBe('R01–R09');
+    expect(readable('Đã xác minh công việc')).toBe('Đã xác minh công việc');
+    expect(readable('GITHUB · CORE')).toBe('GITHUB · CORE');
   });
 
   it('fixes legacy CP437 Vietnamese text, consistent card font and hides unverified start/end',()=>{
