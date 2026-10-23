@@ -57,7 +57,7 @@ describe('GH-5135 native Android compile gate (synthetic fixtures, not a release
     const workRoot=mkdtempSync(join(tmpdir(),'tigeriq-gh5135-native-'));
     const worktree=join(workRoot,'head');
     const checkout=resolve('.');
-    const env={...process.env,ANDROID_HOME:sdk,ANDROID_SDK_ROOT:sdk};
+    const env: NodeJS.ProcessEnv={...process.env,ANDROID_HOME:sdk,ANDROID_SDK_ROOT:sdk};
     if (env.JAVA_HOME_17_X64) {
       env.JAVA_HOME=env.JAVA_HOME_17_X64;
       env.PATH=join(env.JAVA_HOME_17_X64,'bin')+':'+env.PATH;
