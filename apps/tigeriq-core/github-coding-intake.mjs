@@ -159,7 +159,7 @@ export function parseCodingIssue(issue){
   const displayState=currentCodingValue(body,'DISPLAY_STATE').toUpperCase();
   // A Canonical Work Order awaiting independent review or physical-device
   // evidence is not eligible for Coding Lane dispatch or retry.
-  if(/^(?:EXTERNAL_WAIT|WAIT_EXTERNAL|SOURCE_VERIFIED_WAIT)(?:_|$)/.test(state)
+  if(/^(?:EXTERNAL_WAIT|WAIT_EXTERNAL|SOURCE_VERIFIED_WAIT|WAIT_GO_DECISION)(?:_|$)/.test(state)
     ||/^(?:WAIT_DEPENDENCY|EXTERNAL_WAIT)(?:_|$)/.test(displayState))return null;
   if(/^(?:SUPERSEDED|CANCELLED|CANCELED)(?:_|$)/.test(legacyState)
     ||/^(?:DONE|COMPLETED|TERMINAL|FAILED|CANCELLED|CANCELED|CLOSED|SUPERSEDED|NOT_PLANNED)(?:_|$)/.test(state)
