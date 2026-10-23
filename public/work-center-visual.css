@@ -887,3 +887,47 @@ body.api-health #detailModal.detail-modal .employee-avatar{
 .tiq-project-child-summary{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:6px 0 3px;font-size:12px;font-weight:600}
 .tiq-project-children-toggle{font:inherit;cursor:pointer;padding:5px 9px;border:1px solid currentColor;border-radius:7px;color:inherit;background:transparent}
 .tiq-project-children-toggle:focus-visible{outline:2px solid currentColor;outline-offset:3px}
+
+/* Owner 23/10: uniform readable card typography, hard wrapping and no phantom timing. */
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center>.tiq-work-card{
+ min-width:0!important;max-width:100%!important;box-sizing:border-box!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center>.tiq-work-card .work-main,
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center>.tiq-work-card :is(.work-top,.work-hierarchy,.work-title,.work-quick,.work-progress-bottom,.progress,.tiq-work-times){
+ min-width:0!important;max-width:100%!important;box-sizing:border-box!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center>.tiq-work-card .work-title{
+ font-size:14px!important;line-height:1.36!important;font-weight:800!important;
+ overflow-wrap:anywhere!important;word-break:break-word!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center>.tiq-work-card :is(.work-hierarchy,.work-quick,.work-quick span,.work-step-summary,.tiq-work-times,.progress-text,.tiq-project-child-summary){
+ font-size:11.5px!important;line-height:1.4!important;
+ overflow-wrap:anywhere!important;word-break:break-word!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center>.tiq-work-card .work-top{
+ display:flex!important;flex-wrap:wrap!important;gap:4px 6px!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center>.tiq-work-card :is(.state,.work-nv,.work-hierarchy,.work-quick,.work-quick span,.progress-text){
+ min-width:0!important;max-width:100%!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center>.tiq-work-card .state{
+ overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center>.tiq-work-card .progress{
+ flex-wrap:wrap!important;
+}
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center>.tiq-work-card .progress-text{
+ flex:0 1 auto!important;white-space:normal!important;
+}
+body.api-health #workDetailModal :is(.work-detail-step,.work-detail-step-copy,.work-detail-step-label,#workDetailAudit,.tiq-audit-grid,.tiq-audit-grid strong,.tiq-audit-timeline li){
+ min-width:0!important;max-width:100%!important;box-sizing:border-box!important;
+ overflow-wrap:anywhere!important;word-break:break-word!important;
+}
+body.api-health #workDetailModal .work-detail-step-label{
+ font-family:"Roboto Flex","Segoe UI",Arial,sans-serif!important;
+ font-size:12px!important;line-height:1.5!important;font-weight:600!important;
+ white-space:normal!important;
+}
+body.api-health #workDetailModal .tiq-audit-grid{
+ grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))!important;
+}

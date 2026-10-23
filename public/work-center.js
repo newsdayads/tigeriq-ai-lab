@@ -9,6 +9,31 @@ const activeHistory=new WeakMap();
 const expandedProjectParents=new Set();
 function txt(x){return String(x==null?'':x)}
 function esc(x){return txt(x).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+// Older GitHub issue checklist text was stored with UTF-8 bytes misread as
+// CP437 (e.g. "Chß╗ë" instead of "Chỉ"). Repair only byte-reversible tokens;
+// never mutate evidence, links, source or well-formed Vietnamese strings.
+const CP437_HIGH='ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ ';
+const CP437_REVERSE=new Map([...CP437_HIGH].map((char,index)=>[char,index+128]));
+function readableText(value){
+ const original=txt(value);
+ if(typeof TextDecoder!=='function'||!/[ß├╞╬Γ─║╗╝]/.test(original))return original;
+ const decoder=new TextDecoder('utf-8',{fatal:true});
+ return original.replace(/\S+/g,token=>{
+  if(!/[ß├╞╬Γ─║╗╝]/.test(token))return token;
+  const bytes=[];
+  for(const char of token){
+   const cp=char.codePointAt(0),byte=cp<=127?cp:CP437_REVERSE.get(char);
+   if(byte===undefined)return token;
+   bytes.push(byte);
+  }
+  try{
+   const repaired=decoder.decode(new Uint8Array(bytes));
+   // Real legacy misdecoding carries Vietnamese vowels or punctuation; a
+   // legitimate box-drawing token must not change without this evidence.
+   return /[À-ỹ–—→]/u.test(repaired)?repaired:token;
+  }catch{return token;}
+ });
+}
 function time(value){const ms=Date.parse(value||'');return Number.isFinite(ms)?ms:null}
 function fmt(value){const ms=time(value);return ms===null?'Chưa xác minh':new Date(ms).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',hour12:false,day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}
 function status(row){const raw=txt(row&&row.status||'UNKNOWN').toUpperCase().trim();return ALIASES[raw]||raw}
@@ -21,7 +46,7 @@ function completion(row){
 }
 function viewStatus(row){const canonical=String(row?.liveTruth?.status||'').toUpperCase();if(canonical&&LABELS[canonical])return canonical;return status(row)==='DONE'&&!completion(row)?'VERIFY':status(row)}
 function priority(row){const p=txt(row&& (row.effectivePriority||row.priority)||'META').toUpperCase();return /^P[0-5]$/.test(p)?p:'META'}
-function title(row){let t=txt(row&&row.title||'Chưa có tên việc').replace(/^\s*#?\d+\s*[-–—:]?\s*/,'').trim();while(/^\[[^\]]+\]\s*/.test(t))t=t.replace(/^\[[^\]]+\]\s*/,'');return t||'Chưa có tên việc'}
+function title(row){let t=readableText(row&&row.title||'Chưa có tên việc').replace(/^\s*#?\d+\s*[-–—:]?\s*/,'').trim();while(/^\[[^\]]+\]\s*/.test(t))t=t.replace(/^\[[^\]]+\]\s*/,'');return t||'Chưa có tên việc'}
 function person(row){const verified=txt(row&&row.activeWorker||'').toUpperCase();if(row&&row.activeLease===true&&row.heartbeatFresh===true&&/^NV\d{2}$/.test(verified))return verified;
  const ex=txt(row&&row.assignedExecutor||'').toUpperCase();if(row&&row.assignedExecutorVerified===true&&/^NV\d{2}$/.test(ex))return ex;
  const raw=txt(row&&(row.assignee||row.employeeId)||'').toUpperCase();if(/^NV\d{2}$/.test(raw))return raw+' · khai báo';
@@ -167,7 +192,7 @@ function renderCards(container,rows,options){
   const truth=row.liveTruth&&typeof row.liveTruth==='object'?row.liveTruth:null;
   const rawBlocker=childGroup?'':txt(truth?.blocker||row.blocker||row.waitReason||'').trim(); // Project supervisor is intentionally not dispatched.
    const blocker=/^(?:none|no(?:ne)?|null|undefined|không(?: có)?|khong(?: co)?|n\/?a|[-—–])$/i.test(rawBlocker)?'':rawBlocker;
-  const summary=blocker?'Bị chặn: '+blocker:txt(truth?.next||row.nextStep||row.currentStep||'').trim();
+  const summary=readableText(blocker?'Bị chặn: '+blocker:txt(truth?.next||row.nextStep||row.currentStep||'').trim());
   const count=Number(row.progressTotal),done=Number(row.progressDone);
   const checked=Number.isInteger(count)&&count>0&&Number.isInteger(done)&&done>=0&&done<=count;
   // Only verified numeric progress belongs on the overview; GitHub plans and
@@ -178,7 +203,12 @@ function renderCards(container,rows,options){
   const activeWithoutPercent=['WORKING','REVIEW','VERIFY'].includes(s);
   const bar=pr.verified?'<div class="progress"><div class="progress-track"><div class="progress-fill" style="width:'+pr.percent+'%"></div></div><span class="progress-text">'+pr.percent+'%</span></div>':activeWithoutPercent
     ?'<div class="progress indeterminate"><div class="progress-track"><div class="progress-fill"></div></div><span class="progress-text">Chưa đủ dữ liệu để tính %</span></div>':'';
-  const t=row.lifecycleTiming||{},started=t.startVerified?fmt(t.startedAt):'Chưa xác minh',ended=completion(row)&&t.finishVerified?fmt(t.finishedAt):'Chưa nghiệm thu';
+  const t=row.lifecycleTiming||{};
+  const started=t.startVerified===true&&time(t.startedAt)!==null?fmt(t.startedAt):null;
+  const ended=completion(row)&&t.finishVerified===true&&time(t.finishedAt)!==null?fmt(t.finishedAt):null;
+  const timingLine=(started||ended)?'<div class="tiq-work-times">'
+   +(started?'<span>Bắt đầu: '+esc(started)+'</span>':'')
+   +(ended?'<span>Kết thúc: '+esc(ended)+'</span>':'')+'</div>':'';
   const isRunning=s==='WORKING'&&row.activeLease===true&&row.heartbeatFresh===true&&opt.fresh!==false;
   if(isRunning)el.classList.add('progress-running');
   const parent=Number(row.parentNumber);
@@ -195,7 +225,7 @@ function renderCards(container,rows,options){
    +(childGroup?'<div class="tiq-project-child-summary"><span>VIỆC CON: '+childGroup.done+'/'+childGroup.count+' đã nghiệm thu</span> '+(childGroup.visible?'<button type="button" class="tiq-project-children-toggle" aria-expanded="'+childrenExpanded+'">'+(childrenExpanded?'THU GỌN':'XEM VIỆC CON')+'</button>':'')+'</div>':'')
    +(summary?'<div class="work-quick '+(blocker?'blocked':'next')+'">'+(showNext?arrow:'')+'<span>'+esc(stripped)+'</span></div>':'')
    +(steps||bar?'<div class="work-progress-bottom">'+steps+bar+'</div>':'')
-   +'<div class="tiq-work-times"><span>Bắt đầu: '+esc(started)+'</span><span>Kết thúc: '+esc(ended)+'</span></div></div>';
+   +timingLine+'</div>';
   const open=()=>{if(typeof opt.onOpen==='function')opt.onOpen(row,el);else openModal(row,opt)};
   const toggle=el.querySelector('.tiq-project-children-toggle');
   if(toggle)toggle.addEventListener('click',event=>{event.stopPropagation();if(expandedProjectParents.has(number))expandedProjectParents.delete(number);else expandedProjectParents.add(number);renderCards(container,data,opt)});
@@ -214,10 +244,15 @@ function renderCards(container,rows,options){
 }
 function auditMarkup(row,events){
  const timing=row&&row.lifecycleTiming||{};
- const start=timing.startVerified===true?fmt(timing.startedAt):'Chưa có biên nhận';
- const end=completion(row)?fmt(timing.finishedAt):'Chưa nghiệm thu';
- const elapsed=timing.startVerified&&completion(row)&&time(timing.finishedAt)>=time(timing.startedAt)?Math.round((time(timing.finishedAt)-time(timing.startedAt))/60000)+' phút':'Chưa xác minh';
- let html='<div class="tiq-audit-grid"><div><small>Bắt đầu thật</small><strong>'+esc(start)+'</strong></div><div><small>Kết thúc thật</small><strong>'+esc(end)+'</strong></div><div><small>Thời lượng</small><strong>'+esc(elapsed)+'</strong></div><div><small>Nhân sự / quyền giữ việc</small><strong>'+esc(person(row))+'</strong></div></div>';
+ const start=timing.startVerified===true&&time(timing.startedAt)!==null?fmt(timing.startedAt):null;
+ const end=completion(row)&&timing.finishVerified===true&&time(timing.finishedAt)!==null?fmt(timing.finishedAt):null;
+ const validElapsed=start&&end&&time(timing.finishedAt)>=time(timing.startedAt);
+ const fields=[];
+ if(start)fields.push('<div><small>Bắt đầu thật</small><strong>'+esc(start)+'</strong></div>');
+ if(end)fields.push('<div><small>Kết thúc thật</small><strong>'+esc(end)+'</strong></div>');
+ if(validElapsed)fields.push('<div><small>Thời lượng</small><strong>'+esc(Math.round((time(timing.finishedAt)-time(timing.startedAt))/60000)+' phút')+'</strong></div>');
+ if(person(row)!=='CHƯA XÁC MINH')fields.push('<div><small>Nhân sự / quyền giữ việc</small><strong>'+esc(person(row))+'</strong></div>');
+ let html=fields.length?'<div class="tiq-audit-grid">'+fields.join('')+'</div>':'';
  const truth=row&&row.liveTruth&&typeof row.liveTruth==='object'?row.liveTruth:null;
  const activitySource=String(row?.lastActivitySource||'');
  const hasGithubActivity=['github_issue_comment','github_issue_created'].includes(activitySource)&&time(row?.lastActivityAt)!==null;
@@ -227,11 +262,11 @@ function auditMarkup(row,events){
    html+='<div><small>Đối chiếu nguồn</small><strong>'+esc(truth.sourceLabel||'CHƯA XÁC MINH NGUỒN')+'</strong></div>'
     +'<div><small>Thời điểm đối chiếu</small><strong>'+esc(truth.checkedAt?fmt(truth.checkedAt):'Chưa xác minh')+'</strong></div>'
     +'<div><small>Job Core</small><strong>'+esc(truth.runtimeVerified===true?(truth.worker||'Có xác minh; chưa rõ nhân sự'):'CHƯA XÁC MINH JOB SỐNG')+'</strong></div>';
-   if(truth.next)html+='<div><small>Bước tiếp theo theo nguồn</small><strong>'+esc(truth.next)+'</strong></div>';
+   if(truth.next)html+='<div><small>Bước tiếp theo theo nguồn</small><strong>'+esc(readableText(truth.next))+'</strong></div>';
   }
   if(hasGithubActivity){
    html+='<div><small>Nhật ký GitHub gần nhất</small><strong>'+esc(fmt(row.lastActivityAt))+'</strong></div>'
-    +'<div><small>Nội dung GitHub</small><strong>'+esc(String(row.lastActivitySummary||'Đã ghi nhận sự kiện').replace(/\s+/g,' ').trim().slice(0,500))+'</strong></div>';
+    +'<div><small>Nội dung GitHub</small><strong>'+esc(readableText(String(row.lastActivitySummary||'Đã ghi nhận sự kiện').replace(/\s+/g,' ').trim().slice(0,500)))+'</strong></div>';
   }
   html+='</div>';
  }
@@ -241,7 +276,7 @@ function auditMarkup(row,events){
  html+='<ol class="tiq-audit-timeline">';
  for(const e of list.slice(0,60)){
   const link=typeof e.url==='string'&&/^https:\/\/(?:github\.com|api\.github\.com)\//.test(e.url)?'<a href="'+esc(e.url)+'" target="_blank" rel="noopener">Bằng chứng ↗</a>':'';
-  html+='<li><time>'+esc(fmt(e.at))+'</time><b>'+esc(e.action||'Cập nhật')+'</b><div>'+esc(e.detail||'')+'</div><small>Ghi nhận: '+esc(e.author||'Chưa xác minh')+(e.executor?' · Thực thi: '+esc(e.executor):'')+'</small>'+link+'</li>';
+  html+='<li><time>'+esc(fmt(e.at))+'</time><b>'+esc(readableText(e.action||'Cập nhật'))+'</b><div>'+esc(readableText(e.detail||''))+'</div><small>Ghi nhận: '+esc(e.author||'Chưa xác minh')+(e.executor?' · Thực thi: '+esc(e.executor):'')+'</small>'+link+'</li>';
  }
  return html+'</ol>';
 }
@@ -273,7 +308,7 @@ function mountFloatingReload(){
  if(!old)button.addEventListener('click',()=>root.location.reload());
  document.body.append(button);return button;
 }
-const API=Object.freeze({version:'1.0.0',visibleProjectRows,status,viewStatus,completion,priority,title,person,progress,rowsFor,renderCards,renderAudit,openModal,mountFloatingReload,fmt});
+const API=Object.freeze({version:'1.0.0',visibleProjectRows,status,viewStatus,completion,priority,title,person,progress,rowsFor,renderCards,renderAudit,openModal,mountFloatingReload,fmt,readableText});
 root.TigerIQWorkCenter=API;
 // The same module is loaded by LIVE and API Health; only LIVE explicitly
 // called mountFloatingReload before. Initialize once on both surfaces.
