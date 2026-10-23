@@ -302,7 +302,7 @@ describe('coding lane AI JSON transport',()=>{
     const src=readFileSync(new URL('../apps/tigeriq-coding-lane/coding-lane.mjs',import.meta.url),'utf8');
     const helper=src.slice(src.indexOf('async function invokeCompactGeneration'),src.indexOf('async function generateRepairChanges'));
     expect(helper).toContain('compactPromptForChanges(prompt');
-    expect(helper).toContain('expandCompactChanges(prompt,JSON.stringify(d))');
+    expect(helper).toContain('expandCompactChanges(prompt,JSON.stringify(raw),canonicalFiles)');
     expect(helper).toContain('invokeJsonWithFailover(worker,modelPrompt');
   });
   it('extracts provider model text and ignores non AI URLs',()=>{
@@ -361,8 +361,8 @@ describe('coding lane AI JSON transport',()=>{
     expect(matchesExpectedSchema(prompt,JSON.stringify(expanded))).toBe(true);
   });
   it('applies compact edits to exact canonical bytes, not a shortened model view',()=>{
-    const original=['export const start=1;',...Array(100).fill('const untouched=0;'),'export const finish=true;'].join('\\n');
-    const prompt='CURRENT FILES:\\nFILE apps/full.mjs\\nexport const start=1;\\n// ... MICRO_CONTEXT GAP ...\\nexport const finish=true;\\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. ';
+    const original=['export const start=1;',...Array(100).fill('const untouched=0;'),'export const finish=true;'].join('\n');
+    const prompt='CURRENT FILES:\nFILE apps/full.mjs\nexport const start=1;\n// ... MICRO_CONTEXT GAP ...\nexport const finish=true;\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. ';
     const response=JSON.stringify({summary:'small scoped edit',edits:[{path:'apps/full.mjs',search:'export const start=1;',replace:'export const start=2;'}]});
     expect(expandCompactChanges(prompt,response).changes[0].content).not.toContain('const untouched=0;');
     const output=expandCompactChanges(prompt,response,[{path:'apps/full.mjs',content:original}]);
