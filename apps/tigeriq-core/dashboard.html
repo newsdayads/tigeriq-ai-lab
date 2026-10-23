@@ -652,8 +652,11 @@ const ownerRequestHistoryToggle=document.getElementById('ownerWorkRequestHistory
 const ownerRequestStatus=document.getElementById('ownerWorkRequestStatus');
 const ownerWorkSecureLink=document.getElementById('ownerWorkSecureLink');
 const ownerRequestHistoryPanel=document.getElementById('ownerWorkRequestHistory');
-let ownerRequestIssueNumber=null,ownerRequestLastId=null;
+let ownerRequestIssueNumber=null,ownerRequestLastId=null,ownerRequestLastMessage=null;
 function ownerRequestSecure(){return location.protocol==='https:' && Boolean(window.crypto?.randomUUID)}
+// A UUID belongs to one exact submitted message. Late answers must not erase a newer draft.
+function ownerRequestCanReuseId(id,submittedMessage,nextMessage){return Boolean(id&&typeof submittedMessage==='string'&&submittedMessage===nextMessage)}
+function ownerRequestCanClearDraft(status,submittedMessage,currentDraft){return ['ANSWERED','VERIFIED'].includes(status)&&typeof submittedMessage==='string'&&submittedMessage===String(currentDraft||'').trim()}
 function ownerRequestRecordView(row){
  const div=document.createElement('div');div.className='owner-request-record';
  const title=document.createElement('strong');title.textContent=(row.status||'CHƯA XÁC MINH')+' · '+(row.createdAt?new Date(row.createdAt).toLocaleString('vi-VN'):'');
@@ -674,7 +677,7 @@ async function ownerRequestRefresh(number){
  if(!history.length)ownerRequestHistoryPanel.textContent='Chưa có yêu cầu.';
  if(ownerRequestLastId){
    const mine=history.find(x=>x.requestId===ownerRequestLastId);
-   if(mine&&['ANSWERED','VERIFIED'].includes(mine.status)){ownerRequestDraft.value='';ownerRequestLastId=null}
+   if(mine&&ownerRequestCanClearDraft(mine.status,ownerRequestLastMessage,ownerRequestDraft.value)){ownerRequestDraft.value='';ownerRequestLastId=null;ownerRequestLastMessage=null}
    if(mine)ownerRequestStatus.textContent=mine.status+' — '+(mine.reply||'Đã lưu bền vào thẻ GitHub.');
    else ownerRequestStatus.textContent='Đang xác minh biên nhận yêu cầu.';
  }else ownerRequestStatus.textContent=history.length?'Có '+history.length+' yêu cầu trong lịch sử.':'Sẵn sàng nhận yêu cầu.';
@@ -686,7 +689,7 @@ async function ownerRequestSubmit(){
  if(!message){ownerRequestStatus.textContent='Anh Sơn chưa nhập yêu cầu.';return}
  if(message.length>3000){ownerRequestStatus.textContent='Yêu cầu vượt giới hạn 3000 ký tự.';return}
  ownerRequestSend.disabled=true;ownerRequestStatus.textContent='Đang ghi yêu cầu vào GitHub...';
- const requestId=ownerRequestLastId||crypto.randomUUID();ownerRequestLastId=requestId;
+ const requestId=ownerRequestCanReuseId(ownerRequestLastId,ownerRequestLastMessage,message)?ownerRequestLastId:crypto.randomUUID();ownerRequestLastId=requestId;ownerRequestLastMessage=message;
  try{
  const res=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({operation:'owner-work-request',issueNumber,requestId,message})});
  if(issueNumber!==ownerRequestIssueNumber)return;
@@ -694,14 +697,15 @@ async function ownerRequestSubmit(){
  if(!res.ok)throw Error(data.error||'HTTP '+res.status);
  const record=data.request||{};
  ownerRequestStatus.textContent=(record.status||'RECEIVED')+' — '+(record.reply||'Đã nhận và lưu yêu cầu.');
- if(['ANSWERED','VERIFIED'].includes(record.status)){ownerRequestDraft.value='';ownerRequestLastId=null}
+ if(ownerRequestCanClearDraft(record.status,message,ownerRequestDraft.value)){ownerRequestDraft.value='';ownerRequestLastId=null;ownerRequestLastMessage=null}
+ else if(['ANSWERED','VERIFIED'].includes(record.status)){ownerRequestLastId=null;ownerRequestLastMessage=null}
  await ownerRequestRefresh(issueNumber);
  }catch(error){ownerRequestStatus.textContent='CHƯA XÁC MINH KẾT QUẢ GỬI: '+String(error.message||error)+'; nội dung vẫn được giữ để thử lại cùng mã yêu cầu.'}
  finally{if(issueNumber===ownerRequestIssueNumber&&ownerRequestSecure())ownerRequestSend.disabled=false}
 }
 ownerRequestSend.addEventListener('click',ownerRequestSubmit);
 ownerRequestHistoryToggle.addEventListener('click',()=>{ownerRequestHistoryPanel.hidden=!ownerRequestHistoryPanel.hidden;ownerRequestHistoryToggle.setAttribute('aria-expanded',String(!ownerRequestHistoryPanel.hidden))});
-function ownerRequestOpen(number){ownerRequestIssueNumber=number;ownerRequestLastId=null;ownerRequestDraft.value='';ownerRequestHistoryPanel.hidden=true;ownerRequestHistoryToggle.setAttribute('aria-expanded','false');ownerRequestStatus.textContent='Đang xác minh quyền và lịch sử...';ownerRequestRefresh(number)}
+function ownerRequestOpen(number){ownerRequestIssueNumber=number;ownerRequestLastId=null;ownerRequestLastMessage=null;ownerRequestDraft.value='';ownerRequestHistoryPanel.hidden=true;ownerRequestHistoryToggle.setAttribute('aria-expanded','false');ownerRequestStatus.textContent='Đang xác minh quyền và lịch sử...';ownerRequestRefresh(number)}
 function openWorkDetail(row,trigger){workDetailReturnFocus=trigger||document.activeElement;populateWorkDetail(row);ownerRequestOpen(Number(row.number));workDetailBackdrop.classList.add('open');workDetailBackdrop.setAttribute('aria-hidden','false');document.body.classList.add('work-detail-open');workDetailClose.focus()}
 function closeWorkDetail(){const n=workDetailRow?.number;workDetailBackdrop.classList.remove('open');workDetailBackdrop.setAttribute('aria-hidden','true');document.body.classList.remove('work-detail-open');ownerRequestIssueNumber=null;workDetailRow=null;const target=workDetailReturnFocus?.isConnected?workDetailReturnFocus:document.querySelector('[data-work-number="'+n+'"]');if(target&&typeof target.focus==='function')target.focus()}
 function workDetailPrompt(row){return 'LÀM — NO YAPPING.\nXử lý Work Order #'+row.number+' — '+woTitle(row.title)+'\nTrạng thái: '+(WO_STATUS[woStatus(row)]||woStatus(row))+'\nĐang: '+(row.currentStep||row.currentState||'Chưa xác minh')+'\nBước tới: '+woNext(row)}
