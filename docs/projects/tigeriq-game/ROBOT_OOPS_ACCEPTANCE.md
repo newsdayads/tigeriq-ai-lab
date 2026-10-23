@@ -26,3 +26,14 @@ PROJECT_ID=TIGERIQ_GAME_ROBOT_OOPS|RELATED=#5179|STATUS=PROPOSED_NOT_EXECUTED
 - Kết quả kiểm thử có log và thiết bị cụ thể; đường dẫn xem demo đã phát hành đúng quyền (nếu có).
 - Phản hồi người thử có đồng ý và thống kê ẩn danh; phân tích thừa nhận sai số.
 - Báo cáo GO/PIVOT/STOP, quyết định có phê duyệt khi qua gate.
+
+
+## E. S10 5G — kiểm thử thiết bị thực bắt buộc
+**Vị trí trong DAG:** G06 S03 smoke thật trước khi đóng G06; G08 kiểm thử hồi quy riêng sau G07; G12 thử APK nếu và chỉ nếu qua GO của G10. Không tạo Issue thứ 15.
+**Preflight:** PC01 truy cập được S10 5G bằng ADB; chụp `adb devices -l`, `adb shell getprop ro.product.model`, `adb shell dumpsys battery`; chỉ chạy trên serial đã xác nhận `device`. Nếu `offline`/`unauthorized`, dừng thao tác, lưu bằng chứng và không reset quyền/USB debug không được cấp.
+**Set pin 100% (chỉ giá trị ADB mô phỏng):** `adb -s SERIAL shell dumpsys battery set level 100`; đọc `dumpsys battery` xác nhận level=100 trước khi mở game. Không đại diện tình trạng sạc vật lý. Không cần root để giả định; nếu máy từ chối thì ghi rõ chưa đạt thay vì khai 100%.
+**Kênh truy cập game:** phát triển Web nội bộ có quyền; có thể `adb -s SERIAL reverse tcp:4173 tcp:4173` + URL Android `http://127.0.0.1:4173/`, chỉ sau khi có server local đang chạy và được cấp quyền. Nếu đường này không hỗ trợ, chọn đường nội bộ hợp lệ có bằng chứng; **không thay Production release gate**.
+**Smoke G06:** mở trình duyệt thật, thao tác touch L01–L05 (1 edit → RUN → kết quả), sai → thử lại, chuyển màn và màn nhỏ, không đụng PII. Thu hình/video/log kỹ thuật không có thông tin cá nhân nếu có thể, đọc lại file và hash/URL bằng chứng.
+**Regression G08:** kiểm 5/5 lời giải, restore tiến trình, touch target, đổi hướng màn/viewport, âm thanh mute, không crash, thời gian tải và độ mượt đo thực khi công cụ có; kiểm tra các lỗi phát hiện được sau fix, QA độc lập.
+**Cleanup luôn thực hiện:** `adb -s SERIAL shell dumpsys battery reset` và readback mức pin thực được trả về; `adb -s SERIAL reverse --remove tcp:4173` nếu đã set; đóng dev server nếu do chính bước thử mở và có quyền đóng. Cleanup thất bại là blocker riêng `ADB_BATTERY_SIMULATION_RESET_UNVERIFIED`, phải báo không im lặng.
+**Evidence G06/G08:** `device_model`, serial được che/mã hóa, `adb_authorized`, `battery_before`, `battery_emulated_100_verified`, `battery_reset_verified`, URL build/local SHA, Chrome version, thời gian, thao tác level + kết quả, ảnh/video/log và lỗi, người/lease thực thi, PR/commit hoặc số issue. Không ghi DONE nếu chỉ có unit test/CI hoặc ảnh mock.
