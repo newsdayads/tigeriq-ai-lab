@@ -45,7 +45,7 @@ import { withPc01LocalInferenceSlot,localInferenceBusy } from './pc01-local-infe
 import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerIdleStepStopPlan, managerTerminalProgressPlan } from './manager-cycle-policy.mjs';
 import { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAutoworkPriority, apiDoctorScannableEmployeeId, apiDoctorScanSignature, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorVerifiedNormalWorkRecovery, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorAutoworkPriority, apiDoctorScannableEmployeeId, apiDoctorScanSignature, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorVerifiedNormalWorkRecovery, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorOwnerProxyReviewStatus, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
@@ -1152,6 +1152,7 @@ async function apiDoctorOwnerProxyRepairPrEvidence({issueNumber,issue,base,heade
   if(!/^OWNER_PROXY=\S+/m.test(body)||!/^NO_DIRECT_MAIN=true$/m.test(body))return null;
   const allowed=apiDoctorAllowedRepairPaths(body);
   if(!allowed.length)return null;
+  let scopedMergedPrFound=false;
   const timeline=await fetchJson(`${base}/issues/${issueNumber}/timeline?per_page=100`,{headers:{...headers,Accept:'application/vnd.github+json'}},10000);
   const candidates=(Array.isArray(timeline)?timeline:[])
     .filter(e=>e?.event==='cross-referenced'&&e?.source?.issue?.pull_request?.merged_at)
@@ -1167,6 +1168,7 @@ async function apiDoctorOwnerProxyRepairPrEvidence({issueNumber,issue,base,heade
     if(!Array.isArray(files)||!files.length||files.length>=100)continue;
     const scopeOk=files.every(file=>allowed.some(prefix=>String(file?.filename||'')===prefix||(prefix.endsWith('/')&&String(file?.filename||'').startsWith(prefix))));
     if(!scopeOk)continue;
+    scopedMergedPrFound=true;
     const comments=await fetchJson(`${base}/issues/${prNumber}/comments?per_page=100`,{headers},10000);
     let reviewOk=(Array.isArray(comments)?comments:[]).some(comment=>{
       const reviewBody=String(comment?.body||'');
@@ -1235,6 +1237,7 @@ async function apiDoctorOwnerProxyRepairPrEvidence({issueNumber,issue,base,heade
     if(!Array.isArray(files)||!files.length||files.length>=100)continue;
     const scopeOk=files.every(file=>durableAllowed.some(prefix=>String(file?.filename||'')===prefix||(prefix.endsWith('/')&&String(file?.filename||'').startsWith(prefix))));
     if(!scopeOk)continue;
+    scopedMergedPrFound=true;
     const prComments=await fetchJson(`${base}/issues/${prNumber}/comments?per_page=100`,{headers},10000);
     let reviewOk=(Array.isArray(prComments)?prComments:[]).some(comment=>{
       const reviewBody=String(comment?.body||'');
@@ -1261,7 +1264,8 @@ async function apiDoctorOwnerProxyRepairPrEvidence({issueNumber,issue,base,heade
     }
     if(reviewOk)return {repairPrNumber:prNumber,codingObjectiveId:'DURABLE_ISSUE_EVIDENCE',evidenceSource:'issue_durable_terminal_evidence'};
   }
-  return null;
+  const disposition=apiDoctorOwnerProxyReviewStatus({scopedMergedPrFound,reviewPassed:false});
+  return disposition.reason==='repair_independent_review_pending'?{reason:disposition.reason}:null;
 }
 async function apiDoctorRepairLifecycleEvidence(existingHandoff){
   const issueNumber=Number(existingHandoff?.data?.repairIssueNumber||0);
@@ -1312,7 +1316,7 @@ async function apiDoctorRepairLifecycleEvidence(existingHandoff){
     if(!Number.isInteger(repairPrNumber)||repairPrNumber<=0)return {ready:false,reason:'repair_pr_missing',issueNumber,codingObjectiveId};
   }else{
     const fallback=await apiDoctorOwnerProxyRepairPrEvidence({issueNumber,issue,base,headers});
-    if(!fallback)return {ready:false,reason:'repair_coding_result_missing',issueNumber};
+    if(!fallback?.repairPrNumber)return {ready:false,reason:fallback?.reason||'repair_coding_result_missing',issueNumber};
     repairPrNumber=fallback.repairPrNumber;
     codingObjectiveId=fallback.codingObjectiveId;
     repairEvidenceSource=fallback.evidenceSource;
