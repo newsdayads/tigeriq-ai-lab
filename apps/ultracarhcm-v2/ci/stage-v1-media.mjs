@@ -45,11 +45,13 @@ export function stageMedia({ sourceRes, projectDir, stage = false, rightsEvidenc
         readFileSync(rightsEvidence, 'utf8').trim().length < 20) {
       throw new Error('V1_MEDIA_REUSE_RIGHTS_EVIDENCE_REQUIRED');
     }
+    // Preflight all destinations first; a late conflict must never leave partial copies.
     for (const item of files) {
-      if (existsSync(item.output)) {
-        if (hash(item.output) !== item.sha256) throw new Error('DESTINATION_ALREADY_EXISTS_DIFFERENT_BYTES:' + item.to);
-        continue;
-      }
+      if (existsSync(item.output) && hash(item.output) !== item.sha256)
+        throw new Error('DESTINATION_ALREADY_EXISTS_DIFFERENT_BYTES:' + item.to);
+    }
+    for (const item of files) {
+      if (existsSync(item.output)) continue;
       mkdirSync(dirname(item.output), { recursive: true });
       copyFileSync(item.input, item.output);
       if (hash(item.output) !== item.sha256) throw new Error('STAGE_SHA256_MISMATCH:' + item.to);
