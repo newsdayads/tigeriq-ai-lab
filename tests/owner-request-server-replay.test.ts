@@ -1,5 +1,6 @@
 import { test, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+// @ts-expect-error The production ESM helper is intentionally untyped JS; exercise its runtime exports.
 import { ownerWorkRequestReplayPlan, validateOwnerWorkRequest } from '../apps/shared/owner-work-request.mjs';
 
 const uuid='c6b90d64-b49c-4bb9-becb-d696a043ab74';
