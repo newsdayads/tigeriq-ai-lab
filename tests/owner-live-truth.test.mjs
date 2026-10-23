@@ -41,6 +41,24 @@ describe("Owner Dashboard live truth contract",()=>{
    expect(result.canExecuteNow).toBe(false);
    expect(result.sourceLabel).toMatch(/GITHUB/);
  });
+ it("does not advertise execution while a READY source row is waiting on a dependency",()=>{
+   const waiting={...base,status:"ĐANG CHỜ",activeLease:false,activeWorker:null,
+     executionEligibility:"READY",waitReason:"Chờ #5185",blocker:null};
+   const result=projectOwnerLiveTruth(waiting,context);
+   expect(result.status).toBe("WAITING");
+   expect(result.canExecuteNow).toBe(false);
+   expect(result.blocker).toBe("Chờ #5185");
+ });
+ it("requires an actionable effective state and no blocker before showing execute-now",()=>{
+   const ready={...base,status:"QUEUED",activeLease:false,activeWorker:null,
+     executionEligibility:"READY",waitReason:null,blocker:null};
+   expect(projectOwnerLiveTruth(ready,context).canExecuteNow).toBe(true);
+   expect(projectOwnerLiveTruth({...ready,status:"OPEN"},context).canExecuteNow).toBe(true);
+   expect(projectOwnerLiveTruth({...ready,status:"QUEUED",blocker:"WAIT_DEPENDENCY"},context).canExecuteNow).toBe(false);
+   expect(projectOwnerLiveTruth({...ready,status:"WAITING"},context).canExecuteNow).toBe(false);
+   expect(projectOwnerLiveTruth({...ready,ownerGate:true},context).canExecuteNow).toBe(false);
+   expect(projectOwnerLiveTruth(ready,{...context,sourceFresh:false}).canExecuteNow).toBe(false);
+ });
  it("does not show 100 percent before final acceptance or completion proof",()=>{
    const row={...base,status:"DONE",progressDone:9,progressTotal:9,completionVerified:false};
    const result=projectOwnerLiveTruth(row,context);
