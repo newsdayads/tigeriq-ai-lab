@@ -12,7 +12,8 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
   it('saves actual selected HOME preferences to private device storage', () => {
     expect(home).toContain('private fun saveHomeConfiguration()');
     expect(home).toContain('val current = savedConfigurations()');
-    expect(home).toContain('current.length() >= 20');
+    expect(home).toContain('HomeConfigRules.canSave(current.length())');
+    expect(home).toContain('HomeConfigRules.normalizeName(input.text.toString())');
     expect(home).toContain('.put("night", prefs.getBoolean("night", false))');
     expect(home).toContain('.put("limo", prefs.getBoolean("limo", false))');
     expect(home).toContain('.put("driver", prefs.getString("driver_name", "Driver")');
