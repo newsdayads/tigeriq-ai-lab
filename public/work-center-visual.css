@@ -868,8 +868,9 @@ body.api-health #detailModal.detail-modal .employee-avatar{
  :is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center{
   gap:8px!important;padding:4px 2px 8px!important;
  }
+ /* Keep the frame flush with corner tabs; internal spacing belongs to .work-main. */
  :is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center>.tiq-work-card{
-  padding:10px 11px!important;min-height:0!important;
+  padding:0!important;min-height:0!important;
  }
  :is(#workList,#workCenterWeb,#workCenterArchiveWeb) .tiq-work-card .work-hierarchy{
   font-size:10px!important;line-height:1.25!important;margin:3px 0!important;
