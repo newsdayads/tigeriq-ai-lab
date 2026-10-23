@@ -74,8 +74,7 @@ function Save-RuntimeSourceState([string]$currentSha,[string]$previousSha,[strin
   $tmp="$runtimeSourceState.tmp";[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $runtimeSourceState
 }
 function Resolve-DeployedSourceSha([string]$checkedOutSha,[string]$remoteSha){
-  # A reset of the worktree can finish before the deployment commit marker and
-  # process restart. In that case HEAD==remote alone is NOT an installed release.
+  # HEAD==remote before a verified restart is not a deployed release.
   if(-not $checkedOutSha -or $checkedOutSha -ne $remoteSha){return $checkedOutSha}
   if(-not(Test-Path -LiteralPath $runtimeSourceState)){return $checkedOutSha}
   try{
