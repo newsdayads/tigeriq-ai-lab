@@ -1,0 +1,19 @@
+:root { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #eef4ff; background: #091328; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; }
+.shell { max-width: 760px; padding: 30px 16px 36px; margin: auto; }
+.eyebrow { font-size: .72rem; font-weight: 700; letter-spacing: .17em; color: #92b7f6; }
+h1 { margin: 4px 0 8px; font-size: clamp(2rem, 6vw, 3.2rem); letter-spacing: -.04em; }
+header > p:last-child, footer { color: #aab9d0; line-height: 1.55; }
+.playground { background: #121f39; padding: clamp(12px, 4vw, 26px); border: 1px solid #2b3e60; border-radius: 24px; }
+canvas { display: block; width: min(100%, 480px); height: auto; margin: 0 auto; background: #0e1930; border-radius: 15px; }
+.control-panel { text-align: center; }
+#status { color: #d3e4ff; min-height: 1.5em; }
+.controls { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+button { cursor: pointer; border: 1px solid #48638d; border-radius: 12px; padding: 14px 18px; background: #203458; color: white; font: inherit; font-weight: 650; touch-action: manipulation; }
+button:focus-visible { outline: 3px solid #ffdb69; outline-offset: 3px; }
+button:hover { background: #2d4777; }
+button.primary { background: #3b68eb; border-color: #5c85f3; }
+button.reset { margin-top: 14px; background: transparent; }
+footer { margin-top: 22px; font-size: .82rem; text-align: center; }
+@media (max-width: 390px) { .controls button { padding: 14px 10px; font-size: .88rem; } }
