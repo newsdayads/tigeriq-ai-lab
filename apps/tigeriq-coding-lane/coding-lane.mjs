@@ -1812,6 +1812,17 @@ export function canonicalWorkContext(j,canonicalObjective='',liveGithubContext=n
 export function buildRepairGenerationPrompt(worker,j,context,issues=[],canonicalObjective='',liveGithubContext=null){
   return `You are ${worker.id}, an autonomous TigerIQ repository engineer. Fix ONLY the listed issues on the existing branch.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nALLOWED PATHS: ${j.paths.join(', ')}\nPATCH_CONTRACT_V2_COMPACT_REPAIR=true\nBATCH_NOOP_ALLOWED=true\nEvery edit.path MUST exactly equal one ALLOWED PATH. For one-line fixes emit only the smallest exact search/replace; never return implementation-source paths not listed.\nIf this batch needs no mutation, return an explicit bounded no-op; do not invent an edit.\nREVIEW ISSUES TO FIX: ${JSON.stringify(issues)}\nCURRENT FILES:\n${context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside ALLOWED PATHS. Never output secrets. Keep changes minimal and testable.`;
 }
+// The final unresolved generation batch must produce a real edit.
+// Earlier batches may be no-op when another batch already changed source.
+export function requireActualMutationPrompt(prompt,{required=false}={}){
+  const text=String(prompt||'');
+  if(!required)return text;
+  if(!/^BATCH_NOOP_ALLOWED=true$/m.test(text))throw new Error('CODING_REQUIRED_MUTATION_CONTRACT_MISSING');
+  return text.replace(/^BATCH_NOOP_ALLOWED=true$/m,'BATCH_NOOP_ALLOWED=false')
+    .replace('If this batch needs no mutation, return an explicit bounded no-op; do not invent an edit.',
+      'The job has no accepted source edits yet. Produce only an exact, supported mutation from CURRENT FILES; if already satisfied, report NO_ACTIONABLE_CHANGE rather than fabricating a patch. An empty edit set is not accepted.');
+}
+
 export function assertGenerationContextPaths(prompt,allowedPaths=[]){
   const files=currentFilesFromPrompt(prompt);
   const missing=(allowedPaths||[]).filter(path=>!files.has(String(path)));
@@ -1841,9 +1852,11 @@ export function validateAggregatedGenerationChanges(changes,allowedPaths,batchCo
 async function generateRepairChanges(worker,j,ref='main',issues=[],exclude=[],canonicalObjective='',liveGithubContext=null,repository=SOURCE_REPOSITORY){
   const batches=await generationContextsFor(j.paths,ref,9000,repository,[canonicalObjective,j.instruction,...issues].filter(Boolean).join('\n'));
   let selected=worker;const changes=[];const summaries=[];
-  for(const batch of batches){
+  for(let batchIndex=0;batchIndex<batches.length;batchIndex++){
+    const batch=batches[batchIndex];
     const scopedJob={...j,paths:batch.paths};
-    const prompt=buildRepairGenerationPrompt(selected,scopedJob,batch.context,issues,canonicalObjective,liveGithubContext);
+    const prompt=requireActualMutationPrompt(buildRepairGenerationPrompt(selected,scopedJob,batch.context,issues,canonicalObjective,liveGithubContext),
+      {required:batchIndex===batches.length-1&&changes.length===0});
     const invoked=await invokeCompactGeneration(selected,prompt,batch.paths,exclude,{workId:j.id,role:'implementer',objective:canonicalObjective});
     selected=invoked.resource;
     summaries.push(formatMicroContextTelemetry(batch.contextTelemetry));
@@ -1879,9 +1892,11 @@ async function generateAndWriteRepair(worker,j,branch,issues=[],exclude=[],mutat
 async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[],canonicalObjective='',liveGithubContext=null,repository=SOURCE_REPOSITORY){
   const batches=await generationContextsFor(j.paths,ref,9000,repository,[canonicalObjective,j.instruction,...reviewIssues].filter(Boolean).join('\n'));
   let selected=worker;const changes=[];const summaries=[];
-  for(const batch of batches){
+  for(let batchIndex=0;batchIndex<batches.length;batchIndex++){
+    const batch=batches[batchIndex];
     const prompt=`You are ${selected.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nALLOWED PATHS FOR THIS BATCH: ${batch.paths.join(', ')}\nOTHER ALLOWED PATHS are handled in separate bounded batches; do not emit them here.\nBATCH_NOOP_ALLOWED=true\nIf this batch needs no mutation, return an explicit bounded no-op; do not invent an edit.\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${batch.context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside this batch. Never output secrets. Keep changes minimal and testable.`;
-    const invoked=await invokeCompactGeneration(selected,prompt,batch.paths,exclude,{workId:j.id,role:'implementer',objective:canonicalObjective});
+    const boundedPrompt=requireActualMutationPrompt(prompt,{required:batchIndex===batches.length-1&&changes.length===0});
+    const invoked=await invokeCompactGeneration(selected,boundedPrompt,batch.paths,exclude,{workId:j.id,role:'implementer',objective:canonicalObjective});
     selected=invoked.resource;
     summaries.push(formatMicroContextTelemetry(batch.contextTelemetry));
     summaries.push(String(invoked.payload.summary||'').slice(0,300));
