@@ -14,6 +14,7 @@ const CONTRACT_CLASS=Object.freeze({
   DEPENDENCY_TERMINAL_GATE:'DEPENDENCY',
   SERVICE_FUNCTIONAL_INTEGRITY:'CONFIG',
   UPDATER_WATCHDOG_HEALTH:'DEPLOYMENT',
+  MAIN_CI_GATE_HEALTH:'SOURCE_CODE',
 });
 
 const SAFE_SELF_FIX_CLASSES=new Set([
@@ -176,7 +177,9 @@ export function buildImprovementWorkOrder(rca={}){
     'RETRY_RESUME_TRIGGER=NEW_REVISION_OR_NEW_EVIDENCE_OR_DEPENDENCY_CHANGE',
     'ACTIVE_EXECUTION=false',
     `SOURCE=SELF_AUDIT:${rca.anomalySignature}`,
-    'PARENT=#2708 - Tự phân tích nguyên nhân và sinh Improvement Work Order',
+    rca.contractId==='MAIN_CI_GATE_HEALTH'
+      ?'PARENT=#5144 - Core tự hỏi và sửa lỗi CI liên tục'
+      :'PARENT=#2708 - Tự phân tích nguyên nhân và sinh Improvement Work Order',
     `PRIORITY=${priority}`,
     // The execution router accepts one capability per assignment. The RCA
     // lifecycle still sequences analysis, coding and independent QA, but
@@ -204,6 +207,12 @@ export function buildImprovementWorkOrder(rca={}){
     `AFFECTED_SCOPE=${rca.affectedScope}`,
     `EVIDENCE_HASH=${rca.evidenceHash}`,
     `PROPOSED_FIX=${rca.proposedFix}`,
+    ...(rca.contractId==='MAIN_CI_GATE_HEALTH'?[
+      `CI_SOURCE_SHA=${String(rca.evidence?.sourceSha||'').slice(0,40)}`,
+      `CI_FAILURE_STATE=${String(rca.evidence?.observedState||'').slice(0,30)}`,
+      'NEXT_REPAIR_ACTION=Read exact main commit CI failed check and job logs; reproduce; change only safe source via branch PR; retest exact-head checks and main push CI; verify PC01 gated release with real receipts',
+      'CI_CHECK_RUNS='+JSON.stringify(rca.evidence?.checks||[]).slice(0,1200),
+    ]:[]),
     `ACCEPTANCE=Verified RCA signature ${rca.rcaSignature}; required tests pass; independent exact-head review approves; applicable runtime/live canary passes`,
     `REQUIRED_TESTS=${rca.tests.join('|')}`,
     `RISK=${rca.risk}`,
