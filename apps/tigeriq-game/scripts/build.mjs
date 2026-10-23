@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 const root = resolve(import.meta.dirname, '..');
 const dist = join(root, 'dist');
 const source = join(root, 'src');
-const entries = (await readdir(source)).filter((name) => name.endsWith('.ts')).sort();
+const entries = (await readdir(source, {recursive:true})).filter((name) => name.endsWith('.ts')).sort();
 if (!entries.includes('main.ts') || !entries.includes('preview.ts') || !entries.includes('render.ts')) {
   throw new Error('Required G04 source entrypoints are missing');
 }
@@ -16,7 +16,9 @@ for (const name of entries) {
   const js = stripTypeScriptTypes(ts, { mode: 'strip' });
   const check = spawnSync(process.execPath, ['--check', '--input-type=module'], { input: js, encoding: 'utf8' });
   if (check.status !== 0) throw new Error(name + ': ' + check.stderr);
-  await writeFile(join(dist, name.replace(/\.ts$/, '.js')), js);
+  const target=join(dist, name.replace(/\.ts$/, '.js'));
+  await mkdir(resolve(target, '..'), {recursive:true});
+  await writeFile(target, js);
 }
 for (const file of ['index.html', 'styles.css']) {
   await writeFile(join(dist, file), await readFile(join(root, file)));
