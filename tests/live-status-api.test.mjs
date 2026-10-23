@@ -493,6 +493,51 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(executionEligibilityForIssue(issue(3003, '[P2][CORE] Display wait is not an execution lock', safeBody))).toBe('READY');
   });
 
+  it('GH-5250 parks advisory READY when resolved Core queue still waits on a dependency', () => {
+    const card = issue(5186, '[P2][GAME] G07', [
+      'CURRENT_STATE=READY','DEPENDS_ON=#5185','PRIORITY=P2',
+      'OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED',
+      'CAPABILITY=coding','EXECUTION_SURFACE=CODING',
+      'RESOURCE_SCOPE=TIGERIQ_GAME_G07','MUTATION_OWNER=NONE',
+      'NO_DIRECT_MAIN=true','NO_PRODUCTION_RELEASE=true','NO_PAID_COST=true',
+      'NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true','APP_CHROME_MUTATION=FORBIDDEN',
+    ].join('\\n'));
+    const queued={status:'WAITING',eligibleNow:false,waitReason:'Chờ #5185',
+      dependencies:[5185],updatedAt:'2026-09-24T12:00:00Z'};
+    expect(executionEligibilityForIssue(card)).toBe('READY');
+    expect(executionEligibilityForIssue(card,{queued})).toBe('PARKED_DEPENDENCY');
+    const row=parseOpenWorkIssue(card,{queued});
+    expect(row).toMatchObject({status:'WAITING',executionEligibility:'PARKED_DEPENDENCY',
+      waitReason:'Chờ #5185',activeLease:false});
+    expect(executionEligibilityForIssue(card,{queued:{...queued,status:'BLOCKED',
+      waitReason:'Chưa xác minh dependency #5185'}})).toBe('PARKED_DEPENDENCY');
+    expect(executionEligibilityForIssue(card,{queued:{...queued,status:'QUEUED',
+      eligibleNow:true}})).toBe('READY');
+    expect(executionEligibilityForIssue(card,{queued,active:{live:true,
+      employeeId:'NV12'}})).toBe('READY');
+  });
+
+  it('GH-5250 does not let a newer lifecycle display override a verified queue dependency wait', () => {
+    const card=issue(5188,'[P2][GAME] G09',[
+      'CURRENT_STATE=READY','DEPENDS_ON=#5185','PRIORITY=P2',
+      'OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED',
+      'CAPABILITY=coding','EXECUTION_SURFACE=CODING',
+      'RESOURCE_SCOPE=TIGERIQ_GAME_G09','MUTATION_OWNER=NONE',
+      'NO_DIRECT_MAIN=true','NO_PRODUCTION_RELEASE=true','NO_PAID_COST=true',
+      'NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true',
+      'NO_DESTRUCTIVE=true','APP_CHROME_MUTATION=FORBIDDEN',
+    ].join('\\n'));
+    const lifecycle=parseStructuredLifecycleComment({
+      body:'CURRENT_STATE=CODING_LANE_ACTIVE\\nBLOCKER=NONE\\nMUTATION_OWNER=CORE_DYNAMIC_LEASE',
+      created_at:'2026-09-24T12:00:00Z',
+    });
+    const queued={status:'WAITING',eligibleNow:false,waitReason:'Chờ #5185',
+      dependencies:[5185],updatedAt:'2026-09-24T12:00:00Z'};
+    const row=parseOpenWorkIssue(card,{queued,lifecycle});
+    expect(row.executionEligibility).toBe('PARKED_DEPENDENCY');
+  });
+
   it('shows NV02 GitHub-local P1 readiness without treating it as a Core/Owner action or a live worker', () => {
     const safe = [
       '## ACTIVE CONTRACT',
