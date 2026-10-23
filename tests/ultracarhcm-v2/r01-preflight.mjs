@@ -11,9 +11,11 @@ export function referencesFromSource(source) {
 }
 export function inspectR01(root) {
   const base='apps/ultracarhcm-v2/';
-  const required=['settings.gradle','build.gradle','app/build.gradle','app/src/main/AndroidManifest.xml','gradle/wrapper/gradle-wrapper.jar'];
+  const required=['settings.gradle','build.gradle','app/build.gradle','app/src/main/AndroidManifest.xml','gradlew','gradle/wrapper/gradle-wrapper.properties','gradle/wrapper/gradle-wrapper.jar'];
   const missingFiles=required.filter(p=>!existsSync(join(root,base,p))).map(p=>base+p);
   const res=join(root,base,'app/src/main/res'),java=join(root,base,'app/src/main/java');
+  if (!existsSync(res)) missingFiles.push(base+'app/src/main/res');
+  if (!existsSync(java)) missingFiles.push(base+'app/src/main/java');
   const names=new Map(kinds.map(x=>[x,new Set()]));
   if(existsSync(res)) for(const folder of readdirSync(res,{withFileTypes:true})) {
     if(!folder.isDirectory()) continue;
