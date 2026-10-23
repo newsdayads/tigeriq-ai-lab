@@ -29,6 +29,7 @@ import {
   projectExternalRoleClaims,
   parseRecentCompletedIssue,
   parseRecentClosedIssue,
+  closureAuditWatchNumbers,
   runtimeWorkRows,
   sanitizeRuntimePayload,
 } from '../api/live-status.mjs';
@@ -427,6 +428,36 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(archived).toMatchObject({number:4500,status:'CLOSED_UNVERIFIED',completionVerified:false,progressPercent:null,closedAt:'2026-10-12T13:00:00Z'});
     expect(parseRecentCompletedIssue(legacy,now)).toBeNull();
     expect(parseRecentClosedIssue({...legacy,state_reason:'not_planned'},now)).toBeNull();
+  });
+
+  it('GH-5253 detects NV102 closed-not-planned despite BLOCKED and DONE=false without reopening', () => {
+    const now=Date.parse('2026-10-24T00:00:00Z');
+    const conflict={
+      number:2949,title:'[P1][ANDROID][NV102] Khôi phục S10 5G',
+      state:'closed',state_reason:'not_planned',closed_at:'2026-10-14T10:18:28Z',
+      html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/2949',
+      body:['CURRENT_STATE=BLOCKED_DEVICE_RELEASE','DONE=false','PRIORITY=P1',
+        'BLOCKER=PHYSICAL_S10_CURRENT_STATE_NOT_VERIFIED'].join('\n'),
+    };
+    expect(parseRecentCompletedIssue(conflict,now)).toBeNull();
+    const row=parseRecentClosedIssue(conflict,now);
+    expect(row).toMatchObject({
+      number:2949,status:'CLOSED_UNVERIFIED',closureConflict:true,
+      closureReason:'not_planned',completionVerified:false,progressPercent:null,
+      blocker:'PHYSICAL_S10_CURRENT_STATE_NOT_VERIFIED',
+    });
+    expect(row.nextStep).toMatch(/không tự mở lại/i);
+    expect(parseRecentClosedIssue({...conflict,body:'CURRENT_STATE=NOT_PLANNED\nDONE=false'},now)).toBeNull();
+    expect(parseRecentClosedIssue({...conflict,body:'CURRENT_STATE=BLOCKED_DEVICE_RELEASE\nDONE=true'},now)).toBeNull();
+    expect(parseRecentClosedIssue({...conflict,state_reason:'duplicate'},now)).toBeNull();
+    const root={number:5144,state:'open',body:[
+      '- [ ] R09 — Other proof',
+      '- [ ] R10 — đối soát CLOSED/BLOCKED/DONE=false của NV102 #2949',
+      '- [ ] R11 — nhân sự',
+    ].join('\n')};
+    expect(closureAuditWatchNumbers([root])).toEqual([2949]);
+    expect(closureAuditWatchNumbers([{...root,state:'closed'}])).toEqual([]);
+    expect(closureAuditWatchNumbers([{...root,body:'- [x] R10 — checked NV102 #2949'}])).toEqual([]);
   });
 
   it('does not treat historical closed issues as verified completions without V2 receipts', () => {

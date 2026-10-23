@@ -698,8 +698,14 @@ export function parseRecentClosedIssue(issue, now = Date.now()) {
   if (verified) return verified;
   if (!issue || issue.pull_request || issue.state !== 'closed') return null;
   const reason = String(issue.state_reason || '').toLowerCase();
-  if (reason === 'not_planned' || reason === 'duplicate') return null;
   const body = String(issue.body || '');
+  // Closed is authoritative for dispatch, not proof that a blocked DONE=false
+  // canonical item was accepted. Surface the mismatch; never reopen it here.
+  const phase = bodyValue(body, 'CURRENT_STATE').toUpperCase();
+  const closureConflict = /^BLOCKED(?:_|$)/.test(phase)
+    && bodyValue(body, 'DONE').toLowerCase() === 'false'
+    && (reason === 'not_planned' || reason === 'completed');
+  if (reason === 'duplicate' || (reason === 'not_planned' && !closureConflict)) return null;
   if (['CANCELLED','CANCELED','SUPERSEDED','NOT_PLANNED'].includes(bodyValue(body,'STATE').toUpperCase()) ||
       /^SUPERSEDED(?:_BY)?=/mi.test(body)) return null;
   const closedAt = issue.closed_at || issue.updated_at || null;
@@ -714,17 +720,32 @@ export function parseRecentClosedIssue(issue, now = Date.now()) {
     employeeId: issueEmployeeId(issue),
     status: 'CLOSED_UNVERIFIED', workKind: 'WORK',
     ...workflowRelationsForIssue(issue),
+    closureConflict, closureReason: reason,
+    closureConflictReason: closureConflict ? 'GitHub đã đóng nhưng CURRENT_STATE vẫn BLOCKED và DONE=false' : null,
+    blocker: closureConflict ? bodyValue(body, 'BLOCKER').slice(0, 320) || phase : null,
+    nextStep: closureConflict ? 'Đối chiếu quyết định đóng và cổng thiết bị với Owner; không tự mở lại hoặc giao việc' : null,
     progressPercent: null, progressSource: 'closed_unverified',
-    progressDetail: 'Đã đóng trên GitHub; chưa xác minh nghiệm thu',
+    progressDetail: closureConflict ? 'LỆCH TRẠNG THÁI: đã đóng nhưng còn blocker, chưa nghiệm thu' : 'Đã đóng trên GitHub; chưa xác minh nghiệm thu',
     completionVerified: false,
     lifecycleTiming: validateWorkOrderLifecycleV2(issue).timestamps,
     closedAt, updatedAt: closedAt, url: issue.html_url || null,
   };
 }
 
-async function recentCompletedWork(owner, repo, fetchImpl = fetch) {
+// The current R10 Owner checklist names closure anomalies that may be outside
+// the recent-50 window. Read their IDs from GitHub's active source, never guess.
+export function closureAuditWatchNumbers(openIssues = []) {
+  const parent = openIssues.find(issue => Number(issue?.number) === 5144 && issue?.state === 'open');
+  const step = String(parent?.body || '').split(/\r?\n/)
+    .find(line => /^- \[ \] R10\b/.test(line)) || '';
+  return [...new Set([...step.matchAll(/NV\d{2,3}\s+#(\d{1,8})/g)]
+    .map(match => Number(match[1])).filter(Number.isSafeInteger))].slice(0, 3);
+}
+
+async function recentCompletedWork(owner, repo, fetchImpl = fetch, auditNumbers = []) {
   const now = Date.now();
-  if (recentWorkCache.data && now - recentWorkCache.at < RECENT_WORK_CACHE_MS) {
+  const auditKey = auditNumbers.join(',');
+  if (recentWorkCache.data && recentWorkCache.auditKey === auditKey && now - recentWorkCache.at < RECENT_WORK_CACHE_MS) {
     return recentWorkCache.data;
   }
   try {
@@ -733,17 +754,32 @@ async function recentCompletedWork(owner, repo, fetchImpl = fetch) {
       .map((issue) => parseRecentClosedIssue(issue, now))
       .filter((row) => row && String(row.priority || '').toUpperCase() !== 'P5')
       .sort((a, b) => Date.parse(b.closedAt || b.completedAt || 0) - Date.parse(a.closedAt || a.completedAt || 0));
-    const rows = candidates.slice(0, RECENT_WORK_LIMIT);
-    const boundedScopeComplete = pageSet.complete === true || rows.length === RECENT_WORK_LIMIT;
+    const observed = new Map(candidates.map(row => [row.number, row]));
+    let auditComplete = true;
+    for (const number of auditNumbers) {
+      if (observed.has(number)) continue;
+      try {
+        const issue = await gh('/repos/' + owner + '/' + repo + '/issues/' + number, fetchImpl);
+        if (!issue || Number(issue.number) !== number) { auditComplete = false; continue; }
+        const row = parseRecentClosedIssue(issue, now);
+        if (row?.closureConflict === true) observed.set(number, row);
+      } catch { auditComplete = false; }
+    }
+    const pinned = auditNumbers.map(number => observed.get(number))
+      .filter(row => row?.closureConflict === true);
+    const pinnedIds = new Set(pinned.map(row => row.number));
+    const rows = [...pinned, ...candidates.filter(row => !pinnedIds.has(row.number)).slice(0, RECENT_WORK_LIMIT)];
+    const boundedScopeComplete = auditComplete && (pageSet.complete === true || candidates.length >= RECENT_WORK_LIMIT);
     const value = {
       rows,
       completedCount: rows.filter((row)=>row.completionVerified===true).length,
       archivedCount: rows.filter((row)=>row.status==='CLOSED_UNVERIFIED').length,
+      closureAudit: { watched: auditNumbers, mismatchIds: pinned.map(row => row.number), complete: auditComplete },
       complete: boundedScopeComplete,
-      stale: false,
+      stale: !auditComplete,
       scope: 'recent_' + RECENT_WORK_LIMIT + '_completed_plus_current_open',
     };
-    recentWorkCache = { at: now, data: value };
+    recentWorkCache = { at: now, auditKey, data: value };
     return value;
   } catch {
     if (recentWorkCache.data) return { ...recentWorkCache.data, complete: false, stale: true };
@@ -2028,7 +2064,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       }
     }
 
-    const recentWorkSnapshot = await recentCompletedWork(owner, repo, fetchImpl);
+    const recentWorkSnapshot = await recentCompletedWork(owner, repo, fetchImpl, closureAuditWatchNumbers(openIssues));
     const recentWork = annotatePortfolioRows(recentWorkSnapshot.rows);
     const specs = openIssues.map(parseQueueIssue).filter(Boolean).filter((row) => !activeNumbers.has(row.number));
     const depStates = await dependencyStates(specs, owner, repo, fetchImpl);
@@ -2169,6 +2205,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
       nextQueueTotal: rankedQueue.length,
       nextExecutable: nextExecutable ? ownerFacingWorkRow(nextExecutable) : null,
       recentWork: recentWork.map(ownerFacingWorkRow),
+      closureAudit: recentWorkSnapshot.closureAudit || { watched: [], mismatchIds: [], complete: false },
       workProjection: {
         mode: projectionStale ? 'stale-cache' : (base.liveConnected ? 'pc01-live+github' : 'github-fallback'),
         queuePolicy: 'ELIGIBLE_P1>P2>P3>P4>P5;OWNER_DIRECT_TIEBREAK;WAITING_UNRANKED',
