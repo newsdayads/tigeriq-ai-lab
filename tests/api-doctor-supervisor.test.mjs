@@ -689,6 +689,25 @@ describe('#1255 routing/runtime integration',()=>{
     expect(watsonxRetryDecision({unexpected:true},0,2)).toEqual({action:'fail',code:'WATSONX_SHAPE_MISMATCH'});
   });
 
+  it('accepts Inception visible text parts but never reasoning or object stringification',()=>{
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const start=core.indexOf('export function inceptionVisibleContent(');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const end=core.indexOf('\n}\n',start);
+    expect(end).toBeGreaterThan(start);
+    const textOf=new Function(core.slice(start,end+2).replace(/^export /,'')+'\nreturn inceptionVisibleContent;')();
+    const body=message=>({choices:[{message}]});
+    expect(textOf(body({content:'Normal visible answer'}))).toBe('Normal visible answer');
+    expect(textOf(body({content:[{type:'text',text:'Part 1 '},{type:'text',text:'Part 2'}]}))).toBe('Part 1 Part 2');
+    expect(textOf(body({content:[{type:'reasoning',text:'private'},{type:'text',text:'Public'}],reasoning_content:'private'}))).toBe('Public');
+    expect(textOf(body({content:[{type:'reasoning',text:'private'}],reasoning_content:'private'}))).toBe('');
+    expect(textOf(body({content:null,reasoning_content:'private'}))).toBe('');
+    expect(textOf(body({content:[{type:'text',text:null},{type:'image_url',image_url:'https://example.invalid'}]}))).toBe('');
+    expect(textOf(body({content:{text:'not a valid message content shape'}}))).toBe('');
+    expect(textOf({choices:[]})).toBe('');
+    expect(core).toContain("host==='api.inceptionlabs.ai'?inceptionVisibleContent(body):body?.choices?.[0]?.message?.content");
+  });
+
   it('keeps Mercury 2.5 visible-output budget bounded only on native Inception',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     const start=core.indexOf('export function inceptionReasoningPolicy(');
@@ -702,7 +721,7 @@ describe('#1255 routing/runtime integration',()=>{
     expect(policy('api.groq.com','mercury-2.5')).toEqual({});
     expect(policy('api.inceptionlabs.ai',null)).toEqual({});
     expect(core).toContain('...inceptionReasoningPolicy(host,model), ...providerBody');
-    expect(core).toContain("const text = body?.choices?.[0]?.message?.content");
+    expect(core).toContain("host==='api.inceptionlabs.ai'?inceptionVisibleContent(body):body?.choices?.[0]?.message?.content");
     expect(core).toContain("new Error('EMPTY_RESPONSE')");
     expect(core).not.toContain('body?.choices?.[0]?.message?.reasoning_content');
   });
