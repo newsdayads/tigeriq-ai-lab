@@ -27,6 +27,19 @@ export function ownerWorkRequestReplayPlan(history=[], input={}) {
   return {kind:'REPLAY',request:previous};
 }
 
+// AI reply text is not evidence that an Owner action was executed.
+// Fail closed: only a clearly interrogative, non-action request may resolve
+// with a conversational ANSWERED receipt. All actionable prompts remain open
+// for the canonical Core lease/worker/accepted-result lifecycle.
+export function ownerWorkRequestTriageStatus(message, mode) {
+  if(mode==='clarify')return 'WAITING';
+  const text=String(message||'').trim();
+  const isQuestion=/[?？]\s*$/u.test(text)
+    || /^(?:ai|gì|vì sao|tại sao|khi nào|bao giờ|bao nhiêu|ở đâu|thế nào|như thế nào|có phải)\s/iu.test(text);
+  const action=/(?:^|[\s,.;:])(?:hãy|giúp|làm|sửa|thực hiện|triển khai|giao|tạo|xóa|xoá|chạy|đăng|bật|tắt|merge|deploy|kiểm tra|cập nhật|khôi phục|chốt|test)(?=$|[\s,.;:?!])/iu.test(text);
+  return (mode==='reply'||mode==='status')&&isQuestion&&!action?'ANSWERED':'PLAN_SHOWN';
+}
+
 export function makeOwnerRequestReceipt(request) {
   const r = validateOwnerWorkRequest(request);
   return [OWNER_REQUEST_RECEIVED, 'OWNER_REQUEST_ID='+r.requestId, 'OWNER_REQUEST_ISSUE='+r.issueNumber,
