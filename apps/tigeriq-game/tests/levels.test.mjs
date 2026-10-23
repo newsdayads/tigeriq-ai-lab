@@ -37,7 +37,7 @@ test('jumping to the last stage cannot falsely mark all five levels complete',()
   assert.notEqual(s.completedLevels.length,LEVELS.length);
   const after=nextLevel(s);
   assert.equal(after.screen,'select');
-  assert.deepEqual(after.completedLevels,[]);
+  assert.deepEqual(after.completedLevels,[4]);
 });
 
 test('sequential wins only increment completion on successful runs and survive retry',()=>{
@@ -68,4 +68,21 @@ test('losing a level never increments the actual completion count',()=>{
   s=executeLevel(s);
   assert.equal(s.outcome.win,false);
   assert.deepEqual(s.completedLevels,[]);
+});
+
+test('in-session progress survives returning to selection and nonsequential level choice',()=>{
+  const first=LEVELS[0],last=LEVELS[4];
+  let s=openLevel(0);
+  s=selectSlot(s,first.editableSlot);
+  s=selectReplacement(s,enumerateSolutions(first)[0].replacement);
+  s=executeLevel(s);
+  assert.deepEqual(s.completedLevels,[0]);
+  let selected=openLevel(4,s.completedLevels);
+  selected=selectSlot(selected,last.editableSlot);
+  selected=selectReplacement(selected,enumerateSolutions(last)[0].replacement);
+  selected=executeLevel(selected);
+  assert.deepEqual(selected.completedLevels,[0,4]);
+  const home=nextLevel(selected);
+  assert.equal(home.screen,'select');
+  assert.deepEqual(home.completedLevels,[0,4]);
 });
