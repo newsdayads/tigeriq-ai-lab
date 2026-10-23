@@ -1,7 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {compactPromptForChanges,expandCompactChanges,matchesExpectedSchema} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
-import {validateAggregatedGenerationChanges} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {validateAggregatedGenerationChanges,requireActualMutationPrompt} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,validateChanges} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const generationPrompt=(path,content)=>`TASK: update only when needed
@@ -30,6 +30,17 @@ describe('Coding Lane bounded batch no-op',()=>{
     const unmarked=prompt.replace('BATCH_NOOP_ALLOWED=true\n','');
     expect(matchesExpectedSchema(compactPromptForChanges(unmarked),JSON.stringify({summary:'no changes',noop:true,edits:[]}))).toBe(false);
     expect(()=>expandCompactChanges(unmarked,JSON.stringify({summary:'no changes',noop:true,edits:[]}))).toThrow('COMPACT_EDIT_SCHEMA_INVALID');
+  });
+
+  it('forbids a no-op in the last unresolved batch, preserving earlier bounded no-ops',()=>{
+    const prompt=generationPrompt('apps/a.mjs','const a=1;');
+    expect(requireActualMutationPrompt(prompt,{required:false})).toBe(prompt);
+    const required=requireActualMutationPrompt(prompt,{required:true});
+    expect(required).toContain('BATCH_NOOP_ALLOWED=false');
+    expect(required).toContain('NO_ACTIONABLE_CHANGE');
+    const compact=compactPromptForChanges(required,{maxContextChars:6000,maxOutputChars:3200});
+    expect(matchesExpectedSchema(compact,JSON.stringify({summary:'no edits',noop:true,edits:[]}))).toBe(false);
+    expect(()=>expandCompactChanges(required,JSON.stringify({summary:'no edits',noop:true,edits:[]}))).toThrow('COMPACT_EDIT_SCHEMA_INVALID');
   });
 
   it('allows one multi-batch no-op when another batch supplies the real mutation',()=>{
