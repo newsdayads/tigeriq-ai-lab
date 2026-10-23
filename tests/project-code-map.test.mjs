@@ -239,5 +239,30 @@ async function withTempProject(structure, fn) {
     assert.deepStrictEqual(importMap.get(source), ['./forwarded.mts', './types.mts']);
   });
 
+  // A template literal is data, but ${...} contains executable expressions.
+  // These imports are dependencies; fake calls in raw/escaped/quoted text are not.
+  await withTempProject({
+    'entry.mjs': [
+      'const basic = `before ${import("./basic.mjs")} after`;',
+      'const object = `outer ${({ data: { value: import("./nested.mjs") } }).data.value}`;',
+      'const inner = `outer ${`inner ${import("./inner.mjs")}`} end`;',
+      'const raw = `import("./raw-phantom.mjs")`;',
+      'const escaped = `literal \\${import("./escaped-phantom.mjs")}`;',
+      "const quoted = `outer ${'import(\"./quoted-phantom.mjs\")'} rest`;",
+      'const commented = `outer ${/* import("./comment-phantom.mjs") */ 1}`;',
+      'const computed = `outer ${import(variable)}`;',
+    ].join('\n'),
+    'basic.mjs': 'export const basic = 1;',
+    'nested.mjs': 'export const nested = 2;',
+    'inner.mjs': 'export const inner = 3;',
+  }, async (root) => {
+    const file = path.join(root, 'entry.mjs');
+    const { importMap } = await scanProject(root);
+    const expected = ['./basic.mjs', './nested.mjs', './inner.mjs'];
+    assert.deepStrictEqual(importMap.get(file), expected);
+    const graph = await generateImportExportGraph(root);
+    assert.deepStrictEqual(graph.edges.filter(e => e.from === file).map(e => e.to), expected);
+  });
+
   console.log('All tests passed');
 })();
