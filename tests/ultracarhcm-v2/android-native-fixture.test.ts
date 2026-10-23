@@ -8,9 +8,11 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
+import { promisify } from 'node:util';
 import { describe, it, expect } from 'vitest';
 
+const execFileAsync = promisify(execFile);
 const run = (cmd: string, args: string[], cwd: string, timeout: number, env = process.env) =>
   spawnSync(cmd, args, { cwd, timeout, env, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
 
@@ -46,7 +48,7 @@ function createSyntheticAssets(project: string) {
 
 describe('GH-5135 native Android compile gate (synthetic fixtures, not a release)',()=>{
   const ci = process.env.GITHUB_ACTIONS === 'true' && process.env.GITHUB_EVENT_NAME === 'pull_request';
-  (ci ? it : it.skip)('builds/lints/unit-tests exact PR source using Android SDK without redistributing V1 media', ()=>{
+  (ci ? it : it.skip)('builds/lints/unit-tests exact PR source using Android SDK without redistributing V1 media', async ()=>{
     const eventFile=process.env.GITHUB_EVENT_PATH;
     expect(eventFile).toBeTruthy();
     const event=JSON.parse(readFileSync(eventFile!,'utf8'));
@@ -70,7 +72,19 @@ describe('GH-5135 native Android compile gate (synthetic fixtures, not a release
       expect(observed.stdout.trim()).toBe(expected);
       const app=join(worktree,'apps/ultracarhcm-v2');
       createSyntheticAssets(app);
-      const built=run('bash',['./gradlew','--no-daemon',':app:assembleDebug',':app:lintDebug',':app:testDebugUnitTest'],app,350000,env);
+      // Gradle can run for minutes. A synchronous spawn blocks the Vitest RPC
+      // heartbeat and falsely fails CI even when Android compilation passed.
+      let built: {status: number; stdout: string; stderr: string};
+      try {
+        const output = await execFileAsync('bash',[
+          './gradlew','--no-daemon',':app:assembleDebug',':app:lintDebug',':app:testDebugUnitTest'
+        ], {cwd:app,timeout:350000,env,encoding:'utf8',maxBuffer:8*1024*1024});
+        built={status:0,stdout:output.stdout,stderr:output.stderr};
+      } catch (error) {
+        const failure=error as Error & {stdout?:string;stderr?:string;code?:number};
+        built={status:typeof failure.code==='number'?failure.code:1,
+          stdout:failure.stdout||'',stderr:failure.stderr||failure.message};
+      }
       if (built.status !== 0) {
         const lint = join(app,'app/build/intermediates/lint_intermediate_text_report/debug/lint-results-debug.txt');
         if (existsSync(lint)) console.error('ANDROID_LINT_FULL_REPORT:\n'+readFileSync(lint,'utf8').slice(0,14000));
@@ -78,7 +92,14 @@ describe('GH-5135 native Android compile gate (synthetic fixtures, not a release
       requireSuccess(built,'Android SDK compile/lint/unit at '+expected);
       const apk=join(app,'app/build/outputs/apk/debug/app-debug.apk');
       expect(existsSync(apk),'Debug APK missing after Gradle passed').toBe(true);
+      const junit = join(app,'app/build/test-results/testDebugUnitTest/TEST-ai.tigeriq.ultracarhcm.v2.HomeConfigRulesTest.xml');
+      expect(existsSync(junit),'Real JVM unit test result XML is required').toBe(true);
+      const report=readFileSync(junit,'utf8');
+      expect(report).toMatch(/tests="2"/);
+      expect(report).toMatch(/failures="0"/);
+      expect(report).toMatch(/errors="0"/);
       const digest=createHash('sha256').update(readFileSync(apk)).digest('hex');
+      console.log('ANDROID_JUNIT_HOME_RULES=2_OF_2_PASS');
       console.log('ANDROID_EXACT_HEAD='+expected);
       console.log('ANDROID_SYNTHETIC_FIXTURE_APK_SHA256='+digest);
       console.log('ANDROID_R01_FIXTURE_NATIVE_BUILD_PASS_NOT_FOR_RELEASE');
