@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, symlinkSync, lstatSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { media, stageMedia } from '../../apps/ultracarhcm-v2/ci/stage-v1-media.mjs';
@@ -78,5 +78,56 @@ test('read-only verification rejects changed-size assets before any local stagin
     assert.equal(rejected.ok,false);
     assert.equal(rejected.staged,false);
     assert.equal(existsSync(join(dest,'app/src/main/res')),false);
+  } finally { rmSync(root,{recursive:true,force:true}); }
+});
+
+test('dangling destination-file symlink cannot redirect private media staging outside V2', () => {
+  const root=mkdtempSync(join(tmpdir(),'gh5135-link-file-'));
+  try {
+    const src=join(root,'source'),dest=join(root,'v2');
+    for (const [i,item] of media.entries()) {
+      const input=join(src,item.from);
+      mkdirSync(dirname(input),{recursive:true});
+      writeFileSync(input,Buffer.alloc(item.observedBytes,65+i));
+    }
+    const first=join(dest,'app/src/main/res',media[0].to);
+    const outside=join(root,'not-in-v2.jpg');
+    mkdirSync(dirname(first),{recursive:true});
+    symlinkSync(outside,first);
+    assert.equal(existsSync(first),false,'dangling symlink bypasses existsSync');
+    assert.equal(lstatSync(first).isSymbolicLink(),true);
+    const rights=join(root,'rights.txt');
+    writeFileSync(rights,'SYNTHETIC TEST RIGHTS ONLY, NOT A REAL V1 GRANT');
+    assert.throws(
+      ()=>stageMedia({sourceRes:src,projectDir:dest,stage:true,rightsEvidence:rights}),
+      /DESTINATION_SYMLINK_FORBIDDEN/
+    );
+    assert.equal(existsSync(outside),false,'staging must never create the external target');
+    assert.equal(existsSync(join(dest,'app/src/main/res',media[1].to)),false);
+  } finally { rmSync(root,{recursive:true,force:true}); }
+});
+
+test('a symlinked parent resource directory fails before any staging writes', () => {
+  const root=mkdtempSync(join(tmpdir(),'gh5135-link-parent-'));
+  try {
+    const src=join(root,'source'),dest=join(root,'v2');
+    for (const [i,item] of media.entries()) {
+      const input=join(src,item.from);
+      mkdirSync(dirname(input),{recursive:true});
+      writeFileSync(input,Buffer.alloc(item.observedBytes,65+i));
+    }
+    const parent=join(dest,'app/src/main/res/drawable-nodpi');
+    const outside=join(root,'external-res');
+    mkdirSync(dirname(parent),{recursive:true});
+    mkdirSync(outside);
+    symlinkSync(outside,parent,'dir');
+    const rights=join(root,'rights.txt');
+    writeFileSync(rights,'SYNTHETIC TEST RIGHTS ONLY, NOT A REAL V1 GRANT');
+    assert.throws(
+      ()=>stageMedia({sourceRes:src,projectDir:dest,stage:true,rightsEvidence:rights}),
+      /DESTINATION_SYMLINK_FORBIDDEN/
+    );
+    assert.equal(existsSync(join(outside,'v2_road_city_day.jpg')),false);
+    assert.equal(existsSync(join(dest,'app/src/main/res/raw/ultrabot_glow_packed.mp4')),false);
   } finally { rmSync(root,{recursive:true,force:true}); }
 });
