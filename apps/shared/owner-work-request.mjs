@@ -15,6 +15,18 @@ export function validateOwnerWorkRequest(value) {
   return { issueNumber, requestId, message };
 }
 
+// GitHub comments are durable but not an atomic idempotency store. A retry
+// may reuse an ID only for the original issue AND exact validated message.
+// Conflicting replay IDs must never return a success for a different command.
+export function ownerWorkRequestReplayPlan(history=[], input={}) {
+  const request=validateOwnerWorkRequest(input);
+  const previous=(Array.isArray(history)?history:[]).find(row=>row?.requestId===request.requestId);
+  if(!previous)return {kind:'NEW',request:null};
+  if(previous.issueNumber!==request.issueNumber||previous.message!==request.message)
+    return {kind:'CONFLICT',request:null};
+  return {kind:'REPLAY',request:previous};
+}
+
 export function makeOwnerRequestReceipt(request) {
   const r = validateOwnerWorkRequest(request);
   return [OWNER_REQUEST_RECEIVED, 'OWNER_REQUEST_ID='+r.requestId, 'OWNER_REQUEST_ISSUE='+r.issueNumber,
