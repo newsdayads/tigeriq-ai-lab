@@ -19,6 +19,9 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.VideoView
 import android.widget.TextView
+import android.widget.EditText
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -55,7 +58,7 @@ class HomeActivity : Activity() {
         if (DexUtils.isDesktop(this) && Settings.canDrawOverlays(this)) {
             try {
                 startService(Intent(this, OverlayService::class.java)
-                    .putExtra("displayId", display?.displayId ?: 0))
+                    .putExtra("displayId", requestedCameraDisplayId()))
             } catch (t: Throwable) {
                 android.util.Log.e("UltraCarV2", "DeX floating Camera service start failed", t)
             }
@@ -71,6 +74,10 @@ class HomeActivity : Activity() {
         tickHandler.removeCallbacks(clockTick)
         super.onDestroy()
     }
+
+    // DisplayManager APIs work back to minSdk 26; Activity.getDisplay() requires API 30.
+    private fun requestedCameraDisplayId(): Int =
+        DexUtils.resolveDisplay(this, 0)?.displayId ?: 0
 
     private fun shape(fill: Int, stroke: Int = Color.TRANSPARENT, radius: Float = 16f): GradientDrawable {
         return GradientDrawable().apply {
@@ -166,10 +173,8 @@ class HomeActivity : Activity() {
         val bottomShade = label("", 10f)
         bottomShade.background = shape(0x7d000000, radius=12f)
         place(bottomShade, .028f, .855f, .944f, .087f)
-        button("▣\nBố cục đã lưu", .045f, .863f, .29f, .065f, false) { showSaved() }
-        button("+\nBố cục mới", .357f, .863f, .29f, .065f, false) {
-            toast("Chưa hỗ trợ tạo bố cục V2 — không ghi dữ liệu giả")
-        }
+        button("▣\nCấu hình đã lưu", .045f, .863f, .29f, .065f, false) { showSaved() }
+        button("+\nLưu cấu hình", .357f, .863f, .29f, .065f, false) { saveHomeConfiguration() }
         val bot = VideoView(this)
         bot.setVideoURI(Uri.parse("android.resource://$packageName/${R.raw.ultrabot_glow_packed}"))
         bot.setOnPreparedListener { mp -> mp.isLooping = true; mp.setVolume(0f, 0f); bot.start() }
@@ -180,12 +185,100 @@ class HomeActivity : Activity() {
         place(footer, .02f, .954f, .96f, .018f)
     }
 
-    private fun showSaved() {
+    // Real, device-local HOME snapshots (vehicle/theme/name only). These are not V1 layout parity.
+    private fun savedConfigurations(): JSONArray = try {
+        JSONArray(prefs.getString("v2_home_configs", "[]") ?: "[]")
+    } catch (e: Exception) {
+        android.util.Log.w("UltraCarV2", "Corrupt local HOME config", e)
+        JSONArray()
+    }
+
+    private fun saveHomeConfiguration() {
+        val current = savedConfigurations()
+        if (!HomeConfigRules.canSave(current.length())) {
+            toast("Giới hạn 20 cấu hình Home trên thiết bị")
+            return
+        }
+        val input = EditText(this).apply {
+            setSingleLine(true)
+            setText("Home ${current.length() + 1}")
+            selectAll()
+        }
         AlertDialog.Builder(this)
-            .setTitle("Bố cục V2")
-            .setMessage("Đang có ${prefs.getInt("saved_count", 0)} bố cục thử nghiệm. Chưa nhập bố cục từ APP gốc.")
-            .setPositiveButton("Đóng", null)
-            .show()
+            .setTitle("Lưu cấu hình Home (chưa phải bố cục V1)")
+            .setView(input)
+            .setNegativeButton("Hủy", null)
+            .setPositiveButton("Lưu") { _, _ ->
+                val name = HomeConfigRules.normalizeName(input.text.toString())
+                if (name.isEmpty()) {
+                    toast("Cần nhập tên cấu hình")
+                } else {
+                    current.put(JSONObject()
+                        .put("name", name)
+                        .put("night", prefs.getBoolean("night", false))
+                        .put("limo", prefs.getBoolean("limo", false))
+                        .put("driver", prefs.getString("driver_name", "Driver") ?: "Driver"))
+                    prefs.edit().putString("v2_home_configs", current.toString()).apply()
+                    toast("Đã lưu cấu hình Home trên thiết bị")
+                }
+            }.show()
+    }
+
+    private fun showSaved() {
+        val entries = savedConfigurations()
+        if (entries.length() == 0) {
+            AlertDialog.Builder(this)
+                .setTitle("Cấu hình Home")
+                .setMessage("Chưa có cấu hình lưu trên thiết bị. Đây chưa phải bộ bố cục V1.")
+                .setPositiveButton("Đóng", null).show()
+            return
+        }
+        val names = Array(entries.length()) { i ->
+            entries.optJSONObject(i)?.optString("name", "Home ${i + 1}") ?: "Home ${i + 1}"
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Cấu hình Home đã lưu (cục bộ)")
+            .setItems(names) { _, index ->
+                val item = entries.optJSONObject(index) ?: return@setItems
+                AlertDialog.Builder(this)
+                    .setTitle(item.optString("name", "Home"))
+                    .setItems(arrayOf("Áp dụng", "Xóa cấu hình")) { _, choice ->
+                        if (choice == 0) {
+                            prefs.edit()
+                                .putBoolean("night", item.optBoolean("night", false))
+                                .putBoolean("limo", item.optBoolean("limo", false))
+                                .putString("driver_name", item.optString("driver", "Driver"))
+                                .apply()
+                            render()
+                            toast("Đã áp dụng cấu hình Home")
+                        } else {
+                            val remaining = JSONArray()
+                            for (i in 0 until entries.length())
+                                if (i != index) remaining.put(entries.get(i))
+                            prefs.edit().putString("v2_home_configs", remaining.toString()).apply()
+                            toast("Đã xóa cấu hình khỏi thiết bị")
+                        }
+                    }.setNegativeButton("Hủy", null).show()
+            }.setNegativeButton("Đóng", null).show()
+    }
+
+    private fun editDriverName() {
+        val input = EditText(this).apply {
+            setSingleLine(true)
+            setText(prefs.getString("driver_name", "Driver") ?: "Driver")
+            selectAll()
+        }
+        AlertDialog.Builder(this).setTitle("Tên tài xế hiển thị tại Home")
+            .setView(input)
+            .setNegativeButton("Hủy", null)
+            .setPositiveButton("Lưu") { _, _ ->
+                val name = HomeConfigRules.normalizeName(input.text.toString())
+                if (name.isEmpty()) toast("Tên tài xế không được để trống")
+                else {
+                    prefs.edit().putString("driver_name", name).apply()
+                    render()
+                }
+            }.show()
     }
 
     private fun showSettings() {
@@ -194,7 +287,8 @@ class HomeActivity : Activity() {
             if (prefs.getBoolean("limo", false)) "Xe Lamborghini trắng" else "Xe Limo đỏ",
             "Camera USB thật (UVC Host)",
             "Cấp quyền nút Camera nổi DeX",
-            "Trạng thái tương đương APP gốc"
+            "Trạng thái tương đương APP gốc",
+            "Đổi tên tài xế hiển thị Home"
         )
         AlertDialog.Builder(this).setTitle("UltraCarHCM V2 — Bản xây dựng")
             .setItems(options) { _, which ->
@@ -208,15 +302,16 @@ class HomeActivity : Activity() {
                                 Uri.parse("package:$packageName")))
                         } else if (DexUtils.isDesktop(this)) {
                             startService(Intent(this, OverlayService::class.java)
-                                .putExtra("displayId", display?.displayId ?: 0))
+                                .putExtra("displayId", requestedCameraDisplayId()))
                             toast("Đã gửi yêu cầu hiện Camera nổi trên DeX")
                         } else {
                             toast("S10 chưa kết nối màn hình DeX ngoài")
                         }
                     }
                     4 -> AlertDialog.Builder(this).setTitle("Chưa đạt V2")
-                        .setMessage("Mới tái dựng màn Home bằng tài nguyên gốc. USB UVC, DeX, các tab, bố cục thực và dữ liệu gốc chưa tương đương.")
+                        .setMessage("Màn Home V2 vẫn đang xây dựng. Camera USB, DeX, các tab, bố cục V1 và dữ liệu gốc chưa được nghiệm thu.")
                         .setPositiveButton("Đóng", null).show()
+                    5 -> editDriverName()
                 }
             }.show()
     }
