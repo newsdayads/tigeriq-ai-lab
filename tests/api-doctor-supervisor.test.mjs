@@ -409,6 +409,47 @@ describe('#1255 NV10 API Doctor policy',()=>{
     });
   });
 
+  it('permits only independently verified source-release staging while a canonical issue remains open',()=>{
+    const base={issueNumber:5223,state:'open'};
+    expect(apiDoctorRepairWorkOrderGate(base)).toEqual({
+      action:'wait_repair',reason:'canonical_repair_work_order_open',
+    });
+    expect(apiDoctorRepairWorkOrderGate({...base,verifiedSourceRelease:false})).toMatchObject({action:'wait_repair'});
+    expect(apiDoctorRepairWorkOrderGate({...base,verifiedSourceRelease:true})).toEqual({
+      action:'validate_repair',reason:'canonical_repair_source_released_issue_open',
+    });
+    expect(apiDoctorRepairWorkOrderGate({issueNumber:5223,state:'closed',stateReason:'not_planned',verifiedSourceRelease:true}).action).toBe('wait_repair');
+
+    const valid={
+      ...base,verifiedSourceRelease:true,
+      sourceMergedAt:'2026-10-23T08:35:00Z',
+      runtimeUpdatedAt:'2026-10-23T08:38:22Z',
+      runtimeCurrentSha:'a'.repeat(40),runtimeInstalledSha:'a'.repeat(40),
+      updaterResult:'NO_CHANGE',updaterCandidateSha:'a'.repeat(40),
+    };
+    expect(apiDoctorRepairDeploymentGate(valid)).toEqual({
+      action:'validate_repair',reason:'canonical_repair_runtime_applied',
+    });
+    expect(apiDoctorRepairDeploymentGate({...valid,verifiedSourceRelease:false}).action).toBe('wait_repair');
+    expect(apiDoctorRepairDeploymentGate({...valid,sourceMergedAt:null})).toEqual({
+      action:'wait_repair',reason:'canonical_repair_runtime_not_applied_after_source_merge',
+    });
+    expect(apiDoctorRepairDeploymentGate({...valid,runtimeUpdatedAt:'2026-10-23T08:32:00Z'}).action).toBe('wait_repair');
+    expect(apiDoctorRepairDeploymentGate({...valid,runtimeInstalledSha:'b'.repeat(40)}).action).toBe('wait_repair');
+    expect(apiDoctorRepairDeploymentGate({...valid,updaterResult:'WAIT_RELEASE_APPROVAL',updaterCandidateSha:'b'.repeat(40)}).action).toBe('validate_repair');
+    expect(apiDoctorRepairDeploymentGate({...valid,updaterResult:'FAILED'}).action).toBe('wait_repair');
+
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    expect(core).toContain('const openSourceCandidate=');
+    expect(core).toContain('const verifiedOpenSourceRelease=openSourceCandidate');
+    expect(core).toContain('repairPr?.merge_commit_sha');
+    expect(core).toContain('repairPr.merged_at');
+    expect(core).toContain('apiDoctorOwnerProxyRepairPrEvidence(');
+    expect(core).toContain('const runtimeSourceState=readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE)');
+    expect(core).toContain('cutoverTimes.some(ms=>!Number.isFinite(ms))');
+    expect(core).toContain("reason:verifiedOpenSourceRelease?'repair_source_released_issue_open':'repair_issue_completed_revision_deployed'");
+  });
+
   it('keeps canonical and legacy source repair lifecycle active after a healthy reprobe',()=>{
     expect(apiDoctorRepairLifecycleRelevant({
       hasHandoff:true,repairIssueNumber:9901,handoffFailureClass:'source_contract',

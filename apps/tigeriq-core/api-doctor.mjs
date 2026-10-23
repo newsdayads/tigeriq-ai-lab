@@ -225,12 +225,14 @@ export function apiDoctorRepairSignature({employeeId,provider,failureClass,messa
   return [safeText(employeeId,32).toUpperCase(),safeText(provider,64).toLowerCase(),safeText(failureClass,64).toLowerCase(),normalized].join('|');
 }
 
-export function apiDoctorRepairWorkOrderGate({issueNumber=0,state='unknown',stateReason=null}={}){
+export function apiDoctorRepairWorkOrderGate({issueNumber=0,state='unknown',stateReason=null,verifiedSourceRelease=false}={}){
   const number=Number(issueNumber||0);
   if(!Number.isInteger(number)||number<=0)return {action:'legacy',reason:'legacy_repair_handoff'};
   const normalizedState=String(state||'unknown').toLowerCase();
   const normalizedReason=String(stateReason||'').toLowerCase();
-  if(normalizedState==='open')return {action:'wait_repair',reason:'canonical_repair_work_order_open'};
+  if(normalizedState==='open')return verifiedSourceRelease===true
+    ?{action:'validate_repair',reason:'canonical_repair_source_released_issue_open'}
+    :{action:'wait_repair',reason:'canonical_repair_work_order_open'};
   if(normalizedState==='closed'&&normalizedReason==='completed')return {action:'validate_repair',reason:'canonical_repair_work_order_completed'};
   if(normalizedState==='closed')return {action:'wait_repair',reason:'canonical_repair_work_order_not_completed'};
   return {action:'wait_repair',reason:'canonical_repair_work_order_state_unknown'};
@@ -238,15 +240,19 @@ export function apiDoctorRepairWorkOrderGate({issueNumber=0,state='unknown',stat
 
 export function apiDoctorRepairDeploymentGate({
   issueNumber=0,state='unknown',stateReason=null,issueClosedAt=null,
+  verifiedSourceRelease=false,sourceMergedAt=null,
   runtimeCurrentSha='',runtimeInstalledSha='',runtimeUpdatedAt=null,
   updaterResult='',updaterCandidateSha='',
 }={}){
-  const issueGate=apiDoctorRepairWorkOrderGate({issueNumber,state,stateReason});
+  const issueGate=apiDoctorRepairWorkOrderGate({issueNumber,state,stateReason,verifiedSourceRelease});
   if(issueGate.action!=='validate_repair')return issueGate;
-  const closedMs=Date.parse(String(issueClosedAt||''));
+  const issueOpen=String(state||'').toLowerCase()==='open';
+  const cutoverMs=Date.parse(String(issueOpen?sourceMergedAt:issueClosedAt||''));
   const runtimeMs=Date.parse(String(runtimeUpdatedAt||''));
-  if(!Number.isFinite(closedMs)||!Number.isFinite(runtimeMs)||runtimeMs<closedMs){
-    return {action:'wait_repair',reason:'canonical_repair_runtime_not_applied_after_completion'};
+  if(!Number.isFinite(cutoverMs)||!Number.isFinite(runtimeMs)||runtimeMs<cutoverMs){
+    return {action:'wait_repair',reason:issueOpen
+      ?'canonical_repair_runtime_not_applied_after_source_merge'
+      :'canonical_repair_runtime_not_applied_after_completion'};
   }
   const current=String(runtimeCurrentSha||'').trim().toLowerCase();
   const installed=String(runtimeInstalledSha||'').trim().toLowerCase();
