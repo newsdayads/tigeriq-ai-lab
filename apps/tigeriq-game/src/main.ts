@@ -41,7 +41,7 @@ function render():void {
   if(current.screen==='result'){
     const outcome=current.outcome!;const won=outcome.win;
     text('result-title',won?'ĐÃ GIÚP ROBOT!':'CHƯA THÀNH CÔNG');
-    text('result-description',won?`Màn ${current.levelIndex+1} thành công sau ${outcome.steps} bước. ${current.levelIndex===LEVELS.length-1?'Bạn đã vượt qua cả 5 màn!':'Chọn màn tiếp theo.'}`:failMessage(outcome.reason));
+    text('result-description',won?`Màn ${current.levelIndex+1} thành công sau ${outcome.steps} bước. ${current.levelIndex===LEVELS.length-1?(current.completedLevels.length===LEVELS.length?'Bạn đã vượt qua cả 5 màn!':'Bạn đã thắng màn 5. Hãy hoàn thành các màn còn lại.'):'Chọn màn tiếp theo.'}`:failMessage(outcome.reason));
     drawGame($<HTMLCanvasElement>('result-board'),level,outcome.state);
     const next=$<HTMLButtonElement>('next');next.hidden=!won;next.textContent=current.levelIndex===LEVELS.length-1?'Chọn màn':'Màn tiếp';
   }
