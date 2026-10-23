@@ -5,8 +5,9 @@ import {enumerateSolutions} from '../dist/engine/robot.js';
 
 // DOM contract harness: exercises actual compiled event bindings, NOT a real browser.
 class StubNode {
-  constructor(id = '') { this.id=id; this.hidden=false; this.disabled=false; this.textContent=''; this.className=''; this.children=[]; this.listeners={}; this.type=''; }
+  constructor(id = '') { this.id=id; this.hidden=false; this.disabled=false; this.textContent=''; this.className=''; this.children=[]; this.listeners={}; this.type=''; this.focused=false; }
   addEventListener(name, callback) { (this.listeners[name]??=[]).push(callback); }
+  focus() { this.focused=true; }
   click() { if(this.disabled) return; for(const cb of (this.listeners.click??[])) cb(); }
   replaceChildren(...children) { this.children=[...children]; }
   appendChild(n) { this.children.push(n); return n; }
@@ -17,7 +18,7 @@ function makeHarness(){
   const graphics = new Proxy({}, {get:(obj,key)=>['beginPath','arc','fill','fillRect','clearRect','save','translate','rotate','moveTo','lineTo','closePath','restore'].includes(key) ? ()=>{} : obj[key],set:(obj,key,value)=>{obj[key]=value;return true;}});
   nodes.board.width=480; nodes.board.height=480; nodes['result-board'].width=480; nodes['result-board'].height=480;
   nodes.board.getContext=()=>graphics; nodes['result-board'].getContext=()=>graphics;
-  globalThis.document={getElementById:(id)=>nodes[id]??null,createElement:(tag)=>{assert.equal(tag,'button');return new StubNode();}};
+  globalThis.document={listeners:{},getElementById:(id)=>nodes[id]??null,createElement:(tag)=>{assert.equal(tag,'button');return new StubNode();},addEventListener(name,callback){(this.listeners[name]??=[]).push(callback);}};
   return nodes;
 }
 test('DOM-bound clicks follow all five levels and reach final victory',async()=>{
@@ -92,4 +93,39 @@ test('real DOM selection cards retain session progress when returning home',asyn
   assert.match(e['level-buttons'].children[0].textContent,/Đã qua/);
   assert.match(e['level-buttons'].children[4].textContent,/Đã qua/);
   assert.match(e['level-buttons'].children[1].textContent,/Chưa chơi/);
+});
+
+test('keyboard Escape and explicit Close cancel the editing menu and restore focus safely',async()=>{
+  const e=makeHarness();
+  await import('../dist/main.js?ui-harness=close-edit');
+  const level=LEVELS[0],slot=level.editableSlot;
+  e['level-buttons'].children[0].click();
+  e.commands.children[slot].click();
+  assert.equal(e['edit-menu'].hidden,false);
+  assert.equal(e.choices.children[0].focused,true);
+  assert.equal(e.choices.children.length,7); // six legal replacements plus Close
+  const answer=enumerateSolutions(level)[0].replacement;
+  e.choices.children.find(n=>n.textContent.endsWith(`(${answer})`)).click();
+  assert.equal(e.run.disabled,false);
+  assert.equal(e.run.focused,true);
+  const cancelEscape=globalThis.document.listeners.keydown[0];
+  let prevented=false;
+  cancelEscape({key:'Enter',preventDefault(){prevented=true;}});
+  assert.equal(prevented,false);
+  assert.equal(e['edit-menu'].hidden,false);
+  cancelEscape({key:'Escape',preventDefault(){prevented=true;}});
+  assert.equal(prevented,true);
+  assert.equal(e['edit-menu'].hidden,true);
+  assert.equal(e.run.disabled,true);
+  assert.equal(e.commands.children[slot].focused,true);
+  e.commands.children[slot].click();
+  const close=e.choices.children.find(n=>n.textContent==='Đóng danh sách lệnh');
+  assert.ok(close);
+  close.click();
+  assert.equal(e['edit-menu'].hidden,true);
+  assert.equal(e.run.disabled,true);
+  e.commands.children[slot].click();
+  e.choices.children.find(n=>n.textContent.endsWith(`(${answer})`)).click();
+  e.run.click();
+  assert.equal(e['result-title'].textContent,'ĐÃ GIÚP ROBOT!');
 });

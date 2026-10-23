@@ -11,6 +11,14 @@ function text(id:string,value:string):void{$(id).textContent=value;}
 function button(label:string,click:()=>void):HTMLButtonElement {const e=document.createElement('button');e.type='button';e.textContent=label;e.addEventListener('click',click);return e;}
 function goalDescription(l:Puzzle):string {return l.goal.kind==='position'?`Đưa robot tới ô (${l.goal.x}, ${l.goal.y}).`:l.goal.kind==='switch'?'Cho robot nhấn công tắc màu tím.':'Đưa gói hàng tới ô nhận màu vàng.';}
 function failMessage(code:string):string {return ({BLOCKED:'Robot bị vật cản chắn đường.',OUT_OF_BOUNDS:'Robot đi ra ngoài lưới.',INVALID_PICK:'Robot chưa đứng tại gói hàng.',INVALID_DROP:'Robot chưa cầm gói hàng.',INVALID_PRESS:'Robot chưa đứng tại công tắc.',STEP_LIMIT:'Robot đã hết số bước cho phép.',GOAL_NOT_MET:'Robot chưa hoàn thành mục tiêu.'} as Record<string,string>)[code]??'Chưa thành công.';}
+function cancelEdit():void {
+  if(current.screen!=='play'||current.editSlot===null)return;
+  const slot=current.editSlot;
+  current={...current,editSlot:null,replacement:null};
+  status='Đã đóng danh sách lệnh.';
+  render();
+  ($('commands').children[slot] as HTMLButtonElement|undefined)?.focus?.();
+}
 function render():void {
   for(const [key,node] of Object.entries(sections))node.hidden=key!==current.screen;
   text('status',status);
@@ -27,14 +35,14 @@ function render():void {
       const editable=i===level.editableSlot;
       const e=button(`Lệnh ${i+1}: ${i===current.editSlot&&current.replacement?current.replacement:level.originalCommands[i]} · ${editable?'Có thể sửa':'Cố định'}`,()=>{
         if(!editable){status='Lệnh cố định, không thể thay.';render();return;}
-        current=selectSlot(current,i);status='Chọn một lệnh khác trong danh sách.';render();
+        current=selectSlot(current,i);status='Chọn một lệnh khác trong danh sách.';render();($('choices').children[0] as HTMLButtonElement|undefined)?.focus?.();
       });e.className=editable?'editable':'';if(i===current.editSlot)e.className+=' selected';list.appendChild(e);
     }
     const editing=current.editSlot!==null;$('edit-menu').hidden=!editing;
     if(editing){const choices=$('choices');choices.replaceChildren();for(const cmd of allCommands.filter(c=>c!==level.originalCommands[level.editableSlot])){
-      const e=button(`${commandNames[cmd]} (${cmd})`,()=>{current=selectReplacement(current,cmd);status=`Đã chọn ${commandNames[cmd]}. Nhấn CHẠY.`;render();});
+      const e=button(`${commandNames[cmd]} (${cmd})`,()=>{current=selectReplacement(current,cmd);status=`Đã chọn ${commandNames[cmd]}. Nhấn CHẠY.`;render();$<HTMLButtonElement>('run').focus?.();});
       if(cmd===current.replacement)e.className='selected';choices.appendChild(e);
-    }}
+    }choices.appendChild(button('Đóng danh sách lệnh',()=>cancelEdit()));}
     ($<HTMLButtonElement>('run')).disabled=current.replacement===null;
     return;
   }
@@ -52,4 +60,5 @@ $('reset').addEventListener('click',()=>{current=retryLevel(current);status='Đ�
 $('retry').addEventListener('click',()=>{current=retryLevel(current);status='Chọn lệnh khác và thử lại.';render();});
 $('next').addEventListener('click',()=>{current=nextLevel(current);status='Đã mở màn kế tiếp.';render();});
 $('run').addEventListener('click',()=>{if(current.screen!=='play'||current.replacement===null)return;current=executeLevel(current);status=current.outcome?.win?'Đã thắng màn này.':'Hãy sửa lệnh và thử lại.';render();});
+document.addEventListener('keydown',(event:KeyboardEvent)=>{if(event.key==='Escape'&&current.screen==='play'&&current.editSlot!==null){event.preventDefault();cancelEdit();}});
 render();
