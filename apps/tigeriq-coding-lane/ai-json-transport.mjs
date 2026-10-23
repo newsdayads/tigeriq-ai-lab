@@ -305,10 +305,16 @@ function resolveCompactEditPath(files,edit){
   throw new Error(`COMPACT_EDIT_PATH_UNKNOWN:${path}`);
 }
 
-export function expandCompactChanges(prompt,text){
+export function expandCompactChanges(prompt,text,canonicalFiles=null){
   const d=parseModelJson(text);
   if(!d||typeof d!=='object'||Array.isArray(d))throw new Error('COMPACT_EDIT_JSON_INVALID');
   const files=currentFilesFromPrompt(prompt);
+  // Visible micro-context is not the canonical source. Use the exact full
+  // GitHub snapshot when the Coding Lane supplies it; retain visible paths
+  // as the only allowed output scope.
+  const canonical=canonicalFiles instanceof Map?canonicalFiles:
+    Array.isArray(canonicalFiles)?new Map(canonicalFiles.map(file=>[String(file.path),String(file.content??'')])):files;
+  if([...files.keys()].some(path=>!canonical.has(path)))throw new Error('CODING_CANONICAL_SOURCE_MISSING');
   const batchNoopAllowed=/^BATCH_NOOP_ALLOWED=true$/m.test(String(prompt||''));
   if(batchNoopAllowed&&d.noop===true&&Array.isArray(d.changes)&&d.changes.length===0)return {summary:String(d.summary||'no changes needed in this batch'),noop:true,changes:[]};
   if(batchNoopAllowed&&d.noop===true&&Array.isArray(d.edits)&&d.edits.length===0)return {summary:String(d.summary||'no changes needed in this batch'),noop:true,changes:[]};
@@ -316,7 +322,7 @@ export function expandCompactChanges(prompt,text){
     for(const change of d.changes){
       const path=String(change?.path||'').trim();
       if(!path||!files.has(path))throw new Error(`COMPACT_EDIT_PATH_UNKNOWN:${path}`);
-      const existing=files.get(path);
+      const existing=canonical.get(path);
       if(String(existing||'').length>0)throw new Error(`COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:${path}`);
     }
     return d;
@@ -328,7 +334,7 @@ export function expandCompactChanges(prompt,text){
     const path=typeof edit?.content==='string'
       ?(rawPath&&files.has(rawPath)?rawPath:(()=>{throw new Error(`COMPACT_EDIT_PATH_UNKNOWN:${rawPath}`)})())
       :resolveCompactEditPath(files,edit);
-    let content=changed.has(path)?changed.get(path):files.get(path);
+    let content=changed.has(path)?changed.get(path):canonical.get(path);
     if(typeof edit?.content==='string'){
       if(content&&content.length>0)throw new Error(`COMPACT_EDIT_FULL_CONTENT_FOR_EXISTING:${path}`);
       content=edit.content;
@@ -344,7 +350,7 @@ export function expandCompactChanges(prompt,text){
     changed.set(path,content);
   }
   for(const [path,content] of changed){
-    const original=String(files.get(path)??'');
+    const original=String(canonical.get(path)??'');
     const next=String(content??'');
     if(original.length>=4000){
       const removed=original.length-next.length;
@@ -428,7 +434,15 @@ export function installAiJsonTransport({maxAttempts=3,baseDelayMs=350,attemptTim
         if(String(text||'').trim()){
           if(schema==='changes'){
             const expanded=expandCompactChanges(originalPrompt,text);
-            if(matchesExpectedSchema(originalPrompt,JSON.stringify(expanded)))return responseWithJson(res,replaceModelText(input,data,JSON.stringify(expanded)));
+            if(matchesExpectedSchema(originalPrompt,JSON.stringify(expanded))){
+              // Preserve the exact small edits alongside the legacy projection.
+              // Only Coding Lane may apply these edits to full canonical files;
+              // never write a full file reconstructed from a sliced model prompt.
+              const parsed=parseModelJson(text);
+              const carried=Array.isArray(parsed?.edits)&&parsed.edits.length
+                ?{...expanded,__tigeriqCompactEdits:parsed.edits}:expanded;
+              return responseWithJson(res,replaceModelText(input,data,JSON.stringify(carried)));
+            }
           }else if(schema==='edits'){
             const parsed=parseModelJson(text);
             if(parsed&&matchesExpectedSchema(originalPrompt,JSON.stringify(parsed)))return responseWithJson(res,replaceModelText(input,data,JSON.stringify(parsed)));
