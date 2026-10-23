@@ -32,6 +32,13 @@ export function stageMedia({ sourceRes, projectDir, stage = false, rightsEvidenc
       badFiles.push(item.from);
       return { from: item.from, to: item.to, status: 'INVALID_SOURCE' };
     }
+    // PC01 inventory only establishes observed byte counts, not usage rights or provenance.
+    // Refuse to stage differently sized files instead of silently accepting substitutions.
+    if (info.size !== item.observedBytes) {
+      badFiles.push(item.from);
+      return { from: item.from, to: item.to, bytes: info.size,
+        observedBytes: item.observedBytes, status: 'SIZE_MISMATCH' };
+    }
     return { from: item.from, to: item.to, bytes: info.size, observedBytes: item.observedBytes,
       sha256: hash(input), status: 'AVAILABLE', input, output };
   });
