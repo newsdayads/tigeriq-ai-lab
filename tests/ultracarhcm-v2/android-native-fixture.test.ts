@@ -16,7 +16,7 @@ const execFileAsync = promisify(execFile);
 const run = (cmd: string, args: string[], cwd: string, timeout: number, env = process.env) =>
   spawnSync(cmd, args, { cwd, timeout, env, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
 
-const requireSuccess = (result: ReturnType<typeof run>, what: string) => {
+const requireSuccess = (result: {status: number | null; stdout: string | null; stderr: string | null}, what: string) => {
   expect(result.status, what + '\n' + (result.stdout || '').slice(-4500) + '\n' +
     (result.stderr || '').slice(-4500)).toBe(0);
 };
