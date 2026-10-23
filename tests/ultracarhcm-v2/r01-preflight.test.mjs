@@ -151,3 +151,20 @@ test('terminal USB errors reset requested before telling the Activity to render 
     assert.ok(beforeReport.lastIndexOf('stop()') >= 0,'stop() must precede final UI report for '+errorText);
   }
 });
+
+test('camera close and device close release preview and return to retryable state (source guard only)',()=>{
+  const controller=readFileSync(new URL('../../apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt',import.meta.url),'utf8');
+  for (const [name,next] of [
+    ['onCameraClose','onDeviceClose'],
+    ['onDeviceClose','onDetach']
+  ]) {
+    const body=controller.split('override fun '+name+'(')[1]?.split('override fun '+next+'(')[0];
+    assert.ok(body,'missing '+name+' lifecycle callback');
+    assert.match(body,/if \(device == target && requested\)/,'ignore stale '+name+' callbacks');
+    const released=body.indexOf('releasePreview()');
+    const stopped=body.indexOf('stop()');
+    const reported=body.indexOf('report(');
+    assert.ok(released>=0 && released<stopped && stopped<reported,
+      name+': cleanup and reset must happen before UI reports retry state');
+  }
+});
