@@ -495,9 +495,10 @@ async function ownerRequestApi(req,res,payload,readOnly=false){
   let result={requestId:request.requestId,issueNumber, message:request.message,status:'RECEIVED',receiptUrl:saved.html_url||null,reply:null};
   // Triage provides advice, not an authority to mutate an active worker lease.
   try{
-    const decision=await decideWithChief({message:request.message,history:[{role:'system',content:'Đây là chỉ đạo của chủ sở hữu cho Work Order #'+issueNumber+' — '+String(issue.title||'')+'. Ưu tiên phân tích và nêu hướng xử lý. Không tự nhận đã hoàn tất hoặc vượt cổng quyền.'}]});
-    const answered=decision?.mode==='reply'||decision?.mode==='clarify';
-    const status=answered?'ANSWERED':'PLAN_SHOWN';
+    const context='Thẻ công việc #'+issueNumber+' — '+String(issue.title||'')+'. Đọc yêu cầu của anh Sơn, phân tích và đưa hướng xử lý trước thực thi. Không tuyên bố đã chạy, không vượt quyền/lease. Nội dung: ';
+    const decision=await decideWithChief({message:context+request.message,history:[]});
+    const answered=decision?.mode==='reply'||decision?.mode==='status';
+    const status=answered?'ANSWERED':decision?.mode==='clarify'?'WAITING':'PLAN_SHOWN';
     const reply=String(decision?.reply|| (answered?'Đã trả lời.':'Đã ghi chỉ đạo vào thẻ; cần nhân sự có quyền thực thi tiếp nhận.')).trim();
     const terminal=await gh(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({body:makeOwnerResultReceipt(request.requestId,status,reply)})},token);
     result={...result,status,reply,resultUrl:terminal.html_url||null,resolved:ownerWorkRequestResolved(status)};
