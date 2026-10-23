@@ -36,3 +36,17 @@ test('missing V1 visuals or wrapper fail closed instead of false PASS',()=>{
     assert.ok(result.missingFiles.some(f=>f.endsWith('gradle-wrapper.jar')));
   }finally{rmSync(root,{recursive:true,force:true});}
 });
+
+test('USB UVC controller releases Surface on close, unplug and preview failure (source guard only)',()=>{
+  const controller = readFileSync(new URL('../../apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt',import.meta.url),'utf8');
+  for (const handler of ['onCameraClose','onDeviceClose','onError']) {
+    const start=controller.indexOf('override fun '+handler+'(');
+    const end=controller.indexOf('\n    override fun ', start+13);
+    assert.ok(start>=0,'missing '+handler);
+    const body=controller.slice(start,end<0?controller.length:end);
+    assert.match(body,/device == target/,'stale device guard in '+handler);
+    assert.match(body,/releasePreview\(\)/,'Surface release missing in '+handler);
+  }
+  assert.match(controller,/catch \(t: Throwable\) \{\s*Log\.e\(logTag, "UVC preview failed", t\)\s*[\s\S]*?releasePreview\(\)/);
+  assert.match(controller,/preview\.surfaceTextureListener === this/);
+});
