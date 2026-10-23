@@ -251,6 +251,18 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(shared).toContain('@media(prefers-reduced-motion:reduce)');
   });
 
+  it('fixes legacy CP437 Vietnamese text, consistent card font and hides unverified start/end',()=>{
+    expect(workCenter).toContain('function readableText(value)');
+    expect(workCenter).toContain('CP437_REVERSE');
+    expect(workCenter).toContain('const timingLine=(started||ended)');
+    expect(workCenter).toContain("if(start)fields.push");
+    expect(workCenter).toContain("if(end)fields.push");
+    expect(dashboard).toContain('TigerIQWorkCenter.readableText');
+    expect(shared).toContain('uniform readable card typography');
+    expect(shared).toContain('font-size:14px!important');
+    expect(shared).toContain('word-break:break-word!important');
+  });
+
   it('renders two distinct DeXCam lists and hides raw markdown and blocker codes',()=>{
     expect(dashboard).toContain('id="workDetailExecutionSection"');
     expect(dashboard).toContain('QUY TRÌNH THỰC THI · KHÔNG TÍNH %');
