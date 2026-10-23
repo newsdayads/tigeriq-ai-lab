@@ -1848,6 +1848,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       awaitingRevision:row.metadata?.managerAwaitingAcceptanceRevision,
       sourceRevision:row.metadata?.sourceRevision,
       acceptanceAllowed:completionGate.allow,
+      acceptanceGateRequired:sourceLiveRequired||sourceFinalReviewRequired||dependencyGate.required,
     });
     if(row.status==='active'&&wake.wake){
       const summary=wake.reason==='source_revision_changed'

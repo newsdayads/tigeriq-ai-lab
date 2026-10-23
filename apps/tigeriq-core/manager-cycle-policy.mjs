@@ -71,10 +71,12 @@ export function managerAcceptanceRevisionRefresh({sourceLiveRequired=false,sourc
   return Boolean(revisionChanged&&status!=='blocked'&&(sourceLiveRequired||sourceFinalReviewRequired||dependencyGateRequired||parked));
 }
 
-export function managerAcceptanceWakePlan({awaitingRevision='',sourceRevision='',acceptanceAllowed=false}={}){
+export function managerAcceptanceWakePlan({awaitingRevision='',sourceRevision='',acceptanceAllowed=false,acceptanceGateRequired=true}={}){
   const pending=String(awaitingRevision||'').trim();
   const current=String(sourceRevision||'').trim();
-  const gateSatisfied=acceptanceAllowed===true&&Boolean(current);
+  // A trivially allowed completion gate is not evidence that a finished child was accepted.
+  // Only a declared live/review/dependency gate can cause a same-revision wake.
+  const gateSatisfied=acceptanceGateRequired===true&&acceptanceAllowed===true&&Boolean(current);
   const revisionChanged=Boolean(pending&&current&&current!==pending);
   return {
     wake:Boolean(pending&&current&&(gateSatisfied||revisionChanged)),
