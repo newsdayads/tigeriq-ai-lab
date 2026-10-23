@@ -129,12 +129,13 @@ function rawRowsFor(data,filter,closedOrder,openOrder){
  const effective=x=>viewStatus(x);
  const f=filter||'action';
  const ended=done.filter(x=>work(x)&&(completion(x)||effective(x)==='CLOSED_UNVERIFIED'));
+ const closureConflicts=ended.filter(x=>x.closureConflict===true&&effective(x)==='CLOSED_UNVERIFIED');
  if(f==='all'){
   const seen=new Set(o.filter(work).map(x=>Number(x.number)).filter(n=>Number.isInteger(n)&&n>0));
   return o.filter(work).concat(sortClosed(ended.filter(x=>!seen.has(Number(x.number))),'finished'));
  }
  if(f==='working')return o.filter(x=>work(x)&&effective(x)==='WORKING'&&x.activeLease===true&&x.heartbeatFresh===true);
- if(f==='waitblocked')return o.filter(x=>work(x)&&['WAITING','BLOCKED','OWNER_GATE','REVIEW','VERIFY','PAUSED'].includes(effective(x))&&!(effective(x)==='WAITING'&&x.executionEligibility==='READY'));
+ if(f==='waitblocked')return [...o.filter(x=>work(x)&&['WAITING','BLOCKED','OWNER_GATE','REVIEW','VERIFY','PAUSED'].includes(effective(x))&&!(effective(x)==='WAITING'&&x.executionEligibility==='READY')),...closureConflicts];
  if(f==='closed')return sortClosed(ended,closedOrder);
  if(f==='done')return sortClosed(done.filter(completion),'finished');
  if(f==='archived')return sortClosed(done.filter(x=>effective(x)==='CLOSED_UNVERIFIED'&&!completion(x)),'closed');
@@ -145,12 +146,12 @@ function rawRowsFor(data,filter,closedOrder,openOrder){
  if(f==='ready')return o.filter(x=>work(x)&&ready(x));
  if(f==='waiting')return o.filter(x=>effective(x)==='WAITING'&&!ready(x));
  if(f==='waitgroup')return o.filter(x=>effective(x)==='OWNER_GATE'||effective(x)==='WAITING'&&!ready(x));
- if(f==='blocked')return o.filter(x=>effective(x)==='BLOCKED');
+ if(f==='blocked')return [...o.filter(x=>effective(x)==='BLOCKED'),...closureConflicts];
  if(f==='paused')return o.filter(x=>effective(x)==='PAUSED');
  if(f==='unstarted')return o.filter(x=>work(x)&&effective(x)==='OPEN'&&!ready(x));
  if(f==='system')return o.filter(x=>x.workKind==='SYSTEM'||effective(x)==='SYSTEM');
  if(f==='goal')return o.filter(x=>x.workKind==='GOAL'||effective(x)==='GOAL');
- return sortOpen(o.filter(work),openOrder);
+ return [...sortClosed(closureConflicts,'closed'),...sortOpen(o.filter(work),openOrder)];
 }
 // Group only cards with a real visible parent. Source state, leases and ordering
 // remain independent. A filter without that parent still shows its children.
@@ -186,8 +187,8 @@ function renderCards(container,rows,options){
  hierarchy.rows.forEach((row,index)=>{
   const s=viewStatus(row),p=priority(row),pr=progress(row,opt),number=Number(row.number)||0;
   const childGroup=hierarchy.groups.get(number)||null,childrenExpanded=expandedProjectParents.has(number);
-  const el=document.createElement('article');el.className='work-row tiq-work-card status-'+s.toLowerCase()+' priority-'+p.toLowerCase()+(opt.compact?' tiq-compact':'');
-  el.style.setProperty('--status-color',COLORS[s]||COLORS.UNKNOWN);el.setAttribute('data-work-number',txt(number));el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label','Mở chi tiết công việc '+number+' '+title(row));
+  const el=document.createElement('article');el.className='work-row tiq-work-card status-'+s.toLowerCase()+' priority-'+p.toLowerCase()+(opt.compact?' tiq-compact':'')+(row.closureConflict===true?' closure-conflict':'');
+  el.style.setProperty('--status-color',row.closureConflict===true?COLORS.BLOCKED:COLORS[s]||COLORS.UNKNOWN);el.setAttribute('data-work-number',txt(number));el.tabIndex=0;el.setAttribute('role','button');el.setAttribute('aria-label','Mở chi tiết công việc '+number+' '+title(row));
   const project=txt(row.projectName||'Chưa phân dự án'),stream=txt(row.workstreamName||row.workPackageName||'Chưa phân nhánh');
   const truth=row.liveTruth&&typeof row.liveTruth==='object'?row.liveTruth:null;
   const rawBlocker=childGroup?'':txt(truth?.blocker||row.blocker||row.waitReason||'').trim(); // Project supervisor is intentionally not dispatched.
@@ -219,7 +220,7 @@ function renderCards(container,rows,options){
   const signature=JSON.stringify([s,p,person(row),pr.percent,summary,project,stream,row.parentNumber,steps,bar,started,ended,row.lastActivityAt,row.lastActivitySummary,truth,opt.compact,childGroup?.count,childGroup?.done,childGroup?.visible,childrenExpanded]);
   const past=lastSignatures.get(number);lastSignatures.set(number,signature);
   if(past&&past!==signature)el.classList.add('recently-updated');
-  el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+txt(index+1).padStart(2,'0')+'</span><span class="work-id">#'+esc(number)+'</span><span class="priority '+p.toLowerCase()+'">'+esc(p)+'</span><span class="work-nv">'+esc(person(row))+'</span><span class="state '+s.toLowerCase()+'">'+badgeIcon(s)+esc(s==='VERIFY'&&status(row)==='DONE'?'CHỜ NGHIỆM THU':LABELS[s]||s)+'</span></div>'
+  el.innerHTML='<div class="work-main"><div class="work-top"><span class="rank">'+txt(index+1).padStart(2,'0')+'</span><span class="work-id">#'+esc(number)+'</span><span class="priority '+p.toLowerCase()+'">'+esc(p)+'</span><span class="work-nv">'+esc(person(row))+'</span><span class="state '+s.toLowerCase()+'">'+badgeIcon(s)+esc(row.closureConflict===true?'LỆCH: ĐÓNG / CÒN CHẶN':s==='VERIFY'&&status(row)==='DONE'?'CHỜ NGHIỆM THU':LABELS[s]||s)+'</span></div>'
    +'<div class="work-hierarchy">'+esc(project)+' <span aria-hidden="true">›</span> '+esc(stream)+'</div>'+parentLine
    +'<div class="work-title">'+esc(title(row))+'</div>'
    +(childGroup?'<div class="tiq-project-child-summary"><span>VIỆC CON: '+childGroup.done+'/'+childGroup.count+' đã nghiệm thu</span> '+(childGroup.visible?'<button type="button" class="tiq-project-children-toggle" aria-expanded="'+childrenExpanded+'">'+(childrenExpanded?'THU GỌN':'XEM VIỆC CON')+'</button>':'')+'</div>':'')
