@@ -48,7 +48,8 @@ function render():void {
     const list=$('commands');list.replaceChildren();
     for(let i=0;i<level.originalCommands.length;i++){
       const editable=i===level.editableSlot;
-      const e=button(`Lệnh ${i+1}: ${i===current.editSlot&&current.replacement?current.replacement:level.originalCommands[i]} · ${editable?'Có thể sửa':'Cố định'}`,()=>{
+      const shownCommand=i===current.editSlot&&current.replacement?current.replacement:level.originalCommands[i];
+      const e=button(`Lệnh ${i+1}: ${commandNames[shownCommand]} (${shownCommand}) · ${editable?'Có thể sửa':'Cố định'}`,()=>{
         if(!editable){status='Lệnh cố định, không thể thay.';render();return;}
         current=selectSlot(current,i);status='Chọn một lệnh khác trong danh sách.';render();($('choices').children[0] as HTMLButtonElement|undefined)?.focus?.();
       });e.className=editable?'editable':'';if(i===current.editSlot)e.className+=' selected';list.appendChild(e);

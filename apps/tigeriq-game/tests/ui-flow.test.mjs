@@ -168,3 +168,19 @@ test('onboarding skip from first step and replay starts at the first step',async
   e['intro-skip'].click();
   assert.equal(e.onboarding.hidden,true);
 });
+
+test('G06 command cards show Vietnamese action names before and after the one valid edit',async()=>{
+  const e=makeHarness();
+  await import('../dist/main.js?ui-harness=localized-commands');
+  e['level-buttons'].children[0].click();
+  const level=LEVELS[0], slot=level.editableSlot;
+  assert.match(e.commands.children[0].textContent,/Lệnh 1: Đi tới \(MOVE\) · Cố định/);
+  assert.match(e.commands.children[slot].textContent,/Lệnh 2: Quay trái \(TURN_LEFT\) · Có thể sửa/);
+  e.commands.children[slot].click();
+  const answer=enumerateSolutions(level)[0].replacement;
+  e.choices.children.find(node=>node.textContent.endsWith(`(${answer})`)).click();
+  assert.match(e.commands.children[slot].textContent,/Lệnh 2: Đi tới \(MOVE\) · Có thể sửa/);
+  assert.equal(e.run.disabled,false);
+  e.run.click();
+  assert.equal(e['result-title'].textContent,'ĐÃ GIÚP ROBOT!');
+});
