@@ -78,6 +78,15 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(apiDoctorScanSignature([{employeeId:'NV09',provider:'ollama',action:'probe',failureClass:'timeout'}])).toBe(apiDoctorScanSignature([]));
   });
 
+  it('handles NV17 inception provider source-contract execution blocking and validation',()=>{
+    const resourceId='res:inception:mercury-2.5:default:core';
+    const nv17WorkOrder=buildApiDoctorRepairWorkOrder({employeeId:'NV17',provider:'inception',resourceId,failureClass:'source_contract'});
+    expect(nv17WorkOrder.resourceScope).toBe('API_DOCTOR_SOURCE_REPAIR_NV17_INCEPTION');
+    expect(nv17WorkOrder.body).toContain(`API_DOCTOR_RESOURCE_ID=${resourceId}`);
+    expect(nv17WorkOrder.signature).toContain('NV17|inception|source_contract');
+    expect(nv17WorkOrder.body).toContain('MUTATION_OWNER=CORE_DYNAMIC_LEASE');
+  });
+
   it('adopts an idempotent, PC01-scoped one-time real NV09 JSON canary without a shell',()=>{
     const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     const start=source.indexOf('async function owner4595CanaryOnce(){');
