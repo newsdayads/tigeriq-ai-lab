@@ -31,6 +31,7 @@ import { buildFailureLearningCandidates, failureLearningEventTypes } from './fai
 import { SELF_AUDIT_CONTRACTS, anomalyMaterializationDecision, anomalyResolutionSignatures, evaluateSelfAudit, resolveRuntimeSourceIdentity, selfAuditFunctionalFailureKeys, syntheticSelfAuditCanary } from './self-audit.mjs';
 import { CONTINUOUS_VERIFY_CADENCE_MS, cadenceContinuousVerifyDue, githubContinuousVerifyTrigger, runtimeContinuousVerifyTrigger, createContinuousVerifyPendingQueue } from './continuous-verify.mjs';
 import { planContinuousVerifyRecovery, CONTINUOUS_VERIFY_RECOVERY_EVENT_LIMIT } from './continuous-verify-recovery.mjs';
+import { assessMainCiGate } from './main-ci-health.mjs';
 import { autonomousRcaCanonicalAction, autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
 import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt } from './campaign-runner.mjs';
 import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
@@ -4069,8 +4070,41 @@ async function materializeAutonomousRcaUnlocked({store=pool}={}){
   return{candidates:rcas.length,workOrders,ownerExceptions,observeOnly,deduped,blocked};
 }
 
+async function probeMainCiGate(){
+  if(!GITHUB_TOKEN)return {state:'UNKNOWN',reason:'GITHUB_TOKEN_MISSING'};
+  const url='https://api.github.com/repos/'+encodeURIComponent(GITHUB_OWNER)+'/'+encodeURIComponent(GITHUB_REPO);
+  const headers={Accept:'application/vnd.github+json',Authorization:'Bearer '+GITHUB_TOKEN,
+    'User-Agent':'TigerIQ-Core-Continuous-Verify'};
+  // Observe fresh main SHA and exact push checks. PR checks cannot authorize
+  // an installed PC01 release; there is no new webhook, queue or release path.
+  const commit=await fetchJson(url+'/commits/main',{headers},8000);
+  const sha=String(commit?.sha||'').trim();
+  if(!/^[a-f0-9]{40}$/i.test(sha))return {state:'UNKNOWN',reason:'MAIN_SHA_UNVERIFIED'};
+  const payload=await fetchJson(url+'/actions/runs?head_sha='+encodeURIComponent(sha)+'&per_page=100',{headers},8000);
+  return assessMainCiGate({
+    mainSha:sha,commitAt:commit?.commit?.committer?.date||commit?.commit?.author?.date,
+    workflowRuns:payload?.workflow_runs,nowMs:Date.now()
+  });
+}
+
 export async function runSelfAuditScan({store=pool,nowMs=Date.now()}={}){
   const snapshot=await collectSelfAuditSnapshot(store);
+  if(store===pool){
+    try{
+      snapshot.mainCi=await probeMainCiGate();
+      await event('MAIN_CI_GATE_OBSERVED',{
+        mainSha:snapshot.mainCi?.mainSha||null,state:snapshot.mainCi?.state||'UNKNOWN',
+        reason:snapshot.mainCi?.reason||null,
+        affected:snapshot.mainCi?.affected||[],
+      });
+    }catch(error){
+      // Probe loss is UNKNOWN, not a fabricated failure; next existing
+      // five-minute Core audit naturally retries without a second scheduler.
+      await event('MAIN_CI_GATE_PROBE_UNAVAILABLE',{
+        reason:String(error?.message||error).slice(0,120),
+      });
+    }
+  }
   const result=evaluateSelfAudit(snapshot,{nowMs});
   const persistence=await persistSelfAuditResult(result,store,{nowMs});
   let rca={candidates:0,workOrders:0,ownerExceptions:0,observeOnly:0,deduped:0,blocked:0,skipped:store===pool?null:'CUSTOM_STORE'};

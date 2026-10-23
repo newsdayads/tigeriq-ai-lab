@@ -9,6 +9,7 @@ export const SELF_AUDIT_CONTRACTS = Object.freeze([
   { id:'DEPENDENCY_TERMINAL_GATE', severity:'HIGH', signal:'dependency', description:'A dependency-gated objective must not be terminal completed before all gates pass.' },
   { id:'SERVICE_FUNCTIONAL_INTEGRITY', severity:'MEDIUM', signal:'functional', description:'A healthy service signal must not mask failed expected behavior checks.' },
   { id:'UPDATER_WATCHDOG_HEALTH', severity:'MEDIUM', signal:'watchdog', description:'Updater/watchdog health must remain true when those signals are available.' },
+  { id:'MAIN_CI_GATE_HEALTH', severity:'HIGH', signal:'ci', description:'Failed or overdue GitHub main CI must be routed into the existing bounded coding repair lane.' },
 ]);
 
 const contractById=new Map(SELF_AUDIT_CONTRACTS.map(x=>[x.id,x]));
@@ -124,6 +125,27 @@ export function evaluateSelfAudit(snapshot={},{
         objectiveId:dep.objectiveId||dep.id||null,status:dep.status||null,
         dependencyGateRequired:true,dependencyGatePass:dep.dependencyGatePass===true,
         dependencyGateReason:dep.dependencyGateReason||null
+      }));
+    }
+  }
+
+  // Only exact-main GitHub push evidence can materialize CI remediation.
+  // Missing/unverified API reads never become a synthetic FAIL.
+  const mainCi=snapshot.mainCi;
+  if(mainCi&&['PASS','FAILED','STALLED','WAITING'].includes(mainCi.state)&&
+     /^[a-f0-9]{40}$/i.test(String(mainCi.mainSha||''))){
+    evaluatedContracts.add('MAIN_CI_GATE_HEALTH');
+    if(['FAILED','STALLED'].includes(mainCi.state)){
+      const checks=Array.isArray(mainCi.runs)?mainCi.runs.slice(0,3).map(x=>({
+        name:String(x.name||'').slice(0,80),phase:String(x.phase||'').slice(0,30),
+        runId:Number.isSafeInteger(x.runId)?x.runId:null,
+        ...(x.url?{url:String(x.url).slice(0,180)}:{})
+      })):[];
+      anomalies.push(anomaly('MAIN_CI_GATE_HEALTH','canonical-main-ci-gates',{
+        kind:'source_code',resourceScope:'TIGERIQ_MAIN_CI_GATES',
+        sourceSha:mainCi.mainSha,observedState:mainCi.state,
+        reason:String(mainCi.reason||'MAIN_CI_UNHEALTHY').slice(0,120),
+        checks,affected:Array.isArray(mainCi.affected)?mainCi.affected.slice(0,3):[],
       }));
     }
   }
