@@ -447,8 +447,8 @@ describe('TigerIQ Live Work Order projection', () => {
       blocker:'PHYSICAL_S10_CURRENT_STATE_NOT_VERIFIED',
     });
     expect(row.nextStep).toMatch(/không tự mở lại/i);
-    expect(parseRecentClosedIssue({...conflict,body:'CURRENT_STATE=NOT_PLANNED\\nDONE=false'},now)).toBeNull();
-    expect(parseRecentClosedIssue({...conflict,body:'CURRENT_STATE=BLOCKED_DEVICE_RELEASE\\nDONE=true'},now)).toBeNull();
+    expect(parseRecentClosedIssue({...conflict,body:'CURRENT_STATE=NOT_PLANNED\nDONE=false'},now)).toBeNull();
+    expect(parseRecentClosedIssue({...conflict,body:'CURRENT_STATE=BLOCKED_DEVICE_RELEASE\nDONE=true'},now)).toBeNull();
     expect(parseRecentClosedIssue({...conflict,state_reason:'duplicate'},now)).toBeNull();
     const root={number:5144,state:'open',body:[
       '- [ ] R09 — Other proof',
