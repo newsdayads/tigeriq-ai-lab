@@ -50,3 +50,40 @@ test('USB UVC controller releases Surface on close, unplug and preview failure (
   assert.match(controller,/catch \(t: Throwable\) \{\s*Log\.e\(logTag, "UVC preview failed", t\)\s*[\s\S]*?releasePreview\(\)/);
   assert.match(controller,/preview\.surfaceTextureListener === this/);
 });
+
+test('R01 lists every missing Gradle wrapper input, not just its JAR',()=>{
+  const root=mkdtempSync(join(tmpdir(),'gh5135-wrapper-'));
+  try{
+    const result=inspectR01(root);
+    const missing=result.missingFiles;
+    for(const needed of [
+      'apps/ultracarhcm-v2/gradlew',
+      'apps/ultracarhcm-v2/gradle/wrapper/gradle-wrapper.properties',
+      'apps/ultracarhcm-v2/gradle/wrapper/gradle-wrapper.jar',
+      'apps/ultracarhcm-v2/app/src/main/res',
+      'apps/ultracarhcm-v2/app/src/main/java'
+    ]) assert.ok(missing.includes(needed),'must report '+needed);
+    assert.equal(result.ok,false);
+  }finally{rmSync(root,{recursive:true,force:true});}
+});
+
+test('R01 detects missing source resources even if Gradle entry files are present',()=>{
+  const root=mkdtempSync(join(tmpdir(),'gh5135-assets-'));
+  try{
+    const base=join(root,'apps/ultracarhcm-v2');
+    for(const p of ['settings.gradle','build.gradle','app/build.gradle',
+      'app/src/main/AndroidManifest.xml','gradlew',
+      'gradle/wrapper/gradle-wrapper.properties','gradle/wrapper/gradle-wrapper.jar']) {
+      const full=join(base,p);
+      mkdirSync(join(full,'..'),{recursive:true});
+      writeFileSync(full,'fixture-only');
+    }
+    const source=join(base,'app/src/main/java/ai/tigeriq/Test.kt');
+    mkdirSync(join(source,'..'),{recursive:true});
+    writeFileSync(source,'val missing = R.drawable.v2_road_city_night');
+    const result=inspectR01(root);
+    assert.equal(result.ok,false);
+    assert.ok(result.missingResources.includes('drawable/v2_road_city_night'));
+    assert.ok(result.missingFiles.includes('apps/ultracarhcm-v2/app/src/main/res'));
+  }finally{rmSync(root,{recursive:true,force:true});}
+});
