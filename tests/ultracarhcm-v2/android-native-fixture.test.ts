@@ -71,6 +71,10 @@ describe('GH-5135 native Android compile gate (synthetic fixtures, not a release
       const app=join(worktree,'apps/ultracarhcm-v2');
       createSyntheticAssets(app);
       const built=run('bash',['./gradlew','--no-daemon',':app:assembleDebug',':app:lintDebug',':app:testDebugUnitTest'],app,350000,env);
+      if (built.status !== 0) {
+        const lint = join(app,'app/build/intermediates/lint_intermediate_text_report/debug/lint-results-debug.txt');
+        if (existsSync(lint)) console.error('ANDROID_LINT_FULL_REPORT:\n'+readFileSync(lint,'utf8').slice(0,14000));
+      }
       requireSuccess(built,'Android SDK compile/lint/unit at '+expected);
       const apk=join(app,'app/build/outputs/apk/debug/app-debug.apk');
       expect(existsSync(apk),'Debug APK missing after Gradle passed').toBe(true);
