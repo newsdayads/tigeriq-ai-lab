@@ -277,6 +277,34 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(row).toMatchObject({ status: 'BLOCKED' });
   });
 
+  it('GH-5255 keeps invalid V2 READY-source jobs out of executable queue ranking', () => {
+    const invalid=issue(5222,'[P1][API DOCTOR] groq source-contract repair',[
+      ...coreQueueFlags(),
+      'WORK_ORDER_LIFECYCLE=V2',
+      'CURRENT_STATE=READY_AUTO_EXECUTION',
+      'AUTO_QUEUE=INCLUDED',
+      'PRIORITY=P1',
+      'OWNER_DIRECT=true',
+      'CAPABILITY=reasoning',
+      'RESOURCE_SCOPE=API_DOCTOR_SOURCE_REPAIR_NV11_GROQ',
+      'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+    ].join('\n'));
+    const queue=parseQueueIssue(invalid);
+    expect(queue).toMatchObject({number:5222,status:'WAITING',
+      waitReason:'LIFECYCLE_V2_CONTRACT_INVALID'});
+    const ranked=rankQueueRows([queue]);
+    expect(ranked[0]).toMatchObject({number:5222,eligibleNow:false,
+      dispatchRank:null,status:'WAITING'});
+    const work=parseOpenWorkIssue(invalid,{queued:ranked[0]});
+    expect(work.executionEligibility).toBe('PARKED_DEPENDENCY');
+    const validLegacy=issue(5223,'[P1][CORE] legacy valid',[
+      ...coreQueueFlags(),'PRIORITY=P1','AUTO_QUEUE=INCLUDED',
+    ].join('\n'));
+    const legacyQueue=parseQueueIssue(validLegacy);
+    expect(rankQueueRows([legacyQueue])[0]).toMatchObject({
+      number:5223,eligibleNow:true,dispatchRank:1,status:'QUEUED'});
+  });
+
   it('keeps explicit dependency-wait state out of QUEUED', () => {
     const row = parseQueueIssue(issue(2005, '[P0] Chờ dependency', [
       ...coreQueueFlags(),
