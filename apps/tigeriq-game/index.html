@@ -12,7 +12,16 @@
  <main class="app" id="app">
   <header><p class="eyebrow">TIGERIQ GAME · BẢN THỬ 5 MÀN</p><h1>Robot Oops!</h1><p class="subtitle">Sửa đúng một lệnh để giúp robot hoàn thành nhiệm vụ.</p></header>
   <section id="select-screen" aria-labelledby="select-title">
-    <h2 id="select-title">Chọn màn chơi</h2><p>Chạm vào một màn. Không cần kéo thả.</p><div id="level-buttons" class="level-grid"></div>
+    <h2 id="select-title">Chọn màn chơi</h2>
+    <div id="onboarding" class="onboarding" role="region" aria-labelledby="onboarding-title">
+      <h3 id="onboarding-title">Hướng dẫn 3 bước</h3>
+      <p id="onboarding-step" class="onboarding-step" aria-live="polite"></p>
+      <p id="onboarding-description"></p>
+      <div class="actions"><button type="button" id="intro-next" class="primary">Tiếp</button><button type="button" id="intro-skip">Bỏ qua</button></div>
+    </div>
+    <button type="button" id="intro-replay" hidden>Xem lại hướng dẫn</button>
+    <p>Chạm vào một màn. Không cần kéo thả.</p>
+    <div id="level-buttons" class="level-grid"></div>
   </section>
   <section id="play-screen" hidden aria-labelledby="play-title">
     <div class="title-bar"><button type="button" id="back" class="small">Về chọn màn</button><h2 id="play-title">Màn</h2></div>

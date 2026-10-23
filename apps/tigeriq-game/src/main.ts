@@ -7,6 +7,12 @@ const allCommands=Object.keys(commandNames) as Command[];
 const $=<T extends HTMLElement>(id:string):T=>{const e=document.getElementById(id);if(!e)throw new Error('Missing UI '+id);return e as T;};
 const sections={select:$('select-screen'),play:$('play-screen'),result:$('result-screen')};
 let current:GameSession=newSession();let status='Chọn màn để bắt đầu.';
+const introSteps=[
+  {title:'Bước 1/3 · Xem mục tiêu',description:'Nhìn ô đích màu vàng, công tắc tím hoặc vị trí giao hàng trên lưới và đọc mục tiêu ở đầu màn.'},
+  {title:'Bước 2/3 · Sửa một lệnh',description:'Chạm lệnh có chữ Có thể sửa, rồi chọn một lệnh mới khác lệnh cũ. Các lệnh Cố định không thay được.'},
+  {title:'Bước 3/3 · Chạy và xem kết quả',description:'Chạm CHẠY để giúp robot. Nếu sai, chọn Sửa lại và thử tiếp. Nếu đúng, chọn Màn tiếp.'}
+] as const;
+let introIndex=0;let introVisible=true;
 function text(id:string,value:string):void{$(id).textContent=value;}
 function button(label:string,click:()=>void):HTMLButtonElement {const e=document.createElement('button');e.type='button';e.textContent=label;e.addEventListener('click',click);return e;}
 function goalDescription(l:Puzzle):string {return l.goal.kind==='position'?`Đưa robot tới ô (${l.goal.x}, ${l.goal.y}).`:l.goal.kind==='switch'?'Cho robot nhấn công tắc màu tím.':'Đưa gói hàng tới ô nhận màu vàng.';}
@@ -19,10 +25,19 @@ function cancelEdit():void {
   render();
   ($('commands').children[slot] as HTMLButtonElement|undefined)?.focus?.();
 }
+function renderOnboarding():void {
+  $('onboarding').hidden=!introVisible;
+  $('intro-replay').hidden=introVisible;
+  if(!introVisible)return;
+  text('onboarding-step',introSteps[introIndex].title);
+  text('onboarding-description',introSteps[introIndex].description);
+  text('intro-next',introIndex===introSteps.length-1?'Bắt đầu chơi':'Tiếp');
+}
 function render():void {
   for(const [key,node] of Object.entries(sections))node.hidden=key!==current.screen;
   text('status',status);
   if(current.screen==='select'){
+    renderOnboarding();
     const list=$('level-buttons');list.replaceChildren();
     for(let i=0;i<LEVELS.length;i++)list.appendChild(button(`${i+1}. ${LEVELS[i].name} · ${current.completedLevels.includes(i)?'Đã qua · Chơi lại':'Chưa chơi · Chơi'}`,()=>{current=openLevel(i,current.completedLevels);status='Chọn lệnh có thể sửa.';render();}));return;
   }
@@ -54,6 +69,21 @@ function render():void {
     const next=$<HTMLButtonElement>('next');next.hidden=!won;next.textContent=current.levelIndex===LEVELS.length-1?'Chọn màn':'Màn tiếp';
   }
 }
+$('intro-next').addEventListener('click',()=>{
+  if(current.screen!=='select'||!introVisible)return;
+  if(introIndex===introSteps.length-1){introVisible=false;status='Đã hoàn tất hướng dẫn. Chọn màn để chơi.';}
+  else introIndex++;
+  render();
+});
+$('intro-skip').addEventListener('click',()=>{
+  if(current.screen!=='select'||!introVisible)return;
+  introVisible=false;status='Đã bỏ qua hướng dẫn. Chọn màn để chơi.';render();
+});
+$('intro-replay').addEventListener('click',()=>{
+  if(current.screen!=='select'||introVisible)return;
+  introIndex=0;introVisible=true;status='Đang xem lại hướng dẫn.';render();
+  ($<HTMLButtonElement>('intro-next')).focus?.();
+});
 $('back').addEventListener('click',()=>{current={...newSession(),completedLevels:[...current.completedLevels]};status='Đã về chọn màn.';render();});
 $('home').addEventListener('click',()=>{current={...newSession(),completedLevels:[...current.completedLevels]};status='Đã về chọn màn.';render();});
 $('reset').addEventListener('click',()=>{current=retryLevel(current);status='Đã đặt lại màn chơi.';render();});

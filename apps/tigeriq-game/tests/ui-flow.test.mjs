@@ -12,7 +12,7 @@ class StubNode {
   replaceChildren(...children) { this.children=[...children]; }
   appendChild(n) { this.children.push(n); return n; }
 }
-const ids=['select-screen','play-screen','result-screen','status','level-buttons','back','home','reset','retry','next','run','play-title','goal-description','board','commands','edit-menu','choices','result-title','result-description','result-board'];
+const ids=['select-screen','play-screen','result-screen','status','level-buttons','back','home','reset','retry','next','run','play-title','goal-description','board','commands','edit-menu','choices','result-title','result-description','result-board','onboarding','onboarding-step','onboarding-description','intro-next','intro-skip','intro-replay'];
 function makeHarness(){
   const nodes = Object.fromEntries(ids.map(id=>[id,new StubNode(id)]));
   const graphics = new Proxy({}, {get:(obj,key)=>['beginPath','arc','fill','fillRect','clearRect','save','translate','rotate','moveTo','lineTo','closePath','restore'].includes(key) ? ()=>{} : obj[key],set:(obj,key,value)=>{obj[key]=value;return true;}});
@@ -128,4 +128,43 @@ test('keyboard Escape and explicit Close cancel the editing menu and restore foc
   e.choices.children.find(n=>n.textContent.endsWith(`(${answer})`)).click();
   e.run.click();
   assert.equal(e['result-title'].textContent,'ĐÃ GIÚP ROBOT!');
+});
+
+test('three-step onboarding advances, completes, skips and replays without blocking gameplay',async()=>{
+  const e=makeHarness();
+  await import('../dist/main.js?ui-harness=three-step-onboarding');
+  assert.equal(e.onboarding.hidden,false);
+  assert.equal(e['intro-replay'].hidden,true);
+  assert.match(e['onboarding-step'].textContent,/Bước 1\/3/);
+  assert.match(e['onboarding-description'].textContent,/mục tiêu/);
+  e['intro-next'].click();
+  assert.match(e['onboarding-step'].textContent,/Bước 2\/3/);
+  e['intro-next'].click();
+  assert.match(e['onboarding-step'].textContent,/Bước 3\/3/);
+  assert.equal(e['intro-next'].textContent,'Bắt đầu chơi');
+  e['intro-next'].click();
+  assert.equal(e.onboarding.hidden,true);
+  assert.equal(e['intro-replay'].hidden,false);
+  e['intro-replay'].click();
+  assert.equal(e['intro-next'].focused,true);
+  assert.match(e['onboarding-step'].textContent,/Bước 1\/3/);
+  e['intro-skip'].click();
+  assert.equal(e.onboarding.hidden,true);
+  e['level-buttons'].children[0].click();
+  assert.equal(e['play-screen'].hidden,false);
+  e.back.click();
+  assert.equal(e['intro-replay'].hidden,false);
+  assert.equal(e.onboarding.hidden,true);
+});
+test('onboarding skip from first step and replay starts at the first step',async()=>{
+  const e=makeHarness();
+  await import('../dist/main.js?ui-harness=skip-first');
+  e['intro-skip'].click();
+  assert.equal(e.onboarding.hidden,true);
+  e['intro-replay'].click();
+  assert.match(e['onboarding-step'].textContent,/Bước 1\/3/);
+  e['intro-next'].click();
+  assert.match(e['onboarding-step'].textContent,/Bước 2\/3/);
+  e['intro-skip'].click();
+  assert.equal(e.onboarding.hidden,true);
 });
