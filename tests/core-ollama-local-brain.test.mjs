@@ -22,11 +22,13 @@ test('Core Manager reserves dedicated NV08 Ollama without visiting cloud NV API'
   assert.doesNotMatch(manager,/managerShouldUseLocalFallback|profile:'AUTO'|maxProviders:3|cloudBudget/);
 });
 
-test('GitHub read-only API work uses same local worker in execution and queue eligibility',()=>{
-  assert.match(claimJob,/employeeAllowlist=j\.kind==='github_api_autowork'\?CORE_LOCAL_AUTOWORK_EMPLOYEES:stabilityAllowlist/);
-  assert.match(claimJob,/profile:j\.kind==='github_api_autowork'\?'LOCAL':\(j\.routing_profile\|\|'AUTO'\)/);
-  assert.match(queueProjection,/new Set\(CORE_LOCAL_AUTOWORK_EMPLOYEES\)/);
-  assert.doesNotMatch(queueProjection,/NV11|NV12|NV13|NV14|NV15|NV16|NV17|NV18|NV19|NV20/);
+test('GitHub auto-work shares the approved zero-cost roster and routing policy',()=>{
+  assert.match(source,/CORE_AUTOWORK_EMPLOYEES = Object\.freeze\(\[OLLAMA_EMPLOYEE_ID,'NV11','NV12'\]\)/);
+  assert.match(claimJob,/employeeAllowlist=j\.kind==='github_api_autowork'\?CORE_AUTOWORK_EMPLOYEES:stabilityAllowlist/);
+  assert.match(claimJob,/profile:effectiveCoreJobRoutingProfile\(j\)/);
+  assert.match(queueProjection,/new Set\(CORE_AUTOWORK_EMPLOYEES\)/);
+  assert.match(queueProjection,/effectiveCoreJobRoutingProfile\(job\)/);
+  assert.doesNotMatch(queueProjection,/NV13|NV14|NV15|NV16|NV17|NV18|NV19|NV20/);
 });
 
 test('bounded local manager call accepts valid structured result without any cloud calls',async()=>{

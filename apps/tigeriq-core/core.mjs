@@ -94,8 +94,10 @@ const SURFSENSE_SUMMARY_MODEL = process.env.TIGERIQ_SURFSENSE_SUMMARY_MODEL?.tri
 const CORE_MANAGER_EMPLOYEE_ID = 'NV08';
 const CORE_MANAGER_MODEL = process.env.TIGERIQ_CORE_MANAGER_MODEL?.trim() || 'qwen3:8b';
 const OLLAMA_EMPLOYEE_ID = 'NV10';
-// NV08 only Manager. NV10 performs API Doctor scans AND github_api_autowork repair tasks, never Coding Manager.
-const CORE_LOCAL_AUTOWORK_EMPLOYEES = Object.freeze([OLLAMA_EMPLOYEE_ID]);
+// NV08 is manager-only. NV10 remains the local API Doctor; approved zero-cost
+// GitHub coordination may also use provisioned FREE NV11/NV12 when LOCAL is
+// not an explicit Work Order constraint. The router rejects paid resources.
+const CORE_AUTOWORK_EMPLOYEES = Object.freeze([OLLAMA_EMPLOYEE_ID,'NV11','NV12']);
 const NV09_TIMEOUT_MS = Math.max(30000, Number(process.env.TIGERIQ_NV09_TIMEOUT_MS || 240000));
 const OPENCLAW_GATEWAY_HEALTH_URL = process.env.TIGERIQ_OPENCLAW_GATEWAY_HEALTH_URL?.trim() || 'http://127.0.0.1:18789/health';
 const OPENCLAW_ACTIVATION_FILE = process.env.TIGERIQ_OPENCLAW_ACTIVATION_FILE?.trim() || 'D:\\TigerIQ\\State\\openclaw-core-resource-enabled.json';
@@ -1983,7 +1985,7 @@ async function runJob(j) {
     const compiledPacket=String(j.kind||'').startsWith('compiled_')?executionPacketFromPrompt(j.prompt):null;
     const validateText=compiledPacket?(text)=>assertExecutionResultAccepted(text,compiledPacket):null;
     const stabilityAllowlist=stabilityV2EmployeeAllowlist(j.objective_metadata);
-    const employeeAllowlist=j.kind==='github_api_autowork'?CORE_LOCAL_AUTOWORK_EMPLOYEES:stabilityAllowlist;
+    const employeeAllowlist=j.kind==='github_api_autowork'?CORE_AUTOWORK_EMPLOYEES:stabilityAllowlist;
     let routed=await invokeRouted(routedPrompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:effectiveCoreJobRoutingProfile(j),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist,validateText,compiledPacket});
     let executionGate=null;
     if(String(j.kind||'').startsWith('compiled_')){
@@ -3694,13 +3696,13 @@ async function collectSelfAuditSnapshot(store=pool){
   for(const job of queueJobs){
     const capability=String(job.capability||'general');
     const taskKind=String(job.kind||'general');
-    // Match dispatch: health/readiness must not hide an eligible local NV10 job.
+    // Match dispatch and health with identical explicit-LOCAL / zero-cost AUTO policy.
     const profile=taskKind==='github_api_autowork'
-      ? 'LOCAL'
+      ? effectiveCoreJobRoutingProfile(job)
       : deriveRoutingProfile({requested:job.routing_profile,taskKind,capability});
     const targetWorker=String(job.objective_metadata?.targetWorker||'').trim().toUpperCase();
     const employeeAllowlist=taskKind==='github_api_autowork'
-      ? new Set(CORE_LOCAL_AUTOWORK_EMPLOYEES)
+      ? new Set(CORE_AUTOWORK_EMPLOYEES)
       : null;
     const reviewerResourceIds=capability==='review'?new Set(await reviewerResourceIdsForJob(job)):new Set();
     const candidateResources=idleResources.filter(resource=>{

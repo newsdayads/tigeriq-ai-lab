@@ -26,13 +26,14 @@ describe('Core routing fault recovery policy',()=>{
   });
 });
 
-// Regression: Core forces github_api_autowork to NV10/LOCAL during execution;
-// the resource-wait decision must not quietly revert to persisted AUTO.
-describe('GitHub local auto-work resource wait consistency',()=>{
-  it('uses LOCAL for temporary GitHub API worker unavailability and preserves other profiles',()=>{
-    const local=effectiveCoreJobRoutingProfile({kind:'github_api_autowork',routing_profile:'AUTO'});
+// Explicit LOCAL jobs remain pinned; unspecified GitHub coordination can
+// fail over among already-authorized zero-cost API resources.
+describe('GitHub auto-work resource wait consistency',()=>{
+  it('retains explicit LOCAL while defaulting safe coordination to AUTO',()=>{
+    const local=effectiveCoreJobRoutingProfile({kind:'github_api_autowork',routing_profile:'LOCAL'});
     expect(local).toBe('LOCAL');
-    expect(effectiveCoreJobRoutingProfile({kind:'github_api_autowork'})).toBe('LOCAL');
+    expect(effectiveCoreJobRoutingProfile({kind:'github_api_autowork'})).toBe('AUTO');
+    expect(effectiveCoreJobRoutingProfile({kind:'github_api_autowork',routing_profile:'AUTO'})).toBe('AUTO');
     expect(effectiveCoreJobRoutingProfile({kind:'github_review',routing_profile:'AUTO'})).toBe('AUTO');
     expect(effectiveCoreJobRoutingProfile({kind:'compiled_general',routing_profile:'QUALITY'})).toBe('QUALITY');
     expect(mayWaitAfterLocalFailure({profile:local,message:'NO_AI_RESOURCE_AVAILABLE',failures:[{kind:'timeout'}],configuredLocalCount:1})).toBe(true);

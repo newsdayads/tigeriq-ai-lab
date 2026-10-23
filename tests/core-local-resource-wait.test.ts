@@ -33,6 +33,6 @@ describe('Core #4457 LOCAL route temporary resource starvation',()=>{
     expect(capacity).toContain('where enabled=true');
     expect(core).toContain("profile:effectiveCoreJobRoutingProfile(j)");
     const localProfile=readFileSync(new URL('../apps/tigeriq-core/objective-local-routing.mjs',import.meta.url),'utf8');
-    expect(localProfile).toContain("job?.kind==='github_api_autowork'?'LOCAL'");
+    expect(localProfile).toContain("String(job?.routing_profile||'AUTO').toUpperCase()==='LOCAL'");
   });
 });
