@@ -311,6 +311,14 @@ function shrinkGroq413Prompt(prompt) {
   const tail=Math.max(0,usable-head);
   return `${text.slice(0,head)}${marker}${tail?text.slice(-tail):''}`;
 }
+export function inceptionVisibleContent(body){
+  // The Core must accept only user-visible text; reasoning and non-text parts
+  // are never an answer. Stringifying an array would silently accept "[object Object]".
+  const content=body?.choices?.[0]?.message?.content;
+  if(typeof content==='string')return content;
+  if(!Array.isArray(content))return '';
+  return content.map(part=>part?.type==='text'&&typeof part.text==='string'?part.text:'').join('');
+}
 export function inceptionReasoningPolicy(host,model){
   // Mercury 2.5 is a reasoning model: bound thinking within the existing
   // 800/1200-token output cap so it can still produce user-visible content.
@@ -340,7 +348,7 @@ async function openAiCompat(endpoint, key, model, prompt, extraHeaders = {}, tim
         method: 'POST', headers: { 'content-type':'application/json', authorization:`Bearer ${key}`, ...extraHeaders },
         body: JSON.stringify(requestBody),
       }, timeoutMs, resource?res=>syncQuotaFromHeaders(resource,res):null);
-      const text = body?.choices?.[0]?.message?.content;
+      const text = host==='api.inceptionlabs.ai'?inceptionVisibleContent(body):body?.choices?.[0]?.message?.content;
       if (!String(text || '').trim()) { const e = new Error('EMPTY_RESPONSE'); e.kind='invalid_response'; throw e; }
       return String(text);
     }catch(error){
