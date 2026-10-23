@@ -58,7 +58,7 @@ class HomeActivity : Activity() {
         if (DexUtils.isDesktop(this) && Settings.canDrawOverlays(this)) {
             try {
                 startService(Intent(this, OverlayService::class.java)
-                    .putExtra("displayId", display?.displayId ?: 0))
+                    .putExtra("displayId", requestedCameraDisplayId()))
             } catch (t: Throwable) {
                 android.util.Log.e("UltraCarV2", "DeX floating Camera service start failed", t)
             }
@@ -74,6 +74,10 @@ class HomeActivity : Activity() {
         tickHandler.removeCallbacks(clockTick)
         super.onDestroy()
     }
+
+    // DisplayManager APIs work back to minSdk 26; Activity.getDisplay() requires API 30.
+    private fun requestedCameraDisplayId(): Int =
+        DexUtils.resolveDisplay(this, 0)?.displayId ?: 0
 
     private fun shape(fill: Int, stroke: Int = Color.TRANSPARENT, radius: Float = 16f): GradientDrawable {
         return GradientDrawable().apply {
@@ -298,7 +302,7 @@ class HomeActivity : Activity() {
                                 Uri.parse("package:$packageName")))
                         } else if (DexUtils.isDesktop(this)) {
                             startService(Intent(this, OverlayService::class.java)
-                                .putExtra("displayId", display?.displayId ?: 0))
+                                .putExtra("displayId", requestedCameraDisplayId()))
                             toast("Đã gửi yêu cầu hiện Camera nổi trên DeX")
                         } else {
                             toast("S10 chưa kết nối màn hình DeX ngoài")
