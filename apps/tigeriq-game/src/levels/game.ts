@@ -37,5 +37,5 @@ export function executeLevel(state:Readonly<GameSession>):GameSession{
 export function retryLevel(state:Readonly<GameSession>):GameSession{return openLevel(state.levelIndex,state.completedLevels);}
 export function nextLevel(state:Readonly<GameSession>):GameSession{
   if(state.screen!=='result'||!state.outcome?.win)throw new Error('NEXT_REQUIRES_WIN');
-  return state.levelIndex===LEVELS.length-1?newSession():openLevel(state.levelIndex+1,state.completedLevels);
+  return state.levelIndex===LEVELS.length-1?{...newSession(),completedLevels:[...state.completedLevels]}:openLevel(state.levelIndex+1,state.completedLevels);
 }

@@ -16,7 +16,7 @@ function render():void {
   text('status',status);
   if(current.screen==='select'){
     const list=$('level-buttons');list.replaceChildren();
-    for(let i=0;i<LEVELS.length;i++)list.appendChild(button(`${i+1}. ${LEVELS[i].name} · Chơi`,()=>{current=openLevel(i);status='Chọn lệnh có thể sửa.';render();}));return;
+    for(let i=0;i<LEVELS.length;i++)list.appendChild(button(`${i+1}. ${LEVELS[i].name} · ${current.completedLevels.includes(i)?'Đã qua · Chơi lại':'Chưa chơi · Chơi'}`,()=>{current=openLevel(i,current.completedLevels);status='Chọn lệnh có thể sửa.';render();}));return;
   }
   const level=LEVELS[current.levelIndex];
   if(current.screen==='play'){
@@ -46,8 +46,8 @@ function render():void {
     const next=$<HTMLButtonElement>('next');next.hidden=!won;next.textContent=current.levelIndex===LEVELS.length-1?'Chọn màn':'Màn tiếp';
   }
 }
-$('back').addEventListener('click',()=>{current=newSession();status='Đã về chọn màn.';render();});
-$('home').addEventListener('click',()=>{current=newSession();status='Đã về chọn màn.';render();});
+$('back').addEventListener('click',()=>{current={...newSession(),completedLevels:[...current.completedLevels]};status='Đã về chọn màn.';render();});
+$('home').addEventListener('click',()=>{current={...newSession(),completedLevels:[...current.completedLevels]};status='Đã về chọn màn.';render();});
 $('reset').addEventListener('click',()=>{current=retryLevel(current);status='Đã đặt lại màn chơi.';render();});
 $('retry').addEventListener('click',()=>{current=retryLevel(current);status='Chọn lệnh khác và thử lại.';render();});
 $('next').addEventListener('click',()=>{current=nextLevel(current);status='Đã mở màn kế tiếp.';render();});

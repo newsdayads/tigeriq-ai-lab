@@ -65,3 +65,31 @@ test('DOM click-through of only stage 5 never claims completion of all five',asy
   assert.doesNotMatch(e['result-description'].textContent,/vượt qua cả 5 màn/);
   assert.match(e['result-description'].textContent,/thắng màn 5/);
 });
+
+test('real DOM selection cards retain session progress when returning home',async()=>{
+  const e=makeHarness();
+  await import('../dist/main.js?ui-harness=progress-home');
+  assert.match(e['level-buttons'].children[0].textContent,/Chưa chơi/);
+  e['level-buttons'].children[0].click();
+  e.commands.children[LEVELS[0].editableSlot].click();
+  const answer0=enumerateSolutions(LEVELS[0])[0].replacement;
+  e.choices.children.find(n=>n.textContent.endsWith(`(${answer0})`)).click();
+  e.run.click();
+  assert.equal(e['result-title'].textContent,'ĐÃ GIÚP ROBOT!');
+  e.home.click();
+  assert.match(e['level-buttons'].children[0].textContent,/Đã qua/);
+  assert.match(e['level-buttons'].children[4].textContent,/Chưa chơi/);
+  e['level-buttons'].children[4].click();
+  e.back.click();
+  assert.match(e['level-buttons'].children[0].textContent,/Đã qua/);
+  e['level-buttons'].children[4].click();
+  e.commands.children[LEVELS[4].editableSlot].click();
+  const answer4=enumerateSolutions(LEVELS[4])[0].replacement;
+  e.choices.children.find(n=>n.textContent.endsWith(`(${answer4})`)).click();
+  e.run.click();
+  assert.doesNotMatch(e['result-description'].textContent,/vượt qua cả 5 màn/);
+  e.next.click();
+  assert.match(e['level-buttons'].children[0].textContent,/Đã qua/);
+  assert.match(e['level-buttons'].children[4].textContent,/Đã qua/);
+  assert.match(e['level-buttons'].children[1].textContent,/Chưa chơi/);
+});
