@@ -162,3 +162,74 @@ describe('P1 #4999 follow-up: GitHub issue identity must match the Core job ID',
     });
   });
 });
+
+
+describe('GH-5257 R11 Mobile Worker evidence stays separate and fail-closed', () => {
+  const observed = '2026-10-23T20:43:39.828Z';
+  const mobile = [
+    { employeeId: 'NV102', source: 'core_mobile_devices', online: true, connectionStatus: 'ONLINE',
+      agentVersion: '0.27.0-nv02-core-guard', heartbeatAt: '2026-10-23T20:43:18.000Z',
+      acceptanceStatus: 'NOT_VERIFIED_20_TASKS' },
+    { employeeId: 'NV101', source: 'core_mobile_devices', online: false, connectionStatus: 'OFFLINE',
+      agentVersion: '0.24.0-pause-resume', heartbeatAt: '2026-10-06T05:33:19.000Z' },
+    { employeeId: 'NV103', source: 'core_mobile_devices', online: false, connectionStatus: 'OFFLINE',
+      agentVersion: '0.26.0-vn-new-chat', heartbeatAt: '2026-10-06T12:33:21.000Z' },
+  ];
+
+  function bridgeExtract() {
+    const source = readFileSync(new URL('../apps/tigeriq-live-bridge/server.mjs', import.meta.url), 'utf8');
+    const start = source.indexOf('function extractCoreMobileWorkers(core, generatedAt');
+    const end = source.indexOf('\nasync function snapshot(){', start);
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    const implementation = source.slice(start, end);
+    return new Function(implementation + '\nreturn extractCoreMobileWorkers;')() as
+      (core: unknown, generatedAt: string) => any[];
+  }
+
+  it('projects real NV101/102/103 snapshots without making any Mobile Worker a UI/API job', () => {
+    const extract = bridgeExtract();
+    const rows = extract({ ok: true, mobileWorkers: mobile }, observed);
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toMatchObject({ employeeId: 'NV102', kind: 'mobile', online: true,
+      heartbeatFresh: true, acceptanceStatus: 'NOT_VERIFIED_20_TASKS' });
+    expect(rows[1]).toMatchObject({ employeeId: 'NV101', online: false, connectionStatus: 'OFFLINE' });
+    const projection = sanitizeRuntimePayload({
+      ok: true, generatedAt: observed, source: { core: true, coding: true }, workers: [],
+      mobileWorkers: rows,
+    });
+    expect(projection.summary.total).toBe(0);
+    expect(projection.activeWork).toEqual([]);
+    expect(projection.mobileWorkers).toHaveLength(3);
+    expect(projection.mobileWorkers[0]).toMatchObject({employeeId: 'NV102', online: true,
+      acceptanceStatus: 'NOT_VERIFIED_20_TASKS'});
+  });
+
+  it('refuses stale ONLINE, invalid source, duplicated identities and malformed records', () => {
+    const extract = bridgeExtract();
+    const rows = extract({ok:true, mobileWorkers:[
+      {...mobile[0], heartbeatAt:'2026-10-23T19:00:00Z', acceptanceStatus:'VERIFIED_20_TASKS'},
+      mobile[0], {...mobile[0], employeeId:'NV999', source:'untrusted'},
+      {...mobile[0], employeeId:'../../NV102', source:'core_mobile_devices'},
+      {...mobile[0], employeeId:'NV105', agentVersion:'<unsafe>'},
+    ]}, observed);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({employeeId:'NV102', online:false, connectionStatus:'UNKNOWN',
+      acceptanceStatus:'NOT_VERIFIED_20_TASKS'});
+    expect(rows[1]).toMatchObject({employeeId:'NV105', agentVersion:null});
+    expect(extract({ok:false,mobileWorkers:mobile},observed)).toEqual([]);
+  });
+
+  it('revalidates Core source, freshness and completion claims at the server boundary', () => {
+    const row={ employeeId:'NV102',kind:'mobile',source:'core_mobile_devices',online:true,
+      connectionStatus:'ONLINE',heartbeatAt:'2026-10-23T18:00:00Z',
+      agentVersion:'0.27.0-nv02-core-guard',acceptanceStatus:'VERIFIED_20_TASKS'};
+    const projection=sanitizeRuntimePayload({ok:true,generatedAt:observed,
+      source:{core:true},workers:[],mobileWorkers:[row, {...row,employeeId:'NV102'}]});
+    expect(projection.mobileWorkers).toHaveLength(1);
+    expect(projection.mobileWorkers[0]).toMatchObject({online:false,connectionStatus:'UNKNOWN',
+      acceptanceStatus:'NOT_VERIFIED_20_TASKS'});
+    expect(sanitizeRuntimePayload({ok:true,generatedAt:observed,source:{core:false},
+      workers:[],mobileWorkers:[{...row,heartbeatAt:observed}]}).mobileWorkers).toEqual([]);
+  });
+});

@@ -2295,6 +2295,33 @@ export function sanitizeRuntimePayload(payload) {
       completedAt: typeof item.completedAt === 'string' ? item.completedAt.slice(0, 64) : null,
     });
   }
+  // Keep Android Mobile Workers separate from UI/API worker counts and job/lease states.
+  // Only Core-authored, minimally whitelisted evidence can cross the public bridge.
+  const mobileWorkers = [];
+  if (payload.source?.core === true && Array.isArray(payload.mobileWorkers)) {
+    const seen = new Set();
+    for (const item of payload.mobileWorkers.slice(0, 40)) {
+      const employeeId = String(item?.employeeId || '').toUpperCase();
+      if (!/^NV\d{3}$/.test(employeeId) || item?.kind !== 'mobile'
+          || item?.source !== 'core_mobile_devices' || seen.has(employeeId)) continue;
+      seen.add(employeeId);
+      const heartbeatAt = typeof item.heartbeatAt === 'string' && Number.isFinite(Date.parse(item.heartbeatAt))
+        ? new Date(item.heartbeatAt).toISOString() : null;
+      const fresh = heartbeatAt !== null && Number.isFinite(referenceAt)
+        && Date.parse(heartbeatAt) <= referenceAt + 5000
+        && referenceAt - Date.parse(heartbeatAt) <= 120000;
+      const online = fresh && item.online === true && item.connectionStatus === 'ONLINE';
+      const offline = item.online === false && item.connectionStatus === 'OFFLINE';
+      const version = String(item.agentVersion || '').slice(0, 64);
+      mobileWorkers.push({
+        employeeId, kind: 'mobile', source: 'core_mobile_devices', online,
+        connectionStatus: online ? 'ONLINE' : offline ? 'OFFLINE' : 'UNKNOWN',
+        heartbeatFresh: fresh, heartbeatAt,
+        agentVersion: /^[a-zA-Z0-9._-]+$/.test(version) ? version : null,
+        acceptanceStatus: 'NOT_VERIFIED_20_TASKS',
+      });
+    }
+  }
   const summary = {
     working: workers.filter((w) => w.state === 'working').length,
     waiting: workers.filter((w) => w.state === 'waiting').length,
@@ -2319,6 +2346,7 @@ export function sanitizeRuntimePayload(payload) {
     },
     summary,
     workers,
+    mobileWorkers,
     coreUiAssignments,
     activeWork: runtimeWorkRows(workers).map(ownerFacingWorkRow),
     nextQueue: [],

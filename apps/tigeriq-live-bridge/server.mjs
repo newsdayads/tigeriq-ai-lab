@@ -129,6 +129,35 @@ function extractCoreUiAssignments(core) {
   return out;
 }
 
+
+function extractCoreMobileWorkers(core, generatedAt = new Date().toISOString()) {
+  // Mobile Worker presence is not a Core API/UI job and never proves Android task acceptance.
+  if (core?.ok !== true || !Array.isArray(core.mobileWorkers)) return [];
+  const now = Date.parse(generatedAt);
+  const seen = new Set();
+  const rows = [];
+  for (const item of core.mobileWorkers.slice(0, 40)) {
+    const employeeId = String(item?.employeeId || '').toUpperCase();
+    if (!/^NV\d{3}$/.test(employeeId) || item?.source !== 'core_mobile_devices' || seen.has(employeeId)) continue;
+    seen.add(employeeId);
+    const ms = Date.parse(item?.heartbeatAt || '');
+    const fresh = Number.isFinite(now) && Number.isFinite(ms) && ms <= now + 5000 && now - ms <= 120000;
+    const reportedOnline = item?.online === true && item?.connectionStatus === 'ONLINE';
+    const reportedOffline = item?.online === false && item?.connectionStatus === 'OFFLINE';
+    const connectionStatus = reportedOnline && fresh ? 'ONLINE' : reportedOffline ? 'OFFLINE' : 'UNKNOWN';
+    const agentVersion = String(item?.agentVersion || '').slice(0, 64);
+    rows.push({
+      employeeId, kind: 'mobile', source: 'core_mobile_devices',
+      online: connectionStatus === 'ONLINE', connectionStatus, heartbeatFresh: fresh,
+      heartbeatAt: Number.isFinite(ms) ? new Date(ms).toISOString() : null,
+      agentVersion: /^[a-zA-Z0-9._-]+$/.test(agentVersion) ? agentVersion : null,
+      // Unverified status is the only safe presentation without a separate task ledger.
+      acceptanceStatus: 'NOT_VERIFIED_20_TASKS',
+    });
+  }
+  return rows;
+}
+
 async function snapshot(){
   const generatedAt=new Date().toISOString();let core=null,coding=null,coreError=null,codingError=null;
   try{core=await getJson(CORE)}catch(e){coreError=String(e?.message||e)}
@@ -142,7 +171,7 @@ async function snapshot(){
   for(const id of ['NV02','NV03','NV04'])workers.push(uiWorker(id,uiController,uiOk));
   const rank={working:0,waiting:1,blocked:2,unknown:3,idle:4,paused:5};workers.sort((a,b)=>(rank[a.state]??9)-(rank[b.state]??9)||a.employeeId.localeCompare(b.employeeId));
   const summary={working:workers.filter(w=>w.state==='working').length,waiting:workers.filter(w=>w.state==='waiting').length,blocked:workers.filter(w=>w.state==='blocked').length,idle:workers.filter(w=>w.state==='idle').length,unknown:workers.filter(w=>w.state==='unknown').length,total:workers.length};
-  return {ok:PSTACK_BRIDGE_READ_ONLY?false:true,generatedAt,refreshSeconds:5,authority:PSTACK_BRIDGE_READ_ONLY?'PSTACK_SANDBOX_NONAUTHORITATIVE':'PC01 live runtime',source:{core:!!core,coding:!!coding,uiAutopilot:uiOk,uiController:!!uiController,coreError,codingError,uiError},summary,workers,coreUiAssignments:extractCoreUiAssignments(core)};
+  return {ok:PSTACK_BRIDGE_READ_ONLY?false:true,generatedAt,refreshSeconds:5,authority:PSTACK_BRIDGE_READ_ONLY?'PSTACK_SANDBOX_NONAUTHORITATIVE':'PC01 live runtime',source:{core:!!core,coding:!!coding,uiAutopilot:uiOk,uiController:!!uiController,coreError,codingError,uiError},summary,workers,coreUiAssignments:extractCoreUiAssignments(core),mobileWorkers:extractCoreMobileWorkers(core,generatedAt)};
 }
 async function readRaw(req,max=512*1024){
   const chunks=[];let size=0;
