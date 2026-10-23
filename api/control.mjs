@@ -2,6 +2,7 @@ import { timingSafeEqual, randomUUID, createHash } from 'node:crypto';
 import { decideWithChief } from './chief.mjs';
 import { isOwnerAuthorized } from './owner-auth.mjs';
 import ownerDecisionHandler from '../apps/tigeriq-core/owner-decision-handler.mjs';
+import { validateOwnerWorkRequest, makeOwnerRequestReceipt, makeOwnerResultReceipt, ownerWorkRequestHistory, ownerWorkRequestResolved } from '../apps/shared/owner-work-request.mjs';
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const COMMAND_SECRET = process.env.TIGERIQ_COMMAND_SECRET || '';
@@ -444,9 +445,74 @@ function formatStatusReply(snapshot) {
   return `Vercel: trực tuyến · GitHub: trực tuyến · PC01: ${pc} · OpenClaw: chưa xác định · Ollama: chưa xác định · Hàng đợi: ${snapshot.queue.count} công việc.`;
 }
 
+// Requests are scoped to the existing GitHub issue; no new control plane/lease.
+function ownerRequestCredential(req) {
+  if (!isOwnerAuthorized(req) || !GITHUB_TOKEN) {
+    const error=new Error('owner_session_required');error.status=401;throw error;
+  }
+  return GITHUB_TOKEN;
+}
+function sameOriginWrite(req) {
+  const origin=String(req.headers.origin||'');
+  const host=String(req.headers.host||'');
+  if (!host || origin !== 'https://'+host || req.headers['sec-fetch-site']==='cross-site') {
+    const error=new Error('invalid_owner_request_origin');error.status=403;throw error;
+  }
+}
+async function ownerRequestIssue(issueNumber, token) {
+  const {owner,repo}=repoParts();
+  const issue=await gh('/repos/'+owner+'/'+repo+'/issues/'+issueNumber,{},token);
+  if (issue.pull_request || !String(issue.body||'').includes('RESOURCE_SCOPE=')) {
+    const error=new Error('invalid_owner_request_target');error.status=400;throw error;
+  }
+  return issue;
+}
+async function ownerRequestComments(issueNumber,token) {
+  const {owner,repo}=repoParts();
+  const all=[];
+  for(let page=1;page<=5;page++){
+    const batch=await gh('/repos/'+owner+'/'+repo+'/issues/'+issueNumber+'/comments?per_page=100&page='+page,{},token);
+    all.push(...batch);
+    if(batch.length<100)break;
+  }
+  return all;
+}
+async function ownerRequestApi(req,res,payload,readOnly=false){
+  const token=ownerRequestCredential(req);
+  if(!readOnly)sameOriginWrite(req);
+  const issueNumber=Number(readOnly?new URL(req.url||'/', 'https://localhost').searchParams.get('issue'):payload.issueNumber);
+  if(!Number.isSafeInteger(issueNumber)||issueNumber<1||issueNumber>99999999)return json(res,400,{error:'invalid_owner_request_issue'});
+  const issue=await ownerRequestIssue(issueNumber,token);
+  const comments=await ownerRequestComments(issueNumber,token);
+  let history=ownerWorkRequestHistory(comments).filter(x=>x.issueNumber===issueNumber);
+  if(readOnly)return json(res,200,{ok:true,issueNumber,history:history.slice(0,30)});
+  const request=validateOwnerWorkRequest(payload);
+  const duplicate=history.find(x=>x.requestId===request.requestId);
+  if(duplicate)return json(res,200,{ok:true,deduplicated:true,request:duplicate});
+  const {owner,repo}=repoParts();
+  const url='/repos/'+owner+'/'+repo+'/issues/'+issueNumber+'/comments';
+  const saved=await gh(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({body:makeOwnerRequestReceipt(request)})},token);
+  let result={requestId:request.requestId,issueNumber, message:request.message,status:'RECEIVED',receiptUrl:saved.html_url||null,reply:null};
+  // Triage provides advice, not an authority to mutate an active worker lease.
+  try{
+    const context='Thẻ công việc #'+issueNumber+' — '+String(issue.title||'')+'. Đọc yêu cầu của anh Sơn, phân tích và đưa hướng xử lý trước thực thi. Không tuyên bố đã chạy, không vượt quyền/lease. Nội dung: ';
+    const decision=await decideWithChief({message:context+request.message,history:[]});
+    const answered=decision?.mode==='reply'||decision?.mode==='status';
+    const status=answered?'ANSWERED':decision?.mode==='clarify'?'WAITING':'PLAN_SHOWN';
+    const reply=String(decision?.reply|| (answered?'Đã trả lời.':'Đã ghi chỉ đạo vào thẻ; cần nhân sự có quyền thực thi tiếp nhận.')).trim();
+    const terminal=await gh(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({body:makeOwnerResultReceipt(request.requestId,status,reply)})},token);
+    result={...result,status,reply,resultUrl:terminal.html_url||null,resolved:ownerWorkRequestResolved(status)};
+  }catch{
+    // Request is durable even when model, result receipt or provider fails.
+    result.reply='Đã lưu yêu cầu. Chưa xác minh bước phân tích; không xóa nội dung đang nhập.';
+  }
+  return json(res,201,{ok:true,request:result});
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
+      if (new URL(req.url||'/', 'https://localhost').searchParams.get('operation') === 'owner-work-request') return ownerRequestApi(req,res,null,true);
       // Reuse the existing API function quota; still require Owner session in handler.
       if (new URL(req.url || '/', 'https://tigeriq-ai-lab.vercel.app').searchParams.get('operation') === 'owner-decision')
         return ownerDecisionHandler(req, res);
@@ -460,6 +526,7 @@ export default async function handler(req, res) {
     const optionalToken = clientGithubToken(req);
 
     if (operation === 'owner-decision') return ownerDecisionHandler(req, res, payload);
+    if (operation === 'owner-work-request') return ownerRequestApi(req,res,payload);
     if (operation === 'status') return json(res, 200, await statusSnapshot(optionalToken));
     if (operation === 'whoami') return json(res, 200, await githubIdentity((await writeCredential(req)).token));
     if (operation === 'work-order-status') return json(res, 200, await workOrderStatus(payload, optionalToken));
