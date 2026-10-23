@@ -9,6 +9,14 @@ export function referencesFromSource(source) {
   for(const [,kind,name] of source.matchAll(/(?<!android\.)\bR\.(drawable|raw|layout|xml|string|id)\.([a-zA-Z]\w*)/g)) result.get(kind).add(name);
   return result;
 }
+// Track resources referenced from AndroidManifest too; framework @android:* values are external.
+export function referencesFromManifest(xml) {
+  const found = new Map(kinds.map(kind => [kind, new Set()]));
+  for (const [,kind,name] of xml.matchAll(/(?<!@android:)@(drawable|raw|layout|xml|string|id)\/([A-Za-z]\w*)/g)) {
+    found.get(kind).add(name);
+  }
+  return found;
+}
 export function inspectR01(root) {
   const base='apps/ultracarhcm-v2/';
   const required=['settings.gradle','build.gradle','app/build.gradle','app/src/main/AndroidManifest.xml','gradlew','gradle/wrapper/gradle-wrapper.properties','gradle/wrapper/gradle-wrapper.jar'];
@@ -42,6 +50,12 @@ export function inspectR01(root) {
     }
   };
   scan(java);
+  const manifest=join(root,base,'app/src/main/AndroidManifest.xml');
+  if (existsSync(manifest)) {
+    for (const [kind,names] of referencesFromManifest(readFileSync(manifest,'utf8'))) {
+      for (const name of names) refs.get(kind).add(name);
+    }
+  }
   const missingResources=[];
   for(const [kind,values] of refs) for(const name of values) if(!names.get(kind).has(name)) missingResources.push(kind+'/'+name);
   return {ok:missingFiles.length===0&&missingResources.length===0,missingFiles,missingResources:missingResources.sort()};
