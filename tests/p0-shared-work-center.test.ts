@@ -38,6 +38,25 @@ describe('TigerIQ Work Center V1 — one shared source of truth',()=>{
   expect(wc.rowsFor({recentWork:[{status:'CLOSED_UNVERIFIED',number:9,completionVerified:false},{status:'DONE',number:10,completionVerified:true}]},'archived')).toEqual([{status:'CLOSED_UNVERIFIED',number:9,completionVerified:false}]);
   expect(wc.viewStatus({status:'CLOSED_UNVERIFIED',completionVerified:false})).toBe('CLOSED_UNVERIFIED');
  });
+ it('GH-5253 displays a closed unfinished blocker in Owner action and blocked views without dispatching it',()=>{
+  const conflict={number:2949,workKind:'WORK',priority:'P1',status:'CLOSED_UNVERIFIED',
+    closureConflict:true,closureReason:'not_planned',
+    closureConflictReason:'GitHub đã đóng nhưng CURRENT_STATE vẫn BLOCKED và DONE=false',
+    completionVerified:false,progressPercent:null,closedAt:'2026-10-14T10:18:28Z',
+    blocker:'PHYSICAL_S10_CURRENT_STATE_NOT_VERIFIED'};
+  const normal={number:5253,workKind:'WORK',status:'OPEN',executionEligibility:'READY'};
+  const data={openWork:[normal],recentWork:[conflict]};
+  expect(wc.rowsFor(data,'action').map(r=>r.number)).toEqual([2949,5253]);
+  expect(wc.rowsFor(data,'blocked').map(r=>r.number)).toEqual([2949]);
+  expect(wc.rowsFor(data,'waitblocked').map(r=>r.number)).toEqual([2949]);
+  expect(wc.rowsFor(data,'archived').map(r=>r.number)).toEqual([2949]);
+  expect(wc.rowsFor(data,'done')).toEqual([]);
+  expect(wc.rowsFor(data,'ready').map(r=>r.number)).toEqual([5253]);
+  expect(wc.viewStatus(conflict)).toBe('CLOSED_UNVERIFIED');
+  expect(wc.progress(conflict).verified).toBe(false);
+  expect(wc.rowsFor(data,'all').filter(r=>r.number===2949)).toHaveLength(1);
+ });
+
  it('records only a fresh matching structured lifecycle status attestation',()=>{
    const sample=issue(validBody,{state:'open',state_reason:null,closed_at:null,updated_at:'2026-10-12T11:00:00Z'});
    const comment={state:'WAIT_DEPENDENCY',createdAt:'2026-10-12T11:45:00Z',blocker:'Wait for upstream'};
