@@ -9,6 +9,7 @@ section{background:#14233d;border:1px solid #364f77;border-radius:20px;margin-to
 button{min-height:44px;min-width:44px;border:1px solid #6481b0;border-radius:12px;background:#25456e;color:#f8fbff;font:inherit;font-weight:650;padding:12px 14px;cursor:pointer;touch-action:manipulation;}
 button.primary{background:#3d6deb;border-color:#638ff9}button:hover:not(:disabled){background:#3a6092}
 button:disabled{opacity:.48;cursor:not-allowed}button:focus-visible{outline:3px solid #fcd571;outline-offset:3px}
+.onboarding{background:#1b3253;border:1px solid #6481b0;border-radius:14px;padding:14px;margin:14px 0}.onboarding h3{margin:0 0 8px}.onboarding p{margin:6px 0}.onboarding-step{font-weight:750;color:#ffcf65}.onboarding .actions{margin-top:12px}#intro-replay{margin-top:10px}
 .level-grid{display:grid;grid-template-columns:1fr;gap:10px}.level-grid button{text-align:left}.command-grid{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.command-grid button{flex:1 1 132px}
 .editable{border-color:#ffcf65;background:#344c64}.selected{outline:3px solid #ffcf65;outline-offset:1px}
 .instruction{margin-bottom:0}canvas{display:block;width:min(100%,480px);height:auto;margin:14px auto;background:#0c1730;border-radius:12px;aspect-ratio:1}
