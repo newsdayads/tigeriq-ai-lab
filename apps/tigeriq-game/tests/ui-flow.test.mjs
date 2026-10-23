@@ -48,3 +48,20 @@ test('DOM-bound clicks follow all five levels and reach final victory',async()=>
   assert.equal(e['select-screen'].hidden,false);
   assert.equal(e['level-buttons'].children.length,5);
 });
+
+test('DOM click-through of only stage 5 never claims completion of all five',async()=>{
+  const e=makeHarness();
+  await import('../dist/main.js?ui-harness=jump-to-last');
+  e['level-buttons'].children[4].click();
+  assert.match(e['play-title'].textContent,/Màn 5\/5/);
+  const level=LEVELS[4];
+  e.commands.children[level.editableSlot].click();
+  const replacement=enumerateSolutions(level)[0].replacement;
+  const choice=e.choices.children.find(node=>node.textContent.endsWith(`(${replacement})`));
+  assert.ok(choice);
+  choice.click();
+  e.run.click();
+  assert.equal(e['result-title'].textContent,'ĐÃ GIÚP ROBOT!');
+  assert.doesNotMatch(e['result-description'].textContent,/vượt qua cả 5 màn/);
+  assert.match(e['result-description'].textContent,/thắng màn 5/);
+});
