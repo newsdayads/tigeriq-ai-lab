@@ -64,6 +64,15 @@ describe('GH-5135 R01 source-only gate (not native Android CI)', () => {
     expect(verify.stdout).toMatch(/# fail 0\b/);
   });
 
+  it('checks staging safety using synthetic media (no V1 bytes)', () => {
+    const verify = spawnSync(process.execPath, [
+      '--test', fromRoot('tests/ultracarhcm-v2/stage-v1-media.test.mjs')
+    ], {cwd: root, encoding: 'utf8', timeout: 15000});
+    expect(verify.status, verify.stdout + verify.stderr).toBe(0);
+    expect(verify.stdout).toMatch(/# pass 4\b/);
+    expect(verify.stdout).toMatch(/# fail 0\b/);
+  });
+
   it('guards Kotlin UVC preview cleanup during detach, error and close', () => {
     const file = readFileSync(fromRoot(
       app + 'app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt'
