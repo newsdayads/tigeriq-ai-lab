@@ -2,7 +2,7 @@
 // Usage: node ci/stage-v1-media.mjs --source <EXTRACTED_APK>/res --target <V2_PROJECT_DIR> [--stage --rights-evidence <file>]
 // Default = READ_ONLY verification. --stage intentionally requires a separate rights evidence document.
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -16,6 +16,25 @@ export const media = Object.freeze([
 ]);
 
 const hash = path => createHash('sha256').update(readFileSync(path)).digest('hex');
+
+// lstat is intentional: existsSync() returns false for dangling symbolic links,
+// but copyFileSync() follows them and can create/overwrite a target outside V2.
+function assertNoDestinationSymlink(projectDir, output, assetName) {
+  const projectRoot = resolve(projectDir);
+  let segment = output;
+  while (true) {
+    try {
+      if (lstatSync(segment).isSymbolicLink())
+        throw new Error('DESTINATION_SYMLINK_FORBIDDEN:' + assetName);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    if (segment === projectRoot) return;
+    const parent = dirname(segment);
+    if (parent === segment) throw new Error('DESTINATION_OUTSIDE_PROJECT:' + assetName);
+    segment = parent;
+  }
+}
 
 export function stageMedia({ sourceRes, projectDir, stage = false, rightsEvidence = null }) {
   if (!sourceRes || !projectDir) throw new Error('SOURCE_AND_PROJECT_DIR_REQUIRED');
@@ -54,13 +73,16 @@ export function stageMedia({ sourceRes, projectDir, stage = false, rightsEvidenc
     }
     // Preflight all destinations first; a late conflict must never leave partial copies.
     for (const item of files) {
+      assertNoDestinationSymlink(projectDir, item.output, item.to);
       if (existsSync(item.output) && hash(item.output) !== item.sha256)
         throw new Error('DESTINATION_ALREADY_EXISTS_DIFFERENT_BYTES:' + item.to);
     }
     for (const item of files) {
       if (existsSync(item.output)) continue;
       mkdirSync(dirname(item.output), { recursive: true });
-      copyFileSync(item.input, item.output);
+      assertNoDestinationSymlink(projectDir, item.output, item.to);
+      // COPYFILE_EXCL prevents another writer or a newly created link being overwritten.
+      copyFileSync(item.input, item.output, constants.COPYFILE_EXCL);
       if (hash(item.output) !== item.sha256) throw new Error('STAGE_SHA256_MISMATCH:' + item.to);
     }
   }
