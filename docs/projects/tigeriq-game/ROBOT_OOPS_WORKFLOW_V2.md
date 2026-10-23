@@ -41,3 +41,12 @@ Cổng chi phí, quyền, bí mật, bảo mật, phát hành, pháp lý vẫn t
 - Giao diện Work Center gom theo parent khi parent nằm trong tập dữ liệu, mặc định thu gọn thẻ con; nút mở thật.
 - Không thay trạng thái một thẻ chỉ vì thẻ khác có PR, issue comment hoặc heartbeat.
 - Mọi thay đổi GitHub phải PR, CI đạt, kiểm tra `main` và môi trường vận hành riêng sau khi phát hành.
+
+
+## S10 5G DEVICE ACCEPTANCE ADDENDUM — 23/10/2026
+- **Một máy thử, hai cổng không trùng nhiệm vụ:** G06 #5185 = thử khói trên điện thoại để gỡ khóa bản chơi 5 màn; G08 #5187 = QA độc lập đầy đủ/hồi quy sau G07. G12 #5191 chỉ kiểm thử bản Android đã đóng gói sau GO.
+- **Ưu tiên đầu tiên:** gỡ G06 `WAIT_BROWSER_E2E`; không mở đường tắt đóng G07/G08 hoặc đánh dấu hoàn tất vì S10 kết nối.
+- **Quyền:** Owner cho phép thử bằng ADB S10 5G trong đúng dự án; `NO_PC01_SHELL=true` tiếp tục khóa shell chung và sửa mã nguồn PC01. Thao tác thiết bị phải có tool/device route hợp lệ, đúng serial, một actor và biên nhận.
+- **Thứ tự an toàn:** đọc model + trạng thái ADB + pin thật → mô phỏng battery level=100 bằng ADB, xác minh lại → chạy game nội bộ với thao tác màn 1–5 và capture → reset ADB battery và xác minh trạng thái, dọn `adb reverse` nếu có.
+- **Pin 100% ADB là giả lập, không sạc thật.** Không đặt trạng thái PASS khi chưa có biên nhận trên điện thoại. Lỗi cleanup phải báo rõ và khắc phục trong scope hợp lệ.
+- Không tạo thêm job con và không gỡ cổng `NO_PRODUCTION_RELEASE`/GO/STOP. Chi tiết tại `ROBOT_OOPS_ACCEPTANCE.md` mục E.

@@ -118,3 +118,16 @@ Không tuyên bố GO, release, doanh thu hay 100% nếu các cổng trên chưa
 Xem [ROBOT_OOPS_WORKFLOW_V2.md](./ROBOT_OOPS_WORKFLOW_V2.md): một thẻ tổng đọc và 14 thẻ thực thi V2 có phụ thuộc bằng số Issue; nhân sự nhận việc theo đúng năng lực, một phạm vi một chủ ghi; giới hạn số lần thử, nghiệm thu và STOP/GO rõ. Nhóm dự án khai báo tại `projects/tigeriq-game/project.yaml`, không tạo hàng đợi cạnh tranh.
 
 **Điều kiện nhánh phát triển sau thử nghiệm:** G11–G14 giữ `WAIT_GO_DECISION` cho đến khi có biên nhận G10 GO; đóng G10 alone không tự mở việc phát triển. STOP/PIVOT không mở G11–G14, chỉ được chuyển trạng thái bằng điều phối có quyền và ghi biên nhận. Đây là cổng quản trị hữu hạn, không giả Core đã tự hiểu kết quả GO/STOP.
+
+
+## M6 — S10 5G / PC01 — cổng thử game trên máy thật (Owner 23/10/2026)
+**Thiết bị:** điện thoại Samsung S10 5G được Owner thông báo kết nối PC01, ADB phải xác nhận `device` + serial đúng trước thao tác. Không suy kết nối thật chỉ từ thông báo.
+**Phân công vào việc hiện có, không tạo thẻ:**
+- **G06 #5185 — S03 MOBILE SMOKE / UNBLOCK:** sau khi nguồn 5 màn đã merge + local build OK, chạy chính game Web 2D trên trình duyệt S10 5G qua URL nội bộ/dev server được quyền hoặc `adb reverse`, **không phát hành Production**. Thao tác thật ít nhất: mở app, thay đúng 1 lệnh, nhấn chạy, thắng/thua/thử lại, đi từ màn 1 đến màn 5 và cảm ứng một ngón. Lưu ảnh/video/log, thiết bị và SHA. Nếu chưa được xác minh thì G06 vẫn `WAIT_BROWSER_E2E`; không mở G07 dựa trên ảnh mockup.
+- **G08 #5187 — DEVICE REGRESSION / INDEPENDENT QA:** sau khi G05+G06+G07 đạt, kiểm thử lặp trên S10 5G (5/5 màn, lưu/khôi phục, âm thanh, chạm, xoay màn, hồi quy); mở rộng thêm viewport/thiết bị khác khi có, không giả có 2 điện thoại. Lưu báo cáo QA và lỗi thực, không dùng cùng G06 làm bằng chứng QA độc lập.
+- **G12 #5191 — ANDROID PACKAGE** (sau GO của G10): có thể dùng lại S10 5G để thử APK/TWA/Capacitor, nhưng không chặn G06/G08 vì chưa có APK.
+
+**Thứ tự ADB bắt buộc:** preflight quyền/tài nguyên → `adb devices -l` (device=authorized, chọn serial thật, không đoán) → đọc trạng thái pin thật qua `adb shell dumpsys battery` → **trước thử** dùng `adb shell dumpsys battery set level 100` để **mô phỏng báo cáo pin 100%**, đọc lại xác nhận → mở game/test/capture → **luôn hoàn nguyên** `adb shell dumpsys battery reset` dù PASS hay FAIL, xác nhận nguồn pin thật được trả về. Lệnh ADB không sạc vật lý; nếu muốn pin thực 100% phải sạc và kiểm tra ngoài ADB. Không chạy trên thiết bị không đúng serial/unauthorized, không thay quyền ADB hoặc cấu hình thiết bị lâu dài.
+
+**Điều kiện mở G06:** chỉ dùng bề mặt điều khiển PC01/device-bound hiện có với quyền đúng scope, one-writer/lease và biên nhận. `NO_PC01_SHELL=true` tiếp tục khóa shell tổng quát và sửa mã PC01; chỉ có thể dùng **lệnh ADB giới hạn đúng S10 5G** khi được định tuyến và xác minh quyền thiết bị. Nếu không có bề mặt ADB hợp lệ thì ghi blocker chính xác `S10_ADB_TOOL_OR_DEVICE_UNAVAILABLE`, không phá chính sách để vượt cổng. Không đăng nhập, nạp tiền, mua ứng dụng, sửa Production hay thu PII.
+**Nghiệm thu:** phiên thử có SHA build, phiên bản trình duyệt, xác nhận pin giả lập 100% trước thao tác, ảnh/video hoặc biên nhận máy thật, bảng kết quả 5/5 màn, lỗi và chứng cứ đã reset battery. Thiếu một phần ghi CHƯA NGHIỆM THU, không tự đếm 100%.
