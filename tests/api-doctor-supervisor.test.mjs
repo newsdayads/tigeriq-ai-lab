@@ -74,6 +74,12 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(first).not.toBe(apiDoctorScanSignature([nv12,nv20]));
     expect(first).not.toBe(apiDoctorScanSignature([nv11,{...nv20,action:'wait'}]));
     expect(first).not.toBe(apiDoctorScanSignature([{...nv11,provider:'alternate'},nv20]));
+  });
+
+  it('handles NV17 inception provider source-contract execution blocking and validation',()=>{
+    const nv17WorkOrder = buildApiDoctorRepairWorkOrder({employeeId:'NV17',provider:'inception',failureClass:'source_contract'});
+    expect(nv17WorkOrder.resourceId).toBe('res:inception:mercury-2.5:default:core');
+    expect(nv17WorkOrder.signature).toContain('NV17|inception|source_contract');
     expect(first).toMatch(/^SCAN\|core\|state\|[a-f0-9]{64}$/);
     expect(apiDoctorScanSignature([{employeeId:'NV09',provider:'ollama',action:'probe',failureClass:'timeout'}])).toBe(apiDoctorScanSignature([]));
   });
