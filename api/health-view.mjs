@@ -47,6 +47,25 @@ export function readIpv4Https(target, token, requestImpl=httpsRequest) {
     request.end();
   });
 }
+// Owner-facing only: the Vercel presentation proxy can display the Mobile
+// reload shortcut before the independently gated PC01 runtime is upgraded.
+const FLOATING_RELOAD_HTML = `<style id="tiq-proxy-mobile-reload-style">
+@media(max-width:767px){
+ #reloadPage.tiq-floating-reload{position:fixed!important;right:max(16px,env(safe-area-inset-right))!important;bottom:calc(20px + env(safe-area-inset-bottom))!important;z-index:65!important;display:grid!important;place-items:center!important;width:52px!important;height:52px!important;border-radius:50%!important;border:1px solid #81c9ff!important;background:#126bd3!important;color:#fff!important;box-shadow:0 8px 22px #0009!important;cursor:pointer!important;touch-action:manipulation}
+ #reloadPage.tiq-floating-reload svg{width:25px!important;height:25px!important}
+ body.drawer-open #reloadPage,body.work-detail-open #reloadPage{visibility:hidden!important;pointer-events:none!important}
+}
+</style><script id="tiq-proxy-mobile-reload-bootstrap">
+(()=>{const mount=()=>{
+ if(window.TigerIQWorkCenter&&typeof window.TigerIQWorkCenter.mountFloatingReload==='function'){window.TigerIQWorkCenter.mountFloatingReload();return}
+ if(window.matchMedia&&!window.matchMedia('(max-width:767px)').matches)return;
+ if(document.getElementById('reloadPage'))return;
+ const button=document.createElement('button');button.id='reloadPage';button.className='tiq-floating-reload';button.type='button';
+ button.setAttribute('aria-label','Tải lại trang');button.title='Tải lại trang';
+ button.innerHTML='<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 6"/><path d="M20 4v7h-7"/></svg>';
+ button.addEventListener('click',()=>window.location.reload());document.body.appendChild(button);
+ };if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount()})();
+</script>`;
 const PATHS = new Set([
   '/', '/work-ui.css', '/work-center-visual.css', '/work-center.js',
   '/api/status', '/api/live-status', '/api/health-live-work', '/api/work-history',
@@ -106,7 +125,8 @@ export default async function handler(req, res) {
         .replaceAll('/api/', '/pc01/api/')
         .replaceAll('/work-ui.css', '/pc01/work-ui.css')
         .replaceAll('/work-center-visual.css', '/pc01/work-center-visual.css')
-        .replaceAll('/work-center.js', '/pc01/work-center.js');
+        .replaceAll('/work-center.js', '/pc01/work-center.js')
+        .replace('</body>', FLOATING_RELOAD_HTML + '</body>');
       res.send(html);
       return;
     }
