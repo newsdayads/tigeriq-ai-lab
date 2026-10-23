@@ -124,6 +124,15 @@ describe('GitHub coding intake guard',()=>{
     expect(parsed?.dependsOn).toEqual([]);
   });
   it('keeps legacy safe coding issues backward compatible',()=>{expect(parseCodingIssue(issue(SAFE))?.number).toBe(777);});
+  it('never auto-dispatches TigerIQ Game expansion while the verified GO decision is missing',()=>{
+    const ready=['## ACTIVE WORK ORDER',SAFE,'WORK_ORDER_LIFECYCLE=V2','CAPABILITY=coding','EXECUTION_SURFACE=CODING','CURRENT_STATE=READY','DEPENDS_ON=#5189'].join('\n');
+    expect(parseCodingIssue(issue(ready))).toMatchObject({number:777,dependsOn:[5189]});
+    const waiting=ready.replace('CURRENT_STATE=READY','CURRENT_STATE=WAIT_GO_DECISION');
+    expect(parseCodingIssue(issue(waiting))).toBeNull();
+    expect(parseCodingIssue(issue(waiting+'\n## HISTORICAL CONTRACT\nCURRENT_STATE=READY'))).toBeNull();
+    expect(parseCodingIssue(issue(waiting.replace('WAIT_GO_DECISION','WAIT_GO_DECISION_APPROVAL')))).toBeNull();
+  });
+
 
   it('accepts a leading active Markdown heading while keeping historical grants excluded',()=>{
     const current='## OWNER OVERRIDE — CURRENT CONTRACT\n'+SAFE
