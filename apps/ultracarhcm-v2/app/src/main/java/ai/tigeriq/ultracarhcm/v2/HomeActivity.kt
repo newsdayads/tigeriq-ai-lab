@@ -195,7 +195,7 @@ class HomeActivity : Activity() {
 
     private fun saveHomeConfiguration() {
         val current = savedConfigurations()
-        if (current.length() >= 20) {
+        if (!HomeConfigRules.canSave(current.length())) {
             toast("Giới hạn 20 cấu hình Home trên thiết bị")
             return
         }
@@ -209,7 +209,7 @@ class HomeActivity : Activity() {
             .setView(input)
             .setNegativeButton("Hủy", null)
             .setPositiveButton("Lưu") { _, _ ->
-                val name = input.text.toString().trim().take(48)
+                val name = HomeConfigRules.normalizeName(input.text.toString())
                 if (name.isEmpty()) {
                     toast("Cần nhập tên cấu hình")
                 } else {
@@ -272,7 +272,7 @@ class HomeActivity : Activity() {
             .setView(input)
             .setNegativeButton("Hủy", null)
             .setPositiveButton("Lưu") { _, _ ->
-                val name = input.text.toString().trim().take(48)
+                val name = HomeConfigRules.normalizeName(input.text.toString())
                 if (name.isEmpty()) toast("Tên tài xế không được để trống")
                 else {
                     prefs.edit().putString("driver_name", name).apply()
