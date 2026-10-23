@@ -16,6 +16,9 @@ function maskNonCodeImports(code) {
   let comment = null;
   let regexLiteral = false;
   let regexClass = false;
+  // Each interpolation is executable JavaScript, even when its surrounding
+  // template raw text is not. Depth tracks nested object/block braces safely.
+  const templateExpressions = [];
 
   for (let i = 0; i < chars.length; i++) {
     const ch = chars[i];
@@ -57,10 +60,30 @@ function maskNonCodeImports(code) {
       quotedOffsets.add(i);
       if (ch === '\\' && i + 1 < chars.length) {
         quotedOffsets.add(++i);
+      } else if (quote === '`' && ch === '$' && next === '{') {
+        // Escaped interpolation was skipped above. Only executable expressions
+        // may contain real module dependencies; template raw text is not code.
+        quotedOffsets.add(++i);
+        templateExpressions.push(0);
+        quote = null;
       } else if (ch === quote) {
         quote = null;
       }
       continue;
+    }
+    if (templateExpressions.length) {
+      const last = templateExpressions.length - 1;
+      if (ch === '{') {
+        templateExpressions[last]++;
+      } else if (ch === '}') {
+        if (templateExpressions[last] === 0) {
+          quotedOffsets.add(i);
+          templateExpressions.pop();
+          quote = '`';
+          continue;
+        }
+        templateExpressions[last]--;
+      }
     }
     if (ch === '"' || ch === "'" || ch === '`') {
       quote = ch;
