@@ -1,7 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {detectIdleWithBacklog,routingFault} from '../apps/tigeriq-core/github-backlog-policy.mjs';
-import {effectiveCoreJobRoutingProfile,mayWaitAfterLocalFailure} from '../apps/tigeriq-core/objective-local-routing.mjs';
+import {effectiveCoreJobRoutingProfile,mayWaitAfterLocalFailure,githubAutoworkEmployeeAllowlist,githubAutoworkZeroCostResource} from '../apps/tigeriq-core/objective-local-routing.mjs';
 
 describe('Core routing fault recovery policy',()=>{
   it('flags only eligible backlog with idle matching capacity and no active work',()=>{
@@ -46,5 +46,40 @@ describe('GitHub auto-work resource wait consistency',()=>{
     expect(core).toContain('busyCapableResourceCount(j.capability,effectiveWaitProfile)');
     expect(core).toContain('mayWaitAfterLocalFailure({profile:effectiveWaitProfile,');
     expect(core).toContain('taskKind:j.kind||\'ai\',profile:effectiveCoreJobRoutingProfile(j),reviewerResourceIds,');
+  });
+});
+
+
+describe('NV17 source-authorized zero-cost GitHub auto-work routing',()=>{
+  const defaults=['NV10','NV11','NV12'];
+  const base={kind:'github_api_autowork',objective_metadata:{
+    targetWorker:'NV17',ownerDirect:true,admissionMode:'SAFE_P1_P5_POLICY'
+  }};
+  it('admits only the explicitly targeted NV17 under owner-direct safe P1-P5 policy',()=>{
+    expect(githubAutoworkEmployeeAllowlist(base,defaults)).toEqual(['NV17']);
+    expect(githubAutoworkEmployeeAllowlist({...base,objective_metadata:{...base.objective_metadata,targetWorker:'nv17'}},defaults)).toEqual(['NV17']);
+  });
+  it('keeps the existing NV10-NV12 default for other jobs and untrusted targets',()=>{
+    expect(githubAutoworkEmployeeAllowlist({kind:'github_api_autowork'},defaults)).toEqual(defaults);
+    expect(githubAutoworkEmployeeAllowlist({...base,objective_metadata:{...base.objective_metadata,ownerDirect:false}},defaults)).toEqual(defaults);
+    expect(githubAutoworkEmployeeAllowlist({...base,objective_metadata:{...base.objective_metadata,admissionMode:'LEGACY_EXECUTION_FLAGS'}},defaults)).toEqual(defaults);
+    expect(githubAutoworkEmployeeAllowlist({...base,objective_metadata:{...base.objective_metadata,targetWorker:'NV14'}},defaults)).toEqual(defaults);
+    expect(githubAutoworkEmployeeAllowlist({...base,kind:'github_review'},defaults)).toEqual(defaults);
+  });
+  it('filters paid, missing-tier and unsupported resources before both claim and queue projection',()=>{
+    expect(githubAutoworkZeroCostResource(base,{cost_tier:'FREE'})).toBe(true);
+    expect(githubAutoworkZeroCostResource(base,{cost_tier:'LOCAL'})).toBe(true);
+    expect(githubAutoworkZeroCostResource(base,{cost_tier:'PAID'})).toBe(false);
+    expect(githubAutoworkZeroCostResource(base,{cost_tier:''})).toBe(false);
+    expect(githubAutoworkZeroCostResource(base,{})).toBe(false);
+    expect(githubAutoworkZeroCostResource({kind:'github_review'},{cost_tier:'PAID'})).toBe(true);
+  });
+  it('uses the same scoped allowlist and free-cost guard for dispatch and eligibility',()=>{
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    expect(core).toContain("const employeeAllowlist=j.kind==='github_api_autowork'?githubAutoworkEmployeeAllowlist(j,CORE_AUTOWORK_EMPLOYEES):stabilityAllowlist;");
+    expect(core).toContain("new Set(githubAutoworkEmployeeAllowlist(job,CORE_AUTOWORK_EMPLOYEES))");
+    expect(core).toContain(".filter(x=>githubAutoworkZeroCostResource({kind:taskKind},x))");
+    expect(core).toContain("if(!githubAutoworkZeroCostResource({kind:taskKind},resource))return false;");
+    expect(core).toContain("preferredEmployeeId:j.objective_metadata?.targetWorker||null");
   });
 });
