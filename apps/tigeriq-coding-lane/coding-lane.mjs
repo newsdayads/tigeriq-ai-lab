@@ -1767,7 +1767,9 @@ export function formatMicroContextTelemetry(telemetry={}){
 async function generationContextsFor(paths,ref='main',maxBatchChars=9000,repository=SOURCE_REPOSITORY,request=''){
   return partitionGenerationFiles(await filesFor(paths,ref,repository),maxBatchChars).map(files=>{
     const micro=codingMicroContext(files,request,maxBatchChars);
-    return {paths:files.map(x=>x.path),context:micro.context,contextTelemetry:micro.telemetry};
+    return {paths:files.map(x=>x.path),context:micro.context,contextTelemetry:micro.telemetry,
+      // Keep the exact full repository contents outside the model prompt.
+      canonicalFiles:files.map(x=>({path:x.path,content:String(x.content??'')}))};
   });
 }
 export function validateCompactEdits(edits,allowedPaths=[]){
@@ -1829,10 +1831,14 @@ export function assertGenerationContextPaths(prompt,allowedPaths=[]){
   if(missing.length){const e=new Error(`CODING_GENERATION_CONTEXT_PATH_MISSING:${missing.join(',')}`);e.code='CODING_GENERATION_CONTEXT_PATH_MISSING';throw e}
   return true;
 }
-async function invokeCompactGeneration(worker,prompt,allowedPaths,exclude=[],leaseContext=null){
+async function invokeCompactGeneration(worker,prompt,allowedPaths,exclude=[],leaseContext=null,canonicalFiles=null){
   assertGenerationContextPaths(prompt,allowedPaths);
   const modelPrompt=compactPromptForChanges(prompt,{maxContextChars:6000,maxOutputChars:3200});
-  const expand=d=>expandCompactChanges(prompt,JSON.stringify(d));
+  const expand=d=>{
+    const raw=Array.isArray(d?.__tigeriqCompactEdits)&&d.__tigeriqCompactEdits.length
+      ?{summary:d.summary,edits:d.__tigeriqCompactEdits}:d;
+    return expandCompactChanges(prompt,JSON.stringify(raw),canonicalFiles);
+  };
   const validateData=d=>{const expanded=expand(d);if(expanded.changes.length){validateChanges(expanded.changes,allowedPaths);validateJobScope(allowedPaths,expanded.changes)}else if(!(expanded.noop===true&&/^BATCH_NOOP_ALLOWED=true$/m.test(prompt)))throw new Error('CODING_BATCH_NOOP_INVALID')};
   const invoked=await invokeJsonWithFailover(worker,modelPrompt,{exclude,validateData,parseData:parseCompactEditJson,shrinkPrompt:preserveGenerationPrompt,maxSameResourceAttempts:codingP0CanaryApplies(leaseContext?.objective)?1:2,leaseContext});
   return {payload:expand(invoked.data),resource:invoked.resource};
@@ -1857,7 +1863,7 @@ async function generateRepairChanges(worker,j,ref='main',issues=[],exclude=[],ca
     const scopedJob={...j,paths:batch.paths};
     const prompt=requireActualMutationPrompt(buildRepairGenerationPrompt(selected,scopedJob,batch.context,issues,canonicalObjective,liveGithubContext),
       {required:batchIndex===batches.length-1&&changes.length===0});
-    const invoked=await invokeCompactGeneration(selected,prompt,batch.paths,exclude,{workId:j.id,role:'implementer',objective:canonicalObjective});
+    const invoked=await invokeCompactGeneration(selected,prompt,batch.paths,exclude,{workId:j.id,role:'implementer',objective:canonicalObjective},batch.canonicalFiles);
     selected=invoked.resource;
     summaries.push(formatMicroContextTelemetry(batch.contextTelemetry));
     summaries.push(String(invoked.payload.summary||'').slice(0,300));
@@ -1896,7 +1902,7 @@ async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[],ca
     const batch=batches[batchIndex];
     const prompt=`You are ${selected.id}, an autonomous TigerIQ repository engineer. Implement ONLY the assigned task on a GitHub branch.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nALLOWED PATHS FOR THIS BATCH: ${batch.paths.join(', ')}\nOTHER ALLOWED PATHS are handled in separate bounded batches; do not emit them here.\nBATCH_NOOP_ALLOWED=true\nIf this batch needs no mutation, return an explicit bounded no-op; do not invent an edit.\n${reviewIssues.length?`REVIEW ISSUES TO FIX: ${JSON.stringify(reviewIssues)}\n`:''}CURRENT FILES:\n${batch.context}\nReturn ONLY JSON {"summary":"short","changes":[{"path":"exact allowed path","content":"complete replacement UTF-8 file content"}]}. Do not touch paths outside this batch. Never output secrets. Keep changes minimal and testable.`;
     const boundedPrompt=requireActualMutationPrompt(prompt,{required:batchIndex===batches.length-1&&changes.length===0});
-    const invoked=await invokeCompactGeneration(selected,boundedPrompt,batch.paths,exclude,{workId:j.id,role:'implementer',objective:canonicalObjective});
+    const invoked=await invokeCompactGeneration(selected,boundedPrompt,batch.paths,exclude,{workId:j.id,role:'implementer',objective:canonicalObjective},batch.canonicalFiles);
     selected=invoked.resource;
     summaries.push(formatMicroContextTelemetry(batch.contextTelemetry));
     summaries.push(String(invoked.payload.summary||'').slice(0,300));
