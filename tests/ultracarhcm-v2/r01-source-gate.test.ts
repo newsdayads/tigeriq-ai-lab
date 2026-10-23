@@ -57,12 +57,12 @@ describe('GH-5135 R01 source-only gate (not native Android CI)', () => {
     expect(report.ok).toBe(report.missingResources.length === 0);
   });
 
-  it('runs all thirteen Node-native R01 regression tests on the exact CI checkout', () => {
+  it('runs all fourteen Node-native R01 regression tests on the exact CI checkout', () => {
     const verify = spawnSync(process.execPath, [
       '--test', fromRoot('tests/ultracarhcm-v2/r01-preflight.test.mjs')
     ], { cwd: root, encoding: 'utf8', timeout: 15000 });
     expect(verify.status, verify.stdout + verify.stderr).toBe(0);
-    expect(verify.stdout).toMatch(/# pass 13\b/);
+    expect(verify.stdout).toMatch(/# pass 14\b/);
     expect(verify.stdout).toMatch(/# fail 0\b/);
   });
 
