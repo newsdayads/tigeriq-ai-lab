@@ -30,7 +30,7 @@ test('private stage requires independent local rights evidence and verifies byte
     for (const [i,item] of media.entries()) {
       const file = join(src,item.from);
       mkdirSync(dirname(file),{recursive:true});
-      writeFileSync(file,'synthetic-fixture-' + i);
+      writeFileSync(file, Buffer.alloc(item.observedBytes, 65 + i));
     }
     const audit = stageMedia({ sourceRes: src, projectDir: dest });
     assert.equal(audit.ok,true); assert.equal(audit.staged,false);
@@ -39,7 +39,7 @@ test('private stage requires independent local rights evidence and verifies byte
     writeFileSync(evidence,'SYNTHETIC TEST LICENSE RECEIPT, NOT A REAL V1 GRANT');
     const result=stageMedia({sourceRes:src,projectDir:dest,stage:true,rightsEvidence:evidence});
     assert.equal(result.ok,true);assert.equal(result.staged,true);
-    for (const item of media) assert.ok(readFileSync(join(dest,'app/src/main/res',item.to),'utf8').startsWith('synthetic-fixture'));
+    for (const item of media) assert.equal(readFileSync(join(dest,'app/src/main/res',item.to)).length, item.observedBytes);
   } finally { rmSync(root,{recursive:true,force:true}); }
 });
 
@@ -47,10 +47,36 @@ test('an existing edited local resource is never silently overwritten', () => {
   const root=mkdtempSync(join(tmpdir(),'gh5135-conflict-'));
   try {
     const src=join(root,'src'),dest=join(root,'v2');
-    for(const item of media){const f=join(src,item.from);mkdirSync(dirname(f),{recursive:true});writeFileSync(f,'legitimate-fixture');}
+    for(const item of media){const f=join(src,item.from);mkdirSync(dirname(f),{recursive:true});writeFileSync(f,Buffer.alloc(item.observedBytes, 76));}
     const existing=join(dest,'app/src/main/res',media[0].to);
     mkdirSync(dirname(existing),{recursive:true});writeFileSync(existing,'different-content');
     const evidence=join(root,'rights.txt');writeFileSync(evidence,'SYNTHETIC TEST LICENSE RECEIPT, NOT A REAL V1 GRANT');
     assert.throws(()=>stageMedia({sourceRes:src,projectDir:dest,stage:true,rightsEvidence:evidence}),/DESTINATION_ALREADY_EXISTS_DIFFERENT_BYTES/);
   }finally{rmSync(root,{recursive:true,force:true});}
+});
+
+test('read-only verification rejects changed-size assets before any local staging', () => {
+  const root=mkdtempSync(join(tmpdir(),'gh5135-size-mismatch-'));
+  try {
+    const src=join(root,'source'),dest=join(root,'v2');
+    for (const [i,item] of media.entries()) {
+      const file=join(src,item.from);
+      mkdirSync(dirname(file),{recursive:true});
+      writeFileSync(file,Buffer.alloc(item.observedBytes-(i===2?1:0),65+i));
+    }
+    const report=stageMedia({sourceRes:src,projectDir:dest});
+    assert.equal(report.ok,false);
+    assert.equal(report.staged,false);
+    assert.deepEqual(report.badFiles,['drawable/logo_ultracar.png']);
+    assert.equal(report.files[2].status,'SIZE_MISMATCH');
+    assert.equal(report.files[2].observedBytes,media[2].observedBytes);
+    assert.equal(report.files[2].bytes,media[2].observedBytes-1);
+    assert.equal(existsSync(join(dest,'app/src/main/res')),false);
+    const rights=join(root,'rights.txt');
+    writeFileSync(rights,'SYNTHETIC TEST RIGHTS ONLY, NOT AN ORIGINAL V1 GRANT');
+    const rejected=stageMedia({sourceRes:src,projectDir:dest,stage:true,rightsEvidence:rights});
+    assert.equal(rejected.ok,false);
+    assert.equal(rejected.staged,false);
+    assert.equal(existsSync(join(dest,'app/src/main/res')),false);
+  } finally { rmSync(root,{recursive:true,force:true}); }
 });
