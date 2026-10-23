@@ -30,6 +30,8 @@ test('static HTML and JS artifacts exist and reference only local assets', async
   const main = await readFile(new URL('../dist/main.js', import.meta.url), 'utf8');
   assert.match(html, /id="board"/);
   assert.match(html, /\.\/main\.js/);
-  assert.match(main, /drawPreview/);
+  // G06 production entrypoint draws with drawGame, not the historical G04 preview.
+  assert.match(main, /drawGame/);
+  assert.match(main, /\.\/levels\/draw\.js/);
   assert.doesNotMatch(html, /https?:\/\//);
 });
