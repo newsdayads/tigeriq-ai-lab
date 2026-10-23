@@ -2,7 +2,7 @@ import { timingSafeEqual, randomUUID, createHash } from 'node:crypto';
 import { decideWithChief } from './chief.mjs';
 import { isOwnerAuthorized } from './owner-auth.mjs';
 import ownerDecisionHandler from '../apps/tigeriq-core/owner-decision-handler.mjs';
-import { validateOwnerWorkRequest, makeOwnerRequestReceipt, makeOwnerResultReceipt, ownerWorkRequestHistory, ownerWorkRequestResolved } from '../apps/shared/owner-work-request.mjs';
+import { validateOwnerWorkRequest, makeOwnerRequestReceipt, makeOwnerResultReceipt, ownerWorkRequestHistory, ownerWorkRequestResolved, ownerWorkRequestReplayPlan, ownerWorkRequestTriageStatus } from '../apps/shared/owner-work-request.mjs';
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const COMMAND_SECRET = process.env.TIGERIQ_COMMAND_SECRET || '';
@@ -473,6 +473,9 @@ async function ownerRequestComments(issueNumber,token) {
   for(let page=1;page<=5;page++){
     const batch=await gh('/repos/'+owner+'/'+repo+'/issues/'+issueNumber+'/comments?per_page=100&page='+page,{},token);
     all.push(...batch);
+    // No more than five pages can be inspected. If the last page fills,
+    // fail closed instead of treating older request IDs as fresh work.
+    if(page===5&&batch.length===100){const error=new Error('owner_request_history_incomplete');error.status=409;throw error;}
     if(batch.length<100)break;
   }
   return all;
@@ -487,8 +490,9 @@ async function ownerRequestApi(req,res,payload,readOnly=false){
   let history=ownerWorkRequestHistory(comments).filter(x=>x.issueNumber===issueNumber);
   if(readOnly)return json(res,200,{ok:true,issueNumber,history:history.slice(0,30)});
   const request=validateOwnerWorkRequest(payload);
-  const duplicate=history.find(x=>x.requestId===request.requestId);
-  if(duplicate)return json(res,200,{ok:true,deduplicated:true,request:duplicate});
+  const replay=ownerWorkRequestReplayPlan(history,request);
+  if(replay.kind==='CONFLICT')return json(res,409,{ok:false,error:'owner_request_id_content_conflict'});
+  if(replay.kind==='REPLAY')return json(res,200,{ok:true,deduplicated:true,request:replay.request});
   const {owner,repo}=repoParts();
   const url='/repos/'+owner+'/'+repo+'/issues/'+issueNumber+'/comments';
   const saved=await gh(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({body:makeOwnerRequestReceipt(request)})},token);
@@ -497,9 +501,11 @@ async function ownerRequestApi(req,res,payload,readOnly=false){
   try{
     const context='Thẻ công việc #'+issueNumber+' — '+String(issue.title||'')+'. Đọc yêu cầu của anh Sơn, phân tích và đưa hướng xử lý trước thực thi. Không tuyên bố đã chạy, không vượt quyền/lease. Nội dung: ';
     const decision=await decideWithChief({message:context+request.message,history:[]});
-    const answered=decision?.mode==='reply'||decision?.mode==='status';
-    const status=answered?'ANSWERED':decision?.mode==='clarify'?'WAITING':'PLAN_SHOWN';
-    const reply=String(decision?.reply|| (answered?'Đã trả lời.':'Đã ghi chỉ đạo vào thẻ; cần nhân sự có quyền thực thi tiếp nhận.')).trim();
+    const status=ownerWorkRequestTriageStatus(request.message,decision?.mode);
+    const triageReply=String(decision?.reply||'').trim();
+    const reply=status==='PLAN_SHOWN'
+      ?'CHƯA THỰC THI — '+(triageReply||'Đã ghi chỉ đạo vào thẻ; chờ nhân sự có quyền, lease và biên nhận kết quả Core.')
+      :String(triageReply|| (status==='ANSWERED'?'Đã trả lời câu hỏi.':'Cần làm rõ chỉ đạo trước thực thi.')).trim();
     const terminal=await gh(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({body:makeOwnerResultReceipt(request.requestId,status,reply)})},token);
     result={...result,status,reply,resultUrl:terminal.html_url||null,resolved:ownerWorkRequestResolved(status)};
   }catch{
