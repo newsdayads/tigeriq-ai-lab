@@ -1,7 +1,7 @@
 import { test, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 // @ts-expect-error The production ESM helper is intentionally untyped JS; exercise its runtime exports.
-import { ownerWorkRequestReplayPlan, validateOwnerWorkRequest } from '../apps/shared/owner-work-request.mjs';
+import { ownerWorkRequestReplayPlan, validateOwnerWorkRequest, ownerWorkRequestTriageStatus } from '../apps/shared/owner-work-request.mjs';
 
 const uuid='c6b90d64-b49c-4bb9-becb-d696a043ab74';
 const request={issueNumber:5252,requestId:uuid,message:'Ưu tiên sửa lỗi bảo vệ nội dung Owner.'};
@@ -48,4 +48,35 @@ test('comment page boundary fails closed instead of allowing hidden older UUIDs 
   const reader=control.slice(start,end);
   expect(reader).toContain('for(let page=1;page<=5;page++)');
   expect(reader).toContain("if(page===5&&batch.length===100){const error=new Error('owner_request_history_incomplete');error.status=409;throw error;}");
+});
+
+test('AI reply to an instruction is never proof of actual execution or Owner request completion',()=>{
+  for(const instruction of [
+    'Làm ngay việc này, kiểm tra và merge mã.',
+    'Sửa lỗi tài khoản và triển khai giúp anh.',
+    'Có thể chạy test và sửa giúp anh không?',
+    'Cập nhật trạng thái thanh toán ngay nhé'
+  ]){
+    expect(ownerWorkRequestTriageStatus(instruction,'reply')).toBe('PLAN_SHOWN');
+    expect(ownerWorkRequestTriageStatus(instruction,'status')).toBe('PLAN_SHOWN');
+  }
+  expect(ownerWorkRequestTriageStatus('Cần làm rõ hướng xử lý','clarify')).toBe('WAITING');
+});
+
+test('only clear informational questions may be ANSWERED by actual Chief replies',()=>{
+  expect(ownerWorkRequestTriageStatus('Vì sao hệ thống cần kiểm tra quyền?', 'reply')).toBe('PLAN_SHOWN');
+  expect(ownerWorkRequestTriageStatus('Vì sao dữ liệu hôm qua chậm?', 'reply')).toBe('ANSWERED');
+  expect(ownerWorkRequestTriageStatus('Bao nhiêu thẻ đang mở?', 'status')).toBe('ANSWERED');
+  expect(ownerWorkRequestTriageStatus('Đã xử lý xong chưa?', 'reply')).toBe('ANSWERED');
+  expect(ownerWorkRequestTriageStatus('Vì sao lỗi?', 'plan')).toBe('PLAN_SHOWN');
+  expect(ownerWorkRequestTriageStatus('', 'reply')).toBe('PLAN_SHOWN');
+});
+
+test('actual server ties ANSWERED to the pure, fail-closed question/action classifier',()=>{
+  const control=readFileSync(new URL('../api/control.mjs',import.meta.url),'utf8');
+  const handler=control.slice(control.indexOf('async function ownerRequestApi('));
+  expect(handler).toContain('const status=ownerWorkRequestTriageStatus(request.message,decision?.mode);');
+  expect(handler).toContain("const reply=status==='PLAN_SHOWN'");
+  expect(handler).toContain("'CHƯA THỰC THI — '");
+  expect(handler).not.toContain("const answered=decision?.mode==='reply'");
 });
