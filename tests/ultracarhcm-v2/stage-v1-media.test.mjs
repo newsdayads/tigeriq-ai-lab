@@ -8,9 +8,9 @@ import { media, stageMedia } from '../../apps/ultracarhcm-v2/ci/stage-v1-media.m
 test('PC01-observed original filenames map to the six Kotlin V2 resource IDs', () => {
   assert.equal(media.length, 6);
   assert.deepEqual(media.map(x => x.to), [
-    'drawable/v2_road_city_day.jpg','drawable/v2_road_city_night.jpg',
-    'drawable/v2_logo_ultracar.png','drawable/v2_car_limo_do_parked.webp',
-    'drawable/v2_car_lambogini_trang_parked.webp','raw/ultrabot_glow_packed.mp4'
+    'drawable-nodpi/v2_road_city_day.jpg','drawable-nodpi/v2_road_city_night.jpg',
+    'drawable-nodpi/v2_logo_ultracar.png','drawable-nodpi/v2_car_limo_do_parked.webp',
+    'drawable-nodpi/v2_car_lambogini_trang_parked.webp','raw/ultrabot_glow_packed.mp4'
   ]);
 });
 
