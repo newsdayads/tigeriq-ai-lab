@@ -3,7 +3,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 const root = resolve(import.meta.dirname, '..');
-const entries = (await readdir(join(root, 'src'))).filter((x) => x.endsWith('.ts'));
+const entries = (await readdir(join(root, 'src'), {recursive:true})).filter((x) => x.endsWith('.ts'));
 let verified = 0;
 for (const name of entries) {
   const content = await readFile(join(root, 'src', name), 'utf8');
