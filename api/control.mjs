@@ -2,7 +2,7 @@ import { timingSafeEqual, randomUUID, createHash } from 'node:crypto';
 import { decideWithChief } from './chief.mjs';
 import { isOwnerAuthorized } from './owner-auth.mjs';
 import ownerDecisionHandler from '../apps/tigeriq-core/owner-decision-handler.mjs';
-import { validateOwnerWorkRequest, makeOwnerRequestReceipt, makeOwnerResultReceipt, ownerWorkRequestHistory, ownerWorkRequestResolved } from '../apps/shared/owner-work-request.mjs';
+import { validateOwnerWorkRequest, makeOwnerRequestReceipt, makeOwnerResultReceipt, ownerWorkRequestHistory, ownerWorkRequestResolved, ownerWorkRequestReplayPlan } from '../apps/shared/owner-work-request.mjs';
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const COMMAND_SECRET = process.env.TIGERIQ_COMMAND_SECRET || '';
@@ -473,6 +473,9 @@ async function ownerRequestComments(issueNumber,token) {
   for(let page=1;page<=5;page++){
     const batch=await gh('/repos/'+owner+'/'+repo+'/issues/'+issueNumber+'/comments?per_page=100&page='+page,{},token);
     all.push(...batch);
+    // No more than five pages can be inspected. If the last page fills,
+    // fail closed instead of treating older request IDs as fresh work.
+    if(page===5&&batch.length===100){const error=new Error('owner_request_history_incomplete');error.status=409;throw error;}
     if(batch.length<100)break;
   }
   return all;
@@ -487,8 +490,9 @@ async function ownerRequestApi(req,res,payload,readOnly=false){
   let history=ownerWorkRequestHistory(comments).filter(x=>x.issueNumber===issueNumber);
   if(readOnly)return json(res,200,{ok:true,issueNumber,history:history.slice(0,30)});
   const request=validateOwnerWorkRequest(payload);
-  const duplicate=history.find(x=>x.requestId===request.requestId);
-  if(duplicate)return json(res,200,{ok:true,deduplicated:true,request:duplicate});
+  const replay=ownerWorkRequestReplayPlan(history,request);
+  if(replay.kind==='CONFLICT')return json(res,409,{ok:false,error:'owner_request_id_content_conflict'});
+  if(replay.kind==='REPLAY')return json(res,200,{ok:true,deduplicated:true,request:replay.request});
   const {owner,repo}=repoParts();
   const url='/repos/'+owner+'/'+repo+'/issues/'+issueNumber+'/comments';
   const saved=await gh(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({body:makeOwnerRequestReceipt(request)})},token);
