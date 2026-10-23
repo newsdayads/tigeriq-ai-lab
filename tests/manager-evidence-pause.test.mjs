@@ -22,6 +22,21 @@ test('GitHub live acceptance stops repeating manager decisions for the same sour
   }),{wake:true,reason:'acceptance_satisfied'});
 });
 
+test('a gate-less completed child stays parked until real new source evidence arrives',()=>{
+  // Source #5144 has a completed child but declares no live/review/dependency gate.
+  // A vacuous completionGate.allow=true must not rearm the same work every 30s.
+  const baseline={awaitingRevision:'r5144',sourceRevision:'r5144',acceptanceAllowed:true,acceptanceGateRequired:false};
+  assert.deepEqual(managerAcceptanceWakePlan(baseline),{wake:false,reason:'awaiting_evidence'});
+  assert.deepEqual(managerAcceptanceWakePlan({...baseline,sourceRevision:'r5144-updated'}),
+    {wake:true,reason:'source_revision_changed'});
+  assert.deepEqual(managerAcceptanceWakePlan({...baseline,acceptanceGateRequired:true}),
+    {wake:true,reason:'acceptance_satisfied'});
+  assert.deepEqual(managerAcceptanceWakePlan({...baseline,acceptanceGateRequired:true,acceptanceAllowed:false}),
+    {wake:false,reason:'awaiting_evidence'});
+  const intake=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
+  assert.match(intake,/acceptanceGateRequired:sourceLiveRequired\|\|sourceFinalReviewRequired\|\|dependencyGate\.required/);
+});
+
 test('GitHub source changes resume the existing objective exactly when its revision changes',()=>{
   assert.deepEqual(managerAcceptanceWakePlan({
     awaitingRevision:'rev4569',sourceRevision:'rev4569-new',acceptanceAllowed:false,
