@@ -71,6 +71,8 @@ class UsbUvcController(
             Log.i(logTag, "USB-host UVC preview started")
         } catch (t: Throwable) {
             Log.e(logTag, "UVC preview failed", t)
+            // addSurface may already have succeeded. Release its Surface on failure.
+            releasePreview()
             report("Lỗi hình Camera UVC: ${t.javaClass.simpleName}", false)
         }
     }
@@ -92,10 +94,20 @@ class UsbUvcController(
         main.post { if (requested && device == target) beginPreview() }
     }
     override fun onCameraClose(device: UsbDevice) {
-        main.post { previewStarted = false; report("Camera UVC đã đóng", false) }
+        main.post {
+            if (device == target) {
+                releasePreview()
+                if (requested) report("Camera UVC đã đóng", false)
+            }
+        }
     }
     override fun onDeviceClose(device: UsbDevice) {
-        main.post { previewStarted = false; report("USB camera mất kết nối", false) }
+        main.post {
+            if (device == target) {
+                releasePreview()
+                if (requested) report("USB camera mất kết nối", false)
+            }
+        }
     }
     override fun onDetach(device: UsbDevice) {
         main.post {
@@ -110,7 +122,12 @@ class UsbUvcController(
     }
     override fun onError(device: UsbDevice, e: CameraException) {
         Log.e(logTag, "UVC error", e)
-        main.post { report("Lỗi UVC: ${e.message}", false) }
+        main.post {
+            if (device == target && requested) {
+                releasePreview()
+                report("Lỗi UVC: ${e.message}", false)
+            }
+        }
     }
 
     override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
@@ -135,6 +152,7 @@ class UsbUvcController(
     }
     fun stop() {
         requested = false
+        if (preview.surfaceTextureListener === this) preview.surfaceTextureListener = null
         releasePreview()
         try { helper?.setStateCallback(null) } catch (_: Throwable) {}
         try { helper?.closeCamera() } catch (_: Throwable) {}
