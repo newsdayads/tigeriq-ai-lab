@@ -652,11 +652,11 @@ const ownerRequestHistoryToggle=document.getElementById('ownerWorkRequestHistory
 const ownerRequestStatus=document.getElementById('ownerWorkRequestStatus');
 const ownerWorkSecureLink=document.getElementById('ownerWorkSecureLink');
 const ownerRequestHistoryPanel=document.getElementById('ownerWorkRequestHistory');
-let ownerRequestIssueNumber=null,ownerRequestLastId=null,ownerRequestLastMessage=null;
+let ownerRequestIssueNumber=null,ownerRequestLastId=null,ownerRequestLastMessage=null,ownerRequestRevision=0,ownerRequestSubmitting=false;
 function ownerRequestSecure(){return location.protocol==='https:' && Boolean(window.crypto?.randomUUID)}
 // A UUID belongs to one exact submitted message. Late answers must not erase a newer draft.
 function ownerRequestCanReuseId(id,submittedMessage,nextMessage){return Boolean(id&&typeof submittedMessage==='string'&&submittedMessage===nextMessage)}
-function ownerRequestCanClearDraft(status,submittedMessage,currentDraft){return ['ANSWERED','VERIFIED'].includes(status)&&typeof submittedMessage==='string'&&submittedMessage===String(currentDraft||'').trim()}
+function ownerRequestCanClearDraft(status,receiptId,currentId,submittedMessage,currentDraft){return Boolean(receiptId&&receiptId===currentId&&['ANSWERED','VERIFIED'].includes(status)&&typeof submittedMessage==='string'&&submittedMessage===String(currentDraft||'').trim())}
 function ownerRequestRecordView(row){
  const div=document.createElement('div');div.className='owner-request-record';
  const title=document.createElement('strong');title.textContent=(row.status||'CHƯA XÁC MINH')+' · '+(row.createdAt?new Date(row.createdAt).toLocaleString('vi-VN'):'');
@@ -665,49 +665,52 @@ function ownerRequestRecordView(row){
  return div;
 }
 async function ownerRequestRefresh(number){
+ const revision=ownerRequestRevision;
  if(!ownerRequestSecure()){ownerRequestSend.disabled=true;ownerWorkSecureLink.hidden=false;ownerWorkSecureLink.href='https://tigeriq-ai-lab.vercel.app/';ownerWorkSecureLink.textContent='MỞ GIAO DIỆN HTTPS';ownerRequestStatus.textContent='Chưa thể gửi qua HTTP. Mở giao diện HTTPS và đăng nhập chủ sở hữu.';return}
- ownerRequestSend.disabled=false;ownerWorkSecureLink.hidden=true;
+ ownerRequestSend.disabled=ownerRequestSubmitting;ownerWorkSecureLink.hidden=true;
  try{
  const r=await fetch('/api/control?operation=owner-work-request&issue='+encodeURIComponent(number),{cache:'no-store',credentials:'same-origin'});
- if(number!==ownerRequestIssueNumber)return;
+ if(number!==ownerRequestIssueNumber||revision!==ownerRequestRevision)return;
  if(r.status===401){ownerRequestSend.disabled=true;ownerWorkSecureLink.hidden=false;ownerWorkSecureLink.href='/api/owner-auth?action=login';ownerWorkSecureLink.textContent='ĐĂNG NHẬP CHỦ SỞ HỮU';ownerRequestStatus.textContent='Cần đăng nhập chủ sở hữu để ghi chỉ đạo.';return}
  if(!r.ok)throw Error('Không đọc được lịch sử yêu cầu: HTTP '+r.status);
- const json=await r.json();const history=Array.isArray(json.history)?json.history:[];
+ const json=await r.json();if(number!==ownerRequestIssueNumber||revision!==ownerRequestRevision)return;
+ const history=Array.isArray(json.history)?json.history:[];
  ownerRequestHistoryPanel.replaceChildren(...history.map(ownerRequestRecordView));
  if(!history.length)ownerRequestHistoryPanel.textContent='Chưa có yêu cầu.';
  if(ownerRequestLastId){
    const mine=history.find(x=>x.requestId===ownerRequestLastId);
-   if(mine&&ownerRequestCanClearDraft(mine.status,ownerRequestLastMessage,ownerRequestDraft.value)){ownerRequestDraft.value='';ownerRequestLastId=null;ownerRequestLastMessage=null}
+   if(mine&&ownerRequestCanClearDraft(mine.status,mine.requestId,ownerRequestLastId,ownerRequestLastMessage,ownerRequestDraft.value)){ownerRequestDraft.value='';ownerRequestLastId=null;ownerRequestLastMessage=null}
    if(mine)ownerRequestStatus.textContent=mine.status+' — '+(mine.reply||'Đã lưu bền vào thẻ GitHub.');
    else ownerRequestStatus.textContent='Đang xác minh biên nhận yêu cầu.';
  }else ownerRequestStatus.textContent=history.length?'Có '+history.length+' yêu cầu trong lịch sử.':'Sẵn sàng nhận yêu cầu.';
- }catch(e){ownerRequestStatus.textContent='CHƯA XÁC MINH: '+String(e.message||e)}
+ }catch(e){if(number===ownerRequestIssueNumber&&revision===ownerRequestRevision)ownerRequestStatus.textContent='CHƯA XÁC MINH: '+String(e.message||e)}
 }
 async function ownerRequestSubmit(){
- if(!workDetailRow||!ownerRequestSecure())return;
- const issueNumber=Number(workDetailRow.number),message=ownerRequestDraft.value.trim();
+ if(!workDetailRow||!ownerRequestSecure()||ownerRequestSubmitting)return;
+ const revision=ownerRequestRevision,issueNumber=Number(workDetailRow.number),message=ownerRequestDraft.value.trim();
  if(!message){ownerRequestStatus.textContent='Anh Sơn chưa nhập yêu cầu.';return}
  if(message.length>3000){ownerRequestStatus.textContent='Yêu cầu vượt giới hạn 3000 ký tự.';return}
- ownerRequestSend.disabled=true;ownerRequestStatus.textContent='Đang ghi yêu cầu vào GitHub...';
+ ownerRequestSubmitting=true;ownerRequestSend.disabled=true;ownerRequestStatus.textContent='Đang ghi yêu cầu vào GitHub...';
  const requestId=ownerRequestCanReuseId(ownerRequestLastId,ownerRequestLastMessage,message)?ownerRequestLastId:crypto.randomUUID();ownerRequestLastId=requestId;ownerRequestLastMessage=message;
  try{
  const res=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({operation:'owner-work-request',issueNumber,requestId,message})});
- if(issueNumber!==ownerRequestIssueNumber)return;
+ if(issueNumber!==ownerRequestIssueNumber||revision!==ownerRequestRevision||ownerRequestLastId!==requestId)return;
  const data=await res.json();
+ if(issueNumber!==ownerRequestIssueNumber||revision!==ownerRequestRevision||ownerRequestLastId!==requestId)return;
  if(!res.ok)throw Error(data.error||'HTTP '+res.status);
  const record=data.request||{};
  ownerRequestStatus.textContent=(record.status||'RECEIVED')+' — '+(record.reply||'Đã nhận và lưu yêu cầu.');
- if(ownerRequestCanClearDraft(record.status,message,ownerRequestDraft.value)){ownerRequestDraft.value='';ownerRequestLastId=null;ownerRequestLastMessage=null}
- else if(['ANSWERED','VERIFIED'].includes(record.status)){ownerRequestLastId=null;ownerRequestLastMessage=null}
+ if(ownerRequestCanClearDraft(record.status,requestId,ownerRequestLastId,message,ownerRequestDraft.value)){ownerRequestDraft.value='';ownerRequestLastId=null;ownerRequestLastMessage=null}
+ else if(ownerRequestLastId===requestId&&['ANSWERED','VERIFIED'].includes(record.status)){ownerRequestLastId=null;ownerRequestLastMessage=null}
  await ownerRequestRefresh(issueNumber);
- }catch(error){ownerRequestStatus.textContent='CHƯA XÁC MINH KẾT QUẢ GỬI: '+String(error.message||error)+'; nội dung vẫn được giữ để thử lại cùng mã yêu cầu.'}
- finally{if(issueNumber===ownerRequestIssueNumber&&ownerRequestSecure())ownerRequestSend.disabled=false}
+ }catch(error){if(issueNumber===ownerRequestIssueNumber&&revision===ownerRequestRevision)ownerRequestStatus.textContent='CHƯA XÁC MINH KẾT QUẢ GỬI: '+String(error.message||error)+'; nội dung vẫn được giữ để thử lại cùng mã yêu cầu.'}
+ finally{if(issueNumber===ownerRequestIssueNumber&&revision===ownerRequestRevision){ownerRequestSubmitting=false;if(ownerRequestSecure())ownerRequestSend.disabled=false}}
 }
 ownerRequestSend.addEventListener('click',ownerRequestSubmit);
 ownerRequestHistoryToggle.addEventListener('click',()=>{ownerRequestHistoryPanel.hidden=!ownerRequestHistoryPanel.hidden;ownerRequestHistoryToggle.setAttribute('aria-expanded',String(!ownerRequestHistoryPanel.hidden))});
-function ownerRequestOpen(number){ownerRequestIssueNumber=number;ownerRequestLastId=null;ownerRequestLastMessage=null;ownerRequestDraft.value='';ownerRequestHistoryPanel.hidden=true;ownerRequestHistoryToggle.setAttribute('aria-expanded','false');ownerRequestStatus.textContent='Đang xác minh quyền và lịch sử...';ownerRequestRefresh(number)}
+function ownerRequestOpen(number){ownerRequestRevision++;ownerRequestSubmitting=false;ownerRequestIssueNumber=number;ownerRequestLastId=null;ownerRequestLastMessage=null;ownerRequestDraft.value='';ownerRequestHistoryPanel.hidden=true;ownerRequestHistoryToggle.setAttribute('aria-expanded','false');ownerRequestStatus.textContent='Đang xác minh quyền và lịch sử...';ownerRequestRefresh(number)}
 function openWorkDetail(row,trigger){workDetailReturnFocus=trigger||document.activeElement;populateWorkDetail(row);ownerRequestOpen(Number(row.number));workDetailBackdrop.classList.add('open');workDetailBackdrop.setAttribute('aria-hidden','false');document.body.classList.add('work-detail-open');workDetailClose.focus()}
-function closeWorkDetail(){const n=workDetailRow?.number;workDetailBackdrop.classList.remove('open');workDetailBackdrop.setAttribute('aria-hidden','true');document.body.classList.remove('work-detail-open');ownerRequestIssueNumber=null;workDetailRow=null;const target=workDetailReturnFocus?.isConnected?workDetailReturnFocus:document.querySelector('[data-work-number="'+n+'"]');if(target&&typeof target.focus==='function')target.focus()}
+function closeWorkDetail(){const n=workDetailRow?.number;workDetailBackdrop.classList.remove('open');workDetailBackdrop.setAttribute('aria-hidden','true');document.body.classList.remove('work-detail-open');ownerRequestRevision++;ownerRequestSubmitting=false;ownerRequestIssueNumber=null;workDetailRow=null;const target=workDetailReturnFocus?.isConnected?workDetailReturnFocus:document.querySelector('[data-work-number="'+n+'"]');if(target&&typeof target.focus==='function')target.focus()}
 function workDetailPrompt(row){return 'LÀM — NO YAPPING.\nXử lý Work Order #'+row.number+' — '+woTitle(row.title)+'\nTrạng thái: '+(WO_STATUS[woStatus(row)]||woStatus(row))+'\nĐang: '+(row.currentStep||row.currentState||'Chưa xác minh')+'\nBước tới: '+woNext(row)}
 function copyWorkDetailPrompt(prompt){const before=document.activeElement,field=document.createElement('textarea');field.value=prompt;field.readOnly=true;field.style.cssText='position:fixed;left:-9999px;top:0;opacity:0';document.body.appendChild(field);field.focus({preventScroll:true});field.select();let copied=false;try{copied=document.execCommand('copy')===true}catch{}field.remove();if(before?.isConnected&&typeof before.focus==='function')before.focus({preventScroll:true});return copied}
 function openWorkDetailChat(url){
