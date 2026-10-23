@@ -315,7 +315,7 @@ export function inceptionReasoningPolicy(host,model){
   // Mercury 2.5 is a reasoning model: bound thinking within the existing
   // 800/1200-token output cap so it can still produce user-visible content.
   // Never treat reasoning_content as a completed Core answer.
-  if(host==='api.inceptionlabs.ai'&&/^mercury-2\\.5(?:$|[-.:])/i.test(String(model??''))){
+  if(host==='api.inceptionlabs.ai'&&/^mercury-2\.5(?:$|[-.:])/i.test(String(model??''))){
     return {reasoning_effort:'low'};
   }
   return {};
