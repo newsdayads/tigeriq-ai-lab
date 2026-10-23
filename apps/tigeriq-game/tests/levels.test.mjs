@@ -25,3 +25,47 @@ test('failed level retries from original state',()=>{
   const next=retryLevel(s);assert.equal(next.screen,'play');assert.equal(next.replacement,null);assert.equal(next.editSlot,null);
 });
 test('level bounds are checked',()=>{assert.throws(()=>openLevel(-1),RangeError);assert.throws(()=>openLevel(5),RangeError);});
+
+test('jumping to the last stage cannot falsely mark all five levels complete',()=>{
+  const level=LEVELS[4],answer=enumerateSolutions(level)[0];
+  let s=openLevel(4);
+  s=selectSlot(s,answer.slot);
+  s=selectReplacement(s,answer.replacement);
+  s=executeLevel(s);
+  assert.equal(s.outcome.win,true);
+  assert.deepEqual(s.completedLevels,[4]);
+  assert.notEqual(s.completedLevels.length,LEVELS.length);
+  const after=nextLevel(s);
+  assert.equal(after.screen,'select');
+  assert.deepEqual(after.completedLevels,[]);
+});
+
+test('sequential wins only increment completion on successful runs and survive retry',()=>{
+  let s=openLevel(0);
+  assert.deepEqual(s.completedLevels,[]);
+  for(let i=0;i<LEVELS.length;i++){
+    const l=LEVELS[i];
+    if(i>0)assert.deepEqual(s.completedLevels,Array.from({length:i},(_,j)=>j));
+    s=selectSlot(s,l.editableSlot);
+    s=selectReplacement(s,enumerateSolutions(l)[0].replacement);
+    s=executeLevel(s);
+    assert.equal(s.outcome.win,true);
+    assert.deepEqual(s.completedLevels,Array.from({length:i+1},(_,j)=>j));
+    if(i<LEVELS.length-1){
+      const replay=retryLevel(s);
+      assert.deepEqual(replay.completedLevels,s.completedLevels);
+      assert.equal(replay.outcome,null);
+      s=nextLevel(s);
+    }
+  }
+  assert.equal(s.completedLevels.length,5);
+});
+
+test('losing a level never increments the actual completion count',()=>{
+  let s=openLevel(2);
+  s=selectSlot(s,LEVELS[2].editableSlot);
+  s=selectReplacement(s,'WAIT');
+  s=executeLevel(s);
+  assert.equal(s.outcome.win,false);
+  assert.deepEqual(s.completedLevels,[]);
+});
