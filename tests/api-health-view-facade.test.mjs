@@ -24,7 +24,7 @@ test('Vercel facade is owner-login protected and only reads PC01 allowlist', asy
   let count = 0, lastUrl = null, lastHeader = null;
   global.fetch = async (url, options) => {
     count++; lastUrl = String(url); lastHeader=options.headers.authorization;
-    return new Response('<script src="/work-center.js"></script><script>fetch("/api/status")</script>', {
+    return new Response('<!doctype html><html><body><script src="/work-center.js"></script><script>fetch("/api/status")</script></body></html>', {
       headers:{'content-type':'text/html'}
     });
   };
@@ -47,6 +47,11 @@ test('Vercel facade is owner-login protected and only reads PC01 allowlist', asy
     assert.equal(lastHeader,'Bearer ' + 'a'.repeat(48));
     assert.match(String(res.body), /\/pc01\/work-center\.js/);
     assert.match(String(res.body), /\/pc01\/api\/status/);
+    assert.match(String(res.body), /tiq-proxy-mobile-reload-bootstrap/);
+    assert.match(String(res.body), /bottom:calc\(20px \+ env\(safe-area-inset-bottom\)\)/);
+    assert.match(String(res.body), /location\.reload\(\)/);
+    assert.match(String(res.body), /aria-label','Tải lại trang/);
+    assert.equal((String(res.body).match(/id="tiq-proxy-mobile-reload-bootstrap"/g)||[]).length,1);
     res=mockRes();
     await handler({method:'GET',headers:{...deviceHeader},query:{resource:'api/work-history',number:'../1'}},res);
     assert.equal(res.statusCode,400);
