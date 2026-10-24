@@ -98,6 +98,9 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/') {
       return reply(res, 200, fs.readFileSync(path.join(base, 'index.html')), 'text/html; charset=utf-8');
     }
+    if (req.method === 'GET' && url.pathname === '/ui.js') {
+      return reply(res, 200, fs.readFileSync(path.join(base, 'ui.js')), 'text/javascript; charset=utf-8');
+    }
     if (req.method === 'GET' && url.pathname === '/api/health')
       return json(res, 200, { ok: true, localOnly: true, time: now(), adbExists: fs.existsSync(adb), scrcpyExists: fs.existsSync(scrcpy) });
     if (req.method === 'GET' && url.pathname === '/api/devices') {
