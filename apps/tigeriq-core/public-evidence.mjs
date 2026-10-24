@@ -350,9 +350,13 @@ export function nativeR04JobEventAudit(row={},events=[]) {
     event&&event.job_id===row.id&&event.resource_id===row.resource_id
       &&event.employee_id===row.employee_id):[];
   const has=(type)=>valid.some(event=>event.type===type);
+  // A claim cannot attest this job if its supplied worker/resource identity
+  // belongs to a different actor. Legacy claim events may omit those fields.
   const claimed=(Array.isArray(events)?events:[]).some(event=>
     event?.job_id===row.id&&event.type==='HOTPATH_STAGE'
-    &&String(event.data?.stage||'').toUpperCase()==='CLAIMED');
+    &&String(event.data?.stage||'').toUpperCase()==='CLAIMED'
+    &&(event.employee_id==null||event.employee_id===row.employee_id)
+    &&(event.resource_id==null||event.resource_id===row.resource_id));
   const completed=has('JOB_DONE');
   const success=has('RESOURCE_SUCCESS');
   return {
