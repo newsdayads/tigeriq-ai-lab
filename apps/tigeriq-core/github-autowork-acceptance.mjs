@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 const R04_Q01_Q14_SCOPE = /^TIGERIQ_CORE_NATIVE_R04_Q01_Q14_5144(?:_|$)/i;
-const REQUIRED_QUESTION_IDS = Object.freeze(Array.from({ length: 14 }, (_, index) => 'Q' + String(index + 1).padStart(2, '0'));
+const REQUIRED_QUESTION_IDS = Object.freeze(Array.from({ length: 14 }, (_, index) => 'Q' + String(index + 1).padStart(2, '0')));
 const MIN_SUBSTANTIVE_CHARS = 80;
 const MIN_QUESTION_ANSWER_CHARS = 16;
 
