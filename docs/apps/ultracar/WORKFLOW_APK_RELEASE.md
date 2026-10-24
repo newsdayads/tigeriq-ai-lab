@@ -1,11 +1,23 @@
 # UltraCarHCM — APK build, release TEST, QA, backup (Owner-locked)
 
-> Canonical task tracking: [Issue #5129](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129). Owner interface/policy: [Issue #504](https://github.com/newsdayads/tigeriq-ai-lab/issues/504). This file is an operational runbook, **not** an automatic task scheduler, elevated permission or release approval. Last verified: 2026-10-24 (Asia/Ho_Chi_Minh).
+> Canonical task tracking: [Issue #5129](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129). Owner interface/policy: [Issue #504](https://github.com/newsdayads/tigeriq-ai-lab/issues/504). This file is an operational runbook, **not** an automatic task scheduler, elevated permission or release approval. Last verified: 2026-10-25 (Asia/Ho_Chi_Minh).
+
+<!-- ULTRACARHCM_PUBLISHED_APK_RELEASE_SUCCESS_20261025 -->
+## ƯU TIÊN CAO NHẤT — ĐÃ XUẤT THÀNH CÔNG v44 (285) TỪ APK .43 ĐÃ PHÁT HÀNH — 25/10/2026
+
+**Quy trình đã nghiệm thu build/ký/Drive (không còn là kế hoạch):** [PUBLISHED_APK_TO_DRIVE_PLAYBOOK.md](PUBLISHED_APK_TO_DRIVE_PLAYBOOK.md), [Issue #5129 biên nhận](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129#issuecomment-6390694935).
+
+- **Bắt đầu bản mới bằng cách giải mã trực tiếp APK signed .43 đã phát hành**, SHA256 `D34271ED42A6C89309A75C5CEC65E57BD3A613B9EC5B9A91A4A3E059E0EFA033`, vào source TEST mới. **KHÔNG khởi động lại lệnh clone stage v44 cũ `prepare_v44.ps1`.**
+- Lỗi `Could not smali file: zc4.smali` **ĐÃ FIX**: thay `iget-object v11,p0,...` bằng `move-object/from16 v11,p0` rồi `iget-object v11,v11,...`. Build PID 45772 exit 0; ký PID 28040 exit 0; APK code 285, v2/v3, cert khớp; SHA256 `5A95F3B97715D9ACEDC075442FC37DCF95760BA9E54DF537674D12C030D368C2`.
+- Tác vụ Drive phiên `wdragons12x` exit 0; Google Drive API xác minh file **`UltraCar_v1.0.44_TEST.apk`** trong folder chuẩn: [bản TEST trên Drive](https://drive.google.com/file/d/1ARS27BKagjhD90EvxsU0QEgjelTlombW/view?usp=drivesdk), bytes 35.154.333.
+- **Chưa nghiệm thu UI DeX:** chưa xác nhận trên SM-F916N tay nắm ID/5 shortcut hoạt động. **Bản chính thức vẫn v1.0.17 (258)**; v43 gốc được giữ nguyên.
+- **Chat mới:** đọc GitHub `main` runbook này + playbook + Issue #5129 mới nhất + chính sách #504; dùng RDC preflight, xác minh stage/ký/Drive thật rồi thực thi từng bước chưa xong. Không suy một lần bảo mật từ chối thành toàn bộ hệ thống build bị khóa; không lặp lại hành động bị từ chối qua đường khác.
+<!-- /ULTRACARHCM_PUBLISHED_APK_RELEASE_SUCCESS_20261025 -->
 
 <!-- ULTRACARHCM_V1_RELEASE_LANE_LOCK_20261024 -->
 ## HIỆN HÀNH — Khóa quy trình thực thi và xuất APK TEST V1 (Owner 24/10/2026)
 
-**Ưu tiên đọc:** Mục này + phần đầu [Work Order V1](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129) + các bình luận mới nhất. Các tiêu đề "MỚI NHẤT" v37–v42 **bên dưới là lịch sử**. Không lấy chúng ghi đè mốc **v1.0.43 (284) TEST — Camera Owner tạm chốt OK**. Bản v1.0.17 (258) vẫn chính thức, không được nâng tự động. Yêu cầu tiếp theo đã duyệt: v1.0.44 (285) TEST — **vùng nắm kéo từng thẻ theo session ID và 5 nút bố cục nhanh một hàng, giãn đều, bấm mở/nhấn giữ chọn lại, KHÔNG thêm nút/menu Tùy chỉnh**. Tham chiếu [biên nhận nhận việc](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129#issuecomment-6383541978). `v44` chưa có bằng chứng build hoặc xuất bản.
+**Ưu tiên đọc:** Mục này + phần đầu [Work Order V1](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129) + các bình luận mới nhất. Các tiêu đề "MỚI NHẤT" v37–v42 **bên dưới là lịch sử**. Không lấy chúng ghi đè mốc **v1.0.43 (284) TEST — Camera Owner tạm chốt OK**. Bản v1.0.17 (258) vẫn chính thức, không được nâng tự động. Yêu cầu tiếp theo đã duyệt: v1.0.44 (285) TEST — **vùng nắm kéo từng thẻ theo session ID và 5 nút bố cục nhanh một hàng, giãn đều, bấm mở/nhấn giữ chọn lại, KHÔNG thêm nút/menu Tùy chỉnh**. Tham chiếu [biên nhận nhận việc](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129#issuecomment-6383541978). **Đính chính 25/10/2026:** v44 đã build, ký và xuất Drive TEST có biên nhận; vẫn chờ nghiệm thu UI/DeX trên thiết bị thực. Xem mục ưu tiên 2026-10-25 ở trên.
 
 ### ĐƯỜNG XUẤT BẢN ĐÃ LÀM ĐƯỢC — CHỈ DÙNG CƠ CHẾ HỢP LỆ
 
