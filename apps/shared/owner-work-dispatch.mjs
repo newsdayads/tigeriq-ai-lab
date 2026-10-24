@@ -99,6 +99,28 @@ export function verifiedOwnerReceiptForChild(childBody,commentBody) {
   return {parentIssueNumber:parent,requestId:id,message:message.trim(),receiptUrl:url};
 }
 
+// A terminal objective/summary alone cannot verify Core AI work. Only a
+// persisted, provenance-bound github_api_autowork result qualifies as source
+// output. This is not product acceptance or permission to bypass the checklist.
+export function verifiedOwnerTriageNativeJob(job={},expectedScope='') {
+  const proof=job?.result?.autoworkAcceptance;
+  const completed=job?.completed_at instanceof Date?job.completed_at:new Date(job?.completed_at);
+  return job?.kind==='github_api_autowork'
+    &&job?.status==='done'
+    &&/^NV\d{2}$/.test(String(job?.employee_id||''))
+    &&String(job?.resource_id||'').length>=3
+    &&Number.isFinite(completed.getTime())
+    &&completed.getTime()<=Date.now()+60000
+    &&proof?.code==='GITHUB_AUTOWORK_SOURCE_OUTPUT_ACCEPTED'
+    &&proof?.productAccepted===false
+    &&String(proof?.resourceScope||'')===String(expectedScope||'')
+    &&Boolean(expectedScope)
+    &&proof?.employeeId===job.employee_id
+    &&Number.isSafeInteger(proof?.characterCount)
+    &&proof.characterCount>=80
+    &&/^[a-f0-9]{64}$/.test(String(proof?.textSha256||''));
+}
+
 // The exact, authenticated receipt is required to recognize a no-side-effect
 // intake smoke test. Ordinary actionable instructions NEVER resolve from
 // planning alone, even when the Core planning objective completed.
@@ -112,7 +134,7 @@ export function ownerCoreTriageReceiptPlan(childBody,row={},ownerReceipt='') {
   if(!/^OBJ-GH-\d+/.test(jobId)||jobId.length>128)return null;
   const summary=String(row.summary||'').trim().slice(0,2000);
   let authenticatedSmoke=false;
-  if(row.status==='completed'&&summary.length>=12&&ownerReceipt){
+  if(row.status==='completed'&&row.nativeCoreJobAccepted===true&&row.githubChecklistAccepted===true&&summary.length>=12&&ownerReceipt){
     try{
       authenticatedSmoke=verifiedOwnerReceiptForChild(body,ownerReceipt).message==='Thử gửi yêu cầu';
     }catch{
