@@ -39,7 +39,9 @@ function safeEqual(left, right) {
 }
 
 function setCookie(res, name, value, maxAge = MAX_AGE_SECONDS) {
-  res.setHeader('set-cookie', `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`);
+  const next=`${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
+  const existing=res.getHeader('set-cookie');
+  res.setHeader('set-cookie', existing ? [...(Array.isArray(existing)?existing:[existing]),next] : next);
 }
 
 function sessionValue(email) {
@@ -125,7 +127,7 @@ export default async function handler(req, res) {
       const email = await exchangeCode(String(url.searchParams.get('code') || ''));
       setCookie(res, SESSION_COOKIE, sessionValue(email));
       setCookie(res, STATE_COOKIE, '', 0);
-      return redirect(res, '/index.html?owner=connected');
+      return redirect(res, '/?owner=connected');
     } catch (error) {
       return json(res, 403, { error: String(error instanceof Error ? error.message : error).slice(0, 96) });
     }

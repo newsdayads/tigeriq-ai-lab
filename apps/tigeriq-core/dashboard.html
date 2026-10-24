@@ -653,6 +653,7 @@ const ownerRequestStatus=document.getElementById('ownerWorkRequestStatus');
 const ownerWorkSecureLink=document.getElementById('ownerWorkSecureLink');
 const ownerRequestHistoryPanel=document.getElementById('ownerWorkRequestHistory');
 let ownerRequestIssueNumber=null,ownerRequestLastId=null,ownerRequestLastMessage=null,ownerRequestRevision=0,ownerRequestSubmitting=false;
+let ownerRequestApiReady=false;
 function ownerRequestSecure(){return location.protocol==='https:' && Boolean(window.crypto?.randomUUID)}
 // A UUID belongs to one exact submitted message. Late answers must not erase a newer draft.
 function ownerRequestCanReuseId(id,submittedMessage,nextMessage){return Boolean(id&&typeof submittedMessage==='string'&&submittedMessage===nextMessage)}
@@ -666,14 +667,23 @@ function ownerRequestRecordView(row){
 }
 async function ownerRequestRefresh(number){
  const revision=ownerRequestRevision;
+ ownerRequestApiReady=false;
  if(!ownerRequestSecure()){ownerRequestSend.disabled=true;ownerWorkSecureLink.hidden=false;ownerWorkSecureLink.href='https://tigeriq-ai-lab.vercel.app/';ownerWorkSecureLink.textContent='MỞ GIAO DIỆN HTTPS';ownerRequestStatus.textContent='Chưa thể gửi qua HTTP. Mở giao diện HTTPS và đăng nhập chủ sở hữu.';return}
  ownerRequestSend.disabled=ownerRequestSubmitting;ownerWorkSecureLink.hidden=true;
  try{
  const r=await fetch('/api/control?operation=owner-work-request&issue='+encodeURIComponent(number),{cache:'no-store',credentials:'same-origin'});
  if(number!==ownerRequestIssueNumber||revision!==ownerRequestRevision)return;
  if(r.status===401){ownerRequestSend.disabled=true;ownerWorkSecureLink.hidden=false;ownerWorkSecureLink.href='/api/owner-auth?action=login';ownerWorkSecureLink.textContent='ĐĂNG NHẬP CHỦ SỞ HỮU';ownerRequestStatus.textContent='Cần đăng nhập chủ sở hữu để ghi chỉ đạo.';return}
+ if(r.status===404||r.status===405){
+  ownerRequestApiReady=false;ownerRequestSend.disabled=true;ownerWorkSecureLink.hidden=false;
+  ownerWorkSecureLink.href='https://tigeriq-ai-lab.vercel.app/';
+  ownerWorkSecureLink.textContent='MỞ TIGERIQ HTTPS';
+  ownerRequestStatus.textContent='LỖI ĐỊNH TUYẾN API: HTTP '+r.status+'. Mở TigerIQ HTTPS và tải lại trang; chưa gửi yêu cầu.';
+  return;
+ }
  if(!r.ok)throw Error('Không đọc được lịch sử yêu cầu: HTTP '+r.status);
  const json=await r.json();if(number!==ownerRequestIssueNumber||revision!==ownerRequestRevision)return;
+ ownerRequestApiReady=true;
  const history=Array.isArray(json.history)?json.history:[];
  ownerRequestHistoryPanel.replaceChildren(...history.map(ownerRequestRecordView));
  if(!history.length)ownerRequestHistoryPanel.textContent='Chưa có yêu cầu.';
@@ -687,6 +697,7 @@ async function ownerRequestRefresh(number){
 }
 async function ownerRequestSubmit(){
  if(!workDetailRow||!ownerRequestSecure()||ownerRequestSubmitting)return;
+ if(!ownerRequestApiReady){ownerRequestStatus.textContent='Chưa kết nối được API Owner. Chưa gửi yêu cầu.';return}
  const revision=ownerRequestRevision,issueNumber=Number(workDetailRow.number),message=ownerRequestDraft.value.trim();
  if(!message){ownerRequestStatus.textContent='Anh Sơn chưa nhập yêu cầu.';return}
  if(message.length>3000){ownerRequestStatus.textContent='Yêu cầu vượt giới hạn 3000 ký tự.';return}
@@ -704,11 +715,11 @@ async function ownerRequestSubmit(){
  else if(ownerRequestLastId===requestId&&['ANSWERED','VERIFIED'].includes(record.status)){ownerRequestLastId=null;ownerRequestLastMessage=null}
  await ownerRequestRefresh(issueNumber);
  }catch(error){if(issueNumber===ownerRequestIssueNumber&&revision===ownerRequestRevision)ownerRequestStatus.textContent='CHƯA XÁC MINH KẾT QUẢ GỬI: '+String(error.message||error)+'; nội dung vẫn được giữ để thử lại cùng mã yêu cầu.'}
- finally{if(issueNumber===ownerRequestIssueNumber&&revision===ownerRequestRevision){ownerRequestSubmitting=false;if(ownerRequestSecure())ownerRequestSend.disabled=false}}
+ finally{if(issueNumber===ownerRequestIssueNumber&&revision===ownerRequestRevision){ownerRequestSubmitting=false;ownerRequestSend.disabled=!(ownerRequestSecure()&&ownerRequestApiReady)}}
 }
 ownerRequestSend.addEventListener('click',ownerRequestSubmit);
 ownerRequestHistoryToggle.addEventListener('click',()=>{ownerRequestHistoryPanel.hidden=!ownerRequestHistoryPanel.hidden;ownerRequestHistoryToggle.setAttribute('aria-expanded',String(!ownerRequestHistoryPanel.hidden))});
-function ownerRequestOpen(number){ownerRequestRevision++;ownerRequestSubmitting=false;ownerRequestIssueNumber=number;ownerRequestLastId=null;ownerRequestLastMessage=null;ownerRequestDraft.value='';ownerRequestHistoryPanel.hidden=true;ownerRequestHistoryToggle.setAttribute('aria-expanded','false');ownerRequestStatus.textContent='Đang xác minh quyền và lịch sử...';ownerRequestRefresh(number)}
+function ownerRequestOpen(number){ownerRequestRevision++;ownerRequestSubmitting=false;ownerRequestApiReady=false;ownerRequestIssueNumber=number;ownerRequestLastId=null;ownerRequestLastMessage=null;ownerRequestDraft.value='';ownerRequestHistoryPanel.hidden=true;ownerRequestHistoryToggle.setAttribute('aria-expanded','false');ownerRequestStatus.textContent='Đang xác minh quyền và lịch sử...';ownerRequestRefresh(number)}
 function openWorkDetail(row,trigger){workDetailReturnFocus=trigger||document.activeElement;populateWorkDetail(row);ownerRequestOpen(Number(row.number));workDetailBackdrop.classList.add('open');workDetailBackdrop.setAttribute('aria-hidden','false');document.body.classList.add('work-detail-open');workDetailClose.focus()}
 function closeWorkDetail(){const n=workDetailRow?.number;workDetailBackdrop.classList.remove('open');workDetailBackdrop.setAttribute('aria-hidden','true');document.body.classList.remove('work-detail-open');ownerRequestRevision++;ownerRequestSubmitting=false;ownerRequestIssueNumber=null;workDetailRow=null;const target=workDetailReturnFocus?.isConnected?workDetailReturnFocus:document.querySelector('[data-work-number="'+n+'"]');if(target&&typeof target.focus==='function')target.focus()}
 function workDetailPrompt(row){return 'LÀM — NO YAPPING.\nXử lý Work Order #'+row.number+' — '+woTitle(row.title)+'\nTrạng thái: '+(WO_STATUS[woStatus(row)]||woStatus(row))+'\nĐang: '+(row.currentStep||row.currentState||'Chưa xác minh')+'\nBước tới: '+woNext(row)}
