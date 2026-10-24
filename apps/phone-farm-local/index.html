@@ -46,6 +46,13 @@ summary{cursor:pointer;color:#ccd9ef}details{margin-top:12px}
 <label for="text">Nhập văn bản (ASCII)</label><input id="text" placeholder="Nội dung gửi tới thiết bị"/>
 <div class="tools"><button id="sendText" class="primary">Gửi văn bản</button><button data-key="HOME">Trang chủ</button><button data-key="BACK">Quay lại</button><button data-key="APP_SWITCH">Ứng dụng</button></div>
 <div class="spacer"></div>
+<h2>Quản lý ứng dụng và tệp</h2>
+<p class="notice">Đặt APK hoặc tệp vào thư mục <code>apps/phone-farm-local/drop</code> trên PC01. Chỉ tệp tại đây mới được gửi đến Android.</p>
+<div class="tools">
+<button id="install">Cài APK</button><button id="upload">Gửi tệp</button>
+<button id="launch">Mở ứng dụng</button><button id="forceStop">Dừng ứng dụng</button>
+</div>
+<div class="spacer"></div>
 <label><input id="sync" type="checkbox" style="width:18px;vertical-align:middle;margin-right:7px">Đồng bộ thao tác trên các máy đã chọn</label>
 <p class="notice">Khi bật đồng bộ, chạm/vuốt trên một màn hình sẽ được quy đổi theo tỷ lệ tới các thiết bị đã chọn.</p>
 <details><summary>Thông tin hệ thống</summary><p class="notice" id="health">Đang kiểm tra...</p></details>
