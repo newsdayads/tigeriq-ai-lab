@@ -10,7 +10,7 @@ h1{font-size:20px;margin:0}h2{font-size:15px;margin:0 0 12px}small,.dim{color:va
 .layout{display:grid;grid-template-columns:minmax(250px,290px) 1fr;gap:16px;padding:16px}
 aside,.panel{background:var(--panel);padding:16px;border:1px solid var(--line);border-radius:14px}
 aside{align-self:start;position:sticky;top:10px}
-label{display:block;color:var(--muted);margin-bottom:7px}input,select{background:#0e1729;border:1px solid #3a4b67;border-radius:8px;color:var(--text);padding:10px;width:100%;font:inherit}
+label{display:block;color:var(--muted);margin-bottom:7px}input,select,textarea{background:#0e1729;border:1px solid #3a4b67;border-radius:8px;color:var(--text);padding:10px;width:100%;font:inherit}
 button{background:#254567;color:var(--text);border:1px solid #3f6e9a;border-radius:8px;cursor:pointer;padding:9px 12px;font:inherit;white-space:nowrap}
 button:hover{background:#326195}button.primary{background:#2167a5}button:disabled{opacity:.4;cursor:not-allowed}
 .tools{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
@@ -52,6 +52,11 @@ summary{cursor:pointer;color:#ccd9ef}details{margin-top:12px}
 <button id="install">Cài APK</button><button id="upload">Gửi tệp</button>
 <button id="launch">Mở ứng dụng</button><button id="forceStop">Dừng ứng dụng</button>
 </div>
+<div class="spacer"></div><h2>Kịch bản cục bộ</h2>
+<label for="macroSteps">Các bước JSON (chỉ key, tap, swipe, text, wait)</label>
+<textarea id="macroSteps" rows="4">[{"action":"key","key":"HOME"},{"action":"wait","ms":500}]</textarea>
+<div class="tools"><button id="runMacro" class="primary">Chạy kịch bản</button><button id="stopMacro" disabled>Dừng kịch bản</button></div>
+<p class="notice" id="macroStatus">Chưa chạy</p>
 <div class="spacer"></div>
 <label><input id="sync" type="checkbox" style="width:18px;vertical-align:middle;margin-right:7px">Đồng bộ thao tác trên các máy đã chọn</label>
 <p class="notice">Khi bật đồng bộ, chạm/vuốt trên một màn hình sẽ được quy đổi theo tỷ lệ tới các thiết bị đã chọn.</p>
