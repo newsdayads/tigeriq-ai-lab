@@ -63,6 +63,35 @@ describe('Canonical Owner backlog order for Core manager',()=>{
     expect(objectiveBacklogRank({id:'OBJ-GH-2293'},ids)).toBe(2);
     expect(objectiveBacklogRank({id:'OBJ-GH-4595'},ids)).toBe(100000);
   });
+  it('reads one exact V2 priority block instead of stale markdown sections',()=>{
+    const current=[
+      '# TIGERIQ — HÀNG ĐỢI ĐIỀU HÀNH DUY NHẤT',
+      '<!-- TIGERIQ_OWNER_PRIORITY_V2_BEGIN -->',
+      'OWNER_QUEUE_VERSION=20261025',
+      'OWNER_PRIORITY_ORDER=#5290 > #5144 > #5235',
+      'OWNER_QUEUE_SCOPE=PRIORITY_ONLY_NOT_DISPATCH_PERMISSION',
+      '<!-- TIGERIQ_OWNER_PRIORITY_V2_END -->',
+      '',
+      '## 1. Historical delivery table',
+      '| 1 | [#4456 — historical](https://github.com/newsdayads/tigeriq-ai-lab/issues/4456) | STALE |',
+      'CORE_ORDER=#4625',
+    ].join('\n');
+    expect(parseOwnerBacklogOrder(current)).toEqual([5290,5144,5235]);
+    expect(objectiveBacklogRank({id:'OBJ-GH-5290'},parseOwnerBacklogOrder(current))).toBe(0);
+    expect(objectiveBacklogRank({id:'OBJ-GH-4625'},parseOwnerBacklogOrder(current))).toBe(100000);
+  });
+  it('fails closed on invalid, duplicated or forged authoritative V2 blocks',()=>{
+    const begin='<!-- TIGERIQ_OWNER_PRIORITY_V2_BEGIN -->';
+    const end='<!-- TIGERIQ_OWNER_PRIORITY_V2_END -->';
+    for(const body of [
+      begin+'\nOWNER_PRIORITY_ORDER=#5290 > #5290\n'+end,
+      begin+'\nOWNER_PRIORITY_ORDER=#5290 > #evil\n'+end,
+      begin+'\nOWNER_PRIORITY_ORDER=#5290\nOWNER_PRIORITY_ORDER=#5144\n'+end,
+      begin+'\nOWNER_PRIORITY_ORDER=#5290\n',
+      begin+'\nOWNER_PRIORITY_ORDER=#5290\n'+end+'\n'+end,
+      end+'\n'+begin+'\nOWNER_PRIORITY_ORDER=#5290',
+    ])expect(parseOwnerBacklogOrder(body+'\n'+fixture)).toEqual([]);
+  });
   it('detects metadata- and ID-based Github objectives',()=>{
     const ids=parseOwnerBacklogOrder(fixture);
     expect(objectiveBacklogRank({id:'OBJ-GH-3278'},ids)).toBe(1);
