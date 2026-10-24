@@ -1,6 +1,7 @@
 import { timingSafeEqual, randomUUID, createHash } from 'node:crypto';
 import { decideWithChief } from './chief.mjs';
 import { isOwnerAuthorized } from './owner-auth.mjs';
+import { authorizedPairedWorkCardDevice } from '../apps/shared/owner-paired-work-card.mjs';
 import ownerDecisionHandler from '../apps/tigeriq-core/owner-decision-handler.mjs';
 import { validateOwnerWorkRequest, makeOwnerRequestReceipt, makeOwnerResultReceipt, ownerWorkRequestHistory, ownerWorkRequestResolved, ownerWorkRequestReplayPlan, ownerWorkRequestTriageStatus } from '../apps/shared/owner-work-request.mjs';
 
@@ -447,7 +448,9 @@ function formatStatusReply(snapshot) {
 
 // Requests are scoped to the existing GitHub issue; no new control plane/lease.
 function ownerRequestCredential(req) {
-  if (!isOwnerAuthorized(req) || !GITHUB_TOKEN) {
+  // Paired-device mode is granted only for Owner work-card request history
+  // and bounded instruction receipt. It is never a generic GitHub write credential.
+  if ((!isOwnerAuthorized(req) && !authorizedPairedWorkCardDevice(req)) || !GITHUB_TOKEN) {
     const error=new Error('owner_session_required');error.status=401;throw error;
   }
   return GITHUB_TOKEN;
