@@ -21,6 +21,14 @@ const dropPath = path.join(base, 'drop');
 const windows = new Map();
 const macros = new MacroRuns();
 const now = () => new Date().toISOString();
+export function privateWifiAddress(input) {
+  if(typeof input!=='string')return false;
+  const match=input.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3}):(\d{1,5})$/);
+  if(!match)return false;
+  const p=match.slice(1,5).map(Number),port=Number(match[5]);
+  if(p.some(x=>x<0||x>255)||port<1024||port>65535)return false;
+  return p[0]===10||(p[0]===172&&p[1]>=16&&p[1]<=31)||(p[0]===192&&p[1]===168);
+}
 
 export function parseDevices(text) {
   return String(text).split(/\r?\n/).slice(1).map(s => {
@@ -110,6 +118,16 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'GET' && url.pathname === '/ui.js') {
       return reply(res, 200, fs.readFileSync(path.join(base, 'ui.js')), 'text/javascript; charset=utf-8');
+    }
+    if (req.method === 'POST' && url.pathname === '/api/wifi/connect') {
+      const b=await bodyJson(req);
+      if(!privateWifiAddress(b.address))return json(res,400,{error:'Chỉ hỗ trợ địa chỉ IPv4 LAN riêng và cổng hợp lệ'});
+      try {
+        const r=await run(['connect',b.address],{encoding:'utf8',timeout:12000});
+        const output=String(r.stdout||'').trim();
+        if(!/connected to|already connected/i.test(output))return json(res,409,{error:output.slice(0,250)||'ADB chưa kết nối'});
+        return json(res,200,{connected:true,address:b.address,result:output});
+      }catch(e){return json(res,409,{error:errorText(e)})}
     }
     if (req.method === 'GET' && url.pathname === '/api/health')
       return json(res, 200, { ok: true, localOnly: true, time: now(), adbExists: fs.existsSync(adb), scrcpyExists: fs.existsSync(scrcpy) });
