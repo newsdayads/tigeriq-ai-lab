@@ -7,6 +7,7 @@ import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { executeBatch, validBatch, safePackage } from './farm-ops.mjs';
+import { MacroRuns, validMacro } from './macro-engine.mjs';
 
 const exec = promisify(execFile);
 const base = path.dirname(fileURLToPath(import.meta.url));
@@ -17,6 +18,7 @@ const scrcpy = process.env.TIGERIQ_SCRCPY || 'D:\\TigerIQ\\Tools\\scrcpy\\scrcpy
 const storePath = path.join(base, 'device-labels.json');
 const dropPath = path.join(base, 'drop');
 const windows = new Map();
+const macros = new MacroRuns();
 const now = () => new Date().toISOString();
 
 export function parseDevices(text) {
@@ -160,6 +162,25 @@ const server = http.createServer(async (req, res) => {
       fs.mkdirSync(dropPath, {recursive:true});
       const outcome = await executeBatch(adb, b, dropPath, async () => (await devices()).filter(x => x.state === 'device').map(x => x.serial));
       return json(res, 200, outcome);
+    }
+    if (req.method === 'POST' && url.pathname === '/api/macro/start') {
+      const b = await bodyJson(req);
+      if (!b || !Array.isArray(b.serials) || !b.serials.length || b.serials.length>200 ||
+          !b.serials.every(safeSerial) || new Set(b.serials).size!==b.serials.length ||
+          !validMacro(b.steps)) return json(res,400,{error:'Kịch bản không hợp lệ'});
+      const available=(await devices()).filter(x=>x.state==='device').map(x=>x.serial);
+      if (!b.serials.every(s=>available.includes(s))) return json(res,409,{error:'Thiết bị chưa sẵn sàng'});
+      try {const id=macros.start(b.steps,b.serials,inputOne);return json(res,202,{id,state:'running'});}
+      catch(e){return json(res,409,{error:errorText(e)});}
+    }
+    if (req.method === 'GET' && url.pathname === '/api/macro/status') {
+      const r=macros.status(url.searchParams.get('id'));
+      return json(res,r?200:404,r||{error:'Không tìm thấy phiên'});
+    }
+    if (req.method === 'POST' && url.pathname === '/api/macro/stop') {
+      const b=await bodyJson(req);
+      if(typeof b.id!=='string'||!/^[a-f0-9-]{36}$/.test(b.id))return json(res,400,{error:'Mã phiên không hợp lệ'});
+      return json(res,200,{stopped:macros.stop(b.id)});
     }
     if (req.method === 'POST' && url.pathname === '/api/open') {
       const b = await bodyJson(req);
