@@ -4,6 +4,15 @@ Status: Bootstrap Entry Point
 Priority: P0
 Updated: 2026-10-05
 
+<!-- ULTRACAR_PUBLISHED_APK_LANE_20261025 -->
+## P0 — ULTRACARHCM TEST APK: VERIFIED PC01 → GOOGLE DRIVE RECIPE (OWNER 25/10/2026)
+
+- Khi anh Sơn yêu cầu **UltraCar / sửa APP / xuất APK / đưa Google Drive**, **nạp GitHub main** `docs/apps/ultracar/PUBLISHED_APK_TO_DRIVE_PLAYBOOK.md` và `docs/apps/ultracar/WORKFLOW_APK_RELEASE.md`, Issue **#5129** mới nhất, Issue #504, `docs/RDC_REMOTE_POOL.md`, rồi xác minh PC01 sống thực bằng RDC. Đây là hợp đồng phục hồi nguồn cho chat mới; **không tuyên bố ChatGPT native tự reload GitHub nếu chưa gọi công cụ**.
+- **Đã có tuyến thực nghiệm PASS (2026-10-25):** lấy chính APK signed .43 đã phát hành, xác minh SHA, giải mã sang stage TEST độc lập, vá Java/Smali, sửa lỗi high-register `zc4.smali`, Apktool build, zipalign, ký v2/v3 cùng chứng chỉ, Scheduled Task phiên tương tác Windows `wdragons12x` sang Drive, rồi Google Drive `list_folder` + metadata readback. **Không đi lại đường `prepare_v44.ps1` thất bại hoặc gọi toàn bộ PC01 là BLOCKED.**
+- V1 v1.0.44 (285) **đã có signed TEST APK trên Drive** [file ID `1ARS27BKagjhD90EvxsU0QEgjelTlombW`](https://drive.google.com/file/d/1ARS27BKagjhD90EvxsU0QEgjelTlombW/view?usp=drivesdk), checksum và chứng chỉ tại [Issue #5129 receipt](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129#issuecomment-6390694935). **DeX/SM-F916N chức năng vẫn CHƯA NGHIỆM THU**; production v1.0.17 không thay đổi.
+- Cho lần build kế tiếp: kiểm tra latest verified checkpoint, version mới, writer/quyền, baseline mới theo Owner, tránh trùng stage/APK/file Drive; BUILD_PASS, SIGN_PASS, DRIVE_CLOUD_VERIFIED và DEVICE_QA_PASS là các cổng khác nhau. Không khởi tạo lệnh bị nền tảng từ chối bằng cách đổi tài khoản/công cụ để vượt; cổng bảo mật/chứng chỉ/Production vẫn nguyên hiệu lực.
+<!-- /ULTRACAR_PUBLISHED_APK_LANE_20261025 -->
+
 ## P0 — AUTONOMOUS END-TO-END EXECUTION & AUTO-MERGE (OWNER 2026-10-20)
 OWNER_SCOPE=FULL_AUTONOMY_EXECUTION|PRIORITY=P0|AUTO_MERGE_AUTHORIZED=true
 - Toàn quyền tự chủ thực thi đầu-cuối: Khi nhận Work Order hoặc dự án, executor agent (NV02/NV06/Antigravity) được tự động thực hiện toàn bộ vòng đời: đọc lỗi -> sửa mã -> kiểm thử -> tự sửa môi trường/dependencies -> tự merge MAIN và xuất bản khi CI xanh.
