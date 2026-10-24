@@ -2135,7 +2135,7 @@ function render(){
   const count=Number(snapshot?.openSummary?.dispatchReady);
   const queueFresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
   $('workMeta').textContent=queueFresh&&Number.isInteger(count)&&count>=0
-    ?count+' đủ điều kiện nhận · '+rows.length+' mục đang xem'
+    ?count+' ứng viên xét giao · '+rows.length+' mục đang xem'
     :rows.length+' mục · quyền nhận việc chưa xác minh';
   const box=$('workList');
   TigerIQWorkCenter.renderCards(box,rows,{fresh:!(snapshot?.staleAll||snapshot?.workProjection?.stale),sourceGate:true,onOpen:(row,element)=>openDrawer(row,element)});
