@@ -46,8 +46,8 @@ test('an old response may clear only its own exact submitted revision', () => {
 
 test('opening another issue resets text ownership and finished old ID cannot be reused', () => {
   assert.ok(dashboard.includes('ownerRequestLastId=null;ownerRequestLastMessage=null;ownerRequestDraft.value='),
-    'switching cards resets both the request ID and its bound draft');
-  assert.ok(dashboard.includes("else if(ownerRequestLastId===requestId&&['ANSWERED','VERIFIED'].includes(record.status)){ownerRequestLastId=null;ownerRequestLastMessage=null}"),
+    'switching cards isolates request identity before restoring the same-card pending draft');
+  assert.ok(dashboard.includes("else if(ownerRequestLastId===requestId&&['ANSWERED','VERIFIED'].includes(record.status)){ownerRequestLastId=null;ownerRequestLastMessage=null;ownerRequestRememberDraft()}"),
     'a terminal old result leaves edited draft in place while discarding old ID');
   assert.equal(ownerRequestCanReuseId('old-id', 'old', 'new'), false);
 });
