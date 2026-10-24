@@ -7,6 +7,8 @@ const REDIRECT_URI = String(process.env.TIGERIQ_OWNER_OAUTH_REDIRECT_URI || '').
 const SESSION_SECRET = String(process.env.TIGERIQ_OWNER_SESSION_SECRET || '').trim();
 const SESSION_COOKIE = 'tigeriq_owner_session';
 const STATE_COOKIE = 'tigeriq_owner_oauth_state';
+const LOGIN_CSRF_COOKIE = 'tigeriq_owner_login_csrf';
+const LOGIN_CSRF_TTL_SECONDS = 10 * 60;
 const MAX_AGE_SECONDS = 8 * 60 * 60;
 const INTERNAL_KEY_SHA256 = String(process.env.TIGERIQ_OWNER_INTERNAL_KEY_SHA256 || '').trim().toLowerCase();
 const OWNER_ORIGIN = 'https://tigeriq-ai-lab.vercel.app';
@@ -26,9 +28,14 @@ function configured() {
 }
 
 function ownerWriteOrigin(req) {
-  return String(req.headers?.host||'').toLowerCase()==='tigeriq-ai-lab.vercel.app'
-    && String(req.headers?.origin||'')===OWNER_ORIGIN
-    && req.headers?.['sec-fetch-site']!=='cross-site';
+  // Native iOS form submissions may omit Origin. A short-lived signed
+  // double-submit CSRF token is mandatory for every internal login instead.
+  if(String(req.headers?.host||'').toLowerCase()!=='tigeriq-ai-lab.vercel.app')return false;
+  const origin=String(req.headers?.origin||'');
+  if(origin&&origin!==OWNER_ORIGIN)return false;
+  const referer=String(req.headers?.referer||'');
+  if(referer){try{if(new URL(referer).origin!==OWNER_ORIGIN)return false;}catch{return false;}}
+  return req.headers?.['sec-fetch-site']!=='cross-site';
 }
 function internalKeyMatches(value) {
   if(!internalConfigured()||typeof value!=='string'||value.length<32||value.length>192
@@ -43,6 +50,8 @@ async function internalLoginBody(req) {
   try{return JSON.parse(raw||'{}')}catch{throw Error('body_invalid')}
 }
 function internalLoginPage(res) {
+  const csrfToken=createOwnerLoginCsrf();
+  setCookie(res, LOGIN_CSRF_COOKIE, csrfToken, LOGIN_CSRF_TTL_SECONDS);
   res.statusCode=200;
   res.setHeader('content-type','text/html; charset=utf-8');
   res.setHeader('cache-control','no-store');
@@ -57,6 +66,7 @@ function internalLoginPage(res) {
    'p{color:#bfd0e3;line-height:1.5}a{color:#8ac4ff}</style>',
    '<main><h2>TigerIQ — Owner nội bộ</h2><p>Nhập mã Owner riêng để giao việc. Không cần Google.</p>',
    '<form method="POST" action="/api/owner-auth?action=internal-login">',
+   '<input type="hidden" name="csrf" value="'+csrfToken+'">',
    '<label for="code">Mã Owner</label><input type="password" name="code" id="code" autocomplete="off" minlength="32" maxlength="192" required>',
    '<button type="submit">XÁC THỰC OWNER</button></form><p><a href="/">Quay lại TigerIQ</a></p></main></html>'
   ].join(''));
@@ -78,6 +88,21 @@ function safeEqual(left, right) {
   return a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
 }
 
+function createOwnerLoginCsrf(nowSeconds=Math.floor(Date.now()/1000)) {
+  const nonce=randomBytes(24).toString('base64url');
+  const content=nonce+'.'+nowSeconds;
+  return content+'.'+sign('OWNER_LOGIN_CSRF_V1:'+content);
+}
+function validOwnerLoginCsrf(req,body,nowSeconds=Math.floor(Date.now()/1000)) {
+  const formToken=String(body?.csrf||'');
+  const cookieToken=cookies(req)[LOGIN_CSRF_COOKIE]||'';
+  if(formToken.length>256||!safeEqual(formToken,cookieToken))return false;
+  const parts=formToken.split('.');
+  if(parts.length!==3||!/^[-_A-Za-z0-9]{32,64}$/.test(parts[0])||!/^\d{10}$/.test(parts[1]))return false;
+  const issued=Number(parts[1]);
+  if(!Number.isSafeInteger(issued)||issued>nowSeconds+30||nowSeconds-issued>LOGIN_CSRF_TTL_SECONDS)return false;
+  return safeEqual(parts[2],sign('OWNER_LOGIN_CSRF_V1:'+parts[0]+'.'+parts[1]));
+}
 function setCookie(res, name, value, maxAge = MAX_AGE_SECONDS) {
   const next=`${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
   const existing=res.getHeader('set-cookie');
@@ -142,8 +167,10 @@ export default async function handler(req, res) {
     if(!internalConfigured())return json(res,503,{error:'internal_login_not_configured'});
     if(!ownerWriteOrigin(req))return json(res,403,{error:'invalid_owner_origin'});
     let payload;try{payload=await internalLoginBody(req)}catch{return json(res,400,{error:'invalid_login_body'})}
+    if(!validOwnerLoginCsrf(req,payload))return json(res,403,{error:'invalid_owner_csrf'});
     if(!internalKeyMatches(payload?.code))return json(res,401,{error:'invalid_owner_code'});
     setCookie(res, SESSION_COOKIE, sessionValue(OWNER_EMAIL));
+    setCookie(res, LOGIN_CSRF_COOKIE, '', 0);
     return redirect(res,'/?owner=connected');
   }
   if (req.method !== 'GET') return json(res, 405, { error: 'method_not_allowed' });
