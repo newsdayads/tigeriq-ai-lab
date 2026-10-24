@@ -1,4 +1,4 @@
-# TigerIQ Phone Farm — bản điều khiển Android cục bộ (DEV)
+# TigerIQ Phone Farm — Windows Local DEV v0.4
 
 Mã nguồn độc lập, không dùng thư viện hoặc máy chủ xác thực LAIXI. **Chưa nghiệm thu FULL.** Không giới hạn số thiết bị bằng giấy phép; giới hạn thực tế phụ thuộc phần cứng và mạng ADB.
 
@@ -12,7 +12,8 @@ Mã nguồn độc lập, không dùng thư viện hoặc máy chủ xác thực
 
 ## Chức năng có mã nguồn
 
-- Tìm/đổi tên thiết bị USB/WiFi ADB; ảnh màn hình PNG; chạm, vuốt, phím và nhập liệu ASCII; đồng bộ theo nhóm. Mở scrcpy riêng.
+- Giao diện Windows xanh-trắng tham chiếu bố cục LAIXI (thiết kế lại, không sao chép mã/đồ họa): sidebar General / Tasks / Toolbox, lưới ảnh Android nhỏ có tùy chỉnh kích thước, chọn máy bằng số, nhóm cục bộ, công cụ theo nhóm.
+- Tìm/đổi tên thiết bị USB/WiFi ADB; ảnh màn hình PNG; chạm, vuốt, phím và nhập liệu ASCII; đồng bộ theo nhóm. Mở scrcpy riêng. WiFi ADB kết nối đến địa chỉ LAN riêng đã ghép đôi, không quét ngoài mạng.
 - Đọc ứng dụng bên thứ ba: `GET /api/packages?serial=...`.
 - Các hành động nhóm: `POST /api/batch` với `install` (APK), `upload` (tệp tới `/sdcard/Download/TigerIQ/`), `launch`, `forceStop`.
 - Chỉ cho phép các tên tệp an toàn trong thư mục `drop/` bên cạnh `app.mjs`. Sao chép APK/tệp từ Windows vào thư mục này **trước** khi yêu cầu ứng dụng gửi/cài.
@@ -42,3 +43,9 @@ Ví dụ kịch bản an toàn trong giao diện:
 - Dừng `node app.mjs` để ngắt dịch vụ; xóa thư mục DEV nếu cần gỡ. Không sửa dữ liệu LAIXI.
 
 Theo dõi: [GH-5291](https://github.com/newsdayads/tigeriq-ai-lab/issues/5291), [PR-5292](https://github.com/newsdayads/tigeriq-ai-lab/pull/5292).
+
+## Giao diện v0.4 và giới hạn
+- Bố cục lấy cảm hứng từ ảnh giao diện và tài liệu LAIXI công khai tại `https://docs.laixi.app/en/docs/tutorial-extras/批量控制屏幕/` cùng website `https://www.laixi.app/`; đây là mã nguồn UI riêng do TigerIQ viết, **không phải LAIXI bị loại bỏ server**.
+- Sidebar xanh/trắng, lưới màn hình Android, điều khiển nhóm, nút macro, lịch, ứng dụng và truyền tệp là chức năng có triển khai. Chưa có khả năng điều khiển từ xa đa PC qua Internet, Auto.js tương thích đầy đủ hay chứng nhận hơn 300 thiết bị. Số lượng đồng thời thực tế phải kiểm thử phần cứng Box.
+- Giao diện thử nghiệm: `http://127.0.0.1:8765/`; shortcut Desktop mở ứng dụng trong Chrome. **Không yêu cầu hoặc phát sinh tài khoản LAIXI.**
+- E2E trên PC01 với Chrome/Puppeteer: ảnh Android 1080×2220, chọn 1 máy, chuyển Tasks, macro 2/2 hoàn thành, đọc 49 ứng dụng, chỉnh độ rộng tile 110px, 0 JS exception. Backend unit 13/13 PASS.
