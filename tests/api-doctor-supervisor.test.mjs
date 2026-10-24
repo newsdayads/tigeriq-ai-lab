@@ -951,7 +951,8 @@ describe('#5222 NV11 Groq visible output response contract',()=>{
   it('accepts only visible text and rejects object/reasoning-only Groq replies',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     // Verify that the actual Groq provider adapter uses the strict visible-content parser.
-    expect(core).toMatch(/const text = \(host==='api\.inceptionlabs\.ai'\|\|host==='api\.groq\.com'\)\s*\?\s*inceptionVisibleContent\(body\)/);
+    expect(core).toContain("const visibleText = host==='api.groq.com'?inceptionVisibleContent(body):text;");
+    expect(core).toContain('return String(visibleText);');
     const start=core.indexOf('export function inceptionVisibleContent(body){');
     const end=core.indexOf('\nexport function inceptionReasoningPolicy(',start);
     expect(start).toBeGreaterThanOrEqual(0);
