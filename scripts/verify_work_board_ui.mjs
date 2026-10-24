@@ -127,7 +127,7 @@ assert.match(liveApi, /per_page=100&sort=updated&direction=desc/);
 assert.match(liveApi, /parseOwnerBacklogOrder/);
 assert.match(liveApi, /ownerBacklogOrder,/);
 assert.match(liveApi, /dispatchReady: rankedQueue\.filter/);
-assert.match(publicView, /đủ điều kiện nhận/);
+assert.match(publicView, /ứng viên xét giao/);
 assert.match(publicView, /quyền nhận việc chưa xác minh/);
 assert.match(publicView, /projected\?\.ownerBacklogOrder/);
 assert.match(liveApi, /export function classifyOpenIssue/);
