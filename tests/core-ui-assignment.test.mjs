@@ -912,7 +912,7 @@ test('explicit strict native CORE_REVIEW target never creates a competing UI rev
   // Existing explicit Core-review overflow remains available without a strict target.
   assert.deepEqual(parseCoreUiIssue(base)?.eligibleWorkerIds,['NV03','NV04']);
   // A native-targeted review is left to Core intake and cannot reserve UI scope.
-  assert.equal(parseCoreUiIssue({...base,body:base.body+'\\nCORE_TARGET_STRICT=true'}),null);
+  assert.equal(parseCoreUiIssue({...base,body:base.body+'\nCORE_TARGET_STRICT=true'}),null);
   // A non-strict explicit opt-out still permits the existing UI overflow path.
-  assert.deepEqual(parseCoreUiIssue({...base,body:base.body+'\\nCORE_TARGET_STRICT=false'})?.eligibleWorkerIds,['NV03','NV04']);
+  assert.deepEqual(parseCoreUiIssue({...base,body:base.body+'\nCORE_TARGET_STRICT=false'})?.eligibleWorkerIds,['NV03','NV04']);
 });
