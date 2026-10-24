@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import { executeBatch, validBatch, safePackage } from './farm-ops.mjs';
 import { MacroRuns, validMacro } from './macro-engine.mjs';
 import { LocalScheduler } from './schedule-engine.mjs';
+import { Recordings, validRecordRequest } from './recording.mjs';
 
 const exec = promisify(execFile);
 const base = path.dirname(fileURLToPath(import.meta.url));
@@ -20,6 +21,7 @@ const storePath = path.join(base, 'device-labels.json');
 const dropPath = path.join(base, 'drop');
 const windows = new Map();
 const macros = new MacroRuns();
+const recordings = new Recordings(scrcpy, path.join(base, 'recordings'));
 const now = () => new Date().toISOString();
 export function privateWifiAddress(input) {
   if(typeof input!=='string')return false;
@@ -172,6 +174,25 @@ const server = http.createServer(async (req, res) => {
       const state = labels(); state[b.serial] = b.label;
       fs.writeFileSync(storePath, JSON.stringify(state, null, 2));
       return json(res, 200, { ok: true });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/record/start') {
+      const b=await bodyJson(req);
+      if(!validRecordRequest(b))return json(res,400,{error:'Thiết bị hoặc thời lượng không hợp lệ (5-120 giây)'});
+      if(!fs.existsSync(scrcpy))return json(res,424,{error:'Thiếu scrcpy'});
+      if(!(await devices()).some(x=>x.serial===b.serial && x.state==='device'))return json(res,409,{error:'Thiết bị chưa sẵn sàng'});
+      try {return json(res,202,recordings.start(b));}
+      catch(e){return json(res,409,{error:errorText(e)})}
+    }
+    if (req.method === 'GET' && url.pathname === '/api/record/status') {
+      const id=url.searchParams.get('id');
+      if(typeof id!=='string'||!/^[a-f0-9-]{36}$/.test(id))return json(res,400,{error:'Mã phiên không hợp lệ'});
+      const r=recordings.status(id);
+      return json(res,r?200:404,r||{error:'Không tìm thấy bản ghi'});
+    }
+    if (req.method === 'POST' && url.pathname === '/api/record/stop') {
+      const b=await bodyJson(req);
+      if(typeof b.id!=='string'||!/^[a-f0-9-]{36}$/.test(b.id))return json(res,400,{error:'Mã phiên không hợp lệ'});
+      return json(res,200,{stopRequested:recordings.stop(b.id)});
     }
     if (req.method === 'GET' && url.pathname === '/api/packages') {
       const serial = url.searchParams.get('serial');
