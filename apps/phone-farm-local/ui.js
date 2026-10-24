@@ -201,6 +201,31 @@ async function batch(action){
   }catch(e){toast(e.message,true)}
 }
 for(const id of ['install','upload','launch','forceStop'])$(id).onclick=()=>batch(id);
+let recordId=null;
+async function checkRecording(){
+  if(!recordId)return;
+  try{
+    const r=await api('/api/record/status?id='+encodeURIComponent(recordId));
+    $('recordStatus').textContent=(r.state==='recording'?'Đang ghi: ':r.state==='completed'?'Đã ghi xong: ':'Ghi thất bại: ')+
+      r.serial+' • '+r.seconds+'s'+(r.bytes?' • '+Math.ceil(r.bytes/1024)+' KB':'')+
+      (r.state==='completed'?' • '+r.file:'')+(r.error?' • '+r.error:'');
+    if(r.state!=='recording'){$('recordStop').disabled=true;recordId=null}
+  }catch(e){$('recordStatus').textContent=e.message;recordId=null;$('recordStop').disabled=true}
+}
+$('recordStart').onclick=async()=>{
+  const serial=active()[0];if(!serial)return toast('Chọn một thiết bị để ghi',true);
+  try{
+    const seconds=Number($('recordSeconds').value);
+    const r=await api('/api/record/start',{serial,seconds});
+    recordId=r.id;$('recordStop').disabled=false;setTab('toolbox');
+    $('recordStatus').textContent='Đang ghi '+serial+' • '+seconds+'s';
+  }catch(e){toast(e.message,true)}
+};
+$('recordStop').onclick=async()=>{
+  if(!recordId)return;
+  try{await api('/api/record/stop',{id:recordId});await checkRecording()}catch(e){toast(e.message,true)}
+};
+setInterval(checkRecording,2000);
 $('listPackages').onclick=async()=>{const s=active()[0];if(!s)return toast('Chọn thiết bị trước',true);try{const r=await api('/api/packages?serial='+encodeURIComponent(s));$('appInfo').textContent='Đã tìm thấy '+r.packages.length+' ứng dụng. '+r.packages.slice(0,12).join(' • ')}catch(e){toast(e.message,true)}};
 $('apps').onclick=()=>setTab('toolbox');
 $('viewDevices').onclick=()=>{setTab('general');document.querySelector('.workspace').scrollTo({top:0,behavior:'smooth'})};
