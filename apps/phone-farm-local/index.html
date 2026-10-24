@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TigerIQ Phone Farm • PC01</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1020;--panel:#151e32;--panel2:#1c2740;--text:#eaf2ff;--muted:#a0b1cf;--line:#31405b;--accent:#4aa8ff;--good:#42d7a0;--bad:#ff7f86}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,"Segoe UI",sans-serif}
+header{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:17px 22px;border-bottom:1px solid var(--line);background:#11192b;flex-wrap:wrap}
+h1{font-size:20px;margin:0}h2{font-size:15px;margin:0 0 12px}small,.dim{color:var(--muted)}
+.pill{border:1px solid #246b50;border-radius:30px;padding:5px 10px;color:var(--good)}
+.layout{display:grid;grid-template-columns:minmax(250px,290px) 1fr;gap:16px;padding:16px}
+aside,.panel{background:var(--panel);padding:16px;border:1px solid var(--line);border-radius:14px}
+aside{align-self:start;position:sticky;top:10px}
+label{display:block;color:var(--muted);margin-bottom:7px}input,select{background:#0e1729;border:1px solid #3a4b67;border-radius:8px;color:var(--text);padding:10px;width:100%;font:inherit}
+button{background:#254567;color:var(--text);border:1px solid #3f6e9a;border-radius:8px;cursor:pointer;padding:9px 12px;font:inherit;white-space:nowrap}
+button:hover{background:#326195}button.primary{background:#2167a5}button:disabled{opacity:.4;cursor:not-allowed}
+.tools{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
+.row{display:flex;gap:10px;align-items:center;justify-content:space-between}
+.spacer{height:20px}.notice{font-size:12px;line-height:1.55;color:var(--muted);margin:12px 0}
+#msg{min-height:22px;font-size:13px;line-height:1.45;color:var(--good)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:14px}
+.device{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.device.offline{opacity:.7}
+.device-head{display:flex;align-items:start;justify-content:space-between;padding:10px;gap:8px}
+.device-head strong{font-size:12px;word-break:break-all}
+.device-head small{display:block;font-size:11px;margin-top:4px}
+.device-head input{width:17px;height:17px;accent-color:var(--accent)}
+.screenbox{position:relative;display:flex;align-items:center;justify-content:center;background:#090f18;min-height:230px;max-height:460px;overflow:hidden}
+.screenbox img{display:block;max-width:100%;max-height:460px;object-fit:contain;user-select:none;touch-action:none;cursor:crosshair}
+.empty{padding:35px;color:#7b91b5;text-align:center}
+.device-foot{display:flex;flex-wrap:wrap;gap:6px;padding:10px}
+.device-foot button{font-size:12px;padding:6px 9px}
+summary{cursor:pointer;color:#ccd9ef}details{margin-top:12px}
+.bad{color:var(--bad)}.good{color:var(--good)}
+@media(max-width:700px){.layout{grid-template-columns:1fr;padding:10px}aside{position:static}header{padding:14px}}
+</style></head>
+<body>
+<header><div><h1>TigerIQ Phone Farm</h1><small>Điều khiển Android nội bộ PC01 • không tài khoản • không máy chủ bên ngoài</small></div>
+<div class="row"><span class="pill">CHỈ MÁY NÀY</span><span id="count" class="dim">Đang kiểm tra</span></div></header>
+<div class="layout">
+<aside>
+<h2>Thiết bị</h2>
+<div class="tools"><button id="refresh" class="primary">Làm mới</button><button id="all">Chọn tất cả</button><button id="none">Bỏ chọn</button></div>
+<p class="notice">Chỉ thao tác với thiết bị đã cấp quyền gỡ lỗi ADB. Không yêu cầu đăng nhập LAIXI.</p>
+<label for="search">Lọc thiết bị</label><input id="search" placeholder="Tên, mẫu, mã thiết bị"/>
+<div class="spacer"></div><h2>Điều khiển nhóm</h2>
+<label for="text">Nhập văn bản (ASCII)</label><input id="text" placeholder="Nội dung gửi tới thiết bị"/>
+<div class="tools"><button id="sendText" class="primary">Gửi văn bản</button><button data-key="HOME">Trang chủ</button><button data-key="BACK">Quay lại</button><button data-key="APP_SWITCH">Ứng dụng</button></div>
+<div class="spacer"></div>
+<label><input id="sync" type="checkbox" style="width:18px;vertical-align:middle;margin-right:7px">Đồng bộ thao tác trên các máy đã chọn</label>
+<p class="notice">Khi bật đồng bộ, chạm/vuốt trên một màn hình sẽ được quy đổi theo tỷ lệ tới các thiết bị đã chọn.</p>
+<details><summary>Thông tin hệ thống</summary><p class="notice" id="health">Đang kiểm tra...</p></details>
+<div class="spacer"></div><div id="msg" aria-live="polite"></div>
+</aside>
+<main><div class="row" style="margin-bottom:13px"><h2 style="margin:0">Màn hình Android</h2><small>Cập nhật ảnh mỗi 4 giây; scrcpy dùng để điều khiển mượt hơn</small></div>
+<div id="grid" class="grid"></div></main></div>
+<script type="module">
+const $=id=>document.getElementById(id);
+const grid=$('grid'), selected=new Set(), sizes=new Map(), sessions=new Map();
+let deviceRows=[], lastRefresh=0, pending=0;
+const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const notice=(s,bad=false)=>{$('msg').textContent=s;$('msg').className=bad?'bad':'good'};
+async function api(url, data){
+  const response=await fetch(url,data===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+  const value=await response.json();if(!response.ok)throw Error(value.error||('Mã lỗi '+response.status));return value;
+}
+const active=()=>deviceRows.filter(d=>selected.has(d.serial)&&d.state==='device').map(d=>d.serial);
+async function action(b){
+  if(!b.serials?.length)throw Error('Chưa chọn thiết bị nào');
+  const x=await api('/api/input',b),err=x.results.filter(r=>!r.ok);
+  notice(err.length?('Lỗi '+err.length+'/'+x.results.length+': '+err[0].error):('Đã gửi tới '+x.results.length+' thiết bị'),!!err.length);
+}
+async function refresh(){
+  try{
+    const data=await api('/api/devices');deviceRows=data.devices;
+    for(const serial of [...selected])if(!deviceRows.some(d=>d.serial===serial))selected.delete(serial);
+    $('count').textContent=data.count+' thiết bị';
+    draw();lastRefresh=Date.now();
+  }catch(e){notice('Không thể đọc danh sách: '+e.message,true)}
+}
+function draw(){
+  const query=$('search').value.trim().toLowerCase();
+  grid.textContent='';
+  const display=deviceRows.filter(d=>(d.serial+' '+d.model+' '+d.label).toLowerCase().includes(query));
+  if(!display.length){grid.innerHTML='<div class="empty">Không có thiết bị phù hợp</div>';return}
+  for(const d of display){
+    const card=document.createElement('div');card.className='device'+(d.state==='device'?'':' offline');
+    const serial=d.serial,ready=d.state==='device',checked=selected.has(serial)?'checked':'';
+    card.innerHTML='<div class="device-head"><div><strong>'+escape(d.label||d.model||serial)+'</strong><small>'+escape(serial)+'</small><small class="'+(ready?'good':'bad')+'">'+escape(d.state)+'</small></div><input type="checkbox" aria-label="Chọn '+escape(serial)+'" '+checked+'></div>'+
+      '<div class="screenbox">'+(ready?'<img alt="Màn hình '+escape(serial)+'" draggable="false">':'<div class="empty">Thiết bị chưa sẵn sàng</div>')+'</div>'+
+      '<div class="device-foot"><button data-open '+(ready?'':'disabled')+'>Mở điều khiển</button><button data-home '+(ready?'':'disabled')+'>Trang chủ</button><button data-label>Đổi tên</button></div>';
+    card.querySelector('input').onchange=e=>{e.target.checked?selected.add(serial):selected.delete(serial)};
+    card.querySelector('[data-open]').onclick=async()=>{try{const x=await api('/api/open',{serial});notice(x.already?'Đã có phiên điều khiển':'Đã gửi lệnh mở scrcpy cho '+serial)}catch(e){notice(e.message,true)}};
+    card.querySelector('[data-home]').onclick=()=>action({serials:[serial],action:'key',key:'HOME'}).catch(e=>notice(e.message,true));
+    card.querySelector('[data-label]').onclick=async()=>{
+      const label=prompt('Tên thiết bị',d.label||d.model||'');if(label===null)return;
+      try{await api('/api/label',{serial,label});d.label=label;draw()}catch(e){notice(e.message,true)}
+    };
+    grid.append(card);
+    if(ready){
+      const img=card.querySelector('img');
+      const size={width:1,height:1}; sizes.set(serial,size);
+      img.onload=()=>{size.width=img.naturalWidth;size.height=img.naturalHeight};
+      img.onerror=()=>{img.alt='Chưa lấy được ảnh'};
+      let drag=null;
+      img.onpointerdown=e=>{drag={x:e.clientX,y:e.clientY};img.setPointerCapture(e.pointerId)};
+      img.onpointerup=async e=>{
+        if(!drag||!size.width||!size.height)return;
+        const box=img.getBoundingClientRect(),scaleX=size.width/box.width,scaleY=size.height/box.height;
+        const start=[Math.max(0,Math.round((drag.x-box.left)*scaleX)),Math.max(0,Math.round((drag.y-box.top)*scaleY))];
+        const end=[Math.max(0,Math.round((e.clientX-box.left)*scaleX)),Math.max(0,Math.round((e.clientY-box.top)*scaleY))];
+        const swipe=Math.hypot(end[0]-start[0],end[1]-start[1])>12;drag=null;
+        const targets=$('sync').checked?active():[serial];
+        try {
+          if(!targets.length)throw Error('Chọn thiết bị trước khi đồng bộ');
+          const output=await Promise.all(targets.map(async s=>{
+            let w=size.width,h=size.height;
+            if(s!==serial){let z=sizes.get(s);if(!z?.width||z.width===1){z=await api('/api/size?serial='+encodeURIComponent(s))}w=z.width;h=z.height}
+            const b={serials:[s],action:swipe?'swipe':'tap',x:Math.round(start[0]*w/size.width),y:Math.round(start[1]*h/size.height)};
+            if(swipe)Object.assign(b,{toX:Math.round(end[0]*w/size.width),toY:Math.round(end[1]*h/size.height),ms:360});
+            return api('/api/input',b);
+          }));
+          const errors=output.flatMap(o=>o.results).filter(x=>!x.ok);
+          notice(errors.length?errors[0].error:('Đã '+(swipe?'vuốt':'chạm')+' '+targets.length+' thiết bị'),errors.length>0);
+          loadScreen(img,serial);
+        }catch(e){notice(e.message,true)}
+      };
+      loadScreen(img,serial);
+    }
+  }
+}
+async function loadScreen(img,serial){
+  if(img.dataset.busy==='1'||!img.isConnected)return;
+  img.dataset.busy='1';
+  try{
+    const res=await fetch('/api/screen?serial='+encodeURIComponent(serial));
+    if(!res.ok)throw Error('Ảnh không sẵn sàng');
+    const blob=await res.blob(),url=URL.createObjectURL(blob),old=img.dataset.url;
+    img.onload=()=>{sizes.set(serial,{width:img.naturalWidth,height:img.naturalHeight});if(old)URL.revokeObjectURL(old)};
+    img.src=url;img.dataset.url=url;
+  }catch{}finally{img.dataset.busy='0'}
+}
+$('refresh').onclick=refresh;$('all').onclick=()=>{deviceRows.filter(d=>d.state==='device').forEach(d=>selected.add(d.serial));draw()};
+$('none').onclick=()=>{selected.clear();draw()};$('search').oninput=draw;
+$('sendText').onclick=()=>action({serials:active(),action:'text',text:$('text').value}).catch(e=>notice(e.message,true));
+document.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=>action({serials:active(),action:'key',key:b.dataset.key}).catch(e=>notice(e.message,true)));
+api('/api/health').then(x=>{$('health').textContent='ADB: '+(x.adbExists?'có':'thiếu')+'; scrcpy: '+(x.scrcpyExists?'có':'thiếu')+'; chế độ: chỉ nội bộ PC'}).catch(e=>notice(e.message,true));
+refresh();
+setInterval(()=>{if(document.hidden)return;if(Date.now()-lastRefresh>20000)refresh();else for(const img of grid.querySelectorAll('.screenbox img')){const box=img.closest('.device');const serial=box?.querySelector('.device-head small')?.textContent;if(serial)loadScreen(img,serial)}},4000);
+</script>
+</body></html>
