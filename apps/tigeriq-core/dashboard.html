@@ -705,7 +705,8 @@ async function ownerRequestRefresh(number){
  const revision=ownerRequestRevision;
  ownerRequestApiReady=false;
  if(!ownerRequestSecure()){ownerRequestSend.disabled=true;ownerWorkSecureLink.hidden=false;ownerWorkSecureLink.href='https://tigeriq-ai-lab.vercel.app/';ownerWorkSecureLink.textContent='MỞ GIAO DIỆN HTTPS';ownerRequestStatus.textContent='Gửi yêu cầu chỉ hỗ trợ trên HTTPS bằng thiết bị đã ghép với TigerIQ.';return}
- ownerRequestSend.disabled=ownerRequestSubmitting||ownerRequestWriteBlocked;ownerWorkSecureLink.hidden=true;
+ ownerRequestSend.disabled=ownerRequestSubmitting;ownerWorkSecureLink.hidden=true;
+ if(ownerRequestWriteBlocked)ownerRequestSend.disabled=true;
  try{
  const r=await fetch('/api/control?operation=owner-work-request&issue='+encodeURIComponent(number),{cache:'no-store',credentials:'same-origin'});
  if(number!==ownerRequestIssueNumber||revision!==ownerRequestRevision)return;
@@ -734,7 +735,8 @@ async function ownerRequestRefresh(number){
  }catch(e){if(number===ownerRequestIssueNumber&&revision===ownerRequestRevision)ownerRequestStatus.textContent='CHƯA XÁC MINH: '+String(e.message||e)}
 }
 async function ownerRequestSubmit(){
- if(!workDetailRow||!ownerRequestSecure()||ownerRequestSubmitting||ownerRequestWriteBlocked)return;
+ if(!workDetailRow||!ownerRequestSecure()||ownerRequestSubmitting)return;
+ if(ownerRequestWriteBlocked)return;
  if(!ownerRequestApiReady){ownerRequestStatus.textContent='Chưa kết nối được API Owner. Chưa gửi yêu cầu.';return}
  const revision=ownerRequestRevision,issueNumber=Number(workDetailRow.number),message=ownerRequestDraft.value.trim();
  if(!message){ownerRequestStatus.textContent='Anh Sơn chưa nhập yêu cầu.';return}
