@@ -4,6 +4,7 @@ import { isOwnerAuthorized } from './owner-auth.mjs';
 import { authorizedPairedWorkCardDevice } from '../apps/shared/owner-paired-work-card.mjs';
 import ownerDecisionHandler from '../apps/tigeriq-core/owner-decision-handler.mjs';
 import { validateOwnerWorkRequest, makeOwnerRequestReceipt, makeOwnerResultReceipt, ownerWorkRequestHistory, ownerWorkRequestResolved, ownerWorkRequestReplayPlan, ownerWorkRequestTriageStatus } from '../apps/shared/owner-work-request.mjs';
+import { boundedOwnerTriageChild } from '../apps/shared/owner-work-dispatch.mjs';
 
 const REPO = process.env.TIGERIQ_REPO || 'newsdayads/tigeriq-ai-lab';
 const COMMAND_SECRET = process.env.TIGERIQ_COMMAND_SECRET || '';
@@ -532,8 +533,30 @@ async function ownerRequestApi(req,res,payload,readOnly=false){
     const reply=status==='PLAN_SHOWN'
       ?'CHƯA THỰC THI — '+(triageReply||'Đã ghi chỉ đạo vào thẻ; chờ nhân sự có quyền, lease và biên nhận kết quả Core.')
       :String(triageReply|| (status==='ANSWERED'?'Đã trả lời câu hỏi.':'Cần làm rõ chỉ đạo trước thực thi.')).trim();
-    const terminal=await gh(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({body:makeOwnerResultReceipt(request.requestId,status,reply)})},token);
-    result={...result,status,reply,resultUrl:terminal.html_url||null,resolved:ownerWorkRequestResolved(status)};
+    let dispatchReply=reply;
+    // PLAN_SHOWN is NOT an execution receipt. Only stage a bounded, read-only
+    // planning Work Order in the existing GitHub -> Core queue.
+    if(status==='PLAN_SHOWN'){
+      try{
+        const spec=boundedOwnerTriageChild({issue,request,receiptUrl:saved.html_url||''});
+        const query=encodeURIComponent('repo:'+owner+'/'+repo+' is:issue "OWNER_REQUEST_ID='+request.requestId+'"');
+        const search=await gh('/search/issues?q='+query+'&per_page=15',{},token);
+        const existing=(Array.isArray(search?.items)?search.items:[]).find(x=>String(x.body||'').includes('OWNER_REQUEST_ID='+request.requestId+'\n')
+          && String(x.body||'').includes('PARENT_ISSUE=#'+issueNumber+'\n'));
+        const child=existing||await gh('/repos/'+owner+'/'+repo+'/issues',{
+          method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({title:spec.title,body:spec.body})
+        },token);
+        const childUrl=String(child?.html_url||'');
+        if(!/^https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/\d+$/.test(childUrl))throw Error('owner_triage_child_receipt_missing');
+        dispatchReply+='\nCORE_PLANNING_ONLY='+childUrl+' — Chưa có lease hoặc kết quả thực thi; chờ Core nhận và nghiệm thu.';
+      }catch(error){
+        const code=String(error?.message||'DISPATCH_UNVERIFIED').replace(/[^A-Za-z0-9_:-]/g,'').slice(0,90);
+        dispatchReply+='\nCORE_DISPATCH_NOT_VERIFIED='+code+' — Giữ chỉ đạo chưa hoàn tất.';
+      }
+    }
+    const terminal=await gh(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({body:makeOwnerResultReceipt(request.requestId,status,dispatchReply)})},token);
+    result={...result,status,reply:dispatchReply,resultUrl:terminal.html_url||null,resolved:ownerWorkRequestResolved(status)};
   }catch{
     // Request is durable even when model, result receipt or provider fails.
     result.reply='Đã lưu yêu cầu. Chưa xác minh bước phân tích; không xóa nội dung đang nhập.';
