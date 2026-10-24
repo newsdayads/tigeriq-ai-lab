@@ -1,173 +1,271 @@
 const $=id=>document.getElementById(id);
-const grid=$('grid'), selected=new Set(), sizes=new Map(), sessions=new Map();
-let deviceRows=[], lastRefresh=0, pending=0;
-const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const notice=(s,bad=false)=>{$('msg').textContent=s;$('msg').className=bad?'bad':'good'};
-async function api(url, data){
-  const response=await fetch(url,data===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
-  const value=await response.json();if(!response.ok)throw Error(value.error||('Mã lỗi '+response.status));return value;
+const current={devices:[],selected:new Set(),sizes:new Map(),cards:new Map(),screenBusy:0,group:'all',groups:{},macroId:null,refreshMs:4000};
+function loadGroups(){try{const v=JSON.parse(localStorage.getItem('tigeriqGroups')||'{}');return v&&typeof v==='object'&&!Array.isArray(v)?v:{}}catch{return {}}}
+current.groups=loadGroups();
+const toast=(message,isError=false)=>{
+  $('notice').textContent=message;
+  $('notice').className='notice visible'+(isError?' error':'');
+  $('bottomMessage').textContent=message;
+};
+async function api(url,payload){
+  const response=await fetch(url,payload===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const data=await response.json();
+  if(!response.ok)throw Error(data.error||('HTTP '+response.status));
+  return data;
 }
-const active=()=>deviceRows.filter(d=>selected.has(d.serial)&&d.state==='device').map(d=>d.serial);
-async function action(b){
-  if(!b.serials?.length)throw Error('Chưa chọn thiết bị nào');
-  const x=await api('/api/input',b),err=x.results.filter(r=>!r.ok);
-  notice(err.length?('Lỗi '+err.length+'/'+x.results.length+': '+err[0].error):('Đã gửi tới '+x.results.length+' thiết bị'),!!err.length);
+const online=()=>current.devices.filter(d=>d.state==='device');
+const active=()=>online().filter(d=>current.selected.has(d.serial)).map(d=>d.serial);
+const serialText=d=>d.label||d.model||d.serial;
+const matchGroup=d=>current.group==='all'||(current.groups[current.group]||[]).includes(d.serial);
+function setTab(name){
+  for(const b of document.querySelectorAll('[data-tab]'))b.classList.toggle('active',b.dataset.tab===name);
+  for(const p of document.querySelectorAll('[data-panel]'))p.classList.toggle('active',p.dataset.panel===name);
+}
+document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
+function selectedDisplay(){
+  $('chosenCount').textContent=current.selected.size+' selected';
+  $('selectionText').textContent=current.selected.size+' device(s) selected';
+  for(const [s,c] of current.cards){
+    c.classList.toggle('selected',current.selected.has(s));
+    const input=c.querySelector('input[type=checkbox]');
+    if(input)input.checked=current.selected.has(s);
+  }
+}
+function changeSelect(serial,flag){
+  if(flag)current.selected.add(serial);else current.selected.delete(serial);
+  selectedDisplay();renderNumbers();
+}
+function renderNumbers(){
+  const host=$('deviceNumberGrid');host.textContent='';
+  current.devices.filter(matchGroup).forEach((d,i)=>{
+    const b=document.createElement('button');
+    b.className='number'+(current.selected.has(d.serial)?' chosen':'');
+    b.textContent=String(i+1).padStart(2,'0');
+    b.title=serialText(d)+' / '+d.serial;b.onclick=()=>changeSelect(d.serial,!current.selected.has(d.serial));
+    host.append(b);
+  });
+}
+function renderGroups(){
+  const container=$('groupList');container.textContent='';
+  for(const [name,serials] of [['all',current.devices.map(x=>x.serial)],...Object.entries(current.groups)]){
+    const line=document.createElement('div');line.className='group-item';
+    const b=document.createElement('button');b.textContent=(name==='all'?'All devices':name)+' ('+serials.length+')';
+    b.style.fontWeight=current.group===name?'750':'450';
+    b.onclick=()=>{current.group=name;renderGroups();renderDevices()};
+    line.append(b);
+    if(name!=='all'){
+      const add=document.createElement('button');add.textContent='Set';add.title='Gán thiết bị đã chọn vào nhóm này';
+      add.onclick=()=>{current.groups[name]=[...current.selected];localStorage.setItem('tigeriqGroups',JSON.stringify(current.groups));renderGroups();renderDevices();toast('Đã cập nhật nhóm '+name)};
+      line.append(add);
+      const del=document.createElement('button');del.textContent='×';del.title='Xóa nhóm';
+      del.onclick=()=>{if(!confirm('Xóa nhóm '+name+'?'))return;delete current.groups[name];if(current.group===name)current.group='all';localStorage.setItem('tigeriqGroups',JSON.stringify(current.groups));renderGroups();renderDevices()};
+      line.append(del);
+    }
+    container.append(line);
+  }
+}
+$('groupAdd').onclick=()=>{
+  const value=prompt('Tên nhóm mới (tối đa 35 ký tự)','Phone Farm 01');
+  if(value===null)return;const name=value.trim();
+  if(!name||name.length>35||name==='all'||Object.hasOwn(current.groups,name)){toast('Tên nhóm không hợp lệ hoặc bị trùng',true);return}
+  current.groups[name]=[...current.selected];
+  localStorage.setItem('tigeriqGroups',JSON.stringify(current.groups));
+  current.group=name;renderGroups();renderDevices();
+};
+$('groupAll').onclick=()=>{current.group='all';renderGroups();renderDevices()};
+$('selectAll').onclick=()=>{current.devices.filter(matchGroup).filter(d=>d.state==='device').forEach(d=>current.selected.add(d.serial));selectedDisplay();renderNumbers()};
+$('selectNone').onclick=()=>{current.selected.clear();selectedDisplay();renderNumbers()};
+$('invertSelection').onclick=()=>{current.devices.filter(matchGroup).forEach(d=>{if(current.selected.has(d.serial))current.selected.delete(d.serial);else if(d.state==='device')current.selected.add(d.serial)});selectedDisplay();renderNumbers()};
+function cardActions(card,d){
+  const buttons=card.querySelector('.phone-footer');
+  const make=(symbol,title,fn)=>{
+    const b=document.createElement('button');b.textContent=symbol;b.title=title;b.onclick=fn;buttons.append(b);
+  };
+  make('□','Mở cửa sổ điều khiển riêng',()=>openMirror(d.serial));
+  make('⌂','Trang chủ',()=>sendInput([d.serial],{action:'key',key:'HOME'}));
+  make('↶','Quay lại',()=>sendInput([d.serial],{action:'key',key:'BACK'}));
+  make('✎','Đổi tên',async()=>{const label=prompt('Đặt tên thiết bị',d.label||d.model||'');if(label===null)return;try{await api('/api/label',{serial:d.serial,label});d.label=label;renderDevices()}catch(e){toast(e.message,true)}});
+  const s=document.createElement('span');s.className='devstat';s.textContent=d.state==='device'?'●':'○';buttons.append(s);
+}
+function renderDevices(){
+  const host=$('grid');host.textContent='';current.cards.clear();
+  const query=$('search').value.trim().toLowerCase();
+  const list=current.devices.filter(matchGroup).filter(d=>(d.serial+' '+d.model+' '+d.label).toLowerCase().includes(query));
+  if(!list.length){
+    const e=document.createElement('div');e.className='placeholder';
+    const h=document.createElement('h2');h.textContent=current.devices.length?'Không tìm thấy thiết bị':'Chưa có thiết bị Android';
+    const sub=document.createElement('span');sub.textContent='Kết nối USB, bật USB Debugging và nhấn Refresh USB.';
+    e.append(h,sub);host.append(e);
+  }
+  list.forEach((d,i)=>{
+    const card=document.createElement('article');card.className='phone'+(current.selected.has(d.serial)?' selected':'')+(d.state!=='device'?' offline':'');
+    const top=document.createElement('div');top.className='phone-header';
+    const label=document.createElement('label');const check=document.createElement('input');check.type='checkbox';check.checked=current.selected.has(d.serial);
+    check.onchange=()=>changeSelect(d.serial,check.checked);
+    const no=document.createElement('span');no.className='phone-num';no.textContent=String(i+1).padStart(2,'0');
+    const name=document.createElement('span');name.textContent=serialText(d);
+    label.append(check,no,name);top.append(label);
+    const screen=document.createElement('div');screen.className='screen';
+    if(d.state==='device'){
+      const img=document.createElement('img');img.alt='Android '+d.serial;img.draggable=false;
+      img.dataset.serial=d.serial;
+      img.onload=()=>{img.dataset.busy='';current.sizes.set(d.serial,{width:img.naturalWidth,height:img.naturalHeight})};
+      img.onerror=()=>{img.dataset.busy='';img.alt='Ảnh chụp chưa có'};
+      img.onpointerdown=e=>{img.dataset.startX=String(e.clientX);img.dataset.startY=String(e.clientY);try{img.setPointerCapture(e.pointerId)}catch{}};
+      img.onpointerup=e=>{if(!img.dataset.startX)return;performPointer(img,e).catch(err=>toast(err.message,true))};
+      screen.append(img);
+    }else{const empty=document.createElement('div');empty.className='empty-screen';empty.textContent='Device '+d.state;screen.append(empty)}
+    const footer=document.createElement('div');footer.className='phone-footer';
+    card.append(top,screen,footer);cardActions(card,d);
+    current.cards.set(d.serial,card);host.append(card);
+  });
+  renderNumbers();selectedDisplay();
+  refreshScreens();
+}
+async function performPointer(img,e){
+  const serial=img.dataset.serial;
+  const rect=img.getBoundingClientRect();
+  const size=current.sizes.get(serial)||{width:img.naturalWidth,height:img.naturalHeight};
+  if(!rect.width||!rect.height||!size.width||!size.height)throw Error('Chưa đọc được độ phân giải');
+  const clamp=(v)=>Math.max(0,Math.min(1,v));
+  const norm=(x,y)=>[clamp((x-rect.left)/rect.width),clamp((y-rect.top)/rect.height)];
+  const a=norm(Number(img.dataset.startX),Number(img.dataset.startY)),b=norm(e.clientX,e.clientY);
+  delete img.dataset.startX;delete img.dataset.startY;
+  const isSwipe=Math.hypot((a[0]-b[0])*size.width,(a[1]-b[1])*size.height)>18;
+  const serials=$('sync').checked?active():[serial];
+  if(!serials.length)throw Error('Chọn các thiết bị để đồng bộ chuột');
+  const outputs=await Promise.all(serials.map(async s=>{
+    const sz=s===serial?size:await api('/api/size?serial='+encodeURIComponent(s));
+    const action={action:isSwipe?'swipe':'tap',x:Math.round(a[0]*sz.width),y:Math.round(a[1]*sz.height)};
+    if(isSwipe)Object.assign(action,{toX:Math.round(b[0]*sz.width),toY:Math.round(b[1]*sz.height),ms:350});
+    return api('/api/input',{serials:[s],...action});
+  }));
+  const failed=outputs.flatMap(x=>x.results).filter(x=>!x.ok);
+  toast(failed.length?'Thao tác lỗi '+failed[0].error:'Đã '+(isSwipe?'vuốt':'chạm')+' trên '+serials.length+' thiết bị',failed.length>0);
+  refreshOne(img);
+}
+function refreshOne(img){
+  if(img.dataset.busy||!img.isConnected)return;
+  img.dataset.busy='1';
+  img.src='/api/screen?serial='+encodeURIComponent(img.dataset.serial)+'&ts='+Date.now();
+}
+function refreshScreens(){
+  if(document.hidden||!$('autoRefresh').checked)return;
+  let n=0;
+  for(const img of $('grid').querySelectorAll('.screen img')){
+    if(n>=3)break;
+    const r=img.getBoundingClientRect();
+    if(r.bottom<30||r.top>window.innerHeight||r.right<0)continue;
+    if(img.dataset.busy)continue;
+    refreshOne(img);n++;
+  }
 }
 async function refresh(){
   try{
-    const data=await api('/api/devices');deviceRows=data.devices;
-    for(const serial of [...selected])if(!deviceRows.some(d=>d.serial===serial))selected.delete(serial);
-    $('count').textContent=data.count+' thiết bị';
-    draw();lastRefresh=Date.now();
-  }catch(e){notice('Không thể đọc danh sách: '+e.message,true)}
+    const data=await api('/api/devices');
+    current.devices=data.devices;
+    for(const serial of [...current.selected])if(!current.devices.some(d=>d.serial===serial))current.selected.delete(serial);
+    $('count').textContent=data.count+' devices';
+    $('onlineCount').textContent=online().length+' online';
+    $('lastRefresh').textContent='Updated '+new Date().toLocaleTimeString('vi-VN');
+    renderGroups();renderDevices();
+  }catch(e){toast('ADB: '+e.message,true)}
 }
-function draw(){
-  const query=$('search').value.trim().toLowerCase();
-  grid.textContent='';
-  const display=deviceRows.filter(d=>(d.serial+' '+d.model+' '+d.label).toLowerCase().includes(query));
-  if(!display.length){grid.innerHTML='<div class="empty">Không có thiết bị phù hợp</div>';return}
-  for(const d of display){
-    const card=document.createElement('div');card.className='device'+(d.state==='device'?'':' offline');
-    const serial=d.serial,ready=d.state==='device',checked=selected.has(serial)?'checked':'';
-    card.innerHTML='<div class="device-head"><div><strong>'+escape(d.label||d.model||serial)+'</strong><small>'+escape(serial)+'</small><small class="'+(ready?'good':'bad')+'">'+escape(d.state)+'</small></div><input type="checkbox" aria-label="Chọn '+escape(serial)+'" '+checked+'></div>'+
-      '<div class="screenbox">'+(ready?'<img alt="Màn hình '+escape(serial)+'" draggable="false">':'<div class="empty">Thiết bị chưa sẵn sàng</div>')+'</div>'+
-      '<div class="device-foot"><button data-open '+(ready?'':'disabled')+'>Mở điều khiển</button><button data-home '+(ready?'':'disabled')+'>Trang chủ</button><button data-label>Đổi tên</button></div>';
-    card.querySelector('input').onchange=e=>{e.target.checked?selected.add(serial):selected.delete(serial)};
-    card.querySelector('[data-open]').onclick=async()=>{try{const x=await api('/api/open',{serial});notice(x.already?'Đã có phiên điều khiển':'Đã gửi lệnh mở scrcpy cho '+serial)}catch(e){notice(e.message,true)}};
-    card.querySelector('[data-home]').onclick=()=>action({serials:[serial],action:'key',key:'HOME'}).catch(e=>notice(e.message,true));
-    card.querySelector('[data-label]').onclick=async()=>{
-      const label=prompt('Tên thiết bị',d.label||d.model||'');if(label===null)return;
-      try{await api('/api/label',{serial,label});d.label=label;draw()}catch(e){notice(e.message,true)}
-    };
-    grid.append(card);
-    if(ready){
-      const img=card.querySelector('img');
-      const size={width:1,height:1}; sizes.set(serial,size);
-      img.onload=()=>{size.width=img.naturalWidth;size.height=img.naturalHeight};
-      img.onerror=()=>{img.alt='Chưa lấy được ảnh'};
-      let drag=null;
-      img.onpointerdown=e=>{drag={x:e.clientX,y:e.clientY};img.setPointerCapture(e.pointerId)};
-      img.onpointerup=async e=>{
-        if(!drag||!size.width||!size.height)return;
-        const box=img.getBoundingClientRect(),scaleX=size.width/box.width,scaleY=size.height/box.height;
-        const start=[Math.max(0,Math.round((drag.x-box.left)*scaleX)),Math.max(0,Math.round((drag.y-box.top)*scaleY))];
-        const end=[Math.max(0,Math.round((e.clientX-box.left)*scaleX)),Math.max(0,Math.round((e.clientY-box.top)*scaleY))];
-        const swipe=Math.hypot(end[0]-start[0],end[1]-start[1])>12;drag=null;
-        const targets=$('sync').checked?active():[serial];
-        try {
-          if(!targets.length)throw Error('Chọn thiết bị trước khi đồng bộ');
-          const output=await Promise.all(targets.map(async s=>{
-            let w=size.width,h=size.height;
-            if(s!==serial){let z=sizes.get(s);if(!z?.width||z.width===1){z=await api('/api/size?serial='+encodeURIComponent(s))}w=z.width;h=z.height}
-            const b={serials:[s],action:swipe?'swipe':'tap',x:Math.round(start[0]*w/size.width),y:Math.round(start[1]*h/size.height)};
-            if(swipe)Object.assign(b,{toX:Math.round(end[0]*w/size.width),toY:Math.round(end[1]*h/size.height),ms:360});
-            return api('/api/input',b);
-          }));
-          const errors=output.flatMap(o=>o.results).filter(x=>!x.ok);
-          notice(errors.length?errors[0].error:('Đã '+(swipe?'vuốt':'chạm')+' '+targets.length+' thiết bị'),errors.length>0);
-          loadScreen(img,serial);
-        }catch(e){notice(e.message,true)}
-      };
-      loadScreen(img,serial);
-    }
-  }
-}
-function loadScreen(img,serial){
-  if(img.dataset.busy==='1'||!img.isConnected)return;
-  img.dataset.busy='1';
-  img.onload=()=>{sizes.set(serial,{width:img.naturalWidth,height:img.naturalHeight});img.dataset.busy='0'};
-  img.onerror=()=>{img.alt='Không tải được ảnh, đang thử lại';img.dataset.busy='0'};
-  img.src='/api/screen?serial='+encodeURIComponent(serial)+'&ts='+Date.now();
-}
-$('refresh').onclick=refresh;$('all').onclick=()=>{deviceRows.filter(d=>d.state==='device').forEach(d=>selected.add(d.serial));draw()};
-$('none').onclick=()=>{selected.clear();draw()};$('search').oninput=draw;
-$('sendText').onclick=()=>action({serials:active(),action:'text',text:$('text').value}).catch(e=>notice(e.message,true));
-async function batch(actionName){
-  const serials=active();
-  if(!serials.length){notice('Chọn thiết bị trước',true);return}
-  const fileRequired=actionName==='install'||actionName==='upload';
-  const value=prompt(fileRequired?'Nhập tên tệp trong thư mục drop trên PC01':'Nhập Android package ID (ví dụ com.example.app)');
-  if(value===null)return;
+async function sendInput(serials,params){
   try{
-    const b={serials,action:actionName};
-    if(fileRequired)b.file=value;else b.package=value;
-    const result=await api('/api/batch',b),bad=result.results.filter(x=>!x.ok);
-    notice(bad.length?'Thất bại '+bad.length+'/'+serials.length+': '+bad[0].error:'Thành công '+serials.length+'/'+serials.length+' thiết bị',bad.length>0);
-  }catch(e){notice(e.message,true)}
+    if(!serials.length)throw Error('Vui lòng chọn ít nhất một thiết bị');
+    const result=await api('/api/input',{serials,...params});
+    const fail=result.results.filter(x=>!x.ok);
+    toast(fail.length?'Lỗi '+fail.length+'/'+serials.length+' • '+fail[0].error:'Đã gửi '+params.action+' tới '+serials.length+' thiết bị',fail.length>0);
+  }catch(e){toast(e.message,true)}
 }
-$('install').onclick=()=>batch('install');
-$('upload').onclick=()=>batch('upload');
-$('launch').onclick=()=>batch('launch');
-$('forceStop').onclick=()=>batch('forceStop');
-let currentMacroId=null;
+async function openMirror(serial){
+  try{const x=await api('/api/open',{serial});toast(x.already?'Cửa sổ đã mở':'Đã gửi lệnh mở cửa sổ Android')}catch(e){toast(e.message,true)}
+}
+$('mirrorSelected').onclick=async()=>{const ss=active();if(!ss.length)return toast('Chọn thiết bị',true);for(const s of ss.slice(0,8))await openMirror(s);if(ss.length>8)toast('Đã mở 8 thiết bị đầu tiên; giới hạn để tránh quá tải')};
+$('openFirst').onclick=()=>{const s=active()[0];if(!s)return toast('Chọn thiết bị',true);openMirror(s)};
+document.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=>sendInput($('syncKeys').checked?active():active().slice(0,1),{action:'key',key:b.dataset.key}));
+$('sendText').onclick=()=>{
+  const text=$('sendValue').value;
+  sendInput($('syncKeys').checked?active():active().slice(0,1),{action:'text',text});
+};
+async function batch(action){
+  const serials=active();if(!serials.length)return toast('Chọn thiết bị trước',true);
+  const fileMode=['upload','install'].includes(action);
+  const name=prompt(fileMode?'Tên tệp trong thư mục drop':'Android package ID (vd: com.example.app)');
+  if(name===null)return;
+  try{
+    const result=await api('/api/batch',{action,serials,...(fileMode?{file:name}:{package:name})});
+    const failed=result.results.filter(x=>!x.ok);
+    toast(failed.length?'Thất bại '+failed.length+'/'+serials.length+': '+failed[0].error:'Hoàn tất '+serials.length+'/'+serials.length,failed.length>0);
+  }catch(e){toast(e.message,true)}
+}
+for(const id of ['install','upload','launch','forceStop'])$(id).onclick=()=>batch(id);
+$('listPackages').onclick=async()=>{const s=active()[0];if(!s)return toast('Chọn thiết bị trước',true);try{const r=await api('/api/packages?serial='+encodeURIComponent(s));$('appInfo').textContent='Đã tìm thấy '+r.packages.length+' ứng dụng. '+r.packages.slice(0,12).join(' • ')}catch(e){toast(e.message,true)}};
+$('apps').onclick=()=>setTab('toolbox');
+$('viewDevices').onclick=()=>{setTab('general');document.querySelector('.workspace').scrollTo({top:0,behavior:'smooth'})};
+$('macroTab').onclick=()=>setTab('tasks');
+$('scheduleTab').onclick=()=>{setTab('tasks');showSchedules()};
+$('screenInfo').onclick=async()=>{try{const x=await api('/api/health');toast('ADB '+(x.adbExists?'OK':'MISSING')+' • scrcpy '+(x.scrcpyExists?'OK':'MISSING')+' • '+online().length+' máy online')}catch(e){toast(e.message,true)}};
+$('scanWifi').onclick=()=>toast('WiFi ADB: kết nối hoặc ghép đôi Android bằng ADB trong PC01, sau đó chọn Refresh USB.');
+$('screenshots').onclick=()=>{
+  const list=active();if(!list.length)return toast('Chọn thiết bị trước',true);
+  list.slice(0,10).forEach((serial,i)=>{
+    const a=document.createElement('a');a.href='/api/screen?serial='+encodeURIComponent(serial);a.download='TigerIQ-'+serial+'.png';
+    document.body.append(a);a.click();a.remove();
+  });
+  toast('Đã yêu cầu tải ảnh chụp '+Math.min(10,list.length)+' máy');
+};
+$('refresh').onclick=refresh;$('refreshMain').onclick=refresh;
+$('search').oninput=renderDevices;
+$('tileSize').oninput=e=>{const size=Number(e.target.value);document.documentElement.style.setProperty('--tile',size+'px');$('tileValue').textContent=size+'px'};
+$('refreshRate').onchange=e=>{current.refreshMs=Number(e.target.value)};
+let macroId=null;
 async function checkMacro(){
-  if(!currentMacroId)return;
+  if(!macroId)return;
   try{
-    const r=await api('/api/macro/status?id='+encodeURIComponent(currentMacroId));
-    $('macroStatus').textContent=r.state+' • '+r.done+'/'+r.total+(r.error?' • '+r.error:'');
-    if(r.state!=='running'){$('stopMacro').disabled=true;currentMacroId=null}
-  }catch(e){$('macroStatus').textContent=e.message;$('stopMacro').disabled=true;currentMacroId=null}
+    const r=await api('/api/macro/status?id='+encodeURIComponent(macroId));
+    $('macroStatus').textContent=r.state+' '+r.done+'/'+r.total+(r.error?' • '+r.error:'');
+    if(r.state!=='running'){macroId=null;$('stopMacro').disabled=true}
+  }catch(e){macroId=null;$('stopMacro').disabled=true;toast(e.message,true)}
 }
 $('runMacro').onclick=async()=>{
   try{
-    const serials=active();
-    if(!serials.length)throw Error('Chọn thiết bị trước');
+    const serials=active();if(!serials.length)throw Error('Chọn thiết bị trước');
     const steps=JSON.parse($('macroSteps').value);
     const r=await api('/api/macro/start',{serials,steps});
-    currentMacroId=r.id;
-    $('stopMacro').disabled=false;
-    $('macroStatus').textContent='Đã bắt đầu '+r.id.slice(0,8);
-    await checkMacro();
-  }catch(e){notice(e.message,true)}
+    macroId=r.id;$('stopMacro').disabled=false;await checkMacro();setTab('tasks');
+  }catch(e){toast(e.message,true)}
 };
-$('stopMacro').onclick=async()=>{
-  if(!currentMacroId)return;
-  try{await api('/api/macro/stop',{id:currentMacroId});await checkMacro()}
-  catch(e){notice(e.message,true)}
-};
-setInterval(checkMacro,1200);
+$('stopMacro').onclick=async()=>{if(!macroId)return;try{await api('/api/macro/stop',{id:macroId});await checkMacro()}catch(e){toast(e.message,true)}};
 async function showSchedules(){
   try{
-    const r=await api('/api/schedules');
-    const root=$('scheduleList');
-    root.textContent='';
-    if(!r.schedules.length){root.textContent='Chưa tạo lịch';return}
-    for(const s of r.schedules){
-      const row=document.createElement('div');
-      row.className='row';
-      row.style.marginBottom='8px';
-      const span=document.createElement('span');
-      span.textContent=s.name+' • '+new Date(s.nextAt).toLocaleString('vi-VN')+
-        (s.repeatMinutes?' • lặp '+s.repeatMinutes+' phút':' • một lần')+
-        (s.enabled?'':' • đã chạy/dừng')+(s.lastError?' • '+s.lastError:'');
-      const del=document.createElement('button');
-      del.textContent='Xóa';
-      del.onclick=async()=>{
-        try{await api('/api/schedules/delete',{id:s.id});await showSchedules()}
-        catch(e){notice(e.message,true)}
-      };
-      row.append(span,del);root.append(row);
+    const result=await api('/api/schedules'),host=$('scheduleList');host.textContent='';
+    if(!result.schedules.length){host.textContent='Chưa có lịch';return}
+    for(const x of result.schedules){
+      const row=document.createElement('div');row.className='schedule-item';
+      const label=document.createElement('span');label.textContent=x.name+' • '+new Date(x.nextAt).toLocaleString('vi-VN')+(x.enabled?'':' • stopped');
+      const del=document.createElement('button');del.textContent='Xóa';
+      del.onclick=async()=>{try{await api('/api/schedules/delete',{id:x.id});await showSchedules()}catch(e){toast(e.message,true)}};
+      row.append(label,del);host.append(row);
     }
-  }catch(e){notice(e.message,true)}
+  }catch(e){toast(e.message,true)}
 }
 $('saveSchedule').onclick=async()=>{
   try{
-    const serials=active();
-    if(!serials.length)throw Error('Chọn thiết bị trước');
+    const serials=active();if(!serials.length)throw Error('Chọn thiết bị trước');
     const steps=JSON.parse($('macroSteps').value);
     const mins=Number(prompt('Chạy sau bao nhiêu phút?','5'));
     if(!Number.isInteger(mins)||mins<1||mins>525600)throw Error('Thời gian không hợp lệ');
-    const repeatMinutes=Number(prompt('Lặp mỗi bao nhiêu phút? (0 = chạy một lần)','0'));
+    const repeatMinutes=Number(prompt('Lặp sau bao nhiêu phút? (0 = chỉ một lần)','0'));
     if(!Number.isInteger(repeatMinutes)||repeatMinutes<0||repeatMinutes>1440)throw Error('Chu kỳ không hợp lệ');
-    const runAt=new Date(Date.now()+mins*60000).toISOString();
-    await api('/api/schedules',{name:'TigerIQ '+new Date().toLocaleString('vi-VN'),serials,steps,runAt,repeatMinutes});
-    notice('Đã lưu lịch cục bộ');await showSchedules();
-  }catch(e){notice(e.message,true)}
+    await api('/api/schedules',{name:'TigerIQ '+new Date().toLocaleString('vi-VN'),serials,steps,runAt:new Date(Date.now()+mins*60000).toISOString(),repeatMinutes});
+    toast('Đã lưu lịch cục bộ');await showSchedules();setTab('tasks');
+  }catch(e){toast(e.message,true)}
 };
 $('refreshSchedules').onclick=showSchedules;
-void showSchedules();
-document.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=>action({serials:active(),action:'key',key:b.dataset.key}).catch(e=>notice(e.message,true)));
-api('/api/health').then(x=>{$('health').textContent='ADB: '+(x.adbExists?'có':'thiếu')+'; scrcpy: '+(x.scrcpyExists?'có':'thiếu')+'; chế độ: chỉ nội bộ PC'}).catch(e=>notice(e.message,true));
-refresh();
-setInterval(()=>{if(document.hidden)return;if(Date.now()-lastRefresh>20000)refresh();else for(const img of grid.querySelectorAll('.screenbox img')){const box=img.closest('.device');const serial=box?.querySelector('.device-head small')?.textContent;if(serial)loadScreen(img,serial)}},4000);
-
+api('/api/health').then(x=>{$('health').textContent='ADB: '+(x.adbExists?'ready':'missing')+' • scrcpy: '+(x.scrcpyExists?'ready':'missing')+' • Local only'}).catch(e=>toast(e.message,true));
+refresh();showSchedules();
+setInterval(()=>{if(document.hidden)return;refreshScreens()},2000);
+setInterval(()=>{if(!document.hidden)refresh()},25000);
+setInterval(checkMacro,1200);
