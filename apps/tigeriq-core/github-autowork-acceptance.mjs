@@ -20,8 +20,8 @@ export function reinforceGithubAutoworkPrompt({ kind = '', resourceScope = '', p
   const original = typeof prompt === 'string' ? prompt : '';
   if (kind !== 'github_api_autowork' || !R04_Q01_Q14_SCOPE.test(String(resourceScope))) return original;
   const sections = REQUIRED_QUESTION_IDS.map(id =>
-    [`${id}:`, ...R04_REPORT_FIELDS.map(field => `${field}: <specific factual value or explicit UNKNOWN>`)].join('\\n')
-  ).join('\\n\\n');
+    [`${id}:`, ...R04_REPORT_FIELDS.map(field => `${field}: <specific factual value or explicit UNKNOWN>`)].join('\n')
+  ).join('\n\n');
   return [
     original,
     '',
@@ -36,7 +36,7 @@ export function reinforceGithubAutoworkPrompt({ kind = '', resourceScope = '', p
     'Use CONFIDENCE only HIGH, MEDIUM, LOW or UNKNOWN and distinguish OBSERVATION from inference.',
     'Use actual source evidence in the same Q section; do not reference evidence in another Q.',
     sections,
-  ].join('\\n');
+  ].join('\n');
 }
 
 /**
