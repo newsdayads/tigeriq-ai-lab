@@ -150,7 +150,11 @@ export default async function handler(req, res) {
   if (action === 'status') return json(res, 200, { ok: true, configured: configured(), authenticated: isOwnerAuthorized(req), owner: OWNER_EMAIL, methods:{internal:internalConfigured(),google:googleConfigured()} });
   if (!configured()) return json(res, 503, { error: 'owner_auth_not_configured' });
 
-  if (action === 'login' && internalConfigured())return internalLoginPage(res);
+  if (action === 'login' && internalConfigured()){
+    if(String(req.headers?.host||'').toLowerCase()!=='tigeriq-ai-lab.vercel.app')
+      return redirect(res,OWNER_ORIGIN+'/api/owner-auth?action=login');
+    return internalLoginPage(res);
+  }
   if (action === 'login' && googleConfigured()) {
     const nonce = randomBytes(24).toString('base64url');
     const state = `${nonce}.${sign(nonce)}`;
