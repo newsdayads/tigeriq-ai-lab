@@ -1,6 +1,8 @@
 import test from 'node:test';
 import fs from 'node:fs';
 import { Script } from 'node:vm';
+import os from 'node:os';
+import { safeFilename, safePackage, validBatch, fileInDrop } from './farm-ops.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -40,4 +42,30 @@ test('browser controller parses under strict CSP external-script policy', () => 
   assert.match(html,/<script src="\/ui\.js" type="module"><\/script>/);
   assert.doesNotMatch(html,/<script type="module">/);
   assert.doesNotThrow(()=>new Script(fs.readFileSync(path.join(dir,'ui.js'),'utf8')));
+});
+
+test('batch controls validate package, files, duplicate serial and actions', () => {
+  assert.equal(safePackage('com.example.demo'), true);
+  assert.equal(safePackage('com.example;cmd'), false);
+  assert.equal(safePackage('settings'), false);
+  assert.equal(safeFilename('my-app.apk'), true);
+  assert.equal(safeFilename('sample.csv'), true);
+  for (const s of ['../sample.apk', 'CON.txt', 'one..two.apk', '.hidden.apk', 'a.exe']) assert.equal(safeFilename(s), false);
+  assert.equal(validBatch({action:'install',serials:['A1','B2'],file:'my-app.apk'}),true);
+  assert.equal(validBatch({action:'install',serials:['A1'],file:'sample.csv'}),false);
+  assert.equal(validBatch({action:'upload',serials:['A1'],file:'sample.csv'}),true);
+  assert.equal(validBatch({action:'launch',serials:['A1'],package:'com.example.demo'}),true);
+  assert.equal(validBatch({action:'shell',serials:['A1'],cmd:'unsafe'}),false);
+  assert.equal(validBatch({action:'forceStop',serials:['A1','A1'],package:'com.example.demo'}),false);
+});
+
+test('batch file lookup is confined to approved drop directory', () => {
+  const folder=fs.mkdtempSync(path.join(os.tmpdir(),'tigeriq-batch-'));
+  try {
+    const file=path.join(folder,'sample.txt');
+    fs.writeFileSync(file,'safe');
+    assert.equal(fileInDrop(folder,'sample.txt'),file);
+    assert.throws(()=>fileInDrop(folder,'../secrets.csv'));
+    assert.throws(()=>fileInDrop(folder,'not-present.apk'));
+  } finally { fs.rmSync(folder,{recursive:true,force:true}) }
 });
