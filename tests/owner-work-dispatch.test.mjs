@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { boundedOwnerTriageChild } from '../apps/shared/owner-work-dispatch.mjs';
+import { boundedOwnerTriageChild, verifiedOwnerReceiptForChild } from '../apps/shared/owner-work-dispatch.mjs';
+import { makeOwnerRequestReceipt } from '../apps/shared/owner-work-request.mjs';
 import { validateWorkOrderLifecycleV2 } from '../apps/tigeriq-core/work-order-lifecycle-v2.mjs';
 import { safeAutoWorkAdmission, parseExecutableIssue } from '../apps/tigeriq-core/github-intake.mjs';
 const id='c6b90d64-b49c-4bb9-becb-d696a043ab74';
@@ -34,4 +35,17 @@ test('fail closed on foreign or unverified issue, malformed receipt or scope',()
  assert.throws(()=>boundedOwnerTriageChild({...valid,issue:{...issue,body:'RESOURCE_SCOPE=INVALID TOKEN'}}),/invalid_scope/);
  assert.throws(()=>boundedOwnerTriageChild({...valid,receiptUrl:'https://attacker.invalid/foo'}),/invalid_receipt/);
  assert.throws(()=>boundedOwnerTriageChild({...valid,request:{...request,issueNumber:2054}}),/invalid_parent/);
+});
+
+test('Core must hydrate only exact authenticated Owner receipt, not invented comment text',()=>{
+ const child=boundedOwnerTriageChild({issue,request,receiptUrl});
+ const receipt=makeOwnerRequestReceipt(request);
+ const row=verifiedOwnerReceiptForChild(child.body,receipt);
+ assert.equal(row.message,request.message);
+ assert.equal(row.parentIssueNumber,5252);
+ assert.equal(row.requestId,id);
+ assert.equal(row.receiptUrl,receiptUrl);
+ assert.throws(()=>verifiedOwnerReceiptForChild(child.body,receipt.replace(id,'00000000-0000-4000-8000-000000000000')),/not_correlated/);
+ assert.throws(()=>verifiedOwnerReceiptForChild(child.body,'TIGERIQ_OWNER_REQUEST_RESULT_V1'),/not_correlated/);
+ assert.throws(()=>verifiedOwnerReceiptForChild(child.body.replace('PARENT_ISSUE=#5252','PARENT_ISSUE=#999'),receipt),/child_receipt_invalid/);
 });
