@@ -101,8 +101,24 @@ export function inspectG1Cycles(input) {
     if (row.auto_open_success === 'YES') {
       if (row.usb_present_during_R !== 'YES')
         error(at+'.auto_open_success','USB_PRESENT_DURING_R_NOT_VERIFIED');
-      if (!timestamp(row.first_visible_live_frame_timestamp))
-        error(at+'.first_visible_live_frame_timestamp','LIVE_FRAME_TIMESTAMP_REQUIRED');
+      const frame = timestamp(row.first_visible_live_frame_timestamp);
+      if (!frame) error(at+'.first_visible_live_frame_timestamp','LIVE_FRAME_TIMESTAMP_REQUIRED');
+      // Compare only within an explicitly shared clock domain. A first
+      // visible frame outside the observed R interval is not auto-open proof.
+      if (frame && textValue(row.clock_source)) {
+        if (on && row.clock_source === row.R_on_clock_source) {
+          if (frame.kind !== on.kind)
+            error(at+'.first_visible_live_frame_timestamp','CLOCK_FORMAT_MISMATCH');
+          else if (frame.value < on.value)
+            error(at+'.first_visible_live_frame_timestamp','FRAME_BEFORE_R_ON');
+        }
+        if (off && row.clock_source === row.R_off_clock_source) {
+          if (frame.kind !== off.kind)
+            error(at+'.first_visible_live_frame_timestamp','CLOCK_FORMAT_MISMATCH');
+          else if (frame.value > off.value)
+            error(at+'.first_visible_live_frame_timestamp','FRAME_AFTER_R_OFF');
+        }
+      }
     }
     if (row.auto_open_success === 'NO' && row.manual_open_success === 'NOT_TESTED')
       error(at+'.manual_open_success','COMPARE_MANUAL_OPEN_AFTER_NATURAL_FAILURE');
