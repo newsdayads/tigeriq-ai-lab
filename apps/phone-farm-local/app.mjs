@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { executeBatch, validBatch, safePackage } from './farm-ops.mjs';
 import { MacroRuns, validMacro } from './macro-engine.mjs';
+import { LocalScheduler } from './schedule-engine.mjs';
 
 const exec = promisify(execFile);
 const base = path.dirname(fileURLToPath(import.meta.url));
@@ -93,6 +94,11 @@ async function inputOne(serial, b) {
 }
 function errorText(e) { return String(e?.message || e).slice(0,350); }
 let busyScreens = 0;
+const scheduler = new LocalScheduler(path.join(base,'schedules.json'),async(steps,serials)=>{
+  const attached=(await devices()).filter(x=>x.state==='device').map(x=>x.serial);
+  if(!serials.every(x=>attached.includes(x)))throw Error('Thiết bị ngoại tuyến');
+  return macros.start(steps,serials,inputOne);
+});
 const server = http.createServer(async (req, res) => {
   try {
     const allowedOrigins = ['http://127.0.0.1:' + port, 'http://localhost:' + port];
@@ -163,6 +169,18 @@ const server = http.createServer(async (req, res) => {
       const outcome = await executeBatch(adb, b, dropPath, async () => (await devices()).filter(x => x.state === 'device').map(x => x.serial));
       return json(res, 200, outcome);
     }
+    if (req.method === 'GET' && url.pathname === '/api/schedules')
+      return json(res,200,{schedules:scheduler.list()});
+    if (req.method === 'POST' && url.pathname === '/api/schedules') {
+      const b=await bodyJson(req);
+      try{return json(res,201,scheduler.add(b));}
+      catch(e){return json(res,400,{error:errorText(e)});}
+    }
+    if (req.method === 'POST' && url.pathname === '/api/schedules/delete') {
+      const b=await bodyJson(req);
+      if(typeof b.id!=='string'||!/^[a-f0-9-]{36}$/.test(b.id))return json(res,400,{error:'Mã lịch không hợp lệ'});
+      return json(res,200,{removed:scheduler.remove(b.id)});
+    }
     if (req.method === 'POST' && url.pathname === '/api/macro/start') {
       const b = await bodyJson(req);
       if (!b || !Array.isArray(b.serials) || !b.serials.length || b.serials.length>200 ||
@@ -200,5 +218,8 @@ const server = http.createServer(async (req, res) => {
 });
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   server.listen(port, bind, () => console.log('TigerIQ Phone Farm: http://' + bind + ':' + port));
+  const timer=setInterval(()=>scheduler.tick().catch(e=>console.error('Local schedule:',e.message)),15000);
+  timer.unref();
+  void scheduler.tick().catch(e=>console.error('Local schedule:',e.message));
 }
 export { server };
