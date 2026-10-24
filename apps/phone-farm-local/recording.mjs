@@ -11,6 +11,18 @@ export function validRecordRequest(b) {
     /^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$/.test(b.serial) &&
     Number.isInteger(b.seconds) && b.seconds>=5 && b.seconds<=120;
 }
+export function isValidMkv(file) {
+  try {
+    const st = fs.statSync(file);
+    if (!st.isFile() || st.size <= 1024) return false;
+    const fd = fs.openSync(file, 'r');
+    try {
+      const bytes = Buffer.alloc(4);
+      if (fs.readSync(fd, bytes, 0, 4, 0) !== 4) return false;
+      return bytes.equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
+    } finally { fs.closeSync(fd); }
+  } catch { return false; }
+}
 export function buildRecordArgs(serial,seconds,target) {
   if(!validRecordRequest({serial,seconds})) throw Error('Thông số ghi màn hình không hợp lệ');
   if(typeof target!=='string'||!path.isAbsolute(target)||!target.toLowerCase().endsWith('.mkv'))
@@ -47,7 +59,7 @@ export class Recordings {
       if(r.state!=='recording')return;
       r.finishedAt=new Date().toISOString();
       try{r.bytes=fs.statSync(r.file).size}catch{r.bytes=0}
-      r.state=code===0 && r.bytes>1024?'completed':'failed';
+      r.state=code===0 && isValidMkv(r.file)?'completed':'failed';
       r.error=r.state==='failed'?(String(err?.message||stderr||('Exit '+code)).slice(-350)):null;
       r._child=null;
     };
