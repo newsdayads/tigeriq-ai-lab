@@ -3,6 +3,13 @@
 > Canonical task tracking: [Issue #5129](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129). Owner interface/policy: [Issue #504](https://github.com/newsdayads/tigeriq-ai-lab/issues/504). This file is an operational runbook, **not** an automatic task scheduler, elevated permission or release approval. Last verified: 2026-10-24 (Asia/Ho_Chi_Minh).
 
 <!-- CURRENT_STATUS_20261024 -->
+## MỚI NHẤT: 24/10/2026 — v1.0.39 TEST (280)
+STATUS=V39_SIGNED_DRIVE_VERIFIED|ICON_COMPOSITE_2X2_AND_DRAG_GHOST_AND_CAMERA_BROADCAST_GUARD_STAGED|DEX_PHYSICAL_QA_PENDING|GEAR_R_SOURCE_UNVERIFIED|PROD_UNCHANGED|DONE=false
+APK TEST: https://drive.google.com/file/d/1R5-ZaeqeSVqNkxXaJPTfFym_InSFrukM/view ; SHA256 412C71183A9BE57D5A932CFBBA64DFBEE5BA9F950448E6FE30241F942912B2B1; 35,154,333 bytes.
+OWNER evidence v38: icons too small and some apps missing, camera popup unexpectedly appears, drag reorder without floating card effect. v39 attempts code fixes: 40dp combined app icon (2x2 actual app logos, fallback initials), ViewOverlay moving card snapshot, block unverified R broadcasts from opening/closing camera. Existing manual Camera and USB auto-open fix retained; real R signal remains missing. Camera+gyro curved overlay inherited from v38 is uncalibrated and not accepted.
+Protected approved v1.0.35 rollback and production v1.0.17 unchanged. Physical SM-F916N parked QA MUST verify every icon, drag visuals, Camera unexpected popup/manual controls and dynamic guide; no DONE claim. GitHub technical receipt: https://github.com/newsdayads/tigeriq-ai-lab/issues/5129#issuecomment-6378864674
+
+### Mốc v38 — lịch sử
 ## MỚI NHẤT: 24/10/2026 — v1.0.38 TEST (279)
 STATUS=V38_SIGNED_DRIVE_VERIFIED|APP_ICON_NATIVE_COMPOSE_AND_DYNAMIC_GUIDE_STAGED|DEX_DEVICE_QA_PENDING|GEAR_R_UNVERIFIED|PROD_UNCHANGED|DONE=false
 APK TEST: https://drive.google.com/file/d/1FtizSoCwlxJidRJantFA3M0z-0kTWGTN/view ; SHA256 67E7E527912894E6879BBF93A07BC3E3E1B6D0E3C153AA8596596E0EC9F21C4D.
