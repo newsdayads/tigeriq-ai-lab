@@ -6,6 +6,7 @@ import path from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { executeBatch, validBatch, safePackage } from './farm-ops.mjs';
 
 const exec = promisify(execFile);
 const base = path.dirname(fileURLToPath(import.meta.url));
@@ -14,6 +15,7 @@ const bind = '127.0.0.1';
 const adb = process.env.TIGERIQ_ADB || 'D:\\TigerIQ\\Tools\\platform-tools\\adb.exe';
 const scrcpy = process.env.TIGERIQ_SCRCPY || 'D:\\TigerIQ\\Tools\\scrcpy\\scrcpy-win64-v4.1\\scrcpy.exe';
 const storePath = path.join(base, 'device-labels.json');
+const dropPath = path.join(base, 'drop');
 const windows = new Map();
 const now = () => new Date().toISOString();
 
@@ -144,6 +146,20 @@ const server = http.createServer(async (req, res) => {
       const state = labels(); state[b.serial] = b.label;
       fs.writeFileSync(storePath, JSON.stringify(state, null, 2));
       return json(res, 200, { ok: true });
+    }
+    if (req.method === 'GET' && url.pathname === '/api/packages') {
+      const serial = url.searchParams.get('serial');
+      if (!safeSerial(serial)) return json(res, 400, {error:'Mã thiết bị không hợp lệ'});
+      if (!(await devices()).some(x => x.serial === serial && x.state === 'device')) return json(res, 409, {error:'Thiết bị chưa sẵn sàng'});
+      const { stdout } = await run(['-s', serial, 'shell', 'pm', 'list', 'packages', '-3'], {encoding:'utf8'});
+      return json(res, 200, {serial, packages:String(stdout).split(/\r?\n/).filter(s => s.startsWith('package:')).map(s => s.slice(8)).filter(safePackage)});
+    }
+    if (req.method === 'POST' && url.pathname === '/api/batch') {
+      const b = await bodyJson(req);
+      if (!validBatch(b)) return json(res, 400, {error:'Yêu cầu nhóm không hợp lệ'});
+      fs.mkdirSync(dropPath, {recursive:true});
+      const outcome = await executeBatch(adb, b, dropPath, async () => (await devices()).filter(x => x.state === 'device').map(x => x.serial));
+      return json(res, 200, outcome);
     }
     if (req.method === 'POST' && url.pathname === '/api/open') {
       const b = await bodyJson(req);
