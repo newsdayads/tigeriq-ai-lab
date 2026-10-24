@@ -901,7 +901,7 @@ export function compareQueueRows(a, b) {
   return Number(a?.number || 0) - Number(b?.number || 0);
 }
 
-export function rankQueueRows(rows = []) {
+export function rankQueueRows(rows = [], ownerOrder = []) {
   let dispatchRank = 0;
   return (Array.isArray(rows) ? rows : []).map((row) => {
     const priority = queuePriority(row);
@@ -910,7 +910,18 @@ export function rankQueueRows(rows = []) {
       ? { ...row, status: 'WAITING', waitReason: row.waitReason || 'P0 chờ Owner/assignment' }
       : row;
     return normalized;
-  }).sort(compareQueueRows).map((row) => {
+  }).sort((left, right) => {
+    const fallback=compareQueueRows(left,right);
+    // A priority declaration never bypasses P0, pause or dependency gates.
+    if (!queueRowEligibleNow(left)||!queueRowEligibleNow(right))return fallback;
+    if (queuePriority(left)!==queuePriority(right))return fallback;
+    if (!Array.isArray(ownerOrder)||ownerOrder.length===0)return fallback;
+    const l=ownerOrder.indexOf(Number(left.number)),r=ownerOrder.indexOf(Number(right.number));
+    if(l<0&&r<0)return fallback;
+    if(l<0)return 1;
+    if(r<0)return -1;
+    return l-r;
+  }).map((row) => {
     const eligibleNow = queueRowEligibleNow(row);
     return {
       ...row,
@@ -2089,7 +2100,7 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
           : 'Chờ ' + waiting.map((n) => '#' + n).join(', '),
       };
     });
-    const rankedQueue = rankQueueRows(resolvedQueue);
+    const rankedQueue = rankQueueRows(resolvedQueue, ownerBacklogOrder);
     const nextQueue = rankedQueue.slice(0, QUEUE_LIMIT);
     const nextExecutable = rankedQueue.find((row) => row.eligibleNow) || null;
 
