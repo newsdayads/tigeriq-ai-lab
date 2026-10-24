@@ -79,3 +79,22 @@ export function boundedOwnerTriageChild({issue,request,receiptUrl}={}) {
   ].join('\n');
   return {title,body,scope,requestId:r.requestId,parentIssueNumber:r.issueNumber};
 }
+
+export function verifiedOwnerReceiptForChild(childBody,commentBody) {
+  const child=String(childBody||''),receipt=String(commentBody||'');
+  if(!/^SOURCE=AUTHENTICATED_OWNER_WORK_CARD$/m.test(child))throw Error('owner_triage_source_missing');
+  const parent=Number(/^PARENT_ISSUE=#(\d+)$/m.exec(child)?.[1]||0);
+  const id=/^OWNER_REQUEST_ID=([a-f0-9-]{36})$/mi.exec(child)?.[1]||'';
+  const url=/^OWNER_REQUEST_RECEIPT=(https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/\d+#issuecomment-\d+)$/m.exec(child)?.[1];
+  if(!parent||!id||!url||!url.includes('/issues/'+parent+'#issuecomment-'))throw Error('owner_triage_child_receipt_invalid');
+  const lines=receipt.split(/\r?\n/);
+  if(lines[0]!=='TIGERIQ_OWNER_REQUEST_V1'
+    ||!lines.includes('OWNER_REQUEST_ID='+id)
+    ||!lines.includes('OWNER_REQUEST_ISSUE='+parent)
+    ||!lines.includes('OWNER_REQUEST_STATUS=RECEIVED'))throw Error('owner_triage_receipt_not_correlated');
+  const encoded=/^OWNER_REQUEST_MESSAGE_JSON=(.+)$/m.exec(receipt)?.[1];
+  let message;try{message=JSON.parse(encoded||'')}catch{throw Error('owner_triage_receipt_json_invalid')}
+  if(typeof message!=='string'||!message.trim()||message.length>3000)
+    throw Error('owner_triage_receipt_message_invalid');
+  return {parentIssueNumber:parent,requestId:id,message:message.trim(),receiptUrl:url};
+}
