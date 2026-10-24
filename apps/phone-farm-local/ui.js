@@ -99,6 +99,33 @@ $('install').onclick=()=>batch('install');
 $('upload').onclick=()=>batch('upload');
 $('launch').onclick=()=>batch('launch');
 $('forceStop').onclick=()=>batch('forceStop');
+let currentMacroId=null;
+async function checkMacro(){
+  if(!currentMacroId)return;
+  try{
+    const r=await api('/api/macro/status?id='+encodeURIComponent(currentMacroId));
+    $('macroStatus').textContent=r.state+' • '+r.done+'/'+r.total+(r.error?' • '+r.error:'');
+    if(r.state!=='running'){$('stopMacro').disabled=true;currentMacroId=null}
+  }catch(e){$('macroStatus').textContent=e.message;$('stopMacro').disabled=true;currentMacroId=null}
+}
+$('runMacro').onclick=async()=>{
+  try{
+    const serials=active();
+    if(!serials.length)throw Error('Chọn thiết bị trước');
+    const steps=JSON.parse($('macroSteps').value);
+    const r=await api('/api/macro/start',{serials,steps});
+    currentMacroId=r.id;
+    $('stopMacro').disabled=false;
+    $('macroStatus').textContent='Đã bắt đầu '+r.id.slice(0,8);
+    await checkMacro();
+  }catch(e){notice(e.message,true)}
+};
+$('stopMacro').onclick=async()=>{
+  if(!currentMacroId)return;
+  try{await api('/api/macro/stop',{id:currentMacroId});await checkMacro()}
+  catch(e){notice(e.message,true)}
+};
+setInterval(checkMacro,1200);
 document.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=>action({serials:active(),action:'key',key:b.dataset.key}).catch(e=>notice(e.message,true)));
 api('/api/health').then(x=>{$('health').textContent='ADB: '+(x.adbExists?'có':'thiếu')+'; scrcpy: '+(x.scrcpyExists?'có':'thiếu')+'; chế độ: chỉ nội bộ PC'}).catch(e=>notice(e.message,true));
 refresh();
