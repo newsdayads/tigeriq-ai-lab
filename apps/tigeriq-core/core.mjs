@@ -348,11 +348,11 @@ async function openAiCompat(endpoint, key, model, prompt, extraHeaders = {}, tim
         method: 'POST', headers: { 'content-type':'application/json', authorization:`Bearer ${key}`, ...extraHeaders },
         body: JSON.stringify(requestBody),
       }, timeoutMs, resource?res=>syncQuotaFromHeaders(resource,res):null);
-      // Groq's visible output must be text; never accept [object Object] or reasoning alone.
-      const text = (host==='api.inceptionlabs.ai'||host==='api.groq.com')
-        ? inceptionVisibleContent(body) : body?.choices?.[0]?.message?.content;
-      if (!String(text || '').trim()) { const e = new Error('EMPTY_RESPONSE'); e.kind='invalid_response'; throw e; }
-      return String(text);
+      const text = host==='api.inceptionlabs.ai'?inceptionVisibleContent(body):body?.choices?.[0]?.message?.content;
+      // Guard Groq visible content separately; preserve the canonical Inception adapter contract.
+      const visibleText = host==='api.groq.com'?inceptionVisibleContent(body):text;
+      if (!String(visibleText || '').trim()) { const e = new Error('EMPTY_RESPONSE'); e.kind='invalid_response'; throw e; }
+      return String(visibleText);
     }catch(error){
       if(host==='api.groq.com'&&!groq413RetryUsed&&Number(error?.status)===413){
         const shrunk=shrinkGroq413Prompt(requestPrompt);
