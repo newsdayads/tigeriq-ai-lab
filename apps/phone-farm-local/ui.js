@@ -82,6 +82,23 @@ function loadScreen(img,serial){
 $('refresh').onclick=refresh;$('all').onclick=()=>{deviceRows.filter(d=>d.state==='device').forEach(d=>selected.add(d.serial));draw()};
 $('none').onclick=()=>{selected.clear();draw()};$('search').oninput=draw;
 $('sendText').onclick=()=>action({serials:active(),action:'text',text:$('text').value}).catch(e=>notice(e.message,true));
+async function batch(actionName){
+  const serials=active();
+  if(!serials.length){notice('Chọn thiết bị trước',true);return}
+  const fileRequired=actionName==='install'||actionName==='upload';
+  const value=prompt(fileRequired?'Nhập tên tệp trong thư mục drop trên PC01':'Nhập Android package ID (ví dụ com.example.app)');
+  if(value===null)return;
+  try{
+    const b={serials,action:actionName};
+    if(fileRequired)b.file=value;else b.package=value;
+    const result=await api('/api/batch',b),bad=result.results.filter(x=>!x.ok);
+    notice(bad.length?'Thất bại '+bad.length+'/'+serials.length+': '+bad[0].error:'Thành công '+serials.length+'/'+serials.length+' thiết bị',bad.length>0);
+  }catch(e){notice(e.message,true)}
+}
+$('install').onclick=()=>batch('install');
+$('upload').onclick=()=>batch('upload');
+$('launch').onclick=()=>batch('launch');
+$('forceStop').onclick=()=>batch('forceStop');
 document.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=>action({serials:active(),action:'key',key:b.dataset.key}).catch(e=>notice(e.message,true)));
 api('/api/health').then(x=>{$('health').textContent='ADB: '+(x.adbExists?'có':'thiếu')+'; scrcpy: '+(x.scrcpyExists?'có':'thiếu')+'; chế độ: chỉ nội bộ PC'}).catch(e=>notice(e.message,true));
 refresh();
