@@ -320,8 +320,20 @@ export function nativeR04ReportContractAudit(text='') {
     const section=parts.get(id);
     if(!section)continue;
     const missing=Object.entries(fields).filter(([,re])=>!re.test(section)).map(([name])=>name);
-    const timestamp=/(?:20\d{2}[-/]\d{2}[-/]\d{2}|20\d{2}-\d{2}-\d{2}T\d{2}:\d{2})/.test(section);
-    const confidence=/(?:\bHIGH\b|\bMEDIUM\b|\bLOW\b|\bUNKNOWN\b|(?:cao|th[ấa]p|trung\s*b[iì]nh|kh[oô]ng\s*r[oõ]))/i.test(section);
+    // A date in OBSERVATION/EXPECTED is not evidence of a dated source.
+    // Bind the timestamp to a non-placeholder evidence-source FIELD, never
+    // to an arbitrary date elsewhere in the answer or echoed instructions.
+    const sourceField=section.match(/(?:^|\n)\s*(?:[-*]\s*)?(?:\*{1,2})?(?:REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP|EVIDENCE_SOURCE|b[ằăạ]ng\s*ch[ứu]ng|ngu[ồo]n\s*(?:d[ẫa]n|ch[ứu]ng))(?:\*{1,2})?\s*[:：]\s*([^\r\n]*)/i);
+    const sourceValue=String(sourceField?.[1]||'').trim();
+    const sourcePresent=sourceValue.length>0
+      && !/^(?:UNKNOWN\b|N\/A\b|NONE\b|NO\s+SOURCE\b|<|chưa\s+c[oó]\b|kh[oô]ng\s+(?:c[oó]|r[oõ])\b)/i.test(sourceValue);
+    if(!sourcePresent&&!missing.includes('evidenceSource'))missing.push('evidenceSource');
+    const timestamp=sourcePresent
+      && /(?:20\d{2}[-/]\d{2}[-/]\d{2}(?:T\d{2}:\d{2})?)/.test(sourceValue);
+    // Likewise, confidence from DEVIATION: UNKNOWN is not a confidence value.
+    const confidenceField=section.match(/(?:^|\n)\s*(?:[-*]\s*)?(?:\*{1,2})?(?:CONFIDENCE|[đd]ộ\s*tin\s*c[ậa]y)(?:\*{1,2})?\s*[:：]\s*([^\r\n]*)/i);
+    const confidence=/(?:^(?:HIGH|MEDIUM|LOW|UNKNOWN)\b|^(?:cao|th[ấa]p|trung\s*b[iì]nh|kh[oô]ng\s*r[oõ])\b)/i
+      .test(String(confidenceField?.[1]||'').trim());
     if(timestamp)withTimestamp++;
     else missing.push('evidenceTimestamp');
     if(confidence)withConfidenceValue++;
