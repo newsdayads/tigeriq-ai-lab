@@ -6,6 +6,7 @@ import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
 import {validateWorkOrderLifecycleV2} from './work-order-lifecycle-v2.mjs';
+import {codingIssueCompletionGate} from '../shared/work-order-acceptance-sync.mjs';
 import {workOrderChecklistGate,workOrderChecklistSteps} from './work-order-checklist-hard-gate.mjs';
 import { SUPPORTED_PUBLIC_EVIDENCE_KEYS, appendPublicEvidenceToSummary, validatePublicEvidenceKeys } from './public-evidence.mjs';
 import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
@@ -1682,6 +1683,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         status='active'
         or coalesce(metadata->>'githubClaimReported','false')<>'true'
         or (status in ('completed','blocked') and coalesce(metadata->>'githubResultReported','false')<>'true')
+        or (status='completed' and coalesce(metadata->>'githubCompletionPending','false')='true')
         or (status='blocked' and coalesce(metadata->>'githubTerminalLabelSynced','false')<>'true')
       )
       ${issueFilter?"and metadata->>'issueNumber'=any($1::text[])":""}
@@ -2016,42 +2018,60 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         await pool.query("update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[row.id,row.summary]);
       }
     }
-    if(['completed','blocked'].includes(row.status)&&!row.metadata?.githubResultReported){
-      const resultComment=formatResultComment(row);
-      await commentIssue(fetchImpl,owner,repo,number,resultComment,token);
-      // A Core planner result updates the parent Owner history but NEVER
-      // supplies VERIFIED or clears an unexecuted Owner instruction.
-      const ownerTriage=ownerCoreTriageReceiptPlan(sourceBody,row);
-      if(ownerTriage){
-        const parentIssue=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${ownerTriage.parentIssueNumber}`,token);
-        const page=Math.max(1,Math.ceil(Math.max(0,Number(parentIssue.comments||0))/100));
-        const recent=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${ownerTriage.parentIssueNumber}/comments?per_page=100&page=${page}`,token);
-        const key='CORE_TRIAGE_OBJECTIVE_ID='+ownerTriage.objectiveId;
-        if(!(Array.isArray(recent)?recent:[]).some(comment=>String(comment?.body||'').includes(key))){
-          await commentIssue(fetchImpl,owner,repo,ownerTriage.parentIssueNumber,
-            makeOwnerResultReceipt(ownerTriage.requestId,ownerTriage.status,ownerTriage.reply),token);
+    if(['completed','blocked'].includes(row.status)&&(!row.metadata?.githubResultReported||row.metadata?.githubCompletionPending)){
+      const firstReport=!row.metadata?.githubResultReported;
+      if(firstReport){
+        const resultComment=formatResultComment(row);
+        await commentIssue(fetchImpl,owner,repo,number,resultComment,token);
+        // A Core planner result updates the parent Owner history but NEVER
+        // supplies VERIFIED or clears an unexecuted Owner instruction.
+        const ownerTriage=ownerCoreTriageReceiptPlan(sourceBody,row);
+        if(ownerTriage){
+          const parentIssue=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${ownerTriage.parentIssueNumber}`,token);
+          const page=Math.max(1,Math.ceil(Math.max(0,Number(parentIssue.comments||0))/100));
+          const recent=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${ownerTriage.parentIssueNumber}/comments?per_page=100&page=${page}`,token);
+          const key='CORE_TRIAGE_OBJECTIVE_ID='+ownerTriage.objectiveId;
+          if(!(Array.isArray(recent)?recent:[]).some(comment=>String(comment?.body||'').includes(key))){
+            await commentIssue(fetchImpl,owner,repo,ownerTriage.parentIssueNumber,
+              makeOwnerResultReceipt(ownerTriage.requestId,ownerTriage.status,ownerTriage.reply),token);
+          }
+        }
+
+        if(row.status==='completed'&&P1_P5_PRIORITIES.has(bodyValue(sourceBody,'PRIORITY').toUpperCase())&&number!==OWNER_RESULT_INBOX_ISSUE){
+          const sourceTitle=String(sourceIssueForGate?.title||row.metadata?.issueTitle||'Work Order').slice(0,300);
+          await githubMutationRetryable(()=>commentIssue(
+            fetchImpl,owner,repo,OWNER_RESULT_INBOX_ISSUE,
+            `[KẾT QUẢ THỰC TẾ] #${number} - ${sourceTitle}\n\n${resultComment}\n\nNguồn: https://github.com/${owner}/${repo}/issues/${number}`,
+            token
+          ));
         }
       }
-      if(row.status==='completed'&&P1_P5_PRIORITIES.has(bodyValue(sourceBody,'PRIORITY').toUpperCase())&&number!==OWNER_RESULT_INBOX_ISSUE){
-        const sourceTitle=String(sourceIssueForGate?.title||row.metadata?.issueTitle||'Work Order').slice(0,300);
-        await githubMutationRetryable(()=>commentIssue(
-          fetchImpl,owner,repo,OWNER_RESULT_INBOX_ISSUE,
-          `[KẾT QUẢ THỰC TẾ] #${number} - ${sourceTitle}\n\n${resultComment}\n\nNguồn: https://github.com/${owner}/${repo}/issues/${number}`,
-          token
-        ));
-      }
       const keepOpenOnStepComplete=githubKeepOpenOnStepComplete(row.metadata,sourceBody);
+      let githubClosed=false,githubCompletionPending=false;
       if(row.status==='completed'){
         if(keepOpenOnStepComplete){
           await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
         }else{
-          // Close first so a failed clear cannot expose a completed OPEN issue as QUEUED.
-          await closeIssue(fetchImpl,owner,repo,number,token);
-          await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
+          // Job completion and a checked step do not authorize closing the
+          // GitHub product card. Reconcile this pending gate on every tick
+          // without re-emitting inbox/comments or fabricating receipts.
+          const actualForClosure=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${number}`,token);
+          const gate=codingIssueCompletionGate(actualForClosure);
+          if(gate.canClose){
+            await closeIssue(fetchImpl,owner,repo,number,token);
+            await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:number,token});
+            githubClosed=true;
+          }else{
+            githubCompletionPending=true;
+            if(!row.metadata?.githubCompletionPending){
+              await commentIssue(fetchImpl,owner,repo,number,`[PRODUCT_ACCEPTANCE_PENDING] Core objective ${row.id} completed a substep; GitHub Work Order remains OPEN/DONE=false until Lifecycle V2 receipts and downstream acceptance are source-verified. Missing: ${gate.missing.join(',').slice(0,900)}.`,token);
+            }
+          }
         }
       }
-      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed:row.status==='completed'&&!keepOpenOnStepComplete,keepOpenOnStepComplete})]);
-      results++;
+      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed,githubCompletionPending,keepOpenOnStepComplete})]);
+      row.metadata={...row.metadata,githubResultReported:true,githubClosed,githubCompletionPending,keepOpenOnStepComplete};
+      if(firstReport||githubClosed||githubCompletionPending!==Boolean(row.metadata?.githubCompletionPending))results++;
     }
   }
   return {claims,results};
