@@ -24,6 +24,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Verify whole game build lint and tests under Node22
+        run: npm --prefix apps/tigeriq-game run verify
       - name: Verify exact SHA, static syntax and 14 G06 tests
         env:
           TIGERIQ_GAME_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
