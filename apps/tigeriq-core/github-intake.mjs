@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { verifiedOwnerReceiptForChild, ownerCoreTriageReceiptPlan, verifiedOwnerTriageNativeJob } from '../shared/owner-work-dispatch.mjs';
+import { verifiedOwnerReceiptForChild, ownerCoreTriageReceiptPlan, verifiedOwnerTriageNativeJob, ownerTriageCompletionPublicationGate } from '../shared/owner-work-dispatch.mjs';
 import { makeOwnerResultReceipt } from '../shared/owner-work-request.mjs';
 import { managerAcceptanceRevisionRefresh, managerAcceptanceWakePlan } from './manager-cycle-policy.mjs';
 import { Pool } from 'pg';
@@ -2031,6 +2031,19 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         await pool.query("update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[row.id,row.summary]);
       }
     }
+    const ownerPublication=ownerTriageCompletionPublicationGate(sourceBody,row);
+    if(ownerPublication.defer){
+      // A Core objective marked completed is NOT a published Owner result.
+      // Keep the objective and its genuine AI output intact, and rotate the
+      // reconciliation cursor so one pending checklist cannot starve the queue.
+      // This never writes a checklist or acquires someone else's Core lease.
+      await pool.query(
+        "update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",
+        [row.id,JSON.stringify({githubOwnerTriagePendingReason:ownerPublication.reason})]
+      );
+      row.metadata={...row.metadata,githubOwnerTriagePendingReason:ownerPublication.reason};
+      continue;
+    }
     if(['completed','blocked'].includes(row.status)&&(!row.metadata?.githubResultReported||row.metadata?.githubCompletionPending)){
       const firstReport=!row.metadata?.githubResultReported;
       if(firstReport){
@@ -2105,7 +2118,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
           }
         }
       }
-      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed,githubCompletionPending,keepOpenOnStepComplete})]);
+      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed,githubCompletionPending,keepOpenOnStepComplete,...(row.metadata?.githubOwnerTriagePendingReason?{githubOwnerTriagePendingReason:null}:{})})]);
       row.metadata={...row.metadata,githubResultReported:true,githubClosed,githubCompletionPending,keepOpenOnStepComplete};
       if(firstReport||githubClosed||githubCompletionPending!==Boolean(row.metadata?.githubCompletionPending))results++;
     }

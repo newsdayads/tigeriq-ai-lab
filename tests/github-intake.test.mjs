@@ -1804,3 +1804,40 @@ test('CORE_REVIEW CHANGES_REQUIRED blocks objective instead of closing review as
   assert.match(core,/changesRequired\?'blocked':'completed'/);
   assert.match(core,/GITHUB_CORE_REVIEW_CHANGES_REQUIRED/);
 });
+
+test('GH-5290 native Owner triage may not publish completed status before dual acceptance',async()=>{
+  const checked=bool=>bool?'x':' ';
+  for(const checklistAccepted of [false,true]){
+    const evidence='[receipt](https://github.com/newsdayads/tigeriq-ai-lab/issues/5290#issuecomment-6381574751)';
+    const body=[
+      'TIGERIQ_JOB_V1','SOURCE=AUTHENTICATED_OWNER_WORK_CARD',
+      'PARENT_ISSUE=#5252','OWNER_REQUEST_ID=3d1c32c4-9fe1-4157-b362-923aef2bb64f',
+      'OWNER_REQUEST_RECEIPT=https://github.com/newsdayads/tigeriq-ai-lab/issues/5252#issuecomment-6379870823',
+      'PRIORITY=P1','RESOURCE_SCOPE=TIGERIQ_OWNER_DIRECTIVE_TRIAGE_5252',
+      '## STRUCTURED_PROGRESS_CHECKLIST',
+      '- ['+checked(checklistAccepted)+'] R01 — read source '+(checklistAccepted?evidence:''),
+      '- ['+checked(checklistAccepted)+'] R02 — Core worker result '+(checklistAccepted?evidence:'')
+    ].join('\n');
+    const ghIssue={number:5290,state:'open',body,title:'[P1] Owner Core intake',labels:[],comments:0,updated_at:'2026-10-24T08:00:00Z'};
+    const pool=coreBacklogPool();
+    pool.objectives.push({
+      id:'OBJ-GH-5290',status:'completed',summary:'Source planning complete, not yet Owner accepted',
+      metadata:{source:'github',issueNumber:5290,resourceScope:'TIGERIQ_OWNER_DIRECTIVE_TRIAGE_5252',
+        githubClaimReported:true,githubResultReported:false,githubCompletionPending:false},
+    });
+    let commentsPosted=0;
+    const fetchImpl=async(url,options={})=>{
+      if(String(options.method||'GET').toUpperCase()==='POST'&&url.includes('/comments')){
+        commentsPosted++;return response({id:99});
+      }
+      if(url.endsWith('/issues/5290'))return response(ghIssue);
+      return response({});
+    };
+    await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[ghIssue],issueNumbers:[5290]});
+    assert.strictEqual(commentsPosted,0,'unaccepted Owner result may not be posted');
+    assert.equal(pool.objectives[0].status,'completed','preserve genuine source output');
+    assert.notEqual(pool.objectives[0].metadata.githubResultReported,true);
+    assert.equal(pool.objectives[0].metadata.githubOwnerTriagePendingReason,
+      checklistAccepted?'NATIVE_CORE_JOB_NOT_VERIFIED':'GITHUB_CHECKLIST_PENDING');
+  }
+});
