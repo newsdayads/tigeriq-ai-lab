@@ -84,7 +84,12 @@ export async function main(argv=process.argv.slice(2)) {
     // JSON is an untrusted, optional non-secret read-only source snapshot.
     const raw=await readFile(argv[1],{encoding:'utf8'});
     if(Buffer.byteLength(raw)>32768) throw Error('INPUT_TOO_LARGE');
-    result=evaluateG06Preflight(JSON.parse(raw));
+    const evaluated=evaluateG06Preflight(JSON.parse(raw));
+    // A local JSON file is untrusted: even perfect fields cannot attest a live
+    // MCP binding or create an exclusive device claim. Keep detailed failures,
+    // but never emit READY from editable input without the native adapter.
+    result=evaluated.ready ? {...evaluated,code:'WAIT_RUNTIME_MCP_BINDING',
+      ready:false,reason:'INPUT_JSON_CANNOT_ATTEST_NATIVE_RUNTIME'} : evaluated;
   } else result=evaluateG06Preflight();
   process.stdout.write(JSON.stringify(result)+'\n');
   return result;
