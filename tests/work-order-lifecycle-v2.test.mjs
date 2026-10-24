@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {validateWorkOrderLifecycleV2,requiresLifecycleV2,lifecycleTimeSnapshot,lifecycleStage} from '../apps/tigeriq-core/work-order-lifecycle-v2.mjs';
-import {safeAutoWorkAdmission} from '../apps/tigeriq-core/github-intake.mjs';
+import {safeAutoWorkAdmission,parseExecutableIssue} from '../apps/tigeriq-core/github-intake.mjs';
 import {parseOpenWorkIssue} from '../api/live-status.mjs';
 const issue=(body,extra={})=>({
   number:900001,title:'[P2][CORE] Contract V2 test',state:'open',
@@ -163,5 +163,87 @@ describe('V2 checklist beneath a current checkpoint header',()=>{
     expect(result.steps).toHaveLength(2);
     expect(result.missing).not.toContain('CHECKLIST_2_TO_64');
     expect(result.missing).not.toContain('WORK_ORDER_LIFECYCLE=V2');
+  });
+});
+
+describe('GH-5290 Owner directive root-header regression',()=>{
+  const root=[
+    'TIGERIQ_JOB_V1',
+    'WORK_ORDER_LIFECYCLE=V2',
+    'PROJECT_ID=tigeriq-platform',
+    'WORKSTREAM_ID=work-center-owner-request-intake',
+    'SOURCE=AUTHENTICATED_OWNER_WORK_CARD',
+    'PARENT_ISSUE=#5252',
+    'OWNER_REQUEST_ID=3d1c32c4-9fe1-4157-b362-923aef2bb64f',
+    'OWNER_REQUEST_RECEIPT=https://github.com/newsdayads/tigeriq-ai-lab/issues/5252#issuecomment-6379870823',
+    'OWNER_DIRECT=true',
+    'OWNER_POLICY=AUTO',
+    'OWNER_HOLD=false',
+    'OWNER_CONTROLLED=false',
+    'PRIORITY=P1',
+    'TIGERIQ_EXECUTABLE=true',
+    'AUTO_QUEUE=INCLUDED',
+    'CAPABILITY=reasoning',
+    'EXECUTION_SURFACE=CORE_REASONING',
+    'ASSIGNED_EXECUTOR=ELIGIBLE_ROLE_DYNAMIC',
+    'MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+    'ONE_RESOURCE_SCOPE_ONE_WRITER=true',
+    'RESOURCE_SCOPE=TIGERIQ_OWNER_DIRECTIVE_TRIAGE_5252',
+    'CURRENT_STATE=READY_SOURCE_AUDIT',
+    'CURRENT_STEP=R01 — Read the exact authenticated receipt',
+    'LAST_COMPLETED_STEP=NOT_STARTED',
+    'NEXT_ACTION=Read receipt; analyze safely using existing Core queue',
+    'BLOCKER=NONE',
+    'STARTED_AT=NOT_STARTED',
+    'FINISHED_AT=NOT_FINISHED',
+    'ETA_STATUS=UNVERIFIED',
+    'DONE=false',
+    'SAME_FAILURE_RETRY_COUNT=0',
+    'SAME_FAILURE_RETRY_MAX=2',
+    'VERIFICATION_COUNT_CURRENT_HEAD=0',
+    'VERIFICATION_MAX_PER_HEAD=2',
+    'LAST_FAILURE_SIGNATURE=NONE',
+    'RETRY_RESUME_TRIGGER=NEW_PARENT_RECEIPT_OR_NEW_AUTHORITY',
+    'NO_DIRECT_MAIN=true',
+    'NO_PAID_COST=true',
+    'NO_CREDENTIAL_CHANGE=true',
+    'NO_SECURITY_BOUNDARY_CHANGE=true',
+    'NO_DESTRUCTIVE=true',
+    'NO_PRODUCTION_RELEASE=true',
+    'NO_CODE_CHANGE=true',
+    'NO_PC01_SHELL=true',
+    'NO_BROWSER_AUTH=true',
+    'NO_RDC=true',
+    'APP_CHROME_MUTATION=FORBIDDEN',
+    '## STRUCTURED_PROGRESS_CHECKLIST',
+    '- [ ] R01 — Read source',
+    '- [ ] R02 — Produce safe plan',
+    '## ACCEPTANCE',
+    'Native Core job and evidence required; never claim DONE from plan.',
+    '## STOP_CONDITIONS',
+    'Block without lease or worker acceptance.'
+  ].join('\n');
+  const target=issue(root,{number:5290,title:'[P1][OWNER REQUEST #5252] Phân tích chỉ đạo 3d1c32c4',created_at:'2026-10-24T04:56:52Z'});
+  it('recognizes canonical V2 fields before first checklist heading and dispatches to existing Core',()=>{
+    const life=validateWorkOrderLifecycleV2(target);
+    expect(life).toMatchObject({required:true,valid:true,missing:[],stage:'READY'});
+    const admission=safeAutoWorkAdmission(target);
+    expect(admission.eligible).toBe(true);
+    const parsed=parseExecutableIssue(target);
+    expect(parsed).toBeTruthy();
+    expect(parsed.resourceScope).toBe('TIGERIQ_OWNER_DIRECTIVE_TRIAGE_5252');
+    expect(parsed.dispatchLane).toBe('CORE_REASONING');
+  });
+  it('fails closed for a malformed root and never promotes archived metadata across a historical divider',()=>{
+    const absent=issue(root.replace('WORK_ORDER_LIFECYCLE=V2','WORK_ORDER_LIFECYCLE=INVALID'),{number:5290,created_at:'2026-10-24T04:56:52Z'});
+    expect(validateWorkOrderLifecycleV2(absent).valid).toBe(false);
+    expect(safeAutoWorkAdmission(absent).eligible).toBe(false);
+    const archived=issue([
+      '## OWNER CHECKPOINT',
+      'No executable authority',
+      '--- HISTORICAL ONLY ---',
+      root
+    ].join('\n'),{number:5290,created_at:'2026-10-24T04:56:52Z'});
+    expect(safeAutoWorkAdmission(archived).eligible).toBe(false);
   });
 });
