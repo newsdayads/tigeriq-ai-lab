@@ -227,7 +227,9 @@ export function parseCoreUiIssue(issue){
   if(!readOnly||yes(body,'AUTONOMOUS_CODE'))return null;
   const autonomousCode=false;
   const classification=classifyWorkOrder(body);
-  const coreReviewOverflow=classification.route==='CORE_REVIEW'&&classification.capability==='review';
+  // Explicit native Core reviewer target must never acquire a competing UI overflow scope.
+  // Leave generic CORE_REVIEW overflow and its one-scope lease guard unchanged.
+  const coreReviewOverflow=classification.route==='CORE_REVIEW'&&classification.capability==='review'&&!yes(body,'CORE_TARGET_STRICT');
   if(classification.route!=='UI'&&!coreReviewOverflow)return null;
   const explicitWorker=String(classification.workerId||'');
   const flexibleReview=classification.capability==='review'&&String(value(body,'CORE_TARGET_STRICT')||'').trim().toLowerCase()==='false';

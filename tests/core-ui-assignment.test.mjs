@@ -898,3 +898,21 @@ test('Core QA stage: blocked parent -> real typed job -> result receipt, parent 
   const next=await buildCoreUiAssignmentSnapshot({pool,fetchImpl,token:'x'});
   assert.equal(next.nextJobs.length,0,'same step revision must not repeat');
 });
+
+test('explicit strict native CORE_REVIEW target never creates a competing UI review lease',()=>{
+  const base=issue(4205,safe([
+    'CAPABILITY=review',
+    'EXECUTION_SURFACE=CORE_REVIEW',
+    'ASSIGNED_EXECUTOR=NV10',
+    'PREFERRED_REVIEWER=NV10',
+    'REVIEW_SPECIALTY=API_DOCTOR',
+    'REVIEW_ONLY=true',
+    'IMPLEMENTER=NV02',
+  ]).replace('RESOURCE_SCOPE=UI_CANARY','RESOURCE_SCOPE=STRICT_NV11_NATIVE_REVIEW'),'Strict NV11 independent review');
+  // Existing explicit Core-review overflow remains available without a strict target.
+  assert.deepEqual(parseCoreUiIssue(base)?.eligibleWorkerIds,['NV03','NV04']);
+  // A native-targeted review is left to Core intake and cannot reserve UI scope.
+  assert.equal(parseCoreUiIssue({...base,body:base.body+'\nCORE_TARGET_STRICT=true'}),null);
+  // A non-strict explicit opt-out still permits the existing UI overflow path.
+  assert.deepEqual(parseCoreUiIssue({...base,body:base.body+'\nCORE_TARGET_STRICT=false'})?.eligibleWorkerIds,['NV03','NV04']);
+});
