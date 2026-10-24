@@ -527,7 +527,14 @@ async function ownerRequestApi(req,res,payload,readOnly=false){
   // Triage provides advice, not an authority to mutate an active worker lease.
   try{
     const context='Thẻ công việc #'+issueNumber+' — '+String(issue.title||'')+'. Đọc yêu cầu của anh Sơn, phân tích và đưa hướng xử lý trước thực thi. Không tuyên bố đã chạy, không vượt quyền/lease. Nội dung: ';
-    const decision=await decideWithChief({message:context+request.message,history:[]});
+    let decision;
+    try{decision=await decideWithChief({message:context+request.message,history:[]});}
+    catch{
+      // The Owner receipt is already durable. If the cloud triage model is
+      // unavailable, the existing read-only Core planning lane may still
+      // process it. No execution success is inferred.
+      decision={mode:'unavailable',reply:'AI phân tích ban đầu chưa phản hồi; chuyển yêu cầu sang Core để phân tích an toàn.'};
+    }
     const status=ownerWorkRequestTriageStatus(request.message,decision?.mode);
     const triageReply=String(decision?.reply||'').trim();
     const reply=status==='PLAN_SHOWN'
