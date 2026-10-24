@@ -4,6 +4,7 @@ import { Script } from 'node:vm';
 import os from 'node:os';
 import { safeFilename, safePackage, validBatch, fileInDrop } from './farm-ops.mjs';
 import { validMacro, executeMacro, MacroRuns } from './macro-engine.mjs';
+import { LocalScheduler } from './schedule-engine.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -97,4 +98,46 @@ test('macro run ids, device locking and stop guard', async () => {
   assert.equal(runs.stop(id),true);
   await new Promise(resolve=>setTimeout(resolve,30));
   assert.equal(runs.status(id).state,'cancelled');
+});
+
+test('local scheduler survives restart and executes a bounded due macro once', async () => {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'tigeriq-schedule-'));
+  const filename=path.join(dir,'schedules.json');
+  let now=Date.parse('2026-10-24T00:00:00.000Z');
+  const invoked=[];
+  try {
+    const scheduler=new LocalScheduler(filename,async(steps,serials)=>{
+      invoked.push({steps,serials});return 'local-run-id';
+    },()=>now);
+    const saved=scheduler.add({name:'Safe Home',serials:['PHONE_A'],
+      steps:[{action:'key',key:'HOME'}],runAt:new Date(now+120000).toISOString(),repeatMinutes:1});
+    assert.ok(saved.id);
+    assert.equal(scheduler.list().length,1);
+    await scheduler.tick();assert.equal(invoked.length,0);
+    now+=120001;
+    await scheduler.tick();
+    assert.equal(invoked.length,1);
+    assert.equal(scheduler.list()[0].lastRunId,'local-run-id');
+    assert.ok(scheduler.list()[0].nextAt>now);
+    const restarted=new LocalScheduler(filename,async()=>{},()=>now);
+    assert.equal(restarted.list().length,1);
+    assert.equal(restarted.list()[0].lastRunId,'local-run-id');
+    assert.equal(restarted.remove(saved.id),true);
+    assert.equal(restarted.list().length,0);
+  } finally {fs.rmSync(dir,{recursive:true,force:true})}
+});
+
+test('local scheduler skips stale jobs instead of replaying uncontrolled backlog', async () => {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'tigeriq-schedule-missed-'));
+  let now=Date.parse('2026-10-24T00:00:00.000Z'),invocations=0;
+  try{
+    const scheduler=new LocalScheduler(path.join(dir,'schedules.json'),async()=>{invocations++;},()=>now);
+    scheduler.add({name:'One time',serials:['PHONE_A'],steps:[{action:'key',key:'HOME'}],
+      runAt:new Date(now+5000).toISOString(),repeatMinutes:0});
+    now+=7200000;
+    await scheduler.tick();
+    assert.equal(invocations,0);
+    assert.equal(scheduler.list()[0].enabled,false);
+    assert.match(scheduler.list()[0].lastError,/Missed window/);
+  }finally{fs.rmSync(dir,{recursive:true,force:true})}
 });
