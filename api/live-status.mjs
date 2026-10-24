@@ -2137,7 +2137,10 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     const actionable = openWork.filter((row) => row.workKind === 'WORK');
     const openSummary = {
       open: openWork.length,
+      // 'actionable' is legacy count of open WORK cards, NOT dispatch-ready work.
       actionable: actionable.length,
+      dispatchReady: rankedQueue.filter((row) => row.eligibleNow === true).length,
+      dispatchCandidates: rankedQueue.length,
       owner: actionable.filter((row) => row.status === 'OWNER_GATE').length,
       running: actionable.filter((row) => row.status === 'WORKING').length,
       review: actionable.filter((row) => ['REVIEW','VERIFY'].includes(row.status)).length,
