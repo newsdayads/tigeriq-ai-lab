@@ -10,6 +10,7 @@ const projectApproval=approvalModule?.projectOwnerApprovalIssue||(()=>({ok:false
 import { normalizeRuntimeResources, refreshRegistryWorkforce, workforceSnapshot, aggregateWorkforceHealth } from './workforce-registry.mjs';
 import { ownerStatusIcon, ownerStatusVectorIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
 import { workOrderChecklistSteps } from './work-order-checklist-hard-gate.mjs';
+import {sourceCompletionDiagnostic} from '../shared/work-order-acceptance-sync.mjs';
 
 const HOST = process.env.TIGERIQ_WEB_CONTROL_HOST?.trim() || '0.0.0.0';
 const PORT = Number(process.env.TIGERIQ_WEB_CONTROL_PORT || 8796);
@@ -114,6 +115,7 @@ export function projectWorkOrder(issue, source = {}) {
   const owner=ownerControlled&&!executable?'OWNER':rawOwner;
   const closed=String(issue?.state||'').toLowerCase()==='closed';
   const proof=closed?completionProof(issue):{verified:false,timing:null};
+  const completionSync=sourceCompletionDiagnostic(issue);
   const isSystem=systemWorkOrder(issue,body);
   const ownerGate=/OWNER_GATE|WAIT(?:ING)?_OWNER|WAIT_ANH_SON|CHỜ_ANH_SƠN/.test(marker);
   // Never expose an approval action without a fresh, authenticated Owner-authored GitHub issue.
@@ -147,6 +149,7 @@ export function projectWorkOrder(issue, source = {}) {
     bucket,bucketIcon:ownerStatusIcon(bucket),bucketIconName:ownerStatusVectorIcon(bucket),
     owner,assignee:owner,closed,ownerApproval:approvalProjection.ok?approvalProjection.card:null,
     completionVerified:proof.verified,lifecycleTiming:proof.timing,workKind:isSystem?'SYSTEM':'WORK',
+    completionSyncState:completionSync.state,completionMissing:closed?completionSync.missing:[],sourceDoneDeclared:completionSync.sourceDoneDeclared,
     projectName:machineValue(body,'PROJECT_NAME')||machineValue(body,'PROJECT_ID')||'TigerIQ',
     workstreamName:machineValue(body,'WORKSTREAM_NAME')||machineValue(body,'WORKSTREAM_ID')||'Công việc',
     currentStep:machineValue(body,'CURRENT_STEP')||null,
