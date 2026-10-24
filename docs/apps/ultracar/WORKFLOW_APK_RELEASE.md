@@ -3,6 +3,15 @@
 > Canonical task tracking: [Issue #5129](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129). Owner interface/policy: [Issue #504](https://github.com/newsdayads/tigeriq-ai-lab/issues/504). This file is an operational runbook, **not** an automatic task scheduler, elevated permission or release approval. Last verified: 2026-10-24 (Asia/Ho_Chi_Minh).
 
 <!-- CURRENT_STATUS_20261024 -->
+## MỚI NHẤT: 24/10/2026 — v1.0.42 TEST (283)
+STATUS=V42_TEST_SIGNED_DRIVE_VERIFIED|ORIGINAL_GUIDE_SINGLE_WARP_IMPLEMENTED|PHYSICAL_DEX_REVERSE_QA_PENDING|NO_CALIBRATED_STEERING|PROD_UNCHANGED|DONE=false
+Owner videos IMG_8048/IMG_8049 v41 proved two overlapped guides, wrong curved geometry, reversed left/right and low sensitivity. Owner approved TEST fix.
+v42 signed TEST APK: https://drive.google.com/file/d/1ihgK-LQgcINrC5UAV_CcOfrdplZfZx46/view ; SHA256 32EA13B7E8EC2A8D23716C9B40F9F41330A25E3910F9BA7FDA410C428F3776E7 ; size 35,154,333 bytes, versionCode283, original signing cert unchanged. PC01 one-shot Drive task exit=0; independent Drive readback SHA256 and ZIP integrity PASS.
+Code: both original ParkingGuideFactory implementations instantiate NativeGuideWarpView subclass of the **original unchanged** ParkingGuidelinesOverlayView; draw original static lines/colored notches/distance pills and warp that same bitmap via 32x20 Canvas.drawBitmapMesh only upon gyro+video motion, otherwise parent draws static without changes. Secondary GuideTrackView custom paths removed (now sensing only). Rendering direction inverted once relative to failing v41. Faster 120ms sampling, lower optical and yaw/gyro gates, 0.64/0.36 smoothing. This is still visual heuristic, NOT actual steering angle/distance and needs parked-car DeX real QA for direction, response and absence of double lines.
+Static hash guard original renderer, saved layouts, drag, Camera close X, manifest, MainActivity, USB and service preserved. Stable v1.0.35 backup + v41 TEST + Production v1.0.17 unchanged. Do not label FULL DONE or promote until confirmed on device.
+Evidence: https://github.com/newsdayads/tigeriq-ai-lab/issues/5129#issuecomment-6380272691
+
+### Historical v41
 ## MỚI NHẤT: 24/10/2026 — v1.0.41 TEST (282)
 STATUS=V41_NATIVE_CAMERA_CLOSE_PATCH_SIGNED_DRIVE_INDEPENDENT_SHA_ZIP_VERIFIED|ACTUAL_SAMSUNG_DEX_QA_PENDING|DONE=false|PROD_UNCHANGED
 APK: https://drive.google.com/file/d/10qa01UMxNbpt9qVsFvzy8z04KLkBjXSW/view ; SHA256 41422053E08E9B73FB4985F0FC7570DFAC3D4F14F9A23C6745F27F91E60EEFD0, 35,154,333 bytes. Signed same certified identity, versionCode282; Drive sync exit0, independent download hash and ZIP pass.
