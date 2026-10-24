@@ -1,6 +1,7 @@
 import { timingSafeEqual, randomUUID, createHash } from 'node:crypto';
 import { decideWithChief } from './chief.mjs';
 import { isOwnerAuthorized } from './owner-auth.mjs';
+import { authorizedPairedWorkCardDevice } from '../apps/shared/owner-paired-work-card.mjs';
 import ownerDecisionHandler from '../apps/tigeriq-core/owner-decision-handler.mjs';
 import { validateOwnerWorkRequest, makeOwnerRequestReceipt, makeOwnerResultReceipt, ownerWorkRequestHistory, ownerWorkRequestResolved, ownerWorkRequestReplayPlan, ownerWorkRequestTriageStatus } from '../apps/shared/owner-work-request.mjs';
 import { boundedOwnerTriageChild } from '../apps/shared/owner-work-dispatch.mjs';
@@ -66,6 +67,18 @@ function repoParts() {
   return { owner, repo };
 }
 
+export function classifyGithubForbidden(details={},headers={}) {
+  const message=String(details?.message||'').toLowerCase();
+  const remaining=String(headers?.rateLimitRemaining??'');
+  if(remaining==='0'||/secondary rate limit|rate limit exceeded|abuse detection/.test(message))
+    return {reason:'GITHUB_RATE_LIMIT',retryable:true};
+  if(/resource not accessible by personal access token|resource not accessible by integration|insufficient permission|requires.+issues/.test(message))
+    return {reason:'GITHUB_ISSUES_WRITE_PERMISSION',retryable:false};
+  if(/saml|sso|organization.+approval|oauth app access restriction|must be authorized/.test(message))
+    return {reason:'GITHUB_ORG_AUTHORIZATION',retryable:false};
+  return {reason:'GITHUB_FORBIDDEN_UNCLASSIFIED',retryable:false};
+}
+
 async function gh(path, init = {}, token = '') {
   const headers = {
     accept: 'application/vnd.github+json',
@@ -82,6 +95,17 @@ async function gh(path, init = {}, token = '') {
     const error = new Error(`github_${response.status}`);
     error.status = response.status;
     error.details = data;
+    if(response.status===403) {
+      const classified=classifyGithubForbidden(data,{
+        rateLimitRemaining:response.headers?.get?.('x-ratelimit-remaining')
+      });
+      error.reasonCode=classified.reason;
+      error.retryable=classified.retryable;
+      if(init.method==='POST' && /\/issues\/\d+\/comments$/.test(path))
+        console.warn('TIGERIQ_OWNER_COMMENT_WRITE_REFUSED',{
+          status:403,reason:classified.reason,requestType:'issue_comment',retryable:classified.retryable
+        });
+    }
     throw error;
   }
   return data;
@@ -448,7 +472,9 @@ function formatStatusReply(snapshot) {
 
 // Requests are scoped to the existing GitHub issue; no new control plane/lease.
 function ownerRequestCredential(req) {
-  if (!isOwnerAuthorized(req) || !GITHUB_TOKEN) {
+  // Paired-device mode is granted only for Owner work-card request history
+  // and bounded instruction receipt. It is never a generic GitHub write credential.
+  if ((!isOwnerAuthorized(req) && !authorizedPairedWorkCardDevice(req)) || !GITHUB_TOKEN) {
     const error=new Error('owner_session_required');error.status=401;throw error;
   }
   return GITHUB_TOKEN;
@@ -504,9 +530,10 @@ async function ownerRequestApi(req,res,payload,readOnly=false){
     const decision=await decideWithChief({message:context+request.message,history:[]});
     const status=ownerWorkRequestTriageStatus(request.message,decision?.mode);
     const triageReply=String(decision?.reply||'').trim();
-    let reply=status==='PLAN_SHOWN'
-      ?'CHƯA THỰC THI — '+(triageReply||'Đã ghi chỉ đạo vào thẻ; cần kiểm tra quyền, lease và biên nhận Core.')
+    const reply=status==='PLAN_SHOWN'
+      ?'CHƯA THỰC THI — '+(triageReply||'Đã ghi chỉ đạo vào thẻ; chờ nhân sự có quyền, lease và biên nhận kết quả Core.')
       :String(triageReply|| (status==='ANSWERED'?'Đã trả lời câu hỏi.':'Cần làm rõ chỉ đạo trước thực thi.')).trim();
+    let dispatchReply=reply;
     // PLAN_SHOWN is NOT an execution receipt. Only stage a bounded, read-only
     // planning Work Order in the existing GitHub -> Core queue.
     if(status==='PLAN_SHOWN'){
@@ -522,14 +549,14 @@ async function ownerRequestApi(req,res,payload,readOnly=false){
         },token);
         const childUrl=String(child?.html_url||'');
         if(!/^https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/\d+$/.test(childUrl))throw Error('owner_triage_child_receipt_missing');
-        reply+='\nCORE_PLANNING_ONLY='+childUrl+' — Chưa có lease hoặc kết quả thực thi; chờ Core nhận và nghiệm thu.';
+        dispatchReply+='\nCORE_PLANNING_ONLY='+childUrl+' — Chưa có lease hoặc kết quả thực thi; chờ Core nhận và nghiệm thu.';
       }catch(error){
         const code=String(error?.message||'DISPATCH_UNVERIFIED').replace(/[^A-Za-z0-9_:-]/g,'').slice(0,90);
-        reply+='\nCORE_DISPATCH_NOT_VERIFIED='+code+' — Giữ chỉ đạo chưa hoàn tất.';
+        dispatchReply+='\nCORE_DISPATCH_NOT_VERIFIED='+code+' — Giữ chỉ đạo chưa hoàn tất.';
       }
     }
-    const terminal=await gh(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({body:makeOwnerResultReceipt(request.requestId,status,reply)})},token);
-    result={...result,status,reply,resultUrl:terminal.html_url||null,resolved:ownerWorkRequestResolved(status)};
+    const terminal=await gh(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({body:makeOwnerResultReceipt(request.requestId,status,dispatchReply)})},token);
+    result={...result,status,reply:dispatchReply,resultUrl:terminal.html_url||null,resolved:ownerWorkRequestResolved(status)};
   }catch{
     // Request is durable even when model, result receipt or provider fails.
     result.reply='Đã lưu yêu cầu. Chưa xác minh bước phân tích; không xóa nội dung đang nhập.';
@@ -619,6 +646,6 @@ export default async function handler(req, res) {
     else if (name === 'github_authorization_required') status = 401;
     else if (name === 'github_401') status = 401;
     else if (name === 'github_403') status = 403;
-    return json(res, status, { error: name, details: error?.details?.message || error?.details || undefined });
+    return json(res, status, { error: name, reason: error?.reasonCode || undefined, retryable: error?.retryable ?? undefined, details: error?.details?.message || error?.details || undefined });
   }
 }
