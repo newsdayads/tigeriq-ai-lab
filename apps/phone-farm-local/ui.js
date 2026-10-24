@@ -126,6 +126,46 @@ $('stopMacro').onclick=async()=>{
   catch(e){notice(e.message,true)}
 };
 setInterval(checkMacro,1200);
+async function showSchedules(){
+  try{
+    const r=await api('/api/schedules');
+    const root=$('scheduleList');
+    root.textContent='';
+    if(!r.schedules.length){root.textContent='Chưa tạo lịch';return}
+    for(const s of r.schedules){
+      const row=document.createElement('div');
+      row.className='row';
+      row.style.marginBottom='8px';
+      const span=document.createElement('span');
+      span.textContent=s.name+' • '+new Date(s.nextAt).toLocaleString('vi-VN')+
+        (s.repeatMinutes?' • lặp '+s.repeatMinutes+' phút':' • một lần')+
+        (s.enabled?'':' • đã chạy/dừng')+(s.lastError?' • '+s.lastError:'');
+      const del=document.createElement('button');
+      del.textContent='Xóa';
+      del.onclick=async()=>{
+        try{await api('/api/schedules/delete',{id:s.id});await showSchedules()}
+        catch(e){notice(e.message,true)}
+      };
+      row.append(span,del);root.append(row);
+    }
+  }catch(e){notice(e.message,true)}
+}
+$('saveSchedule').onclick=async()=>{
+  try{
+    const serials=active();
+    if(!serials.length)throw Error('Chọn thiết bị trước');
+    const steps=JSON.parse($('macroSteps').value);
+    const mins=Number(prompt('Chạy sau bao nhiêu phút?','5'));
+    if(!Number.isInteger(mins)||mins<1||mins>525600)throw Error('Thời gian không hợp lệ');
+    const repeatMinutes=Number(prompt('Lặp mỗi bao nhiêu phút? (0 = chạy một lần)','0'));
+    if(!Number.isInteger(repeatMinutes)||repeatMinutes<0||repeatMinutes>1440)throw Error('Chu kỳ không hợp lệ');
+    const runAt=new Date(Date.now()+mins*60000).toISOString();
+    await api('/api/schedules',{name:'TigerIQ '+new Date().toLocaleString('vi-VN'),serials,steps,runAt,repeatMinutes});
+    notice('Đã lưu lịch cục bộ');await showSchedules();
+  }catch(e){notice(e.message,true)}
+};
+$('refreshSchedules').onclick=showSchedules;
+void showSchedules();
 document.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=>action({serials:active(),action:'key',key:b.dataset.key}).catch(e=>notice(e.message,true)));
 api('/api/health').then(x=>{$('health').textContent='ADB: '+(x.adbExists?'có':'thiếu')+'; scrcpy: '+(x.scrcpyExists?'có':'thiếu')+'; chế độ: chỉ nội bộ PC'}).catch(e=>notice(e.message,true));
 refresh();
