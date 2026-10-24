@@ -58,7 +58,7 @@ function reply(res, status, payload, type = 'application/json; charset=utf-8') {
   res.writeHead(status, {
     'Content-Type': type, 'Content-Length': Buffer.byteLength(data),
     'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
-    'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'",
+    'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'",
     'Referrer-Policy': 'no-referrer'
   });
   res.end(data);
