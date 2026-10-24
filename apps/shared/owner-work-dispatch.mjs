@@ -99,7 +99,10 @@ export function verifiedOwnerReceiptForChild(childBody,commentBody) {
   return {parentIssueNumber:parent,requestId:id,message:message.trim(),receiptUrl:url};
 }
 
-export function ownerCoreTriageReceiptPlan(childBody,row={}) {
+// The exact, authenticated receipt is required to recognize a no-side-effect
+// intake smoke test. Ordinary actionable instructions NEVER resolve from
+// planning alone, even when the Core planning objective completed.
+export function ownerCoreTriageReceiptPlan(childBody,row={},ownerReceipt='') {
   const body=String(childBody||'');
   if(!/^SOURCE=AUTHENTICATED_OWNER_WORK_CARD$/m.test(body))return null;
   const parent=Number(/^PARENT_ISSUE=#(\d+)$/m.exec(body)?.[1]||0);
@@ -107,9 +110,20 @@ export function ownerCoreTriageReceiptPlan(childBody,row={}) {
   if(!parent||!requestId||!['completed','blocked'].includes(row?.status))return null;
   const jobId=String(row.id||'');
   if(!/^OBJ-GH-\d+/.test(jobId)||jobId.length>128)return null;
-  const status=row.status==='completed'?'PLAN_SHOWN':'BLOCKED';
   const summary=String(row.summary||'').trim().slice(0,2000);
+  let authenticatedSmoke=false;
+  if(row.status==='completed'&&summary.length>=12&&ownerReceipt){
+    try{
+      authenticatedSmoke=verifiedOwnerReceiptForChild(body,ownerReceipt).message==='Thử gửi yêu cầu';
+    }catch{
+      // A mismatched, unavailable or forged receipt cannot resolve an instruction.
+      authenticatedSmoke=false;
+    }
+  }
+  const status=authenticatedSmoke?'ANSWERED':(row.status==='completed'?'PLAN_SHOWN':'BLOCKED');
   const reply='CORE_TRIAGE_OBJECTIVE_ID='+jobId+' — '+(summary||'Chưa có đầu ra được xác minh')+
-    ' — Đây chỉ là kết quả phân tích của Core; yêu cầu Owner chưa được nghiệm thu thực thi.';
+    (authenticatedSmoke
+      ?' — Đã xử lý yêu cầu thử tiếp nhận; không thực hiện thay đổi trên thẻ gốc.'
+      :' — Đây chỉ là kết quả phân tích của Core; yêu cầu Owner chưa được nghiệm thu thực thi.');
   return {parentIssueNumber:parent,requestId,status,reply,objectiveId:jobId};
 }
