@@ -26,6 +26,7 @@ export default defineConfig({
       'tests/pwa-entry.test.mjs',
       'tests/workforce-status-api.test.mjs',
       'tests/github-coding-intake.test.mjs',
+      'tests/github-autowork-acceptance.test.mjs',
       'tests/github-closed-objective-reconciliation.test.mjs',
       'tests/runtime-updater-source-identity.test.mjs',
       'tests/core-watchdog-failure-evidence.test.mjs',
