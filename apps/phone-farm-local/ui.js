@@ -1,5 +1,5 @@
 const $=id=>document.getElementById(id);
-const current={devices:[],selected:new Set(),sizes:new Map(),cards:new Map(),screenBusy:0,group:'all',groups:{},macroId:null,refreshMs:4000};
+const current={devices:[],selected:new Set(),sizes:new Map(),cards:new Map(),screenBusy:0,screenCursor:0,group:'all',groups:{},macroId:null,refreshMs:4000};
 function loadGroups(){try{const v=JSON.parse(localStorage.getItem('tigeriqGroups')||'{}');return v&&typeof v==='object'&&!Array.isArray(v)?v:{}}catch{return {}}}
 current.groups=loadGroups();
 const toast=(message,isError=false)=>{
@@ -109,8 +109,8 @@ function renderDevices(){
     if(d.state==='device'){
       const img=document.createElement('img');img.alt='Android '+d.serial;img.draggable=false;
       img.dataset.serial=d.serial;
-      img.onload=()=>{img.dataset.busy='';current.sizes.set(d.serial,{width:img.naturalWidth,height:img.naturalHeight})};
-      img.onerror=()=>{img.dataset.busy='';img.alt='Ảnh chụp chưa có'};
+      img.onload=()=>{img.dataset.busy='';img.dataset.retryAt='0';current.sizes.set(d.serial,{width:img.naturalWidth,height:img.naturalHeight})};
+      img.onerror=()=>{img.dataset.busy='';img.dataset.retryAt=String(Date.now()+6000);img.alt='Chưa tải được màn hình';img.title='Ảnh lỗi, sẽ tự thử lại'};
       img.onpointerdown=e=>{img.dataset.startX=String(e.clientX);img.dataset.startY=String(e.clientY);try{img.setPointerCapture(e.pointerId)}catch{}};
       img.onpointerup=e=>{if(!img.dataset.startX)return;performPointer(img,e).catch(err=>toast(err.message,true))};
       screen.append(img);
@@ -128,7 +128,12 @@ async function performPointer(img,e){
   const size=current.sizes.get(serial)||{width:img.naturalWidth,height:img.naturalHeight};
   if(!rect.width||!rect.height||!size.width||!size.height)throw Error('Chưa đọc được độ phân giải');
   const clamp=(v)=>Math.max(0,Math.min(1,v));
-  const norm=(x,y)=>[clamp((x-rect.left)/rect.width),clamp((y-rect.top)/rect.height)];
+  // The image is object-fit:contain; exclude black letterboxing from tap/swipe coordinates.
+  const scale=Math.min(rect.width/size.width,rect.height/size.height);
+  const displayedWidth=size.width*scale,displayedHeight=size.height*scale;
+  const left=rect.left+(rect.width-displayedWidth)/2;
+  const top=rect.top+(rect.height-displayedHeight)/2;
+  const norm=(x,y)=>[clamp((x-left)/displayedWidth),clamp((y-top)/displayedHeight)];
   const a=norm(Number(img.dataset.startX),Number(img.dataset.startY)),b=norm(e.clientX,e.clientY);
   delete img.dataset.startX;delete img.dataset.startY;
   const isSwipe=Math.hypot((a[0]-b[0])*size.width,(a[1]-b[1])*size.height)>18;
@@ -141,34 +146,50 @@ async function performPointer(img,e){
     return api('/api/input',{serials:[s],...action});
   }));
   const failed=outputs.flatMap(x=>x.results).filter(x=>!x.ok);
-  toast(failed.length?'Thao tác lỗi '+failed[0].error:'Đã '+(isSwipe?'vuốt':'chạm')+' trên '+serials.length+' thiết bị',failed.length>0);
+  toast(failed.length?'Thao tác lỗi '+failed[0].error:'Đã gửi lệnh '+(isSwipe?'vuốt':'chạm')+' tới '+serials.length+' máy; chờ kiểm tra màn hình',failed.length>0);
   refreshOne(img);
 }
 function refreshOne(img){
-  if(img.dataset.busy||!img.isConnected)return;
+  if(img.dataset.busy||!img.isConnected||Number(img.dataset.retryAt||0)>Date.now())return;
   img.dataset.busy='1';
   img.src='/api/screen?serial='+encodeURIComponent(img.dataset.serial)+'&ts='+Date.now();
 }
 function refreshScreens(){
   if(document.hidden||!$('autoRefresh').checked)return;
-  let n=0;
-  for(const img of $('grid').querySelectorAll('.screen img')){
-    if(n>=3)break;
+  const images=Array.from($('grid').querySelectorAll('.screen img'));
+  const busy=images.filter(img=>img.dataset.busy==='1').length;
+  const capacity=Math.max(0,2-busy); // Backend permits three concurrent screenshots; leave one slot for manual actions.
+  if(!capacity)return;
+  const visible=images.filter(img=>{
     const r=img.getBoundingClientRect();
-    if(r.bottom<30||r.top>window.innerHeight||r.right<0)continue;
-    if(img.dataset.busy)continue;
-    refreshOne(img);n++;
+    return r.bottom>=30&&r.top<=window.innerHeight&&r.right>=0&&r.left<=window.innerWidth;
+  });
+  if(!visible.length)return;
+  const start=current.screenCursor%visible.length;
+  let scheduled=0,scanned=0;
+  while(scanned<visible.length&&scheduled<capacity){
+    const i=(start+scanned)%visible.length,img=visible[i];
+    scanned++;
+    if(img.dataset.busy||Number(img.dataset.retryAt||0)>Date.now())continue;
+    if(img.dataset.nextAt&&Number(img.dataset.nextAt)>Date.now())continue;
+    img.dataset.nextAt=String(Date.now()+current.refreshMs);
+    refreshOne(img);
+    scheduled++;
   }
+  current.screenCursor=(start+scanned)%visible.length;
 }
 async function refresh(){
   try{
     const data=await api('/api/devices');
+    const signature=list=>list.map(d=>[d.serial,d.state,d.model,d.label].join('|')).join('\n');
+    const changed=signature(current.devices)!==signature(data.devices)||current.cards.size===0;
     current.devices=data.devices;
     for(const serial of [...current.selected])if(!current.devices.some(d=>d.serial===serial))current.selected.delete(serial);
     $('count').textContent=data.count+' devices';
     $('onlineCount').textContent=online().length+' online';
     $('lastRefresh').textContent='Updated '+new Date().toLocaleTimeString('vi-VN');
-    renderGroups();renderDevices();
+    if(changed){renderGroups();renderDevices()}
+    else selectedDisplay();
   }catch(e){toast('ADB: '+e.message,true)}
 }
 async function sendInput(serials,params){
