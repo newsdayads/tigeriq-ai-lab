@@ -42,6 +42,60 @@ describe('Core public evidence for direct PC receipts', () => {
     expect(missingSource.missingFields.Q01).toContain('evidenceTimestamp');
   });
 
+  it('does not use an unrelated observation timestamp to certify an unknown evidence source',()=>{
+    const source='REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: Core /health 2026-10-24T05:07:51Z.';
+    const report=Array.from({length:14},(_,i)=>[
+      'Q'+String(i+1).padStart(2,'0')+':',
+      'OBSERVATION: Core may be running, no independent source verified.',
+      source,
+      'EXPECTED: Actual source timestamp linked to each finding.',
+      'DEVIATION: UNKNOWN.',
+      'CONFIDENCE: UNKNOWN.',
+      'NEXT_ACTION: Verify actual source before acceptance.',
+    ].join('\n')).join('\n');
+    const misleading=report.replace(
+      'OBSERVATION: Core may be running, no independent source verified.',
+      'OBSERVATION: A separate note was written on 2026-10-24T05:07:51Z.'
+    ).replace(source,'REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: UNKNOWN');
+    const audit=nativeR04ReportContractAudit(misleading);
+    expect(audit).toMatchObject({
+      foundQuestionCount:14,questionsWithTimestamp:13,questionsWithAllRequiredFields:13,
+      structuralPass:false,independentFactualVerification:false,
+    });
+    expect(audit.missingFields.Q01).toContain('evidenceSource');
+    expect(audit.missingFields.Q01).toContain('evidenceTimestamp');
+    expect(JSON.stringify(audit)).not.toContain('separate note');
+    const valid=nativeR04ReportContractAudit(report);
+    expect(valid.structuralPass).toBe(true);
+    expect(valid.questionsWithTimestamp).toBe(14);
+  });
+
+  it('rejects an empty or undated evidence field regardless of other dates in a Q section',()=>{
+    const q=(source)=>[
+      'Q01:', 'OBSERVATION: Checked 2026-10-24T05:07:51Z.',
+      'REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: '+source,
+      'EXPECTED: Confirm true source.', 'DEVIATION: UNKNOWN.',
+      'CONFIDENCE: HIGH.', 'NEXT_ACTION: Recheck source.',
+    ].join('\n');
+    for(const value of ['Core /health UNKNOWN','', '<specific factual value or explicit UNKNOWN>']){
+      const audit=nativeR04ReportContractAudit(q(value));
+      expect(audit.missingFields.Q01).toContain('evidenceTimestamp');
+    }
+  });
+
+  it('binds confidence to the confidence field, not unrelated DEVIATION: UNKNOWN',()=>{
+    const q=[
+      'Q01:', 'OBSERVATION: Health reviewed.',
+      'REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: Core /health 2026-10-24T05:07:51Z.',
+      'EXPECTED: Evidence exists.', 'DEVIATION: UNKNOWN.',
+      'CONFIDENCE: cannot estimate confidence.', 'NEXT_ACTION: Request verification.',
+    ].join('\n');
+    const audit=nativeR04ReportContractAudit(q);
+    expect(audit.missingFields.Q01).toContain('confidenceValue');
+    expect(audit.questionsWithConfidenceValue).toBe(0);
+    expect(audit.independentFactualVerification).toBe(false);
+  });
+
   it('checks authentic claim, resource success and JOB_DONE for one matching worker/resource',()=>{
     const row={id:'JOB-OBJ-GH-5235-F1-test',employee_id:'NV12',resource_id:'res:gemini:free'};
     const events=[
