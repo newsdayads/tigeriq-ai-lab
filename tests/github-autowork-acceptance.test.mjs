@@ -98,6 +98,23 @@ describe('github_api_autowork output acceptance (fail closed)', () => {
     expect(result.code).toBe('GITHUB_AUTOWORK_Q_REPORT_CONTRACT_INCOMPLETE');
     expect(result.missingFields.Q01).toContain('observation');
   });
+  it('blocks JOB_DONE when R04 timestamps and confidence leak from other fields', () => {
+    const misplaced=fullAnswer
+      .replace('OBSERVATION: Core cần đối chiếu nguồn thật trước khi kết luận.',
+        'OBSERVATION: Một ghi chú 2026-10-24T05:07:51Z; nguồn cụ thể chưa được xác minh.')
+      .replace('REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: Synthetic test fixture 2026-10-24T05:07:51Z.',
+        'REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: UNKNOWN')
+      .replace('CONFIDENCE: UNKNOWN.', 'CONFIDENCE: không được khai báo giá trị.');
+    const result=evaluateGithubAutoworkOutput({...base,text:misplaced});
+    expect(result).toMatchObject({
+      applicable:true,accepted:false,
+      code:'GITHUB_AUTOWORK_Q_REPORT_CONTRACT_INCOMPLETE',
+      questionsWithAllRequiredFields:13,
+    });
+    expect(result.missingFields.Q01).toContain('evidenceTimestamp');
+    expect(result.missingFields.Q01).toContain('confidenceValue');
+    expect(JSON.stringify(result)).not.toContain('Một ghi chú');
+  });
   it('accepts structured 14-section source output and persists only a digest and provenance', () => {
     const result = evaluateGithubAutoworkOutput({ ...base, text: fullAnswer });
     expect(result).toMatchObject({
