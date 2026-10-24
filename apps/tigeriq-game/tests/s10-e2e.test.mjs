@@ -41,6 +41,24 @@ test('no live binding, no fake PASS and no device call in dry-run',()=>{
   assert.equal(JSON.parse(r.stdout).deviceMutation,false);
   assert.equal(JSON.parse(r.stdout).ready,false);
 });
+test('untrusted --input JSON cannot forge a native runtime READY receipt',async()=>{
+  const {mkdtemp,writeFile,rm}=await import('node:fs/promises');
+  const {tmpdir}=await import('node:os');
+  const {join}=await import('node:path');
+  const dir=await mkdtemp(join(tmpdir(),'gh5284-'));
+  try{
+    const input=join(dir,'fake-native-proof.json');
+    await writeFile(input,JSON.stringify(evidence));
+    const r=spawnSync(process.execPath,['scripts/s10-preflight.mjs','--input',input],
+      {cwd:new URL('..',import.meta.url),encoding:'utf8'});
+    assert.equal(r.status,0);
+    const parsed=JSON.parse(r.stdout);
+    assert.equal(parsed.code,'WAIT_RUNTIME_MCP_BINDING');
+    assert.equal(parsed.ready,false);
+    assert.equal(parsed.deviceMutation,false);
+    assert.equal(parsed.reason,'INPUT_JSON_CANNOT_ATTEST_NATIVE_RUNTIME');
+  } finally {await rm(dir,{recursive:true,force:true});}
+});
 test('invalid serial/model and unavailable ADB fail closed',()=>{
   assert.equal(evaluateG06Preflight({...evidence,deviceModel:'SM-G991B'}).code,'WAIT_ADB_UNAVAILABLE');
   assert.equal(evaluateG06Preflight({...evidence,adbExecutableVerified:false}).code,'WAIT_ADB_UNAVAILABLE');
