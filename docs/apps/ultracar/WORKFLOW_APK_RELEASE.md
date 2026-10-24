@@ -3,6 +3,15 @@
 > Canonical task tracking: [Issue #5129](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129). Owner interface/policy: [Issue #504](https://github.com/newsdayads/tigeriq-ai-lab/issues/504). This file is an operational runbook, **not** an automatic task scheduler, elevated permission or release approval. Last verified: 2026-10-24 (Asia/Ho_Chi_Minh).
 
 <!-- CURRENT_STATUS_20261024 -->
+## MỚI NHẤT: 24/10/2026 — v1.0.40 TEST (281)
+STATUS=V40_SIGNED_DRIVE_SHA_ZIP_VERIFIED|FIVE_OWNER_CODE_CORRECTIONS_STAGED|DEX_PHYSICAL_QA_PENDING|R_SOURCE_UNVERIFIED|CAMERA_CURVE_EXPERIMENTAL|PROD_UNCHANGED|DONE=false
+Signed TEST APK: https://drive.google.com/file/d/12wv6A255u1-TRWsSc3A5_eObADRuqoRu/view ; SHA256 51D3C85EDE1F9F0103C8593023CA1B3588B0EE12A60451ADCC1975E2148B3476; size 35,154,333 bytes. PC01 one-shot G: Drive task exit0, receipt STAGED_VERIFIED_LOCAL; independently downloaded Drive APK checksum and ZIP PASS. Same original signer, package com.tigeriq.dexsplit, code281.
+Owner v39 FAILS: ICON outside colored ratios, cropped drag card image, top-left red X Camera, curved guides absent even during actual reversing+steering, clipped bottom action labels.
+v40 code: 48dp icon gutter OUTSIDE preserved 80dp colored ratio graphics in 128dp preview width; DragGhost 230dp full card snapshot; red TOP LEFT additional close control and legacy orphan button moved left; image-motion + gravity-projected gyro yaw new GuideTrackView wired via MainActivity UVC view finder (old ReverseGuidelineOverlay.wrapSurface had NO caller), adds supplementary experimental curved lines only during image/gyro motion; Saved-card-only button labels allow two lines, smaller font. Full visual outcome unverified. Red left X may coexist with old right X. Actual camera static marks may stay straight. NO vehicle steering sensor, NO reliable distance calibration. Parked DeX physical runtime QA mandatory; do not claim DONE.
+Protected working rollback v1.0.35 untouched Drive https://drive.google.com/file/d/1Lja5vHEh4PyHfTXOs0a08C-nxByFObfL/view; v39 TEST and production v1.0.17 untouched.
+Technical receipt: https://github.com/newsdayads/tigeriq-ai-lab/issues/5129#issuecomment-6379518076
+
+### v39 historical status
 ## MỚI NHẤT: 24/10/2026 — v1.0.39 TEST (280)
 STATUS=V39_SIGNED_DRIVE_VERIFIED|ICON_COMPOSITE_2X2_AND_DRAG_GHOST_AND_CAMERA_BROADCAST_GUARD_STAGED|DEX_PHYSICAL_QA_PENDING|GEAR_R_SOURCE_UNVERIFIED|PROD_UNCHANGED|DONE=false
 APK TEST: https://drive.google.com/file/d/1R5-ZaeqeSVqNkxXaJPTfFym_InSFrukM/view ; SHA256 412C71183A9BE57D5A932CFBBA64DFBEE5BA9F950448E6FE30241F942912B2B1; 35,154,333 bytes.
