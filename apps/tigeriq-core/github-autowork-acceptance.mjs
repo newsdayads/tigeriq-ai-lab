@@ -29,7 +29,7 @@ export function evaluateGithubAutoworkOutput({
       const from = markers[i].index + markers[i][0].length;
       const until = i + 1 < markers.length ? markers[i + 1].index : answer.length;
       const content = answer.slice(from, until).trim().replace(/^[:\u2013\u2014-]\s*/, '');
-      if (content.length >= MIN_QUESTION_ANSWER_CHARS) sections.set(id, true);
+      if (content.length >= MIN_QUESTION_ANSWER_CHARS && !/^Q(?:0[1-9]|1[0-4])\b/i.test(content)) sections.set(id, true);
     }
     for (const id of requiredQuestions) if (!sections.has(id)) missingQuestions.push(id);
   }
