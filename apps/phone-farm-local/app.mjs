@@ -6,7 +6,7 @@ import path from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { executeBatch, validBatch, safePackage } from './farm-ops.mjs';
+import { executeBatch, validBatch, safePackage, safeFilename, FILE_LIMIT } from './farm-ops.mjs';
 import { MacroRuns, validMacro } from './macro-engine.mjs';
 import { LocalScheduler } from './schedule-engine.mjs';
 import { Recordings, validRecordRequest } from './recording.mjs';
@@ -113,13 +113,58 @@ const server = http.createServer(async (req, res) => {
   try {
     const allowedOrigins = ['http://127.0.0.1:' + port, 'http://localhost:' + port];
     if (!allowedOrigins.some(x => req.headers.host === new URL(x).host)) return json(res, 403, { error: 'Chỉ truy cập nội bộ' });
-    if (req.method === 'POST' && ((req.headers.origin && !allowedOrigins.includes(req.headers.origin)) || (req.headers['content-type'] || '').split(';')[0] !== 'application/json')) return json(res, 403, { error: 'Yêu cầu khác nguồn bị từ chối' });
     const url = new URL(req.url, 'http://127.0.0.1:' + port);
+    const fileUpload = req.method === 'POST' && url.pathname === '/api/drop/upload';
+    const expectedContentType = fileUpload ? 'application/vnd.android.package-archive' : 'application/json';
+    if (req.method === 'POST' && ((req.headers.origin && !allowedOrigins.includes(req.headers.origin)) ||
+        (req.headers['content-type'] || '').split(';')[0] !== expectedContentType))
+      return json(res, 403, { error: 'Yêu cầu khác nguồn hoặc sai định dạng bị từ chối' });
     if (req.method === 'GET' && url.pathname === '/') {
       return reply(res, 200, fs.readFileSync(path.join(base, 'index.html')), 'text/html; charset=utf-8');
     }
     if (req.method === 'GET' && url.pathname === '/ui.js') {
       return reply(res, 200, fs.readFileSync(path.join(base, 'ui.js')), 'text/javascript; charset=utf-8');
+    }
+    if (fileUpload) {
+      let filename;
+      try { filename = decodeURIComponent(req.headers['x-tigeriq-filename'] || ''); }
+      catch { return json(res, 400, { error: 'Tên APK không hợp lệ' }); }
+      if (!safeFilename(filename) || !/\.apk$/i.test(filename))
+        return json(res, 400, { error: 'Chỉ nhận tệp APK tên hợp lệ' });
+      const size = Number(req.headers['content-length']);
+      if (!Number.isSafeInteger(size) || size < 4 || size > FILE_LIMIT)
+        return json(res, 413, { error: 'APK thiếu kích thước hoặc vượt giới hạn' });
+      fs.mkdirSync(dropPath, { recursive: true });
+      const target = path.join(dropPath, filename);
+      let handle = null, created = false, total = 0;
+      try {
+        handle = await fs.promises.open(target, 'wx', 0o600);
+        created = true;
+        let first = true;
+        for await (const chunk of req) {
+          total += chunk.length;
+          if (total > FILE_LIMIT || total > size) throw Error('APK vượt giới hạn khai báo');
+          if (first) {
+            first = false;
+            if (chunk.length < 4 || !chunk.subarray(0,4).equals(Buffer.from([0x50,0x4b,0x03,0x04])))
+              throw Error('Tệp không phải ZIP/APK');
+          }
+          let offset = 0;
+          while (offset < chunk.length) {
+            const written = await handle.write(chunk, offset, chunk.length - offset);
+            if (written.bytesWritten <= 0) throw Error('Không ghi được APK');
+            offset += written.bytesWritten;
+          }
+        }
+        if (total !== size) throw Error('APK chưa được truyền đủ');
+        await handle.close(); handle = null;
+        return json(res, 201, { stored: filename, bytes: total });
+      } catch (e) {
+        await handle?.close().catch(() => {});
+        if (created) await fs.promises.unlink(target).catch(() => {});
+        return json(res, e.code === 'EEXIST' ? 409 : 400,
+          { error: e.code === 'EEXIST' ? 'Tệp cùng tên đã tồn tại trong drop' : errorText(e) });
+      }
     }
     if (req.method === 'POST' && url.pathname === '/api/wifi/connect') {
       const b=await bodyJson(req);
