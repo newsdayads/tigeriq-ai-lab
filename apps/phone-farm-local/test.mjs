@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { Script } from 'node:vm';
 import os from 'node:os';
 import { safeFilename, safePackage, validBatch, fileInDrop } from './farm-ops.mjs';
+import { validMacro, executeMacro, MacroRuns } from './macro-engine.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -68,4 +69,32 @@ test('batch file lookup is confined to approved drop directory', () => {
     assert.throws(()=>fileInDrop(folder,'../secrets.csv'));
     assert.throws(()=>fileInDrop(folder,'not-present.apk'));
   } finally { fs.rmSync(folder,{recursive:true,force:true}) }
+});
+
+test('macros reject arbitrary shell, unbounded waits and destructive keys', () => {
+  assert.equal(validMacro([{action:'key',key:'HOME'},{action:'wait',ms:200},{action:'tap',x:15,y:40}]),true);
+  assert.equal(validMacro([{action:'shell',command:'rm -rf /'}]),false);
+  assert.equal(validMacro([{action:'key',key:'FACTORY_RESET'}]),false);
+  assert.equal(validMacro([{action:'wait',ms:60000}]),false);
+  assert.equal(validMacro([{action:'text',text:'A\u0000'}]),false);
+  assert.equal(validMacro(Array.from({length:51},()=>({action:'key',key:'HOME'}))),false);
+});
+
+test('macros execute bounded group steps and report progress', async () => {
+  const actions=[], progresses=[];
+  const steps=[{action:'key',key:'HOME'},{action:'wait',ms:50},{action:'key',key:'BACK'}];
+  const result=await executeMacro(steps,['PHONE_A','PHONE_B'],async (s,b)=>actions.push(s+':'+b.key),undefined,n=>progresses.push(n));
+  assert.deepEqual(actions,['PHONE_A:HOME','PHONE_B:HOME','PHONE_A:BACK','PHONE_B:BACK']);
+  assert.deepEqual(progresses,[1,2,3]);
+  assert.deepEqual(result,{completed:3,total:3});
+});
+
+test('macro run ids, device locking and stop guard', async () => {
+  const runs=new MacroRuns();
+  const id=runs.start([{action:'wait',ms:1000}],['PHONE_A'],async()=>{});
+  assert.ok(runs.status(id));
+  assert.throws(()=>runs.start([{action:'key',key:'HOME'}],['PHONE_A'],async()=>{}));
+  assert.equal(runs.stop(id),true);
+  await new Promise(resolve=>setTimeout(resolve,30));
+  assert.equal(runs.status(id).state,'cancelled');
 });
