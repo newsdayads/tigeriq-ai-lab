@@ -12,7 +12,7 @@ const base = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.TIGERIQ_PHONE_FARM_PORT || 8765);
 const bind = '127.0.0.1';
 const adb = process.env.TIGERIQ_ADB || 'D:\\TigerIQ\\Tools\\platform-tools\\adb.exe';
-const scrcpy = process.env.TIGERIQ_SCRCPY || 'D:\\TigerIQ\\Tools\\scrcpy\\scrcpy.exe';
+const scrcpy = process.env.TIGERIQ_SCRCPY || 'D:\\TigerIQ\\Tools\\scrcpy\\scrcpy-win64-v4.1\\scrcpy.exe';
 const storePath = path.join(base, 'device-labels.json');
 const windows = new Map();
 const now = () => new Date().toISOString();
@@ -28,7 +28,7 @@ export function parseDevices(text) {
   }).filter(Boolean);
 }
 export function safeSerial(s) {
-  return typeof s === 'string' && /^[a-zA-Z0-9._:-]{1,100}$/.test(s);
+  return typeof s === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,99}$/.test(s);
 }
 export function validInput(body) {
   if (!body || !Array.isArray(body.serials) || body.serials.length === 0 || body.serials.length > 200
