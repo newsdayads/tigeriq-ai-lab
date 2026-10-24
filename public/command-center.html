@@ -2130,7 +2130,24 @@ function render(){
   updateCounts();
   const closedLabel=$('liveClosedSortLabel');if(closedLabel)closedLabel.hidden=currentFilter!=='closed';
   const rows=normalizeRows(snapshot);
-  if(currentFilter==='action'){const endedIds=new Set((snapshot?.recentWork||[]).map(x=>Number(x.number)));rows.sort((a,b)=>Number(endedIds.has(Number(a.number)))-Number(endedIds.has(Number(b.number)))||systemFirstRank(a)-systemFirstRank(b)||priorityRank(workPriority(a))-priorityRank(workPriority(b))||Number(a.number)-Number(b.number));}
+  if(currentFilter==='action'){
+    const endedIds=new Set((snapshot?.recentWork||[]).map(x=>Number(x.number)));
+    // Only genuinely eligible rows take Owner's verified dispatch order;
+    // never promote blocked, parked, P0 or closed rows as "running".
+    const liveRanks=new Map((snapshot?.nextQueue||[])
+      .filter(item=>item.eligibleNow===true&&Number.isInteger(Number(item.dispatchRank)))
+      .map(item=>[Number(item.number),Number(item.dispatchRank)]));
+    rows.sort((a,b)=>{
+      const ar=liveRanks.get(Number(a.number)),br=liveRanks.get(Number(b.number));
+      if(ar!==undefined&&br!==undefined)return ar-br;
+      if(ar!==undefined)return -1;
+      if(br!==undefined)return 1;
+      return Number(endedIds.has(Number(a.number)))-Number(endedIds.has(Number(b.number)))
+        ||systemFirstRank(a)-systemFirstRank(b)
+        ||priorityRank(workPriority(a))-priorityRank(workPriority(b))
+        ||Number(a.number)-Number(b.number);
+    });
+  }
   // Distinguish the complete work-card inventory from dispatchable work.
   const count=Number(snapshot?.openSummary?.dispatchReady);
   const queueFresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
