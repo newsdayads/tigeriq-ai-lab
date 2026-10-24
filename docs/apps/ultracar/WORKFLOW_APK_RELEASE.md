@@ -2,6 +2,17 @@
 
 > Canonical task tracking: [Issue #5129](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129). Owner interface/policy: [Issue #504](https://github.com/newsdayads/tigeriq-ai-lab/issues/504). This file is an operational runbook, **not** an automatic task scheduler, elevated permission or release approval. Last verified: 2026-10-24 (Asia/Ho_Chi_Minh).
 
+<!-- CURRENT_STATUS_20261024 -->
+## Current canonical status — 2026-10-24 07:10 ICT
+
+`OPEN | v1.0.37_TEST_BUILD_SIGNED_DRIVE_VERIFIED | DeX_RUNTIME_QA_PENDING | GEAR_R_SIGNAL_UNVERIFIED | CURVED_GUIDELINES_NOT_IMPLEMENTED | PROD_UNCHANGED | DONE=false`
+
+- **Next valid action:** perform physical Samsung DeX (SM-F916N) QA, safely parked, for 3 columns, per-assigned-app icons next to proportional zones, all buttons/drag/drop persistence, and USB reconnect/manual Camera popup regression. No real-device PASS evidence has been supplied yet.
+- **P0 blocker:** no verified external reverse-gear signal source; USB connection / GPS / phone gyro are NOT equivalent to selected gear R. Do not claim automatic R detection works.
+- **P1 open:** image motion + gyro curved parking guide still requires implementation and calibration; static 0.5m/1.0m/1.5m original artwork preserved in v37.
+- Working-backup immutable: v1.0.35; v1.0.37 is TEST only and must not replace production v1.0.17.
+- Owner status/live receipts: [Issue #5129](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129); latest test artifact: [UltraCar v1.0.37 TEST](https://drive.google.com/file/d/15dCMNZSLrCSCVXA1UMwIp9ZKZbjCbmpx/view).
+
 ## Non-negotiable scope / authority
 - User-approved designs are authoritative. **Saved Layouts and Reverse Camera are different UI screens.** Never combine their visuals.
 - Saved Layouts: **three cards per row**, original compact cards, original orange MỞ and five bottom actions with unchanged behaviors; each card's existing colored proportional zone preview gains a **tiny app icon per assigned app immediately to the LEFT of the matching color shape**, no new app names. Do not replace zone preview. Maintain default badge, drag reorder, ordering persistence, session IDs, shortcut icon chooser.
