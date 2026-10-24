@@ -59,7 +59,7 @@ test('late request and history reads from an earlier modal generation cannot mut
     'GET history must drop a response after close or reopen even for the same Issue');
   assert.ok(dashboard.includes('if(issueNumber!==ownerRequestIssueNumber||revision!==ownerRequestRevision||ownerRequestLastId!==requestId)return;'),
     'POST acknowledgment must reject a stale Issue generation or receipt ID');
-  assert.ok(dashboard.includes('function ownerRequestOpen(number){ownerRequestRevision++;ownerRequestSubmitting=false;'),
+  assert.ok(dashboard.includes('function ownerRequestOpen(number){ownerRequestStopPolling();ownerRequestRevision++;ownerRequestSubmitting=false;'),
     'every new modal open must get a unique generation');
   assert.ok(dashboard.includes('ownerRequestRevision++;ownerRequestSubmitting=false;ownerRequestIssueNumber=null;workDetailRow=null;'),
     'modal close must invalidate pending responses before a same-card reopen');
