@@ -10,7 +10,8 @@
     "build": "node scripts/build.mjs",
     "lint": "node scripts/lint.mjs",
     "test": "node scripts/build.mjs && node --test tests/*.test.mjs",
-    "verify": "npm run lint && npm test"
+    "verify": "npm run lint && npm test",
+    "ci:s10": "node scripts/s10-ci.mjs"
   },
   "license": "UNLICENSED"
 }
