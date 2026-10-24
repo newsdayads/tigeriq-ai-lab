@@ -47,6 +47,14 @@ export function readIpv4Https(target, token, requestImpl=httpsRequest) {
     request.end();
   });
 }
+// Rebase only PC01 endpoints. Owner commands and OAuth must remain on this
+// HTTPS Vercel origin, never in the read-only /pc01/ proxy namespace.
+export function rewritePc01DashboardRoutes(html) {
+  return String(html||'').replace(/(?<!\/pc01)\/api\/([a-z][a-z0-9-]*)(?=[/?'"\x60]|$)/gi, (path, endpoint) => {
+    if(endpoint==='control'||endpoint==='owner-auth')return path;
+    return '/pc01'+path;
+  });
+}
 // Owner-facing only: the Vercel presentation proxy can display the Mobile
 // reload shortcut before the independently gated PC01 runtime is upgraded.
 const FLOATING_RELOAD_HTML = `<style id="tiq-proxy-mobile-reload-style">
@@ -121,8 +129,7 @@ export default async function handler(req, res) {
     res.setHeader('Content-Type',contentType);
     if (contentType.includes('text/html')) {
       // Rebase all dashboard AJAX and asset paths to the isolated read-only proxy namespace.
-      const html = raw.toString('utf8')
-        .replaceAll('/api/', '/pc01/api/')
+      const html = rewritePc01DashboardRoutes(raw.toString('utf8'))
         .replaceAll('/work-ui.css', '/pc01/work-ui.css')
         .replaceAll('/work-center-visual.css', '/pc01/work-center-visual.css')
         .replaceAll('/work-center.js', '/pc01/work-center.js')
