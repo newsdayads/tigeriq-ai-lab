@@ -121,6 +121,19 @@ export function verifiedOwnerTriageNativeJob(job={},expectedScope='') {
     &&/^[a-f0-9]{64}$/.test(String(proof?.textSha256||''));
 }
 
+// A completed planning objective must not be published as a finished Owner
+// result until BOTH the original checklist and a provenance-bound native Core
+// worker output are accepted. This never claims or fabricates a Core lease.
+export function ownerTriageCompletionPublicationGate(childBody='',row={}) {
+  if(!/^SOURCE=AUTHENTICATED_OWNER_WORK_CARD$/m.test(String(childBody||'')) || row?.status!=='completed')
+    return {defer:false,reason:'NOT_COMPLETED_OWNER_TRIAGE'};
+  if(row?.githubChecklistAccepted!==true)
+    return {defer:true,reason:'GITHUB_CHECKLIST_PENDING'};
+  if(row?.nativeCoreJobAccepted!==true)
+    return {defer:true,reason:'NATIVE_CORE_JOB_NOT_VERIFIED'};
+  return {defer:false,reason:'SOURCE_AND_NATIVE_EVIDENCE_PRESENT'};
+}
+
 // The exact, authenticated receipt is required to recognize a no-side-effect
 // intake smoke test. Ordinary actionable instructions NEVER resolve from
 // planning alone, even when the Core planning objective completed.
