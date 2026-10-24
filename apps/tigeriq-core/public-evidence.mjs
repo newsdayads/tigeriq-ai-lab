@@ -297,14 +297,28 @@ export function nativeR04ReportContractAudit(text='') {
   const report=typeof text==='string'?text:'';
   const markers=[...report.matchAll(/(?:^|\n)\s*(?:[-*]\s*)?(?:#{1,6}\s*)?(?:\*{1,2})?(Q(?:0[1-9]|1[0-4]))\b(?:\*{1,2})?\s*[:.\u2013\u2014-]?\s*/gi)];
   const required=Array.from({length:14},(_,i)=>'Q'+String(i+1).padStart(2,'0'));
+  // Require one explicitly labeled, non-placeholder value per field. Merely
+  // mentioning OBSERVATION / NEXT_ACTION in another paragraph is not a field.
   const fields={
-    observation:/(?:\bOBSERVATION\b|quan\s*s[aá]t)/i,
-    evidenceSource:/(?:REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP|b[ằăạ]ng\s*ch[ứu]ng|ngu[ồo]n\s*(?:d[ẫa]n|ch[ứu]ng)|\bEVIDENCE_SOURCE\b)/i,
-    expected:/(?:\bEXPECTED\b|k[ỳy]\s*v[ọo]ng|mong\s*[đd]ợi)/i,
-    deviation:/(?:\bDEVIATION\b|sai\s*l[ệe]ch|ch[êe]nh\s*l[ệe]ch|[đd]ộ\s*l[ệe]ch)/i,
-    confidence:/(?:\bCONFIDENCE\b|[đd]ộ\s*tin\s*c[ậa]y)/i,
-    nextAction:/(?:\bNEXT_ACTION\b|b[ướu]ớc\s*ti[ếe]p|h[aà]nh\s*[đd]ộng\s*ti[ếe]p)/i,
+    observation:/(?:OBSERVATION|quan\s*s[aá]t)/i,
+    evidenceSource:/(?:REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP|b[ằăạ]ng\s*ch[ứu]ng|ngu[ồo]n\s*(?:d[ẫa]n|ch[ứu]ng)|EVIDENCE_SOURCE)/i,
+    expected:/(?:EXPECTED|k[ỳy]\s*v[ọo]ng|mong\s*[đd]ợi)/i,
+    deviation:/(?:DEVIATION|sai\s*l[ệe]ch|ch[êe]nh\s*l[ệe]ch|[đd]ộ\s*l[ệe]ch)/i,
+    confidence:/(?:CONFIDENCE|[đd]ộ\s*tin\s*c[ậa]y)/i,
+    nextAction:/(?:NEXT_ACTION|b[ướu]ớc\s*ti[ếe]p|h[aà]nh\s*[đd]ộng\s*ti[ếe]p)/i,
   };
+  const fieldValue=(section,label)=>{
+    // Supports NAME: value, **NAME**: value and **NAME:** value, but no
+    // cross-line borrowing, duplicate/contradictory entries or prose echoes.
+    const pattern=new RegExp(
+      String.raw`(?:^|\n)[ \t]*(?:[-*][ \t]*)?(?:\*{1,2})?`
+      +label.source
+      +String.raw`(?:\*{1,2})?[ \t]*[:：](?:\*{1,2})?[ \t]*([^\r\n]*)`, 'gi');
+    const matches=[...section.matchAll(pattern)];
+    return matches.length===1 ? matches[0][1].trim() : '';
+  };
+  const populated=value=>value.length>0
+    && !/^(?:<|\[\s*(?:fill|todo)|(?:TBD|TODO|PLACEHOLDER)\b|\.{2,}$|[?–—-]$)/i.test(value);
   const parts=new Map();
   for(let i=0;i<markers.length;i++){
     const id=markers[i][1].toUpperCase();
@@ -319,21 +333,18 @@ export function nativeR04ReportContractAudit(text='') {
   for(const id of required){
     const section=parts.get(id);
     if(!section)continue;
-    const missing=Object.entries(fields).filter(([,re])=>!re.test(section)).map(([name])=>name);
-    // A date in OBSERVATION/EXPECTED is not evidence of a dated source.
-    // Bind the timestamp to a non-placeholder evidence-source FIELD, never
-    // to an arbitrary date elsewhere in the answer or echoed instructions.
-    const sourceField=section.match(/(?:^|\n)\s*(?:[-*]\s*)?(?:\*{1,2})?(?:REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP|EVIDENCE_SOURCE|b[ằăạ]ng\s*ch[ứu]ng|ngu[ồo]n\s*(?:d[ẫa]n|ch[ứu]ng))(?:\*{1,2})?\s*[:：][ \t]*([^\r\n]*)/i);
-    const sourceValue=String(sourceField?.[1]||'').trim();
-    const sourcePresent=sourceValue.length>0
-      && !/^(?:UNKNOWN\b|N\/A\b|NONE\b|NO\s+SOURCE\b|<|chưa\s+c[oó]\b|kh[oô]ng\s+(?:c[oó]|r[oõ])\b)/i.test(sourceValue);
+    const values=Object.fromEntries(Object.entries(fields).map(([key,label])=>
+      [key,fieldValue(section,label)]));
+    const missing=Object.keys(fields).filter(key=>!populated(values[key]));
+    // A timestamp in EXPECTED / OBSERVATION never certifies the actual source.
+    const sourceValue=values.evidenceSource;
+    const sourcePresent=populated(sourceValue)
+      && !/^(?:UNKNOWN\b|N\/A\b|NONE\b|NO\s+SOURCE\b|chưa\s+c[oó]\b|kh[oô]ng\s+(?:c[oó]|r[oõ])\b)/i.test(sourceValue);
     if(!sourcePresent&&!missing.includes('evidenceSource'))missing.push('evidenceSource');
     const timestamp=sourcePresent
       && /(?:20\d{2}[-/]\d{2}[-/]\d{2}(?:T\d{2}:\d{2})?)/.test(sourceValue);
-    // Likewise, confidence from DEVIATION: UNKNOWN is not a confidence value.
-    const confidenceField=section.match(/(?:^|\n)\s*(?:[-*]\s*)?(?:\*{1,2})?(?:CONFIDENCE|[đd]ộ\s*tin\s*c[ậa]y)(?:\*{1,2})?\s*[:：][ \t]*([^\r\n]*)/i);
-    const confidence=/(?:^(?:HIGH|MEDIUM|LOW|UNKNOWN)\b|^(?:cao|th[ấa]p|trung\s*b[iì]nh|kh[oô]ng\s*r[oõ])\b)/i
-      .test(String(confidenceField?.[1]||'').trim());
+    const confidence=/^(?:HIGH|MEDIUM|LOW|UNKNOWN)\b/i.test(values.confidence)
+      || /^(?:cao|th[ấa]p|trung\s*b[iì]nh|kh[oô]ng\s*r[oõ])\b/i.test(values.confidence);
     if(timestamp)withTimestamp++;
     else missing.push('evidenceTimestamp');
     if(confidence)withConfidenceValue++;
