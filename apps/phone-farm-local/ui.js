@@ -207,7 +207,12 @@ $('viewDevices').onclick=()=>{setTab('general');document.querySelector('.workspa
 $('macroTab').onclick=()=>setTab('tasks');
 $('scheduleTab').onclick=()=>{setTab('tasks');showSchedules()};
 $('screenInfo').onclick=async()=>{try{const x=await api('/api/health');toast('ADB '+(x.adbExists?'OK':'MISSING')+' • scrcpy '+(x.scrcpyExists?'OK':'MISSING')+' • '+online().length+' máy online')}catch(e){toast(e.message,true)}};
-$('scanWifi').onclick=()=>toast('WiFi ADB: kết nối hoặc ghép đôi Android bằng ADB trong PC01, sau đó chọn Refresh USB.');
+$('scanWifi').onclick=async()=>{
+  const address=prompt('Nhập IP:port của Android đã bật/ghép đôi Wireless ADB trong LAN (vd 192.168.1.20:5555)');
+  if(address===null)return;
+  try{const r=await api('/api/wifi/connect',{address:address.trim()});toast('Đã kết nối WiFi ADB: '+r.address);await refresh()}
+  catch(e){toast('WiFi ADB: '+e.message,true)}
+};
 $('screenshots').onclick=()=>{
   const list=active();if(!list.length)return toast('Chọn thiết bị trước',true);
   list.slice(0,10).forEach((serial,i)=>{
