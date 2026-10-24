@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { verifiedOwnerReceiptForChild, ownerCoreTriageReceiptPlan } from '../shared/owner-work-dispatch.mjs';
+import { verifiedOwnerReceiptForChild, ownerCoreTriageReceiptPlan, verifiedOwnerTriageNativeJob } from '../shared/owner-work-dispatch.mjs';
 import { makeOwnerResultReceipt } from '../shared/owner-work-request.mjs';
 import { managerAcceptanceRevisionRefresh, managerAcceptanceWakePlan } from './manager-cycle-policy.mjs';
 import { Pool } from 'pg';
@@ -2011,7 +2011,20 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       const checklist=partialStep
         ?workOrderChecklistGate(actualIssue,{stepId,requireAll:false})
         :workOrderChecklistGate(actualIssue,{requireAll:true});
-      if(!checklist.ok){
+      if(/^SOURCE=AUTHENTICATED_OWNER_WORK_CARD$/m.test(sourceBody)){
+        // Preserve terminal Core output until the original GitHub checklist
+        // is accepted; a missing checklist must not permanently block the
+        // Owner triage objective or impersonate an accepted Worker result.
+        row.githubChecklistAccepted=checklist.ok;
+        row.nativeCoreJobAccepted=false;
+        if(checklist.ok){
+          const native=(await pool.query(
+            "select kind,status,employee_id,resource_id,completed_at,result from tigeriq_jobs where objective_id=$1 and kind='github_api_autowork' order by created_at desc limit 1",
+            [row.id]
+          )).rows[0]||null;
+          row.nativeCoreJobAccepted=verifiedOwnerTriageNativeJob(native,row.metadata?.resourceScope||'');
+        }
+      }else if(!checklist.ok){
         const reason=`CHECKLIST_NOT_SYNCED:${checklist.reason}:${(checklist.missing||[]).join(',')}`;
         row.status='blocked';
         row.summary=`Completion refused until checked GitHub card readback: ${reason}`;
@@ -2023,34 +2036,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       if(firstReport){
         const resultComment=formatResultComment(row);
         await commentIssue(fetchImpl,owner,repo,number,resultComment,token);
-        // A completed planning objective can resolve ONLY the exact no-effect
-        // intake smoke test, after re-reading its authenticated Owner receipt.
-        // Other actions stay PLAN_SHOWN until separately verified as executed.
-        let ownerReceipt='';
-        if(row.status==='completed'&&/^SOURCE=AUTHENTICATED_OWNER_WORK_CARD$/m.test(sourceBody)){
-          const receiptUrl=/^OWNER_REQUEST_RECEIPT=(https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/\d+#issuecomment-(\d+))$/m.exec(sourceBody);
-          if(receiptUrl){
-            try{
-              const original=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/comments/${receiptUrl[2]}`,token);
-              if(String(original?.html_url||'')===receiptUrl[1])ownerReceipt=String(original?.body||'');
-            }catch(error){
-              if(githubRateLimitCooldownMs(error)>0)throw error;
-              // Safe fallback: absent evidence keeps the request nonterminal.
-              console.error(JSON.stringify({event:'OWNER_TRIAGE_RECEIPT_RECHECK_UNAVAILABLE',objectiveId:row.id,issueNumber:number,error:String(error?.message||error)}));
-            }
-          }
-        }
-        const ownerTriage=ownerCoreTriageReceiptPlan(sourceBody,row,ownerReceipt);
-        if(ownerTriage){
-          const parentIssue=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${ownerTriage.parentIssueNumber}`,token);
-          const page=Math.max(1,Math.ceil(Math.max(0,Number(parentIssue.comments||0))/100));
-          const recent=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${ownerTriage.parentIssueNumber}/comments?per_page=100&page=${page}`,token);
-          const key='CORE_TRIAGE_OBJECTIVE_ID='+ownerTriage.objectiveId;
-          if(!(Array.isArray(recent)?recent:[]).some(comment=>String(comment?.body||'').includes(key))){
-            await commentIssue(fetchImpl,owner,repo,ownerTriage.parentIssueNumber,
-              makeOwnerResultReceipt(ownerTriage.requestId,ownerTriage.status,ownerTriage.reply),token);
-          }
-        }
+
 
         if(row.status==='completed'&&P1_P5_PRIORITIES.has(bodyValue(sourceBody,'PRIORITY').toUpperCase())&&number!==OWNER_RESULT_INBOX_ISSUE){
           const sourceTitle=String(sourceIssueForGate?.title||row.metadata?.issueTitle||'Work Order').slice(0,300);
@@ -2060,6 +2046,41 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
             token
           ));
         }
+      }
+      // Repeat on a future tick: PLAN_SHOWN cannot swallow a newly verified
+      // ANSWERED for the same Objective after checklist acceptance.
+      if(/^SOURCE=AUTHENTICATED_OWNER_WORK_CARD$/m.test(sourceBody)){
+      // A completed planning objective can resolve ONLY the exact no-effect
+      // intake smoke test, after re-reading its authenticated Owner receipt.
+      // Other actions stay PLAN_SHOWN until separately verified as executed.
+      let ownerReceipt='';
+      if(row.status==='completed'&&/^SOURCE=AUTHENTICATED_OWNER_WORK_CARD$/m.test(sourceBody)){
+        const receiptUrl=/^OWNER_REQUEST_RECEIPT=(https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/\d+#issuecomment-(\d+))$/m.exec(sourceBody);
+        if(receiptUrl){
+          try{
+            const original=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/comments/${receiptUrl[2]}`,token);
+            if(String(original?.html_url||'')===receiptUrl[1])ownerReceipt=String(original?.body||'');
+          }catch(error){
+            if(githubRateLimitCooldownMs(error)>0)throw error;
+            // Safe fallback: absent evidence keeps the request nonterminal.
+            console.error(JSON.stringify({event:'OWNER_TRIAGE_RECEIPT_RECHECK_UNAVAILABLE',objectiveId:row.id,issueNumber:number,error:String(error?.message||error)}));
+          }
+        }
+      }
+      const ownerTriage=ownerCoreTriageReceiptPlan(sourceBody,row,ownerReceipt);
+      if(ownerTriage){
+        const parentIssue=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${ownerTriage.parentIssueNumber}`,token);
+        const page=Math.max(1,Math.ceil(Math.max(0,Number(parentIssue.comments||0))/100));
+        const recent=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${ownerTriage.parentIssueNumber}/comments?per_page=100&page=${page}`,token);
+        const key='CORE_TRIAGE_OBJECTIVE_ID='+ownerTriage.objectiveId;
+        if(!(Array.isArray(recent)?recent:[]).some(comment=>{
+          const text=String(comment?.body||'');
+          return text.includes(key)&&text.includes('OWNER_REQUEST_STATUS='+ownerTriage.status);
+        })){
+          await commentIssue(fetchImpl,owner,repo,ownerTriage.parentIssueNumber,
+            makeOwnerResultReceipt(ownerTriage.requestId,ownerTriage.status,ownerTriage.reply),token);
+        }
+      }
       }
       const keepOpenOnStepComplete=githubKeepOpenOnStepComplete(row.metadata,sourceBody);
       let githubClosed=false,githubCompletionPending=false;
