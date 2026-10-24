@@ -1,4 +1,5 @@
 import {readFileSync} from 'node:fs';
+import {runInNewContext} from 'node:vm';
 import {describe,expect,it} from 'vitest';
 import {
   API_DOCTOR_CAPABILITY,
@@ -942,5 +943,28 @@ describe('#2980 watsonx token quota classification',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     expect(core).toContain("if (code === 'token_quota_reached') return 'external_blocked';");
     expect(core).toContain('classifyHttp(res.status,body)');
+  });
+});
+
+
+describe('#5222 NV11 Groq visible output response contract',()=>{
+  it('accepts only visible text and rejects object/reasoning-only Groq replies',()=>{
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    // Verify that the actual Groq provider adapter uses the strict visible-content parser.
+    expect(core).toMatch(/const text = \(host==='api\.inceptionlabs\.ai'\|\|host==='api\.groq\.com'\)\s*\?\s*inceptionVisibleContent\(body\)/);
+    const start=core.indexOf('export function inceptionVisibleContent(body){');
+    const end=core.indexOf('\nexport function inceptionReasoningPolicy(',start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const source=core.slice(start,end).replace(/^export /,'');
+    const parseVisible=runInNewContext(source+'\ninceptionVisibleContent',{}, {timeout:1000});
+    const message=content=>({choices:[{message:{content}}]});
+    expect(parseVisible(message('visible answer'))).toBe('visible answer');
+    expect(parseVisible(message([{type:'text',text:'Hello'},{type:'text',text:' world'}]))).toBe('Hello world');
+    expect(parseVisible(message({type:'text',text:'unsafe object'}))).toBe('');
+    expect(parseVisible({choices:[{message:{content:null,reasoning_content:'reasoning only'}}]})).toBe('');
+    expect(parseVisible(message([{type:'reasoning',text:'do not leak'}]))).toBe('');
+    expect(parseVisible(message(null))).toBe('');
+    expect(parseVisible({choices:[]})).toBe('');
   });
 });
