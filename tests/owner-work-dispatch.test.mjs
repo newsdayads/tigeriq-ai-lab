@@ -1,0 +1,37 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { boundedOwnerTriageChild } from '../apps/shared/owner-work-dispatch.mjs';
+import { validateWorkOrderLifecycleV2 } from '../apps/tigeriq-core/work-order-lifecycle-v2.mjs';
+import { safeAutoWorkAdmission, parseExecutableIssue } from '../apps/tigeriq-core/github-intake.mjs';
+const id='c6b90d64-b49c-4bb9-becb-d696a043ab74';
+const request={issueNumber:5252,requestId:id,message:'Kiểm tra trạng thái Core và nêu hướng xử lý mà không đổi mã.'};
+const issue={number:5252,state:'open',title:'[P1] Work Center Owner',body:'RESOURCE_SCOPE=TIGERIQ_WORK_CENTER_OWNER_REQUEST_INTAKE_V1\nCURRENT_STATE=WAITING'};
+const receiptUrl='https://github.com/newsdayads/tigeriq-ai-lab/issues/5252#issuecomment-6377472036';
+test('Owner source receipt converts into a valid bounded P1 read-only Core planning issue',()=>{
+ const child=boundedOwnerTriageChild({issue,request,receiptUrl});
+ assert.equal(child.parentIssueNumber,5252);
+ assert.equal(child.requestId,id);
+ assert.ok(child.body.includes('AUTO_QUEUE=INCLUDED'));
+ assert.ok(child.body.includes('NO_PAID_COST=true'));
+ assert.ok(child.body.includes('NO_PRODUCTION_RELEASE=true'));
+ assert.ok(child.body.includes('NO_CREDENTIAL_CHANGE=true'));
+ assert.ok(child.body.includes('NO_CODE_CHANGE=true'));
+ assert.ok(child.body.includes('OWNER_REQUEST_RECEIPT='+receiptUrl));
+ assert.ok(!child.body.includes(request.message),'Never duplicate arbitrary Owner text');
+ const proposed={...child,number:900001,state:'open',created_at:'2026-10-24T00:00:00Z',updated_at:'2026-10-24T00:00:00Z',html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/900001'};
+ const lifecycle=validateWorkOrderLifecycleV2(proposed);
+ assert.deepEqual(lifecycle.missing,[]);
+ assert.equal(lifecycle.valid,true);
+ const admission=safeAutoWorkAdmission(proposed);
+ assert.equal(admission.eligible,true,admission.reason+': '+JSON.stringify(admission));
+ const parsed=parseExecutableIssue(proposed);
+ assert.ok(parsed,'Core must be capable of reading the same existing queue');
+ assert.equal(parsed.dispatchLane,'CORE_REASONING');
+});
+test('fail closed on foreign or unverified issue, malformed receipt or scope',()=>{
+ const valid={issue,request,receiptUrl};
+ assert.throws(()=>boundedOwnerTriageChild({...valid,issue:{...issue,state:'closed'}}),/invalid_parent/);
+ assert.throws(()=>boundedOwnerTriageChild({...valid,issue:{...issue,body:'RESOURCE_SCOPE=INVALID TOKEN'}}),/invalid_scope/);
+ assert.throws(()=>boundedOwnerTriageChild({...valid,receiptUrl:'https://attacker.invalid/foo'}),/invalid_receipt/);
+ assert.throws(()=>boundedOwnerTriageChild({...valid,request:{...request,issueNumber:2054}}),/invalid_parent/);
+});
