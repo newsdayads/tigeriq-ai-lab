@@ -67,7 +67,7 @@ test('per-tab memory is bounded and never written to browser disk storage',()=>{
 test('real card lifecycle snapshots before close/switch and restores on reopen',()=>{
  assert.ok(dashboard.includes("ownerRequestDraft.addEventListener('input',ownerRequestRememberDraft);"));
  assert.ok(dashboard.includes('ownerRequestLastId=requestId;ownerRequestLastMessage=message;ownerRequestRememberDraft();'));
- assert.ok(dashboard.includes('ownerRequestOpen(number){ownerRequestRevision++;ownerRequestSubmitting=false;ownerRequestRememberDraft();'));
+ assert.ok(dashboard.includes('ownerRequestOpen(number){ownerRequestStopPolling();ownerRequestRevision++;ownerRequestSubmitting=false;ownerRequestRememberDraft();'));
  assert.ok(dashboard.includes("ownerRequestDraft.value='';ownerRequestRestoreDraft(number);"));
  assert.ok(dashboard.includes('ownerRequestRememberDraft();ownerRequestRevision++;ownerRequestSubmitting=false;ownerRequestIssueNumber=null;'));
  assert.ok(dashboard.includes("ownerRequestLastMessage=null;ownerRequestRememberDraft()}"),'terminal receipts should clear the old draft snapshot');
