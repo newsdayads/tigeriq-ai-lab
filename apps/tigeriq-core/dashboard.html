@@ -654,6 +654,7 @@ const ownerWorkSecureLink=document.getElementById('ownerWorkSecureLink');
 const ownerRequestHistoryPanel=document.getElementById('ownerWorkRequestHistory');
 let ownerRequestIssueNumber=null,ownerRequestLastId=null,ownerRequestLastMessage=null,ownerRequestRevision=0,ownerRequestSubmitting=false;
 let ownerRequestApiReady=false;
+let ownerRequestWriteBlocked=false;
 let ownerRequestPollTimer=null,ownerRequestPollInFlight=false,ownerRequestPollBlocked=false;
 function ownerRequestStopPolling(){
  if(ownerRequestPollTimer!==null){clearInterval(ownerRequestPollTimer);ownerRequestPollTimer=null}
@@ -704,7 +705,7 @@ async function ownerRequestRefresh(number){
  const revision=ownerRequestRevision;
  ownerRequestApiReady=false;
  if(!ownerRequestSecure()){ownerRequestSend.disabled=true;ownerWorkSecureLink.hidden=false;ownerWorkSecureLink.href='https://tigeriq-ai-lab.vercel.app/';ownerWorkSecureLink.textContent='MỞ GIAO DIỆN HTTPS';ownerRequestStatus.textContent='Gửi yêu cầu chỉ hỗ trợ trên HTTPS bằng thiết bị đã ghép với TigerIQ.';return}
- ownerRequestSend.disabled=ownerRequestSubmitting;ownerWorkSecureLink.hidden=true;
+ ownerRequestSend.disabled=ownerRequestSubmitting||ownerRequestWriteBlocked;ownerWorkSecureLink.hidden=true;
  try{
  const r=await fetch('/api/control?operation=owner-work-request&issue='+encodeURIComponent(number),{cache:'no-store',credentials:'same-origin'});
  if(number!==ownerRequestIssueNumber||revision!==ownerRequestRevision)return;
@@ -719,6 +720,7 @@ async function ownerRequestRefresh(number){
  if(!r.ok)throw Error('Không đọc được lịch sử yêu cầu: HTTP '+r.status);
  const json=await r.json();if(number!==ownerRequestIssueNumber||revision!==ownerRequestRevision)return;
  ownerRequestApiReady=true;ownerRequestPollBlocked=false;
+ ownerRequestSend.disabled=ownerRequestWriteBlocked||ownerRequestSubmitting;
  const history=Array.isArray(json.history)?json.history:[];
  ownerRequestHistoryPanel.replaceChildren(...history.map(ownerRequestRecordView));
  if(!history.length)ownerRequestHistoryPanel.textContent='Chưa có yêu cầu.';
@@ -732,7 +734,7 @@ async function ownerRequestRefresh(number){
  }catch(e){if(number===ownerRequestIssueNumber&&revision===ownerRequestRevision)ownerRequestStatus.textContent='CHƯA XÁC MINH: '+String(e.message||e)}
 }
 async function ownerRequestSubmit(){
- if(!workDetailRow||!ownerRequestSecure()||ownerRequestSubmitting)return;
+ if(!workDetailRow||!ownerRequestSecure()||ownerRequestSubmitting||ownerRequestWriteBlocked)return;
  if(!ownerRequestApiReady){ownerRequestStatus.textContent='Chưa kết nối được API Owner. Chưa gửi yêu cầu.';return}
  const revision=ownerRequestRevision,issueNumber=Number(workDetailRow.number),message=ownerRequestDraft.value.trim();
  if(!message){ownerRequestStatus.textContent='Anh Sơn chưa nhập yêu cầu.';return}
@@ -744,14 +746,24 @@ async function ownerRequestSubmit(){
  if(issueNumber!==ownerRequestIssueNumber||revision!==ownerRequestRevision||ownerRequestLastId!==requestId)return;
  const data=await res.json();
  if(issueNumber!==ownerRequestIssueNumber||revision!==ownerRequestRevision||ownerRequestLastId!==requestId)return;
- if(!res.ok)throw Error(data.error||'HTTP '+res.status);
+ if(!res.ok){
+  if(res.status===403&&data.error==='github_403'){
+    ownerRequestWriteBlocked=true;
+    ownerRequestSend.disabled=true;
+    ownerRequestStatus.textContent=data.reason==='GITHUB_RATE_LIMIT'
+      ?'BỊ CHẶN: GitHub giới hạn tốc độ. Nội dung được giữ nguyên; không gửi lại cho đến khi hệ thống phục hồi.'
+      :'BỊ CHẶN: GitHub không cho phép ghi comment (HTTP 403). Nội dung vẫn giữ nguyên; cần khôi phục quyền ghi phía hệ thống.';
+    return;
+  }
+  throw Error(data.error||'HTTP '+res.status);
+ }
  const record=data.request||{};
  ownerRequestStatus.textContent=(record.status||'RECEIVED')+' — '+(record.reply||'Đã nhận và lưu yêu cầu.');
  if(ownerRequestCanClearDraft(record.status,requestId,ownerRequestLastId,message,ownerRequestDraft.value)){ownerRequestDraft.value='';ownerRequestLastId=null;ownerRequestLastMessage=null;ownerRequestRememberDraft()}
  else if(ownerRequestLastId===requestId&&['ANSWERED','VERIFIED'].includes(record.status)){ownerRequestLastId=null;ownerRequestLastMessage=null;ownerRequestRememberDraft()}
  await ownerRequestRefresh(issueNumber);
  }catch(error){if(issueNumber===ownerRequestIssueNumber&&revision===ownerRequestRevision)ownerRequestStatus.textContent='CHƯA XÁC MINH KẾT QUẢ GỬI: '+String(error.message||error)+'; nội dung vẫn được giữ để thử lại cùng mã yêu cầu.'}
- finally{if(issueNumber===ownerRequestIssueNumber&&revision===ownerRequestRevision){ownerRequestSubmitting=false;ownerRequestSend.disabled=!(ownerRequestSecure()&&ownerRequestApiReady)}}
+ finally{if(issueNumber===ownerRequestIssueNumber&&revision===ownerRequestRevision){ownerRequestSubmitting=false;ownerRequestSend.disabled=ownerRequestWriteBlocked||!(ownerRequestSecure()&&ownerRequestApiReady)}}
 }
 ownerRequestDraft.addEventListener('input',ownerRequestRememberDraft);
 ownerRequestSend.addEventListener('click',ownerRequestSubmit);
