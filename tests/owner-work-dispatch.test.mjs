@@ -61,3 +61,31 @@ test('Core terminal planning receipt never reports Owner execution VERIFIED',()=
  assert.equal(ownerCoreTriageReceiptPlan(child.body,{id:'OBJ-GH-900001',status:'active'}),null);
  assert.equal(ownerCoreTriageReceiptPlan('SOURCE=FORGED', {id:'OBJ-GH-900001',status:'completed'}),null);
 });
+
+test('accepted Core output resolves only the exact authenticated intake smoke request',()=>{
+ const smoke={...request,message:'Thử gửi yêu cầu'};
+ const child=boundedOwnerTriageChild({issue,request:smoke,receiptUrl});
+ const completed={id:'OBJ-GH-900001',status:'completed',summary:'Core worker finished reading and answering the exact Owner intake smoke request'};
+ const ownerReceipt=makeOwnerRequestReceipt(smoke);
+ // Without an authenticated receipt, a completed planning job stays nonterminal.
+ assert.equal(ownerCoreTriageReceiptPlan(child.body,completed).status,'PLAN_SHOWN');
+ const resolved=ownerCoreTriageReceiptPlan(child.body,completed,ownerReceipt);
+ assert.equal(resolved.status,'ANSWERED');
+ assert.match(resolved.reply,/Đã xử lý yêu cầu thử tiếp nhận/);
+ assert.ok(resolved.reply.includes(completed.id));
+ // An unrelated Owner instruction cannot inherit the special smoke result.
+ const actionable={...smoke,message:'Kiểm tra và sửa chức năng thật'};
+ assert.equal(ownerCoreTriageReceiptPlan(child.body,completed,makeOwnerRequestReceipt(actionable)).status,'PLAN_SHOWN');
+ // Wrong request ID, parent and incomplete output must not clear the Owner input.
+ assert.equal(ownerCoreTriageReceiptPlan(child.body,completed,ownerReceipt.replace(id,'00000000-0000-4000-8000-000000000000')).status,'PLAN_SHOWN');
+ assert.equal(ownerCoreTriageReceiptPlan(child.body,{...completed,summary:''},ownerReceipt).status,'PLAN_SHOWN');
+ assert.equal(ownerCoreTriageReceiptPlan(child.body,{...completed,status:'blocked'},ownerReceipt).status,'BLOCKED');
+});
+
+test('a completed actionable Owner instruction stays PLAN_SHOWN with authenticated matching receipt',()=>{
+ const child=boundedOwnerTriageChild({issue,request,receiptUrl});
+ const row={id:'OBJ-GH-900002',status:'completed',summary:'Core worker prepared a safe plan with exact source evidence'};
+ const result=ownerCoreTriageReceiptPlan(child.body,row,makeOwnerRequestReceipt(request));
+ assert.equal(result.status,'PLAN_SHOWN');
+ assert.match(result.reply,/chưa được nghiệm thu thực thi/);
+});
