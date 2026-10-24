@@ -3,6 +3,14 @@
 > Canonical task tracking: [Issue #5129](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129). Owner interface/policy: [Issue #504](https://github.com/newsdayads/tigeriq-ai-lab/issues/504). This file is an operational runbook, **not** an automatic task scheduler, elevated permission or release approval. Last verified: 2026-10-24 (Asia/Ho_Chi_Minh).
 
 <!-- CURRENT_STATUS_20261024 -->
+## MỚI NHẤT: 24/10/2026 — v1.0.41 TEST (282)
+STATUS=V41_NATIVE_CAMERA_CLOSE_PATCH_SIGNED_DRIVE_INDEPENDENT_SHA_ZIP_VERIFIED|ACTUAL_SAMSUNG_DEX_QA_PENDING|DONE=false|PROD_UNCHANGED
+APK: https://drive.google.com/file/d/10qa01UMxNbpt9qVsFvzy8z04KLkBjXSW/view ; SHA256 41422053E08E9B73FB4985F0FC7570DFAC3D4F14F9A23C6745F27F91E60EEFD0, 35,154,333 bytes. Signed same certified identity, versionCode282; Drive sync exit0, independent download hash and ZIP pass.
+Owner physical QA v40: actual black X remains on Camera top-right, erroneous newly added red X sits OUTSIDE Camera next to Settings. Correct v41 patch modifies the original Compose Camera CLOSE control in smali/pd0.smali: removes spacer pushing it right, changes its own background to red; hides erroneous extra outside TextView in OverlayControls.smali while preserving GuideTrackView. ONLY X UI changed, all v40 features retained. This is a TEST, physical DeX QA for placement and button click pending.
+Static source file preservation v40→v41: zc4/lh, Manager/DragGhost, camera GuideTrackView/DynamicGuideView, MainActivity, Manifest, original guideline drawing byte-identical. Working fallback v1.0.35 and Production v1.0.17 UNCHANGED.
+Evidence: https://github.com/newsdayads/tigeriq-ai-lab/issues/5129#issuecomment-6379926646
+
+### Historical v40
 ## MỚI NHẤT: 24/10/2026 — v1.0.40 TEST (281)
 STATUS=V40_SIGNED_DRIVE_SHA_ZIP_VERIFIED|FIVE_OWNER_CODE_CORRECTIONS_STAGED|DEX_PHYSICAL_QA_PENDING|R_SOURCE_UNVERIFIED|CAMERA_CURVE_EXPERIMENTAL|PROD_UNCHANGED|DONE=false
 Signed TEST APK: https://drive.google.com/file/d/12wv6A255u1-TRWsSc3A5_eObADRuqoRu/view ; SHA256 51D3C85EDE1F9F0103C8593023CA1B3588B0EE12A60451ADCC1975E2148B3476; size 35,154,333 bytes. PC01 one-shot G: Drive task exit0, receipt STAGED_VERIFIED_LOCAL; independently downloaded Drive APK checksum and ZIP PASS. Same original signer, package com.tigeriq.dexsplit, code281.
