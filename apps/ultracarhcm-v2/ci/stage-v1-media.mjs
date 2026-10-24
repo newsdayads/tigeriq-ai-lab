@@ -36,6 +36,29 @@ function assertNoDestinationSymlink(projectDir, output, assetName) {
   }
 }
 
+
+/**
+ * Confine source media to the exact audited resource tree.
+ * lstat on a leaf alone misses source directory symlinks that resolve outside
+ * sourceRes; even READ_ONLY audit must not hash unexpected external files.
+ */
+function assertNoSourceSymlink(sourceRes, input, assetName) {
+  const sourceRoot = resolve(sourceRes);
+  let segment = input;
+  while (true) {
+    try {
+      if (lstatSync(segment).isSymbolicLink())
+        throw new Error('SOURCE_SYMLINK_FORBIDDEN:' + assetName);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    if (segment === sourceRoot) return;
+    const parent = dirname(segment);
+    if (parent === segment) throw new Error('SOURCE_OUTSIDE_ROOT:' + assetName);
+    segment = parent;
+  }
+}
+
 export function stageMedia({ sourceRes, projectDir, stage = false, rightsEvidence = null }) {
   if (!sourceRes || !projectDir) throw new Error('SOURCE_AND_PROJECT_DIR_REQUIRED');
   const source = resolve(sourceRes);
@@ -45,6 +68,8 @@ export function stageMedia({ sourceRes, projectDir, stage = false, rightsEvidenc
   const files = media.map(item => {
     const input = join(source, item.from);
     const output = join(target, item.to);
+    // Check each source component before stat/hash, including dangling links.
+    assertNoSourceSymlink(source, input, item.from);
     if (!existsSync(input)) { missing.push(item.from); return { from: item.from, to: item.to, status: 'MISSING' }; }
     const info = lstatSync(input);
     if (!info.isFile() || info.isSymbolicLink() || info.size <= 0) {
