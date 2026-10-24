@@ -3,6 +3,13 @@
 > Canonical task tracking: [Issue #5129](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129). Owner interface/policy: [Issue #504](https://github.com/newsdayads/tigeriq-ai-lab/issues/504). This file is an operational runbook, **not** an automatic task scheduler, elevated permission or release approval. Last verified: 2026-10-24 (Asia/Ho_Chi_Minh).
 
 <!-- CURRENT_STATUS_20261024 -->
+## MỚI NHẤT: 24/10/2026 — v1.0.38 TEST (279)
+STATUS=V38_SIGNED_DRIVE_VERIFIED|APP_ICON_NATIVE_COMPOSE_AND_DYNAMIC_GUIDE_STAGED|DEX_DEVICE_QA_PENDING|GEAR_R_UNVERIFIED|PROD_UNCHANGED|DONE=false
+APK TEST: https://drive.google.com/file/d/1FtizSoCwlxJidRJantFA3M0z-0kTWGTN/view ; SHA256 67E7E527912894E6879BBF93A07BC3E3E1B6D0E3C153AA8596596E0EC9F21C4D.
+Thay thế lớp phủ ICON cũ bằng vẽ Compose cho từng App; thêm vạch cong thử nghiệm dùng Camera+Gyroscope, thiếu tín hiệu giữ thẳng. Chưa QA thật DeX; tín hiệu số R chưa xác minh. Không đổi v1.0.35 backup hoặc production v1.0.17.
+Biên nhận mới nhất: https://github.com/newsdayads/tigeriq-ai-lab/issues/5129#issuecomment-6378175575
+
+### Mốc cũ — giữ làm lịch sử
 ## Current canonical status — 2026-10-24 07:10 ICT
 
 `OPEN | v1.0.37_TEST_BUILD_SIGNED_DRIVE_VERIFIED | DeX_RUNTIME_QA_PENDING | GEAR_R_SIGNAL_UNVERIFIED | CURVED_GUIDELINES_NOT_IMPLEMENTED | PROD_UNCHANGED | DONE=false`
