@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { verifiedOwnerReceiptForChild } from '../shared/owner-work-dispatch.mjs';
+import { verifiedOwnerReceiptForChild, ownerCoreTriageReceiptPlan } from '../shared/owner-work-dispatch.mjs';
+import { makeOwnerResultReceipt } from '../shared/owner-work-request.mjs';
 import { managerAcceptanceRevisionRefresh, managerAcceptanceWakePlan } from './manager-cycle-policy.mjs';
 import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
@@ -2018,6 +2019,19 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
     if(['completed','blocked'].includes(row.status)&&!row.metadata?.githubResultReported){
       const resultComment=formatResultComment(row);
       await commentIssue(fetchImpl,owner,repo,number,resultComment,token);
+      // A Core planner result updates the parent Owner history but NEVER
+      // supplies VERIFIED or clears an unexecuted Owner instruction.
+      const ownerTriage=ownerCoreTriageReceiptPlan(sourceBody,row);
+      if(ownerTriage){
+        const parentIssue=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${ownerTriage.parentIssueNumber}`,token);
+        const page=Math.max(1,Math.ceil(Math.max(0,Number(parentIssue.comments||0))/100));
+        const recent=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${ownerTriage.parentIssueNumber}/comments?per_page=100&page=${page}`,token);
+        const key='CORE_TRIAGE_OBJECTIVE_ID='+ownerTriage.objectiveId;
+        if(!(Array.isArray(recent)?recent:[]).some(comment=>String(comment?.body||'').includes(key))){
+          await commentIssue(fetchImpl,owner,repo,ownerTriage.parentIssueNumber,
+            makeOwnerResultReceipt(ownerTriage.requestId,ownerTriage.status,ownerTriage.reply),token);
+        }
+      }
       if(row.status==='completed'&&P1_P5_PRIORITIES.has(bodyValue(sourceBody,'PRIORITY').toUpperCase())&&number!==OWNER_RESULT_INBOX_ISSUE){
         const sourceTitle=String(sourceIssueForGate?.title||row.metadata?.issueTitle||'Work Order').slice(0,300);
         await githubMutationRetryable(()=>commentIssue(
