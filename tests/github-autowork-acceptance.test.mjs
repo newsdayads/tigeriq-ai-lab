@@ -9,7 +9,15 @@ const base = {
 };
 const fullAnswer = Array.from({ length: 14 }, (_, i) => {
   const id = 'Q' + String(i + 1).padStart(2, '0');
-  return id + ' — Quan sát hiện có cần đối chiếu với biên nhận thời gian thực; kết luận chưa nghiệm thu.';
+  return [
+    id + ':',
+    'OBSERVATION: Core cần đối chiếu nguồn thật trước khi kết luận.',
+    'REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: Synthetic test fixture 2026-10-24T05:07:51Z.',
+    'EXPECTED: Có biên nhận thời gian thực và tác nhân thật.',
+    'DEVIATION: UNKNOWN cho đến khi độc lập kiểm tra.',
+    'CONFIDENCE: UNKNOWN.',
+    'NEXT_ACTION: Đối chiếu nguồn thực, không giả đã nghiệm thu.',
+  ].join('\n');
 }).join('\n');
 
 describe('github_api_autowork output acceptance (fail closed)', () => {
@@ -33,10 +41,34 @@ describe('github_api_autowork output acceptance (fail closed)', () => {
     expect(result.missingQuestions).toHaveLength(14);
   });
   it('fails when one required Q answer is missing or too short', () => {
-    const text = fullAnswer.replace(/Q14[^\n]*/, 'Q14 — chưa rõ');
+    const text = fullAnswer.replace(/Q14:[\s\S]*$/, 'Q14 — chưa rõ');
     const result = evaluateGithubAutoworkOutput({ ...base, text });
     expect(result.accepted).toBe(false);
     expect(result.missingQuestions).toEqual(['Q14']);
+  });
+  it('rejects an actual 4-of-14 timestamp completeness signature before JOB_DONE', () => {
+    const report = fullAnswer.split(/\n(?=Q\d{2}:)/).map((section, index) =>
+      [0, 1, 2, 12].includes(index)
+        ? section : section.replace('2026-10-24T05:07:51Z', 'UNKNOWN')
+    ).join('\n');
+    const result = evaluateGithubAutoworkOutput({ ...base, text: report });
+    expect(result).toMatchObject({
+      accepted: false,
+      code: 'GITHUB_AUTOWORK_Q_REPORT_CONTRACT_INCOMPLETE',
+      foundQuestionCount: 14,
+      questionsWithAllRequiredFields: 4,
+    });
+    expect(result.missingFields.Q04).toContain('evidenceTimestamp');
+    expect(result.missingFields.Q14).toContain('evidenceTimestamp');
+    expect(JSON.stringify(result)).not.toContain('Synthetic test fixture');
+  });
+  it('rejects missing required source report fields even when all 14 Q sections exist', () => {
+    const result = evaluateGithubAutoworkOutput({
+      ...base, text: fullAnswer.replace('OBSERVATION:', 'FIELD_REMOVED:'),
+    });
+    expect(result.accepted).toBe(false);
+    expect(result.code).toBe('GITHUB_AUTOWORK_Q_REPORT_CONTRACT_INCOMPLETE');
+    expect(result.missingFields.Q01).toContain('observation');
   });
   it('accepts structured 14-section source output and persists only a digest and provenance', () => {
     const result = evaluateGithubAutoworkOutput({ ...base, text: fullAnswer });
