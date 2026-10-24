@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { boundedOwnerTriageChild, verifiedOwnerReceiptForChild } from '../apps/shared/owner-work-dispatch.mjs';
+import { boundedOwnerTriageChild, verifiedOwnerReceiptForChild, ownerCoreTriageReceiptPlan } from '../apps/shared/owner-work-dispatch.mjs';
 import { makeOwnerRequestReceipt } from '../apps/shared/owner-work-request.mjs';
 import { validateWorkOrderLifecycleV2 } from '../apps/tigeriq-core/work-order-lifecycle-v2.mjs';
 import { safeAutoWorkAdmission, parseExecutableIssue } from '../apps/tigeriq-core/github-intake.mjs';
@@ -48,4 +48,16 @@ test('Core must hydrate only exact authenticated Owner receipt, not invented com
  assert.throws(()=>verifiedOwnerReceiptForChild(child.body,receipt.replace(id,'00000000-0000-4000-8000-000000000000')),/not_correlated/);
  assert.throws(()=>verifiedOwnerReceiptForChild(child.body,'TIGERIQ_OWNER_REQUEST_RESULT_V1'),/not_correlated/);
  assert.throws(()=>verifiedOwnerReceiptForChild(child.body.replace('PARENT_ISSUE=#5252','PARENT_ISSUE=#999'),receipt),/child_receipt_invalid/);
+});
+
+test('Core terminal planning receipt never reports Owner execution VERIFIED',()=>{
+ const child=boundedOwnerTriageChild({issue,request,receiptUrl});
+ const success=ownerCoreTriageReceiptPlan(child.body,{id:'OBJ-GH-900001',status:'completed',summary:'Đã phân tích nguồn'});
+ assert.equal(success.requestId,id);
+ assert.equal(success.parentIssueNumber,5252);
+ assert.equal(success.status,'PLAN_SHOWN');
+ assert.ok(success.reply.includes('CORE_TRIAGE_OBJECTIVE_ID=OBJ-GH-900001'));
+ assert.equal(ownerCoreTriageReceiptPlan(child.body,{id:'OBJ-GH-900001',status:'blocked'}).status,'BLOCKED');
+ assert.equal(ownerCoreTriageReceiptPlan(child.body,{id:'OBJ-GH-900001',status:'active'}),null);
+ assert.equal(ownerCoreTriageReceiptPlan('SOURCE=FORGED', {id:'OBJ-GH-900001',status:'completed'}),null);
 });
