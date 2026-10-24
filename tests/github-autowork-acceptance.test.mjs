@@ -115,6 +115,24 @@ describe('github_api_autowork output acceptance (fail closed)', () => {
     expect(result.missingFields.Q01).toContain('confidenceValue');
     expect(JSON.stringify(result)).not.toContain('Một ghi chú');
   });
+  it('fails closed before JOB_DONE when a present R04 field has no value', () => {
+    for (const [original, replacement, missingKey] of [
+      ['OBSERVATION: Core cần đối chiếu nguồn thật trước khi kết luận.', 'OBSERVATION: ', 'observation'],
+      ['EXPECTED: Có biên nhận thời gian thực và tác nhân thật.', 'EXPECTED: ', 'expected'],
+      ['NEXT_ACTION: Đối chiếu nguồn thực, không giả đã nghiệm thu.', 'NEXT_ACTION: <specific factual value or explicit UNKNOWN>', 'nextAction'],
+    ]) {
+      const text=fullAnswer.replace(original,replacement);
+      const result=evaluateGithubAutoworkOutput({...base,text});
+      expect(result).toMatchObject({
+        applicable:true,accepted:false,
+        code:'GITHUB_AUTOWORK_Q_REPORT_CONTRACT_INCOMPLETE',
+        foundQuestionCount:14,questionsWithAllRequiredFields:13,
+      });
+      expect(result.missingFields.Q01).toContain(missingKey);
+      expect(result.receipt).toBeUndefined();
+      expect(JSON.stringify(result)).not.toContain('Core cần đối chiếu');
+    }
+  });
   it('accepts structured 14-section source output and persists only a digest and provenance', () => {
     const result = evaluateGithubAutoworkOutput({ ...base, text: fullAnswer });
     expect(result).toMatchObject({
