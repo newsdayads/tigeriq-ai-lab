@@ -1,4 +1,9 @@
 import test from 'node:test';
+import fs from 'node:fs';
+import { Script } from 'node:vm';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import assert from 'node:assert/strict';
 import { parseDevices, safeSerial, validInput, server } from './app.mjs';
 
@@ -27,4 +32,12 @@ test('bounded group inputs and supported actions', () => {
 });
 test('server module imports without listening or side effects', () => {
   assert.equal(server.listening,false);
+});
+
+test('browser controller parses under strict CSP external-script policy', () => {
+  const dir=path.dirname(fileURLToPath(import.meta.url));
+  const html=fs.readFileSync(path.join(dir,'index.html'),'utf8');
+  assert.match(html,/<script src="\/ui\.js" type="module"><\/script>/);
+  assert.doesNotMatch(html,/<script type="module">/);
+  assert.doesNotThrow(()=>new Script(fs.readFileSync(path.join(dir,'ui.js'),'utf8')));
 });
