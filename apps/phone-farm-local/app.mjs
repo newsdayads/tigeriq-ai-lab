@@ -91,7 +91,9 @@ function errorText(e) { return String(e?.message || e).slice(0,350); }
 let busyScreens = 0;
 const server = http.createServer(async (req, res) => {
   try {
-    if (!['127.0.0.1', 'localhost'].includes((req.headers.host || '').split(':')[0])) return json(res, 403, { error: 'Chỉ truy cập nội bộ' });
+    const allowedOrigins = ['http://127.0.0.1:' + port, 'http://localhost:' + port];
+    if (!allowedOrigins.some(x => req.headers.host === new URL(x).host)) return json(res, 403, { error: 'Chỉ truy cập nội bộ' });
+    if (req.method === 'POST' && ((req.headers.origin && !allowedOrigins.includes(req.headers.origin)) || (req.headers['content-type'] || '').split(';')[0] !== 'application/json')) return json(res, 403, { error: 'Yêu cầu khác nguồn bị từ chối' });
     const url = new URL(req.url, 'http://127.0.0.1:' + port);
     if (req.method === 'GET' && url.pathname === '/') {
       return reply(res, 200, fs.readFileSync(path.join(base, 'index.html')), 'text/html; charset=utf-8');
