@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { nativeR04ReportContractAudit } from './public-evidence.mjs';
 
 const R04_Q01_Q14_SCOPE = /^TIGERIQ_CORE_NATIVE_R04_Q01_Q14_5144(?:_|$)/i;
 const REQUIRED_QUESTION_IDS = Object.freeze(Array.from({ length: 14 }, (_, index) => 'Q' + String(index + 1).padStart(2, '0')));
@@ -35,6 +36,24 @@ export function evaluateGithubAutoworkOutput({
   }
   if (missingQuestions.length)
     return { applicable: true, accepted: false, code: 'GITHUB_AUTOWORK_Q_REPORT_INCOMPLETE', missingQuestions };
+
+  // For the canonical R04 job, fourteen headings alone are not enough.
+  // Require each question's source/timestamp, expectation, deviation,
+  // confidence and next action BEFORE the Core records JOB_DONE.
+  // This is a structural check, never independent factual acceptance.
+  if (requiredQuestions.length) {
+    const audit = nativeR04ReportContractAudit(answer);
+    if (!audit.structuralPass) {
+      return {
+        applicable: true, accepted: false,
+        code: 'GITHUB_AUTOWORK_Q_REPORT_CONTRACT_INCOMPLETE',
+        foundQuestionCount: audit.foundQuestionCount,
+        questionsWithAllRequiredFields: audit.questionsWithAllRequiredFields,
+        missingQuestions: audit.missingQuestions,
+        missingFields: audit.missingFields,
+      };
+    }
+  }
 
   return {
     applicable: true, accepted: true, code: 'GITHUB_AUTOWORK_SOURCE_OUTPUT_ACCEPTED',
