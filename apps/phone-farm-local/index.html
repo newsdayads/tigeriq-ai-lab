@@ -102,6 +102,11 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 <div class="sectiontitle">Batch operations</div>
 <div class="two"><button class="action" id="install">Install APK</button><button class="action" id="upload">Upload file</button><button class="action soft" id="launch">Launch app</button><button class="action soft" id="forceStop">Force stop</button></div>
 <div class="smallnote">APK và tệp cần đặt trong thư mục <strong>drop</strong> tại PC01.</div>
+<div class="sectiontitle">Local video recording</div>
+<div class="control-line"><span>Duration</span><select id="recordSeconds"><option value="8">8 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="60">60 seconds</option><option value="120">120 seconds</option></select></div>
+<div class="two"><button class="action" id="recordStart">Start record</button><button class="action muted" id="recordStop" disabled>Stop record</button></div>
+<div class="smallnote" id="recordStatus">Chưa ghi màn hình</div>
+<div class="smallnote">Bản ghi MKV được lưu cục bộ trên PC01, không tải lên máy chủ.</div>
 <div class="sectiontitle">Device details</div><button id="listPackages" class="action wide">List installed apps</button><div id="appInfo" class="smallnote">Chọn ít nhất một thiết bị</div>
 <div class="sectiontitle">Control</div><button id="openFirst" class="action wide">Open separate live control window</button>
 <div class="sectiontitle">System health</div><div id="health" class="smallnote">Đang kiểm tra...</div>
