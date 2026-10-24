@@ -3003,6 +3003,11 @@ async function publicJobEvidence(jobId){
     where j.id=$1
     limit 1`,[jobId])).rows[0]||null;
   if(!row)return null;
+  if(row.kind==='github_api_autowork'&&row.status==='done'&&row.result?.autoworkAcceptance?.code==='GITHUB_AUTOWORK_SOURCE_OUTPUT_ACCEPTED'){
+    const provenance=(await pool.query(`select type,job_id,employee_id,resource_id,data from tigeriq_events
+      where job_id=$1 and type in ('HOTPATH_STAGE','RESOURCE_SUCCESS','JOB_DONE') order by seq asc limit 100`,[jobId])).rows;
+    row.nativeAuditEvents=provenance;
+  }
   return buildPublicJobEvidenceRecord(row);
 }
 
