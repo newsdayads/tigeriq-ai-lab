@@ -2997,7 +2997,7 @@ function publicStatus(r){
   return 'READY';
 }
 async function publicJobEvidence(jobId){
-  const row=(await pool.query(`select j.id,j.objective_id,j.status,j.result,o.metadata as objective_metadata
+  const row=(await pool.query(`select j.id,j.objective_id,j.kind,j.status,j.result,j.employee_id,j.resource_id,j.completed_at,o.metadata as objective_metadata
     from tigeriq_jobs j
     left join tigeriq_objectives o on o.id=j.objective_id
     where j.id=$1
