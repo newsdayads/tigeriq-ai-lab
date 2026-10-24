@@ -703,12 +703,12 @@ function ownerRequestRecordView(row){
 async function ownerRequestRefresh(number){
  const revision=ownerRequestRevision;
  ownerRequestApiReady=false;
- if(!ownerRequestSecure()){ownerRequestSend.disabled=true;ownerWorkSecureLink.hidden=false;ownerWorkSecureLink.href='https://tigeriq-ai-lab.vercel.app/';ownerWorkSecureLink.textContent='MỞ GIAO DIỆN HTTPS';ownerRequestStatus.textContent='Chưa thể gửi qua HTTP. Mở giao diện HTTPS và đăng nhập chủ sở hữu.';return}
+ if(!ownerRequestSecure()){ownerRequestSend.disabled=true;ownerWorkSecureLink.hidden=false;ownerWorkSecureLink.href='https://tigeriq-ai-lab.vercel.app/';ownerWorkSecureLink.textContent='MỞ GIAO DIỆN HTTPS';ownerRequestStatus.textContent='Gửi yêu cầu chỉ hỗ trợ trên HTTPS bằng thiết bị đã ghép với TigerIQ.';return}
  ownerRequestSend.disabled=ownerRequestSubmitting;ownerWorkSecureLink.hidden=true;
  try{
  const r=await fetch('/api/control?operation=owner-work-request&issue='+encodeURIComponent(number),{cache:'no-store',credentials:'same-origin'});
  if(number!==ownerRequestIssueNumber||revision!==ownerRequestRevision)return;
- if(r.status===401){ownerRequestPollBlocked=true;ownerRequestSend.disabled=true;ownerWorkSecureLink.hidden=false;ownerWorkSecureLink.href='/api/owner-auth?action=login';ownerWorkSecureLink.textContent='ĐĂNG NHẬP CHỦ SỞ HỮU';ownerRequestStatus.textContent='Cần đăng nhập chủ sở hữu để ghi chỉ đạo.';return}
+ if(r.status===401){ownerRequestPollBlocked=true;ownerRequestSend.disabled=true;ownerWorkSecureLink.hidden=true;ownerRequestStatus.textContent='Thiết bị chưa được cấp quyền gửi yêu cầu. Kiểm tra liên kết ghép thiết bị TigerIQ trên PC01.';return}
  if(r.status===404||r.status===405){
   ownerRequestPollBlocked=true;ownerRequestApiReady=false;ownerRequestSend.disabled=true;ownerWorkSecureLink.hidden=false;
   ownerWorkSecureLink.href='https://tigeriq-ai-lab.vercel.app/';
