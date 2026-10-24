@@ -57,6 +57,9 @@ summary{cursor:pointer;color:#ccd9ef}details{margin-top:12px}
 <textarea id="macroSteps" rows="4">[{"action":"key","key":"HOME"},{"action":"wait","ms":500}]</textarea>
 <div class="tools"><button id="runMacro" class="primary">Chạy kịch bản</button><button id="stopMacro" disabled>Dừng kịch bản</button></div>
 <p class="notice" id="macroStatus">Chưa chạy</p>
+<h2>Lịch chạy cục bộ</h2>
+<div class="tools"><button id="saveSchedule">Tạo lịch</button><button id="refreshSchedules">Xem lịch</button></div>
+<div id="scheduleList" class="notice"></div>
 <div class="spacer"></div>
 <label><input id="sync" type="checkbox" style="width:18px;vertical-align:middle;margin-right:7px">Đồng bộ thao tác trên các máy đã chọn</label>
 <p class="notice">Khi bật đồng bộ, chạm/vuốt trên một màn hình sẽ được quy đổi theo tỷ lệ tới các thiết bị đã chọn.</p>
