@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateGithubAutoworkOutput } from '../apps/tigeriq-core/github-autowork-acceptance.mjs';
+import { evaluateGithubAutoworkOutput, reinforceGithubAutoworkPrompt } from '../apps/tigeriq-core/github-autowork-acceptance.mjs';
 
 const base = {
   kind: 'github_api_autowork',
@@ -19,6 +19,34 @@ const fullAnswer = Array.from({ length: 14 }, (_, i) => {
     'NEXT_ACTION: Đối chiếu nguồn thực, không giả đã nghiệm thu.',
   ].join('\n');
 }).join('\n');
+
+describe('native R04 prompt reinforcement without job dispatch or guessed evidence', () => {
+  it('injects 14 separate six-field prompts for the canonical Core R04 scope', () => {
+    const prompt=reinforceGithubAutoworkPrompt({
+      kind:base.kind,resourceScope:base.resourceScope,prompt:'Read the real work order and sources.',
+    });
+    expect(prompt.startsWith('Read the real work order and sources.')).toBe(true);
+    expect(prompt.match(/^Q(?:0[1-9]|1[0-4]):$/gm)).toHaveLength(14);
+    for(const field of [
+      'OBSERVATION','REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP','EXPECTED','DEVIATION','CONFIDENCE','NEXT_ACTION',
+    ]){
+      expect(prompt.split(field+':').length-1).toBe(14);
+    }
+    expect(prompt).toContain('Do not invent sources, timestamps');
+    expect(prompt).toContain('UNKNOWN');
+    expect(prompt).not.toContain('2026-10-24T05:07:51Z');
+  });
+  it('keeps unrelated job prompts identical, including sibling Core scopes', () => {
+    const original='Original private instruction remains unchanged';
+    for(const input of [
+      {kind:'github_review',resourceScope:base.resourceScope},
+      {kind:'github_api_autowork',resourceScope:'TIGERIQ_CORE_FREE_API_REASONING_E2E_20261023'},
+      {kind:'github_api_autowork',resourceScope:''},
+    ]){
+      expect(reinforceGithubAutoworkPrompt({...input,prompt:original})).toBe(original);
+    }
+  });
+});
 
 describe('github_api_autowork output acceptance (fail closed)', () => {
   it('does not apply to unrelated jobs', () => {

@@ -1,4 +1,4 @@
-import { evaluateGithubAutoworkOutput } from './github-autowork-acceptance.mjs';
+import { evaluateGithubAutoworkOutput, reinforceGithubAutoworkPrompt } from './github-autowork-acceptance.mjs';
 import { executeFencedPaperclipBrokerInstall, executeFencedPaperclipHealth } from './paperclip-direct-lease.mjs';
 import { readFencedPaperclipHealth } from '../openclaw-tigeriq-runtime/paperclip-lab.mjs';
 import { inspectPaperclipBackupProvenance } from '../openclaw-tigeriq-runtime/paperclip-backup-provenance.mjs';
@@ -2024,7 +2024,10 @@ async function runJob(j) {
     if(jobSkillContext.skipped.length){
       await event('SKILL_CONTEXT_SKIPPED',{objectiveId:j.objective_id,jobId:j.id,skipped:jobSkillContext.skipped.map(x=>({id:x.id,reason:x.reason}))});
     }
-    const routedPrompt=appendSkillContextToPrompt(j.prompt,jobSkillContext.contextBlock);
+    const routedPrompt=reinforceGithubAutoworkPrompt({
+      kind:j.kind,resourceScope:j.objective_metadata?.resourceScope||'',
+      prompt:appendSkillContextToPrompt(j.prompt,jobSkillContext.contextBlock),
+    });
     const compiledPacket=String(j.kind||'').startsWith('compiled_')?executionPacketFromPrompt(j.prompt):null;
     const validateText=compiledPacket?(text)=>assertExecutionResultAccepted(text,compiledPacket):null;
     const stabilityAllowlist=stabilityV2EmployeeAllowlist(j.objective_metadata);
