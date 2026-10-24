@@ -131,3 +131,44 @@ test('a symlinked parent resource directory fails before any staging writes', ()
     assert.equal(existsSync(join(dest,'app/src/main/res/raw/ultrabot_glow_packed.mp4')),false);
   } finally { rmSync(root,{recursive:true,force:true}); }
 });
+
+
+test('source ancestor directory symlink cannot escape audited media tree, even in read-only mode', () => {
+  const root=mkdtempSync(join(tmpdir(),'gh5135-source-link-'));
+  try {
+    const source=join(root,'source'),outside=join(root,'outside-media'),dest=join(root,'v2');
+    mkdirSync(source,{recursive:true});
+    for (const [index,item] of media.entries()) {
+      const relative=item.from.startsWith('drawable/')?item.from.slice('drawable/'.length):item.from;
+      const input=item.from.startsWith('drawable/')?join(outside,relative):join(source,relative);
+      mkdirSync(dirname(input),{recursive:true});
+      writeFileSync(input,Buffer.alloc(item.observedBytes,65+index));
+    }
+    symlinkSync(outside,join(source,'drawable'),'dir');
+    assert.throws(
+      ()=>stageMedia({sourceRes:source,projectDir:dest}),
+      /SOURCE_SYMLINK_FORBIDDEN:drawable\\/road_city_day\\.jpg/
+    );
+    const evidence=join(root,'rights.txt');
+    writeFileSync(evidence,'SYNTHETIC TEST RIGHTS ONLY, NOT AN ORIGINAL V1 GRANT');
+    assert.throws(
+      ()=>stageMedia({sourceRes:source,projectDir:dest,stage:true,rightsEvidence:evidence}),
+      /SOURCE_SYMLINK_FORBIDDEN/
+    );
+    assert.equal(existsSync(dest),false,'rejected media source must never write outside or into V2');
+  } finally { rmSync(root,{recursive:true,force:true}); }
+});
+
+test('sourceRes itself cannot be a symlink to a different source tree', () => {
+  const root=mkdtempSync(join(tmpdir(),'gh5135-source-root-link-'));
+  try {
+    const real=join(root,'real-source'),alias=join(root,'aliased-source'),dest=join(root,'v2');
+    mkdirSync(real);
+    symlinkSync(real,alias,'dir');
+    assert.throws(
+      ()=>stageMedia({sourceRes:alias,projectDir:dest}),
+      /SOURCE_SYMLINK_FORBIDDEN/
+    );
+    assert.equal(existsSync(dest),false);
+  } finally { rmSync(root,{recursive:true,force:true}); }
+});
