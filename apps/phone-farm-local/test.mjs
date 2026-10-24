@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import assert from 'node:assert/strict';
-import { parseDevices, safeSerial, validInput, server } from './app.mjs';
+import { parseDevices, safeSerial, validInput, privateWifiAddress, server } from './app.mjs';
 
 test('ADB inventory parses connected, offline, unauthorized devices', () => {
   const devices=parseDevices('List of devices attached\nR3CM400AKRX device product:beyondxks model:SM_G977N transport_id:1\n192.168.0.9:5555 offline\nABCD unauthorized\n');
@@ -140,4 +140,11 @@ test('local scheduler skips stale jobs instead of replaying uncontrolled backlog
     assert.equal(scheduler.list()[0].enabled,false);
     assert.match(scheduler.list()[0].lastError,/Missed window/);
   }finally{fs.rmSync(dir,{recursive:true,force:true})}
+});
+
+test('wireless ADB address limited to valid private LAN IP and nonprivileged port', () => {
+  for(const value of ['192.168.100.24:5555','10.2.3.5:45555','172.16.0.9:5555','172.31.255.2:5555'])
+    assert.equal(privateWifiAddress(value),true);
+  for(const value of ['8.8.8.8:5555','127.0.0.1:5555','192.169.1.2:5555','172.32.0.1:5555','192.168.1.999:5555','192.168.1.2:0','10.1.2.3:80','10.1.2.3:5555 & whoami','localhost:5555'])
+    assert.equal(privateWifiAddress(value),false);
 });
