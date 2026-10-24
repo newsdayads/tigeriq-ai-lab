@@ -66,6 +66,18 @@ function repoParts() {
   return { owner, repo };
 }
 
+export function classifyGithubForbidden(details={},headers={}) {
+  const message=String(details?.message||'').toLowerCase();
+  const remaining=String(headers?.rateLimitRemaining??'');
+  if(remaining==='0'||/secondary rate limit|rate limit exceeded|abuse detection/.test(message))
+    return {reason:'GITHUB_RATE_LIMIT',retryable:true};
+  if(/resource not accessible by personal access token|resource not accessible by integration|insufficient permission|requires.+issues/.test(message))
+    return {reason:'GITHUB_ISSUES_WRITE_PERMISSION',retryable:false};
+  if(/saml|sso|organization.+approval|oauth app access restriction|must be authorized/.test(message))
+    return {reason:'GITHUB_ORG_AUTHORIZATION',retryable:false};
+  return {reason:'GITHUB_FORBIDDEN_UNCLASSIFIED',retryable:false};
+}
+
 async function gh(path, init = {}, token = '') {
   const headers = {
     accept: 'application/vnd.github+json',
@@ -82,6 +94,17 @@ async function gh(path, init = {}, token = '') {
     const error = new Error(`github_${response.status}`);
     error.status = response.status;
     error.details = data;
+    if(response.status===403) {
+      const classified=classifyGithubForbidden(data,{
+        rateLimitRemaining:response.headers?.get?.('x-ratelimit-remaining')
+      });
+      error.reasonCode=classified.reason;
+      error.retryable=classified.retryable;
+      if(init.method==='POST' && /\/issues\/\d+\/comments$/.test(path))
+        console.warn('TIGERIQ_OWNER_COMMENT_WRITE_REFUSED',{
+          status:403,reason:classified.reason,requestType:'issue_comment',retryable:classified.retryable
+        });
+    }
     throw error;
   }
   return data;
@@ -600,6 +623,6 @@ export default async function handler(req, res) {
     else if (name === 'github_authorization_required') status = 401;
     else if (name === 'github_401') status = 401;
     else if (name === 'github_403') status = 403;
-    return json(res, status, { error: name, details: error?.details?.message || error?.details || undefined });
+    return json(res, status, { error: name, reason: error?.reasonCode || undefined, retryable: error?.retryable ?? undefined, details: error?.details?.message || error?.details || undefined });
   }
 }
