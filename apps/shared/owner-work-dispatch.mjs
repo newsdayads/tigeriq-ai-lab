@@ -98,3 +98,18 @@ export function verifiedOwnerReceiptForChild(childBody,commentBody) {
     throw Error('owner_triage_receipt_message_invalid');
   return {parentIssueNumber:parent,requestId:id,message:message.trim(),receiptUrl:url};
 }
+
+export function ownerCoreTriageReceiptPlan(childBody,row={}) {
+  const body=String(childBody||'');
+  if(!/^SOURCE=AUTHENTICATED_OWNER_WORK_CARD$/m.test(body))return null;
+  const parent=Number(/^PARENT_ISSUE=#(\d+)$/m.exec(body)?.[1]||0);
+  const requestId=/^OWNER_REQUEST_ID=([a-f0-9-]{36})$/mi.exec(body)?.[1]||'';
+  if(!parent||!requestId||!['completed','blocked'].includes(row?.status))return null;
+  const jobId=String(row.id||'');
+  if(!/^OBJ-GH-\d+/.test(jobId)||jobId.length>128)return null;
+  const status=row.status==='completed'?'PLAN_SHOWN':'BLOCKED';
+  const summary=String(row.summary||'').trim().slice(0,2000);
+  const reply='CORE_TRIAGE_OBJECTIVE_ID='+jobId+' — '+(summary||'Chưa có đầu ra được xác minh')+
+    ' — Đây chỉ là kết quả phân tích của Core; yêu cầu Owner chưa được nghiệm thu thực thi.';
+  return {parentIssueNumber:parent,requestId,status,reply,objectiveId:jobId};
+}
