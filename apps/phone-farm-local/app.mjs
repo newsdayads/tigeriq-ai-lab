@@ -1,0 +1,162 @@
+// TigerIQ Phone Farm • local-only controller • zero third-party Node dependencies
+// This is independent software. It does not import LAIXI binaries, services, or credentials.
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFile, spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+
+const exec = promisify(execFile);
+const base = path.dirname(fileURLToPath(import.meta.url));
+const port = Number(process.env.TIGERIQ_PHONE_FARM_PORT || 8765);
+const bind = '127.0.0.1';
+const adb = process.env.TIGERIQ_ADB || 'D:\\TigerIQ\\Tools\\platform-tools\\adb.exe';
+const scrcpy = process.env.TIGERIQ_SCRCPY || 'D:\\TigerIQ\\Tools\\scrcpy\\scrcpy.exe';
+const storePath = path.join(base, 'device-labels.json');
+const windows = new Map();
+const now = () => new Date().toISOString();
+
+export function parseDevices(text) {
+  return String(text).split(/\r?\n/).slice(1).map(s => {
+    const m = s.trim().match(/^([^\s]+)\s+(device|offline|unauthorized|recovery|bootloader)(?:\s+(.*))?$/);
+    if (!m) return null;
+    const fields = Object.fromEntries((m[3] || '').split(/\s+/).filter(x => x.includes(':')).map(x => {
+      const i = x.indexOf(':'); return [x.slice(0, i), x.slice(i + 1)];
+    }));
+    return { serial: m[1], state: m[2], model: fields.model || '', product: fields.product || '' };
+  }).filter(Boolean);
+}
+export function safeSerial(s) {
+  return typeof s === 'string' && /^[a-zA-Z0-9._:-]{1,100}$/.test(s);
+}
+export function validInput(body) {
+  if (!body || !Array.isArray(body.serials) || body.serials.length === 0 || body.serials.length > 200
+      || new Set(body.serials).size !== body.serials.length || !body.serials.every(safeSerial)) return false;
+  if (body.action === 'tap')
+    return [body.x, body.y].every(n => Number.isInteger(n) && n >= 0 && n <= 10000);
+  if (body.action === 'swipe')
+    return [body.x, body.y, body.toX, body.toY].every(n => Number.isInteger(n) && n >= 0 && n <= 10000)
+      && Number.isInteger(body.ms) && body.ms >= 100 && body.ms <= 3000;
+  if (body.action === 'key') return ['HOME','BACK','APP_SWITCH','POWER','VOLUME_UP','VOLUME_DOWN'].includes(body.key);
+  if (body.action === 'text') return typeof body.text === 'string' && body.text.length > 0
+      && body.text.length <= 200 && /^[\x20-\x7e]+$/.test(body.text);
+  return false;
+}
+async function run(args, extra = {}) {
+  return exec(adb, args, { timeout: 18000, windowsHide: true, maxBuffer: 20 * 1024 * 1024, ...extra });
+}
+async function devices() {
+  const { stdout } = await run(['devices', '-l'], { encoding: 'utf8' });
+  return parseDevices(stdout);
+}
+function labels() {
+  try { return JSON.parse(fs.readFileSync(storePath, 'utf8')); } catch { return {}; }
+}
+function reply(res, status, payload, type = 'application/json; charset=utf-8') {
+  const data = type.startsWith('application/json') ? JSON.stringify(payload) : payload;
+  res.writeHead(status, {
+    'Content-Type': type, 'Content-Length': Buffer.byteLength(data),
+    'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'",
+    'Referrer-Policy': 'no-referrer'
+  });
+  res.end(data);
+}
+function json(res, status, body) { reply(res, status, body); }
+async function bodyJson(req) {
+  let parts = [], size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > 16384) throw Error('Nội dung quá lớn');
+    parts.push(chunk);
+  }
+  return JSON.parse(Buffer.concat(parts).toString('utf8') || '{}');
+}
+async function inputOne(serial, b) {
+  let args;
+  switch (b.action) {
+    case 'tap': args = ['input', 'tap', String(b.x), String(b.y)]; break;
+    case 'swipe': args = ['input', 'swipe', String(b.x), String(b.y), String(b.toX), String(b.toY), String(b.ms)]; break;
+    case 'key': {
+      const map = {HOME:3, BACK:4, APP_SWITCH:187, POWER:26, VOLUME_UP:24, VOLUME_DOWN:25};
+      args = ['input', 'keyevent', String(map[b.key])]; break;
+    }
+    case 'text': args = ['input', 'text', b.text.replaceAll(' ', '%s')]; break;
+    default: throw Error('Thao tác không hợp lệ');
+  }
+  await run(['-s', serial, 'shell', ...args], { encoding: 'utf8' });
+}
+function errorText(e) { return String(e?.message || e).slice(0,350); }
+let busyScreens = 0;
+const server = http.createServer(async (req, res) => {
+  try {
+    if (!['127.0.0.1', 'localhost'].includes((req.headers.host || '').split(':')[0])) return json(res, 403, { error: 'Chỉ truy cập nội bộ' });
+    const url = new URL(req.url, 'http://127.0.0.1:' + port);
+    if (req.method === 'GET' && url.pathname === '/') {
+      return reply(res, 200, fs.readFileSync(path.join(base, 'index.html')), 'text/html; charset=utf-8');
+    }
+    if (req.method === 'GET' && url.pathname === '/api/health')
+      return json(res, 200, { ok: true, localOnly: true, time: now(), adbExists: fs.existsSync(adb), scrcpyExists: fs.existsSync(scrcpy) });
+    if (req.method === 'GET' && url.pathname === '/api/devices') {
+      const xs = await devices(), ls = labels();
+      return json(res, 200, { devices: xs.map(x => ({ ...x, label: ls[x.serial] || '' })), count: xs.length, time: now() });
+    }
+    if (req.method === 'GET' && url.pathname === '/api/screen') {
+      const serial = url.searchParams.get('serial');
+      if (!safeSerial(serial)) return json(res, 400, { error: 'Mã thiết bị không hợp lệ' });
+      if (busyScreens >= 3) return json(res, 429, { error: 'Đang xử lý ảnh khác' });
+      if (!(await devices()).some(x => x.serial === serial && x.state === 'device')) return json(res, 404, { error: 'Thiết bị chưa sẵn sàng' });
+      busyScreens++;
+      try {
+        const { stdout } = await run(['-s', serial, 'exec-out', 'screencap', '-p'], { encoding: 'buffer', timeout: 12000 });
+        return reply(res, 200, stdout, 'image/png');
+      } finally { busyScreens--; }
+    }
+    if (req.method === 'GET' && url.pathname === '/api/size') {
+      const serial = url.searchParams.get('serial');
+      if (!safeSerial(serial)) return json(res, 400, { error: 'Thiết bị không hợp lệ' });
+      const { stdout } = await run(['-s', serial, 'shell', 'wm', 'size'], { encoding: 'utf8' });
+      const m = String(stdout).match(/(?:Override|Physical) size:\s*(\d+)x(\d+)/);
+      return json(res, m ? 200 : 502, m ? { width: Number(m[1]), height: Number(m[2]) } : { error: 'Không đọc được kích thước' });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/input') {
+      const b = await bodyJson(req);
+      if (!validInput(b)) return json(res, 400, { error: 'Thao tác không hợp lệ' });
+      const attached = await devices();
+      if (!b.serials.every(s => attached.some(x => x.serial === s && x.state === 'device')))
+        return json(res, 409, { error: 'Một số thiết bị đã ngắt kết nối' });
+      const results = await Promise.all(b.serials.map(async serial => {
+        try { await inputOne(serial, b); return { serial, ok: true }; }
+        catch (e) { return { serial, ok: false, error: errorText(e) }; }
+      }));
+      return json(res, 200, { results });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/label') {
+      const b = await bodyJson(req);
+      if (!safeSerial(b.serial) || typeof b.label !== 'string' || b.label.length > 50)
+        return json(res, 400, { error: 'Nhãn không hợp lệ' });
+      const state = labels(); state[b.serial] = b.label;
+      fs.writeFileSync(storePath, JSON.stringify(state, null, 2));
+      return json(res, 200, { ok: true });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/open') {
+      const b = await bodyJson(req);
+      if (!safeSerial(b.serial)) return json(res, 400, { error: 'Thiết bị không hợp lệ' });
+      if (!(await devices()).some(x => x.serial === b.serial && x.state === 'device')) return json(res, 409, { error: 'Thiết bị không khả dụng' });
+      if (!fs.existsSync(scrcpy)) return json(res, 424, { error: 'Không tìm thấy scrcpy.exe' });
+      if (windows.has(b.serial) && !windows.get(b.serial).killed) return json(res, 200, { ok: true, already: true });
+      const args = ['--serial', b.serial, '--no-audio', '--max-fps=25', '--max-size=1080', '--window-title=TigerIQ - ' + b.serial];
+      const child = spawn(scrcpy, args, { cwd: path.dirname(scrcpy), windowsHide: false, detached: false, stdio: 'ignore' });
+      windows.set(b.serial, child);
+      child.on('exit', () => windows.delete(b.serial));
+      child.on('error', () => windows.delete(b.serial));
+      return json(res, 200, { ok: true, pid: child.pid || null });
+    }
+    json(res, 404, { error: 'Không tìm thấy' });
+  } catch (e) { json(res, 500, { error: errorText(e) }); }
+});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  server.listen(port, bind, () => console.log('TigerIQ Phone Farm: http://' + bind + ':' + port));
+}
+export { server };
