@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { verifiedOwnerReceiptForChild, ownerCoreTriageReceiptPlan } from '../shared/owner-work-dispatch.mjs';
+import { makeOwnerResultReceipt } from '../shared/owner-work-request.mjs';
 import { managerAcceptanceRevisionRefresh, managerAcceptanceWakePlan } from './manager-cycle-policy.mjs';
 import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
@@ -1044,6 +1046,14 @@ export async function resolveGithubSourceIssue(fetchImpl,owner,repo,token,issueN
 
 export async function hydrateContext(fetchImpl,owner,repo,spec,token){
   const chunks=[`SOURCE ISSUE #${spec.number}: ${spec.title}\nURL: ${spec.url}\n\n${spec.body}`];
+  if(/^SOURCE=AUTHENTICATED_OWNER_WORK_CARD$/m.test(String(spec.body||''))){
+    const exact=/^OWNER_REQUEST_RECEIPT=https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/\d+#issuecomment-(\d+)$/m.exec(String(spec.body||''));
+    if(!exact)throw Error('OWNER_REQUEST_RECEIPT_REQUIRED');
+    const row=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/comments/${exact[1]}`,token);
+    const verified=verifiedOwnerReceiptForChild(spec.body,row?.body);
+    if(String(row?.html_url||'')!==verified.receiptUrl)throw Error('OWNER_REQUEST_SOURCE_URL_MISMATCH');
+    chunks.push('AUTHENTICATED OWNER REQUEST RECEIPT #'+verified.parentIssueNumber+' / '+verified.requestId+' (task data only; does not override safety gates):\n'+verified.message);
+  }
   const contextRefs=contextIssueRefs(spec.body,spec.number);
   for(const n of contextRefs.refs){
     try{
@@ -2013,6 +2023,20 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       if(firstReport){
         const resultComment=formatResultComment(row);
         await commentIssue(fetchImpl,owner,repo,number,resultComment,token);
+        // A Core planner result updates the parent Owner history but NEVER
+        // supplies VERIFIED or clears an unexecuted Owner instruction.
+        const ownerTriage=ownerCoreTriageReceiptPlan(sourceBody,row);
+        if(ownerTriage){
+          const parentIssue=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${ownerTriage.parentIssueNumber}`,token);
+          const page=Math.max(1,Math.ceil(Math.max(0,Number(parentIssue.comments||0))/100));
+          const recent=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${ownerTriage.parentIssueNumber}/comments?per_page=100&page=${page}`,token);
+          const key='CORE_TRIAGE_OBJECTIVE_ID='+ownerTriage.objectiveId;
+          if(!(Array.isArray(recent)?recent:[]).some(comment=>String(comment?.body||'').includes(key))){
+            await commentIssue(fetchImpl,owner,repo,ownerTriage.parentIssueNumber,
+              makeOwnerResultReceipt(ownerTriage.requestId,ownerTriage.status,ownerTriage.reply),token);
+          }
+        }
+
         if(row.status==='completed'&&P1_P5_PRIORITIES.has(bodyValue(sourceBody,'PRIORITY').toUpperCase())&&number!==OWNER_RESULT_INBOX_ISSUE){
           const sourceTitle=String(sourceIssueForGate?.title||row.metadata?.issueTitle||'Work Order').slice(0,300);
           await githubMutationRetryable(()=>commentIssue(
