@@ -72,16 +72,12 @@ function draw(){
     }
   }
 }
-async function loadScreen(img,serial){
+function loadScreen(img,serial){
   if(img.dataset.busy==='1'||!img.isConnected)return;
   img.dataset.busy='1';
-  try{
-    const res=await fetch('/api/screen?serial='+encodeURIComponent(serial));
-    if(!res.ok)throw Error('Ảnh không sẵn sàng');
-    const blob=await res.blob(),url=URL.createObjectURL(blob),old=img.dataset.url;
-    img.onload=()=>{sizes.set(serial,{width:img.naturalWidth,height:img.naturalHeight});if(old)URL.revokeObjectURL(old)};
-    img.src=url;img.dataset.url=url;
-  }catch{}finally{img.dataset.busy='0'}
+  img.onload=()=>{sizes.set(serial,{width:img.naturalWidth,height:img.naturalHeight});img.dataset.busy='0'};
+  img.onerror=()=>{img.alt='Không tải được ảnh, đang thử lại';img.dataset.busy='0'};
+  img.src='/api/screen?serial='+encodeURIComponent(serial)+'&ts='+Date.now();
 }
 $('refresh').onclick=refresh;$('all').onclick=()=>{deviceRows.filter(d=>d.state==='device').forEach(d=>selected.add(d.serial));draw()};
 $('none').onclick=()=>{selected.clear();draw()};$('search').oninput=draw;
