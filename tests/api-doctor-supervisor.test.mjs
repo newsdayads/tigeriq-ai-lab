@@ -69,6 +69,9 @@ describe('#1255 NV10 API Doctor policy',()=>{
     const nv11={employeeId:'NV11',provider:'groq',action:'probe',failureClass:'rate_limit'};
     const nv12={employeeId:'NV12',provider:'cerebras',action:'probe',failureClass:'rate_limit'};
     const nv20={employeeId:'NV20',provider:'nvidia',action:'probe',failureClass:'rate_limit'};
+    const nv17={employeeId:'NV17',provider:'inception',action:'source_repair',failureClass:'source_contract'};
+    expect(nv17.employeeId).toBe('NV17');
+    expect(nv17.provider).toBe('inception');
     const first=apiDoctorScanSignature([nv11,nv20]);
     expect(first).toBe(apiDoctorScanSignature([nv20,nv11]));
     expect(first).not.toBe(apiDoctorScanSignature([nv12,nv20]));
