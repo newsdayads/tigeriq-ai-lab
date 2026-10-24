@@ -147,7 +147,7 @@ test('source ancestor directory symlink cannot escape audited media tree, even i
     symlinkSync(outside,join(source,'drawable'),'dir');
     assert.throws(
       ()=>stageMedia({sourceRes:source,projectDir:dest}),
-      /SOURCE_SYMLINK_FORBIDDEN:drawable\\/road_city_day\\.jpg/
+      new RegExp('SOURCE_SYMLINK_FORBIDDEN:drawable/road_city_day[.]jpg')
     );
     const evidence=join(root,'rights.txt');
     writeFileSync(evidence,'SYNTHETIC TEST RIGHTS ONLY, NOT AN ORIGINAL V1 GRANT');
