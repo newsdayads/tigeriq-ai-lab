@@ -1,0 +1,31 @@
+name: Phone Farm Local CI
+on:
+  pull_request:
+    paths:
+      - 'apps/phone-farm-local/**'
+      - '.github/workflows/phone-farm-local-ci.yml'
+  push:
+    branches:
+      - 'feat/tigeriq-phone-farm-local-v1'
+    paths:
+      - 'apps/phone-farm-local/**'
+      - '.github/workflows/phone-farm-local-ci.yml'
+permissions:
+  contents: read
+jobs:
+  validate-phone-farm:
+    name: Local Controller Node 22
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate syntax
+        run: |
+          node --check apps/phone-farm-local/app.mjs
+          node --check apps/phone-farm-local/recording.mjs
+          node --check apps/phone-farm-local/ui.js
+      - name: Run isolated unit tests
+        run: node --test apps/phone-farm-local/test.mjs apps/phone-farm-local/recording.test.mjs
