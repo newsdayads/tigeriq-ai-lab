@@ -1574,7 +1574,7 @@ describe('GitHub Core intake guardrails',()=>{
     expect(row.metadata).toMatchObject({sourceRevision:revision,liveAcceptanceRequired:true,finalReviewRequired:true,liveAcceptancePass:false,finalReviewPass:false,githubResultReported:false});
   });
 
-  it('closes only after current-revision live PASS plus trusted independent review job',async()=>{
+  it('requires source V2 acceptance even after live PASS plus independent review job',async()=>{
     const sourceIssue={number:2659,state:'open',state_reason:null,title:'live gate',comments:1,body:['LIVE_ACCEPTANCE_REQUIRED=true','FINAL_REVIEW_REQUIRED=true',acceptedChecklistForSource('M01',false)].join(String.fromCharCode(10))};
     const revision=githubIssueSourceRevision(sourceIssue);
     const row={id:'OBJ-GH-2659-Rcurrent',status:'completed',summary:'ready for live gate',metadata:{source:'github',issueNumber:2659,githubClaimReported:true,githubResultReported:false,sourceRevision:revision,liveAcceptanceRequired:true,finalReviewRequired:true,liveAcceptanceCommentCount:0}};
@@ -1599,8 +1599,8 @@ describe('GitHub Core intake guardrails',()=>{
       return new Response(JSON.stringify({}),{status:200,headers:{'content-type':'application/json'}});
     };
     await syncGithubOutcomes({pool,fetchImpl,token:'fake',openIssues:[sourceIssue]});
-    expect(calls).toEqual(['comments-get','result-comment','close-issue','clear-label']);
-    expect(row.metadata).toMatchObject({liveAcceptancePass:true,liveAcceptanceRevision:revision,liveAcceptanceEvidenceCommentId:11,finalReviewPass:true,finalReviewRevision:revision,finalReviewJobId:trustedJobId,finalReviewerEmployeeId:'NV12',finalReviewerResourceId:'res-review',githubResultReported:true,githubClosed:true});
+    expect(calls).toEqual(['comments-get','result-comment','result-comment']);
+    expect(row.metadata).toMatchObject({liveAcceptancePass:true,liveAcceptanceRevision:revision,liveAcceptanceEvidenceCommentId:11,finalReviewPass:true,finalReviewRevision:revision,finalReviewJobId:trustedJobId,finalReviewerEmployeeId:'NV12',finalReviewerResourceId:'res-review',githubResultReported:true,githubClosed:false,githubCompletionPending:true});
     expect(row.metadata.finalReviewImplementationFingerprint).toMatch(/^[a-f0-9]{16}$/);
   });
 
@@ -1663,7 +1663,7 @@ describe('GitHub Core intake guardrails',()=>{
     expect(row.metadata.githubResultReported).toBe(false);
   });
 
-  it('closes completed Core issues before clearing a stale terminal label',async()=>{
+  it('keeps Core issues open when checklist is accepted but lifecycle V2 receipts are missing',async()=>{
     const row={id:'OBJ-GH-841',status:'completed',summary:'done',metadata:{source:'github',issueNumber:841,githubClaimReported:true,githubResultReported:false}};
     const pool={async query(q,params=[]){
       if(q.includes('select id,status,summary,metadata from tigeriq_objectives'))return {rowCount:1,rows:[row]};
@@ -1682,8 +1682,8 @@ describe('GitHub Core intake guardrails',()=>{
       return new Response(JSON.stringify({}),{status:200,headers:{'content-type':'application/json'}});
     };
     await syncGithubOutcomes({pool,fetchImpl,token:'fake'});
-    expect(calls).toEqual(['result-comment','close-issue','clear-label']);
-    expect(row.metadata).toMatchObject({githubResultReported:true,githubClosed:true});
+    expect(calls).toEqual(['result-comment','result-comment']);
+    expect(row.metadata).toMatchObject({githubResultReported:true,githubClosed:false,githubCompletionPending:true});
   });
 
   it('reuses one open-issue snapshot for active source reconciliation instead of per-objective GitHub GETs',async()=>{
