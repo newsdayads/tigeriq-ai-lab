@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { boundedOwnerTriageChild, verifiedOwnerReceiptForChild, ownerCoreTriageReceiptPlan, verifiedOwnerTriageNativeJob } from '../apps/shared/owner-work-dispatch.mjs';
+import { boundedOwnerTriageChild, verifiedOwnerReceiptForChild, ownerCoreTriageReceiptPlan, verifiedOwnerTriageNativeJob, ownerTriageCompletionPublicationGate } from '../apps/shared/owner-work-dispatch.mjs';
 import { makeOwnerRequestReceipt } from '../apps/shared/owner-work-request.mjs';
 import { validateWorkOrderLifecycleV2 } from '../apps/tigeriq-core/work-order-lifecycle-v2.mjs';
 import { safeAutoWorkAdmission, parseExecutableIssue } from '../apps/tigeriq-core/github-intake.mjs';
@@ -118,4 +118,15 @@ test('Owner Core job evidence requires terminal accepted AI output from the exac
  ])assert.equal(verifiedOwnerTriageNativeJob(invalid,scope),false);
  assert.equal(verifiedOwnerTriageNativeJob(job,'ANOTHER_SCOPE'),false);
  assert.equal(verifiedOwnerTriageNativeJob(job,''),false);
+});
+
+test('Owner finished-result publication waits for BOTH native Core and GitHub checklist evidence',()=>{
+ const child=boundedOwnerTriageChild({issue,request,receiptUrl});
+ const row={status:'completed',summary:'Triage prepared and pending evidence'};
+ assert.deepEqual(ownerTriageCompletionPublicationGate(child.body,row),{defer:true,reason:'GITHUB_CHECKLIST_PENDING'});
+ assert.deepEqual(ownerTriageCompletionPublicationGate(child.body,{...row,githubChecklistAccepted:true}),{defer:true,reason:'NATIVE_CORE_JOB_NOT_VERIFIED'});
+ assert.deepEqual(ownerTriageCompletionPublicationGate(child.body,{...row,nativeCoreJobAccepted:true}),{defer:true,reason:'GITHUB_CHECKLIST_PENDING'});
+ assert.deepEqual(ownerTriageCompletionPublicationGate(child.body,{...row,githubChecklistAccepted:true,nativeCoreJobAccepted:true}),{defer:false,reason:'SOURCE_AND_NATIVE_EVIDENCE_PRESENT'});
+ assert.equal(ownerTriageCompletionPublicationGate(child.body,{status:'blocked'}).defer,false);
+ assert.equal(ownerTriageCompletionPublicationGate('SOURCE=FORGED',{...row}).defer,false);
 });
