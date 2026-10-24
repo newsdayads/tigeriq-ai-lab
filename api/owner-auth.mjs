@@ -11,7 +11,7 @@ const MAX_AGE_SECONDS = 8 * 60 * 60;
 const INTERNAL_KEY_SHA256 = String(process.env.TIGERIQ_OWNER_INTERNAL_KEY_SHA256 || '').trim().toLowerCase();
 const OWNER_ORIGIN = 'https://tigeriq-ai-lab.vercel.app';
 function internalConfigured(){return /^[a-f0-9]{64}$/.test(INTERNAL_KEY_SHA256) && SESSION_SECRET.length >= 32;}
-function googleConfigured(){return internalConfigured() || googleConfigured();}
+function googleConfigured(){return Boolean(OWNER_EMAIL && CLIENT_ID && CLIENT_SECRET && REDIRECT_URI && SESSION_SECRET);}
 
 function json(res, status, body) {
   res.statusCode = status;
@@ -22,7 +22,7 @@ function json(res, status, body) {
 }
 
 function configured() {
-  return Boolean(OWNER_EMAIL && CLIENT_ID && CLIENT_SECRET && REDIRECT_URI && SESSION_SECRET);
+  return internalConfigured() || googleConfigured();
 }
 
 function ownerWriteOrigin(req) {

@@ -8,9 +8,10 @@ test('Owner internal login: first-party challenge, session, CSRF and access deni
  const code='synthetic_CI_internal_owner_key_0123456789abcdefghijklmnopqrstuvwxyz';
  process.env.TIGERIQ_OWNER_INTERNAL_KEY_SHA256=createHash('sha256').update(code).digest('hex');
  process.env.TIGERIQ_OWNER_SESSION_SECRET='synthetic_internal_session_secret_0123456789abcdef';
- process.env.TIGERIQ_OWNER_GOOGLE_CLIENT_ID='synthetic-google-client';
- process.env.TIGERIQ_OWNER_GOOGLE_CLIENT_SECRET='synthetic-google-secret';
- process.env.TIGERIQ_OWNER_OAUTH_REDIRECT_URI='https://stale-preview.example.test/api/owner-auth?action=callback';
+ // Simulate a real first-party-only deployment: no Google client, secret or redirect.
+ process.env.TIGERIQ_OWNER_GOOGLE_CLIENT_ID='';
+ process.env.TIGERIQ_OWNER_GOOGLE_CLIENT_SECRET='';
+ process.env.TIGERIQ_OWNER_OAUTH_REDIRECT_URI='';
  const {default:handler,isOwnerAuthorized}=await import('../api/owner-auth.mjs?internalOwnerTest=5252');
  const mkres=()=>{
    const headers=new Map();return {statusCode:200,body:'',
@@ -24,7 +25,9 @@ test('Owner internal login: first-party challenge, session, CSRF and access deni
    const status=mkres();
    await handler(req('GET','/api/owner-auth?action=status'),status);
    assert.equal(status.statusCode,200);
+   assert.equal(JSON.parse(status.body).configured,true);
    assert.equal(JSON.parse(status.body).methods.internal,true);
+   assert.equal(JSON.parse(status.body).methods.google,false);
 
    const login=mkres();
    await handler(req('GET','/api/owner-auth?action=login'),login);
