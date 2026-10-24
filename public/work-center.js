@@ -271,6 +271,12 @@ function auditMarkup(row,events){
   }
   html+='</div>';
  }
+ if(row&&row.completionSyncState==='VERIFY_EVIDENCE_MISSING'){
+  const reasons=Array.isArray(row.completionMissing)?row.completionMissing.slice(0,12):[];
+  html+='<h4>CHƯA ĐỦ ĐIỀU KIỆN HOÀN TẤT</h4>'
+   +'<div class="tiq-audit-grid"><div><small>Trạng thái nguồn</small><strong>GitHub đã đóng nhưng chưa đủ biên nhận V2</strong></div>'
+   +'<div><small>Thiếu bằng chứng</small><strong>'+esc(reasons.length?reasons.join(' · '):'Chưa xác minh')+'</strong></div></div>';
+ }
  const list=Array.isArray(events)?events:[];
  html+='<h4>NHẬT KÝ HOẠT ĐỘNG ('+list.length+')</h4>';
  if(!list.length)return html+'<p class="tiq-audit-empty">Chưa có sự kiện gắn biên nhận được xác minh. Không suy diễn từ trạng thái hoặc thời gian cập nhật GitHub.</p>';
