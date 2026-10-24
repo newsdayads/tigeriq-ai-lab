@@ -19,7 +19,7 @@ export function safePackage(s) {
 export function safeFilename(s) {
   return typeof s === 'string' && s.length <= 110 &&
     /^[A-Za-z0-9][A-Za-z0-9 _().-]*\.(?:apk|txt|json|csv|pdf|png|jpg|jpeg|webp|mp4|zip)$/i.test(s) &&
-    !s.includes('..') && !s.endsWith(' ');
+    !s.includes('..') && !s.endsWith(' ') && !/^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])\./i.test(s);
 }
 export function validBatch(b) {
   if (!b || !Array.isArray(b.serials) || b.serials.length < 1 ||
@@ -34,7 +34,7 @@ export function fileInDrop(drop, filename) {
   if (!safeFilename(filename)) throw Error('Tên tệp không hợp lệ');
   const full = path.resolve(drop, filename);
   if (path.dirname(full) !== path.resolve(drop)) throw Error('Tệp nằm ngoài thư mục drop');
-  if (!fs.existsSync(full) || !fs.statSync(full).isFile()) throw Error('Không tìm thấy tệp trong drop');
+  if (!fs.existsSync(full) || !fs.lstatSync(full).isFile()) throw Error('Không tìm thấy tệp thông thường trong drop');
   if (fs.statSync(full).size > FILE_LIMIT) throw Error('Tệp quá lớn');
   return full;
 }
