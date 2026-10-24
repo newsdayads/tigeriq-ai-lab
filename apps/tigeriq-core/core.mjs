@@ -1,3 +1,4 @@
+import { evaluateGithubAutoworkOutput } from './github-autowork-acceptance.mjs';
 import { executeFencedPaperclipBrokerInstall, executeFencedPaperclipHealth } from './paperclip-direct-lease.mjs';
 import { readFencedPaperclipHealth } from '../openclaw-tigeriq-runtime/paperclip-lab.mjs';
 import { inspectPaperclipBackupProvenance } from '../openclaw-tigeriq-runtime/paperclip-backup-provenance.mjs';
@@ -2029,6 +2030,18 @@ async function runJob(j) {
     const stabilityAllowlist=stabilityV2EmployeeAllowlist(j.objective_metadata);
     const employeeAllowlist=j.kind==='github_api_autowork'?githubAutoworkEmployeeAllowlist(j,CORE_AUTOWORK_EMPLOYEES):stabilityAllowlist;
     let routed=await invokeRouted(routedPrompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:effectiveCoreJobRoutingProfile(j),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist,validateText,compiledPacket});
+    const autoworkOutput=evaluateGithubAutoworkOutput({
+      kind:j.kind,text:routed.text,resourceScope:j.objective_metadata?.resourceScope||'',
+      employeeId:routed.resource?.id,resourceId:routed.resource?.resourceId,
+    });
+    if(autoworkOutput.applicable&&!autoworkOutput.accepted){
+      await event('GITHUB_AUTOWORK_OUTPUT_REJECTED',{
+        objectiveId:j.objective_id,jobId:j.id,code:autoworkOutput.code,
+        employeeId:routed.resource?.id||null,resourceId:routed.resource?.resourceId||null,
+        missingQuestions:autoworkOutput.missingQuestions||[],
+      });
+      throw Object.assign(new Error(autoworkOutput.code),{kind:'invalid_response'});
+    }
     let executionGate=null;
     if(String(j.kind||'').startsWith('compiled_')){
       const packet=executionPacketFromPrompt(j.prompt);
@@ -2090,7 +2103,7 @@ async function runJob(j) {
     await event('SKILL_ROUTING_CHAIN',{objectiveId:j.objective_id,...skillRoutingChain});
     await hotPathStage(j,'EVIDENCE',{providerLatencyMs:routed.latencyMs,employeeId:routed.resource.id,resourceId:routed.resource.resourceId});
     const hadResourceWait=Number(j.resource_wait_count||0)>0;
-    await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,result=$7,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,routed.resource.id,routed.resource.resourceId,routed.resource.provider,routed.routingProfile,JSON.stringify(routed.routingDecision),JSON.stringify({text:routed.text,reviewEvidence,executionGate,skillRoutingChain,latencyMs:routed.latencyMs,failures:routed.failures,resourceId:routed.resource.resourceId,routingProfile:routed.routingProfile,routingDecision:routed.routingDecision})]);
+    await pool.query("update tigeriq_jobs set status='done',employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,result=$7,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,routed.resource.id,routed.resource.resourceId,routed.resource.provider,routed.routingProfile,JSON.stringify(routed.routingDecision),JSON.stringify({text:routed.text,reviewEvidence,executionGate,autoworkAcceptance:autoworkOutput.receipt||null,skillRoutingChain,latencyMs:routed.latencyMs,failures:routed.failures,resourceId:routed.resource.resourceId,routingProfile:routed.routingProfile,routingDecision:routed.routingDecision})]);
     await emitSkillEffectivenessObservations({
       job:j,
       skillContext:jobSkillContext,
