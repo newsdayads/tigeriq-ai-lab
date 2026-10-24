@@ -32,7 +32,8 @@ describe('Core public evidence for direct PC receipts', () => {
     });
     expect(JSON.stringify(valid)).not.toContain('Worker produces evidence');
     const invalid=nativeR04ReportContractAudit(report.replace('Q14:', 'Q14:\nNEXT_ACTION: '));
-    expect(invalid.structuralPass).toBe(true);
+    expect(invalid.structuralPass).toBe(false);
+    expect(invalid.missingFields.Q14).toContain('nextAction');
     const missingSource=nativeR04ReportContractAudit(report.replace(
       'REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: Core /health 2026-10-24T05:07:51Z.',
       'Source unknown without timestamp.'
@@ -40,6 +41,52 @@ describe('Core public evidence for direct PC receipts', () => {
     expect(missingSource.structuralPass).toBe(false);
     expect(missingSource.missingFields.Q01).toContain('evidenceSource');
     expect(missingSource.missingFields.Q01).toContain('evidenceTimestamp');
+  });
+
+  it('rejects present-but-empty Q fields, echoed field labels, and prompt placeholders',()=>{
+    const report=Array.from({length:14},(_,i)=>[
+      'Q'+String(i+1).padStart(2,'0')+':',
+      'OBSERVATION: Core runtime was inspected.',
+      'REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: Core /health 2026-10-24T05:07:51Z.',
+      'EXPECTED: A timestamped real-source receipt.',
+      'DEVIATION: NONE.',
+      'CONFIDENCE: HIGH.',
+      'NEXT_ACTION: Independently check provenance.',
+    ].join('\n')).join('\n');
+    const cases=[
+      ['OBSERVATION: Core runtime was inspected.','OBSERVATION:   ','observation'],
+      ['EXPECTED: A timestamped real-source receipt.','EXPECTED:','expected'],
+      ['DEVIATION: NONE.','DEVIATION: <specific factual value or explicit UNKNOWN>','deviation'],
+      ['NEXT_ACTION: Independently check provenance.','NEXT_ACTION: ...','nextAction'],
+      ['OBSERVATION: Core runtime was inspected.','The OBSERVATION term is mentioned but not answered.','observation'],
+      ['OBSERVATION: Core runtime was inspected.','OBSERVATION: Core runtime was inspected.\nOBSERVATION: conflicting value','observation'],
+    ];
+    for(const [before,after,key] of cases){
+      const audit=nativeR04ReportContractAudit(report.replace(before,after));
+      expect(audit).toMatchObject({
+        foundQuestionCount:14,questionsWithAllRequiredFields:13,
+        structuralPass:false,independentFactualVerification:false,
+      });
+      expect(audit.missingFields.Q01).toContain(key);
+      expect(JSON.stringify(audit)).not.toContain('Core runtime was inspected');
+    }
+    expect(nativeR04ReportContractAudit(report).structuralPass).toBe(true);
+  });
+
+  it('accepts a complete R04 markdown-bold label syntax without accepting blank fields',()=>{
+    const q=Array.from({length:14},(_,i)=>[
+      'Q'+String(i+1).padStart(2,'0')+':',
+      '**OBSERVATION:** Runtime source inspected.',
+      '**REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP:** /health observed 2026-10-24T05:07:51Z.',
+      '**EXPECTED:** Source evidence must be traceable.',
+      '**DEVIATION:** UNKNOWN pending independent audit.',
+      '**CONFIDENCE:** UNKNOWN.',
+      '**NEXT_ACTION:** Compare authenticated source data.',
+    ].join('\n')).join('\n');
+    const audit=nativeR04ReportContractAudit(q);
+    expect(audit.questionsWithAllRequiredFields).toBe(14);
+    expect(audit.structuralPass).toBe(true);
+    expect(audit.independentFactualVerification).toBe(false);
   });
 
   it('does not use an unrelated observation timestamp to certify an unknown evidence source',()=>{
