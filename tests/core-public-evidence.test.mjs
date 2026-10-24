@@ -3,12 +3,60 @@ import {
   appendPublicEvidenceToSummary,
   buildPublicJobEvidenceRecord,
   verifiedR04AutoworkSourceAttestation,
+  nativeR04ReportContractAudit,
+  nativeR04JobEventAudit,
   extractPublicEvidence,
   parsePublicEvidenceKeys,
   validatePublicEvidenceKeys,
 } from '../apps/tigeriq-core/public-evidence.mjs';
 
 describe('Core public evidence for direct PC receipts', () => {
+  it('retrospectively audits a native 14-question output without publishing content',()=>{
+    const report=Array.from({length:14},(_,i)=>{
+      const id='Q'+String(i+1).padStart(2,'0');
+      return [
+        id+':',
+        'OBSERVATION: Core runtime checked independently.',
+        'REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: Core /health 2026-10-24T05:07:51Z.',
+        'EXPECTED: Worker produces evidence with accurate source data.',
+        'DEVIATION: UNKNOWN until independently reviewed.',
+        'CONFIDENCE: UNKNOWN.',
+        'NEXT_ACTION: Review the raw claim against a trustworthy source.',
+      ].join('\n');
+    }).join('\n');
+    const valid=nativeR04ReportContractAudit(report);
+    expect(valid).toMatchObject({
+      requiredQuestionCount:14,foundQuestionCount:14,questionsWithAllRequiredFields:14,
+      questionsWithTimestamp:14,questionsWithConfidenceValue:14,
+      structuralPass:true,independentFactualVerification:false,missingFields:{},
+    });
+    expect(JSON.stringify(valid)).not.toContain('Worker produces evidence');
+    const invalid=nativeR04ReportContractAudit(report.replace('Q14:', 'Q14:\nNEXT_ACTION: '));
+    expect(invalid.structuralPass).toBe(true);
+    const missingSource=nativeR04ReportContractAudit(report.replace(
+      'REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: Core /health 2026-10-24T05:07:51Z.',
+      'Source unknown without timestamp.'
+    ));
+    expect(missingSource.structuralPass).toBe(false);
+    expect(missingSource.missingFields.Q01).toContain('evidenceSource');
+    expect(missingSource.missingFields.Q01).toContain('evidenceTimestamp');
+  });
+
+  it('checks authentic claim, resource success and JOB_DONE for one matching worker/resource',()=>{
+    const row={id:'JOB-OBJ-GH-5235-F1-test',employee_id:'NV12',resource_id:'res:gemini:free'};
+    const events=[
+      {type:'HOTPATH_STAGE',job_id:row.id,data:{stage:'CLAIMED'}},
+      {type:'RESOURCE_SUCCESS',job_id:row.id,employee_id:'NV12',resource_id:row.resource_id},
+      {type:'JOB_DONE',job_id:row.id,employee_id:'NV12',resource_id:row.resource_id},
+      {type:'RESOURCE_SUCCESS',job_id:'OTHER',employee_id:'NV12',resource_id:row.resource_id},
+    ];
+    expect(nativeR04JobEventAudit(row,events)).toMatchObject({
+      claimed:true,resourceSuccess:true,jobDone:true,workerAndResourceConsistent:true,allEventsVerified:true,
+    });
+    expect(nativeR04JobEventAudit(row,events.slice(0,2)).allEventsVerified).toBe(false);
+    expect(nativeR04JobEventAudit(row,[events[0],{...events[1],employee_id:'NV09'},events[2]]).allEventsVerified).toBe(false);
+  });
+
   it('exposes only a redacted source attestation for a genuine terminal R04 Core job', () => {
     const stamp='2026-10-24T04:42:00.000Z';
     const secretText='SECRET_DO_NOT_LEAK_Q01_Q14';
