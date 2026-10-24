@@ -4,12 +4,31 @@ import { fileURLToPath } from 'node:url';
 // Bundled PC01 runtime may not yet have the shared parser; fail closed, never fake DONE.
 const completionModule=await import('../shared/work-center-history.mjs').catch(()=>import('../../apps/shared/work-center-history.mjs').catch(()=>null));
 const completionProof=completionModule?.completionProof||(()=>({verified:false,timing:null}));
+function sourceCompletionDiagnostic(issue={}){
+  const closed=String(issue?.state||'').toLowerCase()==='closed';
+  const proof=completionProof(issue);
+  const body=String(issue?.body||'');
+  const done=/^DONE=true$/mi.test(body);
+  const missing=[...(proof?.contract?.missing||[])];
+  if(!done)missing.push('DONE_NOT_ACCEPTED');
+  if(!proof?.timing?.startVerified)missing.push('START_RECEIPT_MISSING');
+  if(!proof?.timing?.finishVerified)missing.push('FINISH_RECEIPT_MISSING');
+  if(Number(proof?.checkedSteps||0)<2)missing.push('CHECKLIST_INCOMPLETE');
+  else if(proof.checkedEvidenceSteps!==proof.checkedSteps)missing.push('CHECKLIST_STEP_EVIDENCE_MISSING');
+  if(proof?.consistent===false)missing.push('PROGRESS_COUNTER_MISMATCH');
+  return {
+    state:proof.verified?'DONE_ACCEPTED':closed?'VERIFY_EVIDENCE_MISSING':'OPEN_NOT_ACCEPTED',
+    sourceDoneDeclared:done,missing:proof.verified?[]:[...new Set(missing)].slice(0,24)
+  };
+}
+
 // Optional source-only adapter. Missing PC bundle asset must fail closed without breaking Web Control.
 const approvalModule=await import('../shared/owner-one-tap-approval.mjs').catch(()=>import('../../apps/shared/owner-one-tap-approval.mjs').catch(()=>import('./owner-one-tap-approval.mjs').catch(()=>null)));
 const projectApproval=approvalModule?.projectOwnerApprovalIssue||(()=>({ok:false}));
 import { normalizeRuntimeResources, refreshRegistryWorkforce, workforceSnapshot, aggregateWorkforceHealth } from './workforce-registry.mjs';
 import { ownerStatusIcon, ownerStatusVectorIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
 import { workOrderChecklistSteps } from './work-order-checklist-hard-gate.mjs';
+// PC01 Web Control is an isolated atomic bundle: no new static shared import.
 
 const HOST = process.env.TIGERIQ_WEB_CONTROL_HOST?.trim() || '0.0.0.0';
 const PORT = Number(process.env.TIGERIQ_WEB_CONTROL_PORT || 8796);
@@ -114,6 +133,7 @@ export function projectWorkOrder(issue, source = {}) {
   const owner=ownerControlled&&!executable?'OWNER':rawOwner;
   const closed=String(issue?.state||'').toLowerCase()==='closed';
   const proof=closed?completionProof(issue):{verified:false,timing:null};
+  const completionSync=sourceCompletionDiagnostic(issue);
   const isSystem=systemWorkOrder(issue,body);
   const ownerGate=/OWNER_GATE|WAIT(?:ING)?_OWNER|WAIT_ANH_SON|CHỜ_ANH_SƠN/.test(marker);
   // Never expose an approval action without a fresh, authenticated Owner-authored GitHub issue.
@@ -147,6 +167,7 @@ export function projectWorkOrder(issue, source = {}) {
     bucket,bucketIcon:ownerStatusIcon(bucket),bucketIconName:ownerStatusVectorIcon(bucket),
     owner,assignee:owner,closed,ownerApproval:approvalProjection.ok?approvalProjection.card:null,
     completionVerified:proof.verified,lifecycleTiming:proof.timing,workKind:isSystem?'SYSTEM':'WORK',
+    completionSyncState:completionSync.state,completionMissing:closed?completionSync.missing:[],sourceDoneDeclared:completionSync.sourceDoneDeclared,
     projectName:machineValue(body,'PROJECT_NAME')||machineValue(body,'PROJECT_ID')||'TigerIQ',
     workstreamName:machineValue(body,'WORKSTREAM_NAME')||machineValue(body,'WORKSTREAM_ID')||'Công việc',
     currentStep:machineValue(body,'CURRENT_STEP')||null,

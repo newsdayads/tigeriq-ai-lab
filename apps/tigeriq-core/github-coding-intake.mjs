@@ -8,6 +8,7 @@ import {addTerminalBlockedLabel,clearTerminalBlockedLabel} from './github-lifecy
 import {githubRequestJson} from './github-shared-client.mjs';
 import {githubEventIssue,subscribeGithubEvents} from './github-event-bus.mjs';
 import {localizeOwnerFacingText} from './owner-facing-vietnamese.mjs';
+import {codingIssueCompletionGate} from '../shared/work-order-acceptance-sync.mjs';
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
 export const DEFAULT_CODING_URL='http://127.0.0.1:8797';
@@ -694,7 +695,19 @@ Continue only after the canonical source materially changed. Execute zero-cost r
         continue;
       }
       if(!(await hasCompletedCodingResult(pool,n))){
-        await comment(fetchImpl,owner,repo,n,token,`[RESULT] ${id} completed. ${String(objective.summary||'').slice(0,3000)}`);
+        // A merged PR and a completed Coding objective are not full Work Order
+        // acceptance. Verify the source's Lifecycle V2 receipts BEFORE closure.
+        // A missing receipt must never be manufactured by the reconciler.
+        const gate=codingIssueCompletionGate(currentIssue);
+        if(!gate.canClose){
+          if(!(await objectiveMarkerExists(pool,'GITHUB_CODING_AWAITING_ACCEPTANCE',n,id))){
+            await comment(fetchImpl,owner,repo,n,token,`[CODE_COMPLETED_AWAITING_ACCEPTANCE] objective=${id} issue=#${n} coding_source_done=true product_done=false reason=${gate.missing.join(',').slice(0,900)}. Keep GitHub open; complete the canonical issue with real Lifecycle V2 start/finish/checklist receipts and downstream acceptance before closing.`);
+            await mark(pool,'GITHUB_CODING_AWAITING_ACCEPTANCE',{issueNumber:n,codingObjectiveId:id,sourceRevision:currentSourceRevision||null,missing:gate.missing});
+            results++;
+          }
+          continue;
+        }
+        await comment(fetchImpl,owner,repo,n,token,`[RESULT] ${id} completed with verified source Lifecycle V2. ${String(objective.summary||'').slice(0,3000)}`);
         await close(fetchImpl,owner,repo,n,token);
         await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
         await mark(pool,'GITHUB_CODING_RESULT_REPORTED',{issueNumber:n,codingObjectiveId:id,status:'completed',sourceRevision:currentSourceRevision||null});

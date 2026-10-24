@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import {buildWorkHistory,recentCommentPages,latestComments} from '../shared/work-center-history.mjs';
+import {sourceCompletionDiagnostic} from '../shared/work-order-acceptance-sync.mjs';
 import { Pool } from 'pg';
 import { createGeminiRateController } from '../shared/gemini-rate-control.mjs';
 import { isManagerPrompt, isRetryableManagerOutputError, managerExhaustionRetryPlan, managerLocalRequestBody, managerProviderBodyForHost as _managerProviderBodyForHost, managerResponseFormatForHost, parseManagerJson, runBoundedManagerDecision } from './manager-json.mjs';
@@ -3109,6 +3110,8 @@ async function githubWorkOrders(){
         priority:issuePriority(x),
         state:x.state,
         bucket:issueBucket(x),
+        completionSyncState:sourceCompletionDiagnostic(x).state,
+        completionMissing:x.state==='closed'?sourceCompletionDiagnostic(x).missing:[],
         owner:issueOwner(x),
         workKind:isSystemIssue(x,body)?'SYSTEM':'WORK',
         currentStep:issueField(body,'CURRENT_STEP')||null,

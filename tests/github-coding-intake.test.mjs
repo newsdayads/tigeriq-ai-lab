@@ -214,7 +214,7 @@ describe('GitHub coding intake guard',()=>{
     expect(parseCodingIssue(issue(`${SAFE}\nAUTO_QUEUE=INCLUDED\nCURRENT_STATE=READY\n## HISTORICAL SUPERSEDED\nTIGERIQ_EXECUTABLE=false\nNO_PAID_COST=false\nAUTO_QUEUE=EXCLUDED_HISTORIC\nCURRENT_STATE=FAILED_OLD`))).toMatchObject({number:777});
   });
 
-  it('reconciles a completed coding objective with current true despite historical false flags',async()=>{
+  it('preserves source reconciliation but does not close without V2 acceptance despite historical flags',async()=>{
     const n=865,id='obj-865',body=`${SAFE}\nAUTO_QUEUE=INCLUDED\nCURRENT_STATE=READY\n## HISTORICAL\nTIGERIQ_EXECUTABLE=false\nAUTO_QUEUE=EXCLUDED_OLD`;
     const current=issue(body,{number:n});
     const revision=codingSourceTruthRevision(current,[]);
@@ -233,8 +233,9 @@ describe('GitHub coding intake guard',()=>{
       return response({});
     };
     await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
-    expect(pool.events.filter(x=>x.type==='GITHUB_CODING_RESULT_REPORTED')).toHaveLength(1);
-    expect(calls).toContain('close');
+    expect(pool.events.filter(x=>x.type==='GITHUB_CODING_RESULT_REPORTED')).toHaveLength(0);
+    expect(pool.events.filter(x=>x.type==='GITHUB_CODING_AWAITING_ACCEPTANCE')).toHaveLength(1);
+    expect(calls).not.toContain('close');
     expect(calls).toContain('result');
   });
 
@@ -431,7 +432,7 @@ describe('GitHub coding continuity supervisor',()=>{
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RETRY_DISPATCHED')).toHaveLength(1);
   });
 
-  it('retries the same blocked issue, completes it, then releases and dispatches its dependent child',async()=>{
+  it('does not release a dependent issue on coding completion without V2 acceptance',async()=>{
     const pool=fakePool();
     pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:705,codingObjectiveId:'obj-705'}});
     pool.events.push({type:'GITHUB_CODING_DEPENDENCY_WAIT',data:{issueNumber:706,dependsOn:[705],reason:'DEPENDENCY_OPEN'}});
@@ -468,13 +469,14 @@ describe('GitHub coding continuity supervisor',()=>{
 
     phase=1;
     await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',now:()=>1000});
-    expect(closed).toBe(true);
-    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RESULT_REPORTED')).toHaveLength(1);
+    expect(closed).toBe(false);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_AWAITING_ACCEPTANCE')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RESULT_REPORTED')).toHaveLength(0);
 
     const next=await materializeGithubCodingIssues({pool,fetchImpl,token:'fake'});
-    expect(next.created).toBe(1);
-    expect(posts.some(text=>text.includes('#706'))).toBe(true);
-    expect(pool.events.filter(e=>e.type==='GITHUB_DEPENDENCY_RELEASED')).toHaveLength(1);
+    expect(next.created).toBe(0);
+    expect(posts.some(text=>text.includes('#706'))).toBe(false);
+    expect(pool.events.filter(e=>e.type==='GITHUB_DEPENDENCY_RELEASED')).toHaveLength(0);
   });
 
   it('reconciles transient blocked dispatches even when their marker is older than 100 unrelated dispatch events',async()=>{
@@ -1249,7 +1251,7 @@ describe('GitHub coding source revision completion guard',()=>{
     expect(pool.events.find(e=>e.type==='GITHUB_CODING_TERMINAL_LABEL_SYNCED')?.data).toMatchObject({codingObjectiveId:'obj-831',historical:true});
   });
 
-  it('closes a completed Work Order only when dispatch and current source revisions match',async()=>{
+  it('retains completed Coding result as pending when source revision matches but V2 receipts are missing',async()=>{
     const pool=fakePool();const current=issue(SAFE+'\nRESOURCE_SCOPE=REV_SAME\nALLOW_PATH_PREFIX=docs/evidence/rev-same.md',{number:821,title:'Revision same'});
     const rev=codingSourceTruthRevision({...current,repository_owner:'newsdayads'},[]);
     pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:821,codingObjectiveId:'obj-821',sourceRevision:rev,scopeLease:{resourceScope:'REV_SAME',paths:['docs/evidence/rev-same.md'],ambiguous:false}}});
@@ -1269,9 +1271,10 @@ describe('GitHub coding source revision completion guard',()=>{
       return response({});
     };
     await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
-    expect(closed).toBe(true);
-    expect(lifecycleCalls).toEqual(['result-comment','close-issue','clear-label']);
-    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RESULT_REPORTED')).toHaveLength(1);
+    expect(closed).toBe(false);
+    expect(lifecycleCalls).toEqual(['result-comment']);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_AWAITING_ACCEPTANCE')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RESULT_REPORTED')).toHaveLength(0);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REJECTED')).toHaveLength(0);
   });
 
@@ -1381,7 +1384,7 @@ describe('GitHub coding source revision completion guard',()=>{
     expect(pool.events.find(e=>e.type==='GITHUB_CODING_DISPATCHED')?.data).toMatchObject({issueNumber:1601,codingObjectiveId:'obj-1601',sourceRevision:revision});
   });
 
-  it('closes a completed objective only when dispatch revision still matches',async()=>{
+  it('holds completed objective open until source acceptance even when dispatch revision matches',async()=>{
     const pool=fakePool(); let closed=false;
     const current=issue(SAFE+'\nRESOURCE_SCOPE=REV_SAME\nALLOW_PATH_PREFIX=tests/github-coding-intake.test.mjs',{number:1602,title:'Same revision completion',comments:0});
     const revision=codingSourceTruthRevision({...current,repository_owner:'newsdayads'},[]);
@@ -1398,8 +1401,9 @@ describe('GitHub coding source revision completion guard',()=>{
       return response({});
     };
     await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
-    expect(closed).toBe(true);
-    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RESULT_REPORTED')).toHaveLength(1);
+    expect(closed).toBe(false);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_AWAITING_ACCEPTANCE')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RESULT_REPORTED')).toHaveLength(0);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REJECTED')).toHaveLength(0);
   });
 
