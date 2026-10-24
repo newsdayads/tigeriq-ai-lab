@@ -347,6 +347,22 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(rows.at(-1)).toMatchObject({ number: 1888, status: 'WAITING', waitReason: 'P0 chờ Owner/assignment' });
   });
 
+  it('honors only eligible and same-priority Owner queue ordering', () => {
+    const entries=[
+      {number:5144,priority:'P1',status:'QUEUED',ownerDirect:true},
+      {number:5290,priority:'P1',status:'QUEUED',ownerDirect:true},
+      {number:5235,priority:'P1',status:'QUEUED',ownerDirect:true},
+      {number:5189,priority:'P1',status:'WAITING',ownerDirect:true,waitReason:'dependency'},
+      {number:5999,priority:'P0',status:'QUEUED',ownerDirect:true},
+      {number:6300,priority:'P2',status:'QUEUED',ownerDirect:true},
+    ];
+    const rows=rankQueueRows(entries,[5290,5144,5235,5189,5999]);
+    expect(rows.map(row=>row.number)).toEqual([5290,5144,5235,6300,5189,5999]);
+    expect(rows.filter(row=>row.eligibleNow).map(row=>row.dispatchRank)).toEqual([1,2,3,4]);
+    expect(rows.find(row=>row.number===5189).eligibleNow).toBe(false);
+    expect(rows.find(row=>row.number===5999).eligibleNow).toBe(false);
+  });
+
   it('uses OWNER_DIRECT only as a same-priority tie-break among executable rows', () => {
     const rows = [
       { number: 30, priority: 'P2', effectivePriority: 'P2', ownerDirect: true, status: 'QUEUED' },
