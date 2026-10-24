@@ -286,6 +286,35 @@ export function extractPublicEvidence(jobResult,requestedKeys=[]){
   return out;
 }
 
+/**
+ * Redacted, pre-existing public-evidence surface for the canonical R04 Core
+ * autowork job only. A worker-generated quality receipt is NOT independent
+ * acceptance; the underlying model text must never cross this API.
+ */
+export function verifiedR04AutoworkSourceAttestation(row={}) {
+  if (row?.kind !== 'github_api_autowork' || row?.status !== 'done') return null;
+  const proof = row?.result?.autoworkAcceptance;
+  if (!proof || typeof proof !== 'object' || Array.isArray(proof)) return null;
+  if (proof.code !== 'GITHUB_AUTOWORK_SOURCE_OUTPUT_ACCEPTED' || proof.productAccepted !== false) return null;
+  if (!/^TIGERIQ_CORE_NATIVE_R04_Q01_Q14_5144(?:_|$)/.test(String(proof.resourceScope || ''))) return null;
+  if (proof.questionCount !== 14 || !Number.isSafeInteger(proof.characterCount) || proof.characterCount < 224 || proof.characterCount > 500000) return null;
+  if (typeof proof.textSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(proof.textSha256)) return null;
+  if (typeof row.employee_id !== 'string' || !/^NV\d{2}$/.test(row.employee_id) || row.employee_id !== proof.employeeId) return null;
+  if (typeof row.resource_id !== 'string' || row.resource_id.length < 3) return null;
+  const completed = row.completed_at instanceof Date ? row.completed_at : new Date(row.completed_at);
+  if (!Number.isFinite(completed.getTime()) || completed.getTime() > Date.now() + 60000) return null;
+  return {
+    schema: 'TIGERIQ_NATIVE_R04_SOURCE_ATTESTATION_V1',
+    status: 'SOURCE_OUTPUT_ACCEPTED_ONLY',
+    outputSha256: proof.textSha256,
+    characterCount: proof.characterCount,
+    questionCount: 14,
+    employeeId: row.employee_id,
+    completedAt: completed.toISOString(),
+    productAccepted: false,
+  };
+}
+
 export function buildPublicJobEvidenceRecord(row={}){
   const metadata=row?.objective_metadata&&typeof row.objective_metadata==='object'&&!Array.isArray(row.objective_metadata)?row.objective_metadata:{};
   const requested=Array.isArray(metadata.publicEvidenceKeys)?metadata.publicEvidenceKeys:[];
@@ -298,6 +327,8 @@ export function buildPublicJobEvidenceRecord(row={}){
     requestedKeys:[...new Set(requested.filter(key=>SUPPORTED_SET.has(String(key))).map(String))],
     evidence,
   };
+  const sourceAttestation=verifiedR04AutoworkSourceAttestation(row);
+  if(sourceAttestation)out.sourceAttestation=sourceAttestation;
   if(metadata.publicEvidenceDiagnostic===true&&out.requestedKeys.length&&!Object.keys(evidence).length){
     out.diagnostic=buildPublicEvidenceDiagnostic(row?.result,out.requestedKeys,{
       metadataPublicEvidenceKeysPresent:true,

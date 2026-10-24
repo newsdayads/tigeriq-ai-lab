@@ -2,12 +2,65 @@ import { describe, expect, it } from 'vitest';
 import {
   appendPublicEvidenceToSummary,
   buildPublicJobEvidenceRecord,
+  verifiedR04AutoworkSourceAttestation,
   extractPublicEvidence,
   parsePublicEvidenceKeys,
   validatePublicEvidenceKeys,
 } from '../apps/tigeriq-core/public-evidence.mjs';
 
 describe('Core public evidence for direct PC receipts', () => {
+  it('exposes only a redacted source attestation for a genuine terminal R04 Core job', () => {
+    const stamp='2026-10-24T04:42:00.000Z';
+    const secretText='SECRET_DO_NOT_LEAK_Q01_Q14';
+    const row={
+      id:'JOB-OBJ-GH-5235-RREV-API-AUTOWORK',
+      objective_id:'OBJ-GH-5235-RREV',
+      kind:'github_api_autowork',
+      status:'done',
+      employee_id:'NV12',
+      resource_id:'res:free:NV12',
+      completed_at:stamp,
+      objective_metadata:{},
+      result:{text:secretText,autoworkAcceptance:{
+        code:'GITHUB_AUTOWORK_SOURCE_OUTPUT_ACCEPTED',
+        resourceScope:'TIGERIQ_CORE_NATIVE_R04_Q01_Q14_5144_20261023',
+        productAccepted:false,
+        questionCount:14,
+        characterCount:860,
+        employeeId:'NV12',
+        textSha256:'c'.repeat(64),
+      }},
+    };
+    const record=buildPublicJobEvidenceRecord(row);
+    expect(record).toMatchObject({
+      status:'done', requestedKeys:[], evidence:{},
+      sourceAttestation:{
+        schema:'TIGERIQ_NATIVE_R04_SOURCE_ATTESTATION_V1',
+        status:'SOURCE_OUTPUT_ACCEPTED_ONLY',
+        outputSha256:'c'.repeat(64),
+        questionCount:14,employeeId:'NV12',
+        completedAt:stamp,productAccepted:false,
+      },
+    });
+    expect(JSON.stringify(record)).not.toContain(secretText);
+    expect(JSON.stringify(record)).not.toContain('res:free:NV12');
+    for(const invalid of [
+      {...row,status:'failed'},
+      {...row,kind:'pc_operator'},
+      {...row,employee_id:'NV09'},
+      {...row,resource_id:''},
+      {...row,completed_at:'not-a-date'},
+      {...row,result:{text:secretText}},
+      {...row,result:{...row.result,autoworkAcceptance:{...row.result.autoworkAcceptance,productAccepted:true}}},
+      {...row,result:{...row.result,autoworkAcceptance:{...row.result.autoworkAcceptance,questionCount:13}}},
+      {...row,result:{...row.result,autoworkAcceptance:{...row.result.autoworkAcceptance,textSha256:secretText}}},
+      {...row,result:{...row.result,autoworkAcceptance:{...row.result.autoworkAcceptance,resourceScope:'PRIVATE_WORKER_SCOPE'}}},
+    ]) {
+      expect(verifiedR04AutoworkSourceAttestation(invalid)).toBeNull();
+      expect(buildPublicJobEvidenceRecord(invalid).sourceAttestation).toBeUndefined();
+    }
+  });
+
 
   it('admits only bounded News file-read health keys and denies unknown keys',()=>{
     expect(validatePublicEvidenceKeys('PUBLIC_EVIDENCE_KEYS=ok,lastCycleAt,error,accessToken')).toEqual({
