@@ -55,6 +55,22 @@ describe('Core public evidence for direct PC receipts', () => {
     });
     expect(nativeR04JobEventAudit(row,events.slice(0,2)).allEventsVerified).toBe(false);
     expect(nativeR04JobEventAudit(row,[events[0],{...events[1],employee_id:'NV09'},events[2]]).allEventsVerified).toBe(false);
+
+    // Even if RESOURCE_SUCCESS and JOB_DONE belong to the right job, a
+    // claimed-stage event from a different worker or resource is not proof.
+    for(const conflictingClaim of [
+      {...events[0],employee_id:'NV09'},
+      {...events[0],resource_id:'res:other'},
+      {...events[0],employee_id:'NV09',resource_id:'res:other'},
+    ]){
+      expect(nativeR04JobEventAudit(row,[conflictingClaim,events[1],events[2]])).toMatchObject({
+        claimed:false,resourceSuccess:true,jobDone:true,
+        workerAndResourceConsistent:true,allEventsVerified:false,
+      });
+    }
+    expect(nativeR04JobEventAudit(row,[
+      {...events[0],employee_id:row.employee_id,resource_id:row.resource_id},events[1],events[2],
+    ]).allEventsVerified).toBe(true);
   });
 
   it('exposes only a redacted source attestation for a genuine terminal R04 Core job', () => {
