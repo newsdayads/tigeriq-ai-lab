@@ -11,7 +11,9 @@ const sources = Object.freeze({
   'scripts/s10-e2e.mjs':'545357bcbda71a9be2250788795ebfe4a1a01fda',
   'tests/s10-e2e.test.mjs':'688c6153dcc527a7037303e39532a9599c1f8437',
   'scripts/s10-preview.mjs':'b20c40f2eeee893b8f15f904ba14af243a494b19',
-  'tests/s10-preview.test.mjs':'6d2be9ae34c6f2fa7fdd4c2520a14d486f5d2485'
+  'tests/s10-preview.test.mjs':'6d2be9ae34c6f2fa7fdd4c2520a14d486f5d2485',
+  'scripts/build-standalone.mjs':'87740fb62f295cf0a492e3e06be435bd6d0ed115',
+  'tests/standalone.test.mjs':'56ecde3dd166faaa196671c406326754d5eba2f2'
 });
 const gate = (condition, label) => {if(!condition) throw Error(label);};
 const run = (program,args,cwd=game)=>{
@@ -42,11 +44,12 @@ async function verify(){
   }
   // A working preview is an actual built game over HTTP, not a static fixture.
   run(process.execPath,['scripts/build.mjs']);
+  run(process.execPath,['scripts/build-standalone.mjs']);
   const tap=run(process.execPath,['--test','--test-reporter=tap',
-    'tests/s10-e2e.test.mjs','tests/s10-preview.test.mjs']);
+    'tests/s10-e2e.test.mjs','tests/s10-preview.test.mjs','tests/standalone.test.mjs']);
   const getCount=name=>Number(new RegExp('^# '+name+' (\\d+)$','m').exec(tap)?.[1]);
   const tests=getCount('tests'),pass=getCount('pass'),fail=getCount('fail'),skipped=getCount('skipped');
-  gate(tests===21 && pass===21 && fail===0 && skipped===0,'G06_REGRESSION_MATRIX_NOT_21_OF_21');
+  gate(tests===25 && pass===25 && fail===0 && skipped===0,'G06_REGRESSION_MATRIX_NOT_25_OF_25');
   const preflight=JSON.parse(run(process.execPath,['scripts/s10-preflight.mjs','--dry-run']));
   const noAdapter=JSON.parse(run(process.execPath,['scripts/s10-e2e.mjs']));
   gate(preflight.code==='WAIT_RUNTIME_MCP_BINDING' && preflight.deviceMutation===false &&
