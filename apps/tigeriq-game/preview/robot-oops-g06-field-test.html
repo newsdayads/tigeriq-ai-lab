@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Robot Oops! — TigerIQ 5 màn offline</title>
+<style>
+:root{color-scheme:dark;font:16px system-ui,-apple-system,Segoe UI,sans-serif;background:#0a1427;color:#f4f9ff}
+*{box-sizing:border-box}body{margin:0;padding:16px}.app{max-width:680px;margin:auto}.small{font-size:12px;color:#c8d8f4}h1{font-size:36px;margin:10px 0}h2{font-size:23px}p{line-height:1.5;color:#cbd8ea}
+section{background:#142744;border:1px solid #385479;border-radius:16px;padding:15px;margin:16px 0}
+button{color:#fff;background:#30557e;border:1px solid #7794bc;border-radius:12px;min-height:46px;padding:10px 13px;margin:3px;font:inherit;cursor:pointer;touch-action:manipulation}button:focus-visible{outline:3px solid #ffd773}.primary{background:#3671ef}.edit{background:#6f5d28;border-color:#ffdd77}.chosen{outline:3px solid #77e3cc}button:disabled{opacity:.45}
+.board{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;background:#0b1930;max-width:430px;aspect-ratio:1;margin:16px auto;padding:5px;border-radius:12px}
+.cell{background:#234365;border-radius:5px;display:flex;justify-content:center;align-items:center;font-size:clamp(19px,7vw,38px);color:#fff}
+.cell:nth-child(odd){background:#1d3858}.commands,.choices,.actions{display:flex;flex-wrap:wrap;gap:5px;margin:10px 0}.commands button,.choices button{flex:1 1 135px}
+[hidden]{display:none!important}.won{color:#81f0c5}.failed{color:#ffb1a7}.status{min-height:22px;color:#c3eaff}.levels{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:7px}.levels button{text-align:left}
+</style></head><body><div class="app"><p class="small">TIGERIQ GAME · SẢN PHẨM OFFLINE · G06</p><h1>Robot Oops!</h1><p>Sửa một lệnh trong mỗi màn. Không cần mạng, tài khoản hoặc máy chủ.</p>
+<section id="select"><h2>Chọn màn</h2><div id="levels" class="levels"></div><p id="progress"></p></section>
+<section id="play" hidden><button id="back">Về chọn màn</button><h2 id="title"></h2><p id="goal"></p><div id="board" class="board" aria-label="Lưới 4x4"></div><p>Chạm lệnh màu vàng, chọn lệnh thay rồi bấm CHẠY.</p><div id="commands" class="commands"></div><div id="choices" class="choices" hidden></div><div class="actions"><button class="primary" id="run" disabled>CHẠY</button><button id="retry">Đặt lại</button></div></section>
+<section id="result" hidden><h2 id="resultTitle"></h2><p id="resultText" role="status"></p><div id="resultBoard" class="board"></div><div class="actions"><button id="again">Thử lại</button><button id="next" class="primary">Màn tiếp</button><button id="home">Chọn màn</button></div></section>
+<p id="status" class="status" role="status"></p><p class="small">Nguồn câu đố: GitHub main apps/tigeriq-game/src/engine/levels.ts. PC01 static sandbox; không phải nghiệm thu E2E vật lý Samsung S10.</p></div>
+<script>
+/** G02 canonical five-stage data. Source contract: docs/projects/tigeriq-game/ROBOT_OOPS_GAME_DESIGN.md. */
+const LEVELS = [
+  {id:'L01',name:'Lạc hướng',width:4,height:4,start:{x:0,y:1,heading:1},originalCommands:['MOVE','TURN_LEFT'],editableSlot:1,maxSteps:2,item:null,switch:null,delivery:null,obstacles:[],goal:{kind:'position',x:2,y:1}},
+  {id:'L02',name:'Rẽ sai',width:4,height:4,start:{x:0,y:2,heading:1},originalCommands:['MOVE','TURN_RIGHT','MOVE'],editableSlot:1,maxSteps:3,item:null,switch:null,delivery:null,obstacles:[],goal:{kind:'position',x:1,y:1}},
+  {id:'L03',name:'Bấm nhầm',width:4,height:4,start:{x:1,y:1,heading:1},originalCommands:['TURN_LEFT','MOVE','PRESS'],editableSlot:0,maxSteps:3,item:null,switch:{x:1,y:2},delivery:null,obstacles:[],goal:{kind:'switch'}},
+  {id:'L04',name:'Giao gói hàng',width:4,height:4,start:{x:0,y:1,heading:1},originalCommands:['MOVE','PICK','TURN_LEFT','DROP'],editableSlot:2,maxSteps:4,item:{x:1,y:1},switch:null,delivery:{x:2,y:1},obstacles:[],goal:{kind:'delivery'}},
+  {id:'L05',name:'Đường vòng',width:4,height:4,start:{x:0,y:2,heading:1},originalCommands:['MOVE','TURN_RIGHT','MOVE','TURN_RIGHT','MOVE'],editableSlot:1,maxSteps:5,item:null,switch:null,delivery:null,obstacles:[],goal:{kind:'position',x:2,y:1}},
+];
+const CM=['MOVE','TURN_LEFT','TURN_RIGHT','PICK','DROP','PRESS','WAIT'];const N={MOVE:'Đi tới',TURN_LEFT:'Quay trái',TURN_RIGHT:'Quay phải',PICK:'Nhặt',DROP:'Đặt',PRESS:'Nhấn',WAIT:'Đợi'};
+const F={OUT_OF_BOUNDS:'Robot đi ra ngoài lưới.',BLOCKED:'Robot bị chắn đường.',INVALID_PICK:'Robot chưa đứng tại gói hàng.',INVALID_DROP:'Robot chưa cầm hàng.',INVALID_PRESS:'Robot chưa đứng tại công tắc.',GOAL_NOT_MET:'Chưa hoàn thành mục tiêu.'};
+const $=x=>document.getElementById(x);let id=0,choice=null,done=[];
+try{done=JSON.parse(localStorage.getItem('tigeriq-g06-offline-completed')||'[]');if(!Array.isArray(done))done=[]}catch{done=[]}
+const eq=(a,b)=>a.x===b.x&&a.y===b.y;
+function simulate(l,c){let s={x:l.start.x,y:l.start.y,heading:l.start.heading,holding:false,pressed:false,delivered:false,remainingItem:l.item?{...l.item}:null};let reason='',steps=0;
+for(const cmd of c){if(steps>=l.maxSteps){reason='STEP_LIMIT';break}steps++;
+if(cmd==='TURN_LEFT')s.heading=(s.heading+3)%4;
+else if(cmd==='TURN_RIGHT')s.heading=(s.heading+1)%4;
+else if(cmd==='MOVE'){const [dx,dy]=[[0,-1],[1,0],[0,1],[-1,0]][s.heading];let p={x:s.x+dx,y:s.y+dy};if(p.x<0||p.y<0||p.x>=l.width||p.y>=l.height){reason='OUT_OF_BOUNDS';break}if(l.obstacles.some(x=>eq(x,p))){reason='BLOCKED';break}s.x=p.x;s.y=p.y}
+else if(cmd==='PICK'){if(s.holding||!s.remainingItem||!eq(s,s.remainingItem)){reason='INVALID_PICK';break}s.holding=true;s.remainingItem=null}
+else if(cmd==='DROP'){if(!s.holding){reason='INVALID_DROP';break}s.holding=false;s.delivered=!!l.delivery&&eq(s,l.delivery)}
+else if(cmd==='PRESS'){if(!l.switch||!eq(s,l.switch)){reason='INVALID_PRESS';break}s.pressed=true}
+}
+const g=l.goal;const win=!reason&&(g.kind==='position'?eq(s,g):g.kind==='switch'?s.pressed:s.delivered&&!s.holding);return {win,steps,reason:reason||(win?'SOLVED':'GOAL_NOT_MET'),state:s}}
+const add=(parent,name,callback,cls)=>{let b=document.createElement('button');b.textContent=name;if(cls)b.className=cls;b.onclick=callback;parent.appendChild(b);return b};
+function screen(x){for(const v of ['select','play','result'])$(v).hidden=v!==x;$('status').textContent=''}
+function grid(target,l,s){let p=$(target);p.replaceChildren();for(let y=0;y<4;y++)for(let x=0;x<4;x++){const c=document.createElement('div');c.className='cell';let marks=[];if(l.goal.kind==='position'&&l.goal.x===x&&l.goal.y===y)marks.push('★');if(l.switch&&l.switch.x===x&&l.switch.y===y)marks.push('◉');if(l.delivery&&l.delivery.x===x&&l.delivery.y===y)marks.push('◆');const item=s?s.remainingItem:l.item;if(item&&item.x===x&&item.y===y)marks.push('▣');const robot=s||l.start;if(robot.x===x&&robot.y===y)marks.push(['↑','→','↓','←'][robot.heading]);c.textContent=marks.join(' ');p.appendChild(c)}}
+function home(){const p=$('levels');p.replaceChildren();LEVELS.forEach((l,i)=>add(p,(i+1)+'. '+l.name+(done.includes(i)?' · Đã qua':''),()=>open(i)));$('progress').textContent='Đã vượt qua '+done.length+'/5 màn';screen('select')}
+function open(i){id=i;choice=null;const l=LEVELS[i];$('title').textContent='Màn '+(i+1)+'/5 · '+l.name;$('goal').textContent=l.goal.kind==='position'?'Đưa robot tới ô ('+l.goal.x+', '+l.goal.y+').':l.goal.kind==='switch'?'Nhấn công tắc ◉.':'Mang gói hàng ▣ tới đích ◆ rồi đặt xuống.';grid('board',l);let c=$('commands');c.replaceChildren();l.originalCommands.forEach((v,j)=>add(c,'Lệnh '+(j+1)+': '+N[v]+(j===l.editableSlot?' · CÓ THỂ SỬA':' · Cố định'),()=>{if(j!==l.editableSlot)return;let o=$('choices');o.hidden=false;o.replaceChildren();CM.filter(k=>k!==v).forEach(k=>add(o,N[k],()=>{choice=k;$('run').disabled=false;for(const b of o.children)b.classList.toggle('chosen',b.textContent===N[k]);$('status').textContent='Đã chọn '+N[k];}));},j===l.editableSlot?'edit':''));$('run').disabled=true;$('choices').hidden=true;screen('play')}
+function run(){const l=LEVELS[id];if(choice===null)return;let c=[...l.originalCommands];c[l.editableSlot]=choice;const r=simulate(l,c);if(r.win&&!done.includes(id)){done=[...done,id].sort();try{localStorage.setItem('tigeriq-g06-offline-completed',JSON.stringify(done))}catch{}}grid('resultBoard',l,r.state);$('resultTitle').textContent=r.win?'ĐÃ GIÚP ROBOT!':'CHƯA THÀNH CÔNG';$('resultTitle').className=r.win?'won':'failed';$('resultText').textContent=r.win?'Thành công sau '+r.steps+' bước.':F[r.reason]||'Robot chưa giải được màn này.';$('next').hidden=!r.win;$('next').textContent=id===4?'Chọn màn':'Màn tiếp';screen('result')}
+$('back').onclick=home;$('retry').onclick=()=>open(id);$('again').onclick=()=>open(id);$('home').onclick=home;$('next').onclick=()=>id===4?home():open(id+1);$('run').onclick=run;
+window.TigerIQGame={LEVELS,simulate};home();
+</script></body></html>
