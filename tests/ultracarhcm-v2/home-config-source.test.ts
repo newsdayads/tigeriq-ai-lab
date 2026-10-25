@@ -55,10 +55,10 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(create).not.toContain('tickHandler.post(clockTick)');
     expect(create).toContain('root.post { if (homeVisible && homeVideo == null) render() }');
     const resume = home.slice(home.indexOf('override fun onResume()'), home.indexOf('override fun onConfigurationChanged('));
-    expect(resume).toMatch(/homeVisible = true\\s*tickHandler\\.removeCallbacks\\(clockTick\\)\\s*tickHandler\\.post\\(clockTick\\)/);
+    expect(resume).toMatch(/homeVisible = true\s*tickHandler\.removeCallbacks\(clockTick\)\s*tickHandler\.post\(clockTick\)/);
     expect(resume).toContain('root.post { if (homeVisible && homeVideo == null) render() }');
     const stop = home.slice(home.indexOf('override fun onStop()'), home.indexOf('override fun onDestroy()'));
-    expect(stop).toMatch(/homeVisible = false\\s*tickHandler\\.removeCallbacks\\(clockTick\\)\\s*releaseHomeVideo\\(\\)\\s*super\\.onStop\\(\\)/);
+    expect(stop).toMatch(/homeVisible = false\s*tickHandler\.removeCallbacks\(clockTick\)\s*releaseHomeVideo\(\)\s*super\.onStop\(\)/);
     expect(home).toContain('root.post { if (homeVisible) render() }');
     expect(home).not.toContain('root.post { render() }');
     // Android lifecycle callback ownership is not physical Device/DeX QA.
