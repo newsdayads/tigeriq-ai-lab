@@ -4,8 +4,16 @@ import {pathToFileURL} from 'node:url';
 const LEVELS=Object.freeze(['L01','L02','L03','L04','L05']);
 const wait=(code,fields={})=>({workOrder:'GH-5284',code,status:'WAIT',mutated:false,
   productG06Done:false,...fields});
+// Match the exact native owner, lease and fencing token. Scope + phone serial
+// alone must never authorize a competing actor's session.
+const FENCE_ID=/^[A-Za-z0-9._:-]{12,128}$/;
+const validIntent=intent=>['ownerId','leaseId','fencingToken'].every(
+  key=>typeof intent?.[key]==='string'&&FENCE_ID.test(intent[key]));
 const leaseValid=(r,intent,serial)=>r?.accepted===true&&
+  r?.leaseState==='active'&&validIntent(intent)&&
   r?.scope===intent.resourceScope&&r?.deviceSerial===serial&&
+  r?.ownerId===intent.ownerId&&r?.leaseId===intent.leaseId&&
+  r?.fencingToken===intent.fencingToken&&
   Number.isFinite(r?.expiresAtMs)&&r.expiresAtMs>Date.now();
 
 /**
@@ -20,7 +28,8 @@ export async function runG06E2E({adapter=null,evidence={},ownerIntent=null}={}) 
   if(!adapter||['verifyFence','beginOnce','runLevel','cleanupOwned'].some(
     name=>typeof adapter[name]!=='function'))return wait('WAIT_RUNTIME_MCP_BINDING');
   if(ownerIntent?.workOrder!=='GH-5284'||
-     ownerIntent.resourceScope!=='TIGERIQ_GAME_G06_S10_E2E_HARNESS')
+     ownerIntent.resourceScope!=='TIGERIQ_GAME_G06_S10_E2E_HARNESS'||
+     !validIntent(ownerIntent))
     return wait('WAIT_DEVICE_EXCLUSIVE_FENCING');
   const check=async action=>leaseValid(await adapter.verifyFence({intent:ownerIntent,action}),
     ownerIntent,evidence.deviceSerial);
@@ -30,7 +39,11 @@ export async function runG06E2E({adapter=null,evidence={},ownerIntent=null}={}) 
     const session=await adapter.beginOnce({intent:ownerIntent,deviceSerial:evidence.deviceSerial,
       sourceSha:evidence.buildSha});
     if(session?.accepted!==true||session?.fresh!==true||
-      !/^[A-Za-z0-9_-]{12,96}$/.test(session?.sessionId||''))
+      !/^[A-Za-z0-9_-]{12,96}$/.test(session?.sessionId||'')||
+      session?.ownerId!==ownerIntent.ownerId||
+      session?.leaseId!==ownerIntent.leaseId||
+      session?.fencingToken!==ownerIntent.fencingToken||
+      session?.sourceSha!==evidence.buildSha)
       return wait('WAIT_DEVICE_EXCLUSIVE_FENCING',{reason:'SESSION_NOT_FRESH_OR_UNVERIFIED'});
     const steps=[];
     let mutated=false,problem=null,cleaned=false;
