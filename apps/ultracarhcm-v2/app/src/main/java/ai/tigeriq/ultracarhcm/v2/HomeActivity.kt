@@ -35,6 +35,7 @@ class HomeActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("ultracar_v2_home", Context.MODE_PRIVATE) }
     private val tickHandler = Handler(Looper.getMainLooper())
     private var clock: TextView? = null
+    private var homeVideo: VideoView? = null
     private val accent = Color.rgb(0, 208, 255)
     private val clockTick = object : Runnable {
         override fun run() {
@@ -72,7 +73,18 @@ class HomeActivity : Activity() {
 
     override fun onDestroy() {
         tickHandler.removeCallbacks(clockTick)
+        releaseHomeVideo()
         super.onDestroy()
+    }
+
+    // Recreating HOME must release the old decoder rather than just detach its view.
+    private fun releaseHomeVideo() {
+        homeVideo?.let { video ->
+            video.setOnPreparedListener(null)
+            video.setOnErrorListener(null)
+            video.stopPlayback()
+        }
+        homeVideo = null
     }
 
     // DisplayManager APIs work back to minSdk 26; Activity.getDisplay() requires API 30.
@@ -132,6 +144,7 @@ class HomeActivity : Activity() {
 
     private fun render() {
         if (root.width == 0 || root.height == 0) return
+        releaseHomeVideo()
         root.removeAllViews()
         val night = prefs.getBoolean("night", false)
         image(if (night) R.drawable.v2_road_city_night else R.drawable.v2_road_city_day,
@@ -176,8 +189,15 @@ class HomeActivity : Activity() {
         button("▣\nCấu hình đã lưu", .045f, .863f, .29f, .065f, false) { showSaved() }
         button("+\nLưu cấu hình", .357f, .863f, .29f, .065f, false) { saveHomeConfiguration() }
         val bot = VideoView(this)
+        homeVideo = bot
         bot.setVideoURI(Uri.parse("android.resource://$packageName/${R.raw.ultrabot_glow_packed}"))
-        bot.setOnPreparedListener { mp -> mp.isLooping = true; mp.setVolume(0f, 0f); bot.start() }
+        bot.setOnPreparedListener { mp ->
+            if (homeVideo === bot) {
+                mp.isLooping = true
+                mp.setVolume(0f, 0f)
+                bot.start()
+            }
+        }
         bot.setOnErrorListener { _, _, _ -> true }
         place(bot, .675f, .857f, .278f, .078f)
         bot.setOnClickListener { toast("Ultrabot V2 chưa tích hợp — không đổi nút này thành Camera") }
