@@ -36,6 +36,7 @@ class HomeActivity : Activity() {
     private val tickHandler = Handler(Looper.getMainLooper())
     private var clock: TextView? = null
     private var homeVideo: VideoView? = null
+    private var homeVisible = false
     private val accent = Color.rgb(0, 208, 255)
     private val clockTick = object : Runnable {
         override fun run() {
@@ -50,12 +51,16 @@ class HomeActivity : Activity() {
         window.setFlags(1024, 1024)
         root = FrameLayout(this)
         setContentView(root)
-        root.post { render() }
-        tickHandler.post(clockTick)
+        // onResume owns UI playback/ticks; queued draws must not start while stopped.
+        root.post { if (homeVisible && homeVideo == null) render() }
     }
 
     override fun onResume() {
         super.onResume()
+        homeVisible = true
+        tickHandler.removeCallbacks(clockTick)
+        tickHandler.post(clockTick)
+        root.post { if (homeVisible && homeVideo == null) render() }
         if (DexUtils.isDesktop(this) && Settings.canDrawOverlays(this)) {
             try {
                 startService(Intent(this, OverlayService::class.java)
@@ -68,10 +73,20 @@ class HomeActivity : Activity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        root.post { render() }
+        root.post { if (homeVisible) render() }
+    }
+
+    override fun onStop() {
+        // Stop hardware decoding and ticking while HOME is no longer visible.
+        // A later onResume recreates only this V2-owned video; never touches V1.
+        homeVisible = false
+        tickHandler.removeCallbacks(clockTick)
+        releaseHomeVideo()
+        super.onStop()
     }
 
     override fun onDestroy() {
+        homeVisible = false
         tickHandler.removeCallbacks(clockTick)
         releaseHomeVideo()
         super.onDestroy()
