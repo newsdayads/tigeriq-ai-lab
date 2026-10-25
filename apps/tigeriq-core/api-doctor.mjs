@@ -76,6 +76,9 @@ export function classifyApiDoctorFailure(input={}){
   if(status===401||status===403||kind==='auth'||/\bhttp[_ -]?(401|403)\b/.test(message))return 'auth';
   if(status===429||kind==='rate_limit'||/\bhttp[_ -]?429\b|rate.?limit|quota/.test(message))return 'rate_limit';
   if(kind==='timeout'||/timeout|timed out|abort/.test(message))return 'timeout';
+  // A rejected Core execution acceptance result is not evidence of a provider
+  // adapter defect. Require causal job evidence before any new source repair.
+  if(/\bexecution_result_blocked\b/.test(message))return 'execution_acceptance';
   if(kind==='invalid_response'||kind==='model-output'||/empty_response|schema|invalid_response|unexpected_response|json/.test(message))return 'source_contract';
   if(kind==='outage'||/\bhttp[_ -]?(500|502|503|504)\b|econnreset|fetch failed|provider_unavailable|outage/.test(message))return 'transient';
   if(kind==='configuration')return 'configuration';
@@ -100,6 +103,7 @@ export function apiDoctorAction({
   if(cls==='hard_blocked')return {action:'external_blocked',failureClass:cls,reason:'security_or_owner_gate'};
   if(cls==='auth')return {action:'external_blocked',failureClass:cls,reason:'auth_gate'};
   if(cls==='external_blocked')return {action:'external_blocked',failureClass:cls,reason:'http_402_or_free_tier'};
+  if(cls==='execution_acceptance')return {action:'investigate',failureClass:cls,reason:'core_execution_acceptance_requires_causal_evidence'};
   if((health==='RATE_LIMITED'||cls==='rate_limit')&&cooling)return {action:'wait',failureClass:'rate_limit',reason:'cooldown_active'};
   if(health==='RATE_LIMITED'||cls==='rate_limit')return {action:'probe',failureClass:'rate_limit',reason:'cooldown_due'};
   if(cls==='source_contract'&&Number(repeatedWorkFailures)>=2)return {action:'probe_then_handoff',failureClass:cls,reason:'repeated_work_contract_failure'};
