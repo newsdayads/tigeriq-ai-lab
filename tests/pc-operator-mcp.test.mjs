@@ -233,11 +233,17 @@ describe('TigerIQ PC Operator MCP Server', () => {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const port = server.address().port;
     try {
-      for (const name of ['file_read', 'file_write', 'shell_exec', 'ui_action']) {
+      const blockedCalls = [
+        { name: 'file_read', arguments: { path: 'D:\\TigerIQ\\State\\read.txt' } },
+        { name: 'file_write', arguments: { path: 'D:\\TigerIQ\\State\\write.txt', content: 'NEVER_WRITTEN' } },
+        { name: 'shell_exec', arguments: { command: 'echo MUST_NOT_EXECUTE' } },
+        { name: 'ui_action', arguments: { action: 'pad_health' } },
+      ];
+      for (const { name, arguments: toolArgs } of blockedCalls) {
         const response = await fetch('http://127.0.0.1:' + port + '/mcp', {
           method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ jsonrpc: '2.0', id: 99, method: 'tools/call',
-            params: { name, arguments: {} } }),
+            params: { name, arguments: toolArgs } }),
         });
         expect(response.status).toBe(200);
         const outcome = parseSsePayload(await response.text());
