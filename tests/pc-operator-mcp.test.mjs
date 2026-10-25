@@ -223,6 +223,65 @@ describe('TigerIQ PC Operator MCP Server', () => {
     }
   });
 
+  it('never exposes PC01 file or shell actions to legacy unauthenticated clients', async () => {
+    const secret = 'a'.repeat(32);
+    const handler = createPcOperatorMcpHandler({ existingSecret: secret });
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url, 'http://localhost');
+      if (!(await handler(req, res, url))) res.writeHead(404).end();
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+    try {
+      const blockedCalls = [
+        { name: 'file_read', arguments: { path: 'D:\\TigerIQ\\State\\read.txt' } },
+        { name: 'file_write', arguments: { path: 'D:\\TigerIQ\\State\\write.txt', content: 'NEVER_WRITTEN' } },
+        { name: 'shell_exec', arguments: { command: 'echo MUST_NOT_EXECUTE' } },
+        { name: 'ui_action', arguments: { action: 'pad_health' } },
+      ];
+      for (const { name, arguments: toolArgs } of blockedCalls) {
+        const response = await fetch('http://127.0.0.1:' + port + '/mcp', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 99, method: 'tools/call',
+            params: { name, arguments: toolArgs } }),
+        });
+        expect(response.status).toBe(200);
+        const outcome = parseSsePayload(await response.text());
+        expect(outcome.ok).toBe(false);
+        expect(outcome.reason).toBe('MCP_EXISTING_AUTH_REQUIRED');
+      }
+    } finally {
+      server.close();
+    }
+  });
+
+  it('denies authenticated mutations when Core shared lease is unavailable', async () => {
+    const secret = 'b'.repeat(32);
+    const handler = createPcOperatorMcpHandler({
+      existingSecret: secret,
+      leaseDb: { query: vi.fn() },
+      leaseApi: { acquire: vi.fn().mockResolvedValue(null),
+        heartbeat: vi.fn(), release: vi.fn() },
+    });
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url, 'http://localhost');
+      if (!(await handler(req, res, url))) res.writeHead(404).end();
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const response = await fetch('http://127.0.0.1:' + server.address().port + '/mcp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + secret },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 100, method: 'tools/call',
+          params: { name: 'shell_exec', arguments: { command: 'echo MUST_NOT_RUN' } } }),
+      });
+      expect(response.status).toBe(200);
+      const outcome = parseSsePayload(await response.text());
+      expect(outcome.ok).toBe(false);
+      expect(outcome.reason).toBe('PC_OPERATOR_SHARED_LEASE_BUSY');
+    } finally { server.close(); }
+  });
+
   it('allows /mcp without secret in createHealthViewGateway while requiring secret for display paths', async () => {
     const { createHealthViewGateway } = await import('../apps/tigeriq-core/api-health-view-gateway.mjs');
     const secret = 'a'.repeat(32);
@@ -335,7 +394,20 @@ describe('TigerIQ PC Operator MCP Server', () => {
   });
 
   it('executes file_write, file_read, and file_stat with safety boundaries', async () => {
-    const handler = createPcOperatorMcpHandler();
+    const secret = 'a'.repeat(32);
+    const leaseDb = { query: vi.fn() };
+    const leaseApi = {
+      acquire: vi.fn(async (_db, spec) => ({
+        resource_id: spec.resourceId, work_id: spec.workId,
+        lease_token: 'mock-lease-token',
+        lease_until: new Date(Date.now() + 120000).toISOString(),
+      })),
+      heartbeat: vi.fn().mockResolvedValue(true),
+      release: vi.fn().mockResolvedValue(true),
+    };
+    const handler = createPcOperatorMcpHandler({
+      existingSecret: secret, leaseDb, leaseApi,
+    });
     const server = createServer(async (req, res) => {
       const url = new URL(req.url, 'http://localhost');
       const handled = await handler(req, res, url);
@@ -351,7 +423,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
       // 1. file_write
       const writeRes = await fetch(`http://127.0.0.1:${port}/mcp`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + secret },
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 10,
@@ -373,7 +445,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
       // 2. file_read
       const readRes = await fetch(`http://127.0.0.1:${port}/mcp`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + secret },
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 11,
@@ -394,7 +466,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
       // 3. file_stat
       const statRes = await fetch(`http://127.0.0.1:${port}/mcp`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + secret },
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 12,
@@ -415,7 +487,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
       // 4. sensitive path denied
       const sensitiveRes = await fetch(`http://127.0.0.1:${port}/mcp`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + secret },
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 13,
@@ -439,7 +511,20 @@ describe('TigerIQ PC Operator MCP Server', () => {
   });
 
   it('records structured evidence via evidence_record tool with sha256', async () => {
-    const handler = createPcOperatorMcpHandler();
+    const secret = 'a'.repeat(32);
+    const leaseDb = { query: vi.fn() };
+    const leaseApi = {
+      acquire: vi.fn(async (_db, spec) => ({
+        resource_id: spec.resourceId, work_id: spec.workId,
+        lease_token: 'mock-lease-token',
+        lease_until: new Date(Date.now() + 120000).toISOString(),
+      })),
+      heartbeat: vi.fn().mockResolvedValue(true),
+      release: vi.fn().mockResolvedValue(true),
+    };
+    const handler = createPcOperatorMcpHandler({
+      existingSecret: secret, leaseDb, leaseApi,
+    });
     const server = createServer(async (req, res) => {
       const url = new URL(req.url, 'http://localhost');
       const handled = await handler(req, res, url);
@@ -452,7 +537,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
     try {
       const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + secret },
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 20,
@@ -486,7 +571,8 @@ describe('TigerIQ PC Operator MCP Server', () => {
       return { count: callCount };
     });
 
-    const handler = createPcOperatorMcpHandler({ executePcActionImpl: mockExecute });
+    const secret = 'a'.repeat(32);
+    const handler = createPcOperatorMcpHandler({ executePcActionImpl: mockExecute, existingSecret: secret });
     const server = createServer(async (req, res) => {
       const url = new URL(req.url, 'http://localhost');
       const handled = await handler(req, res, url);
@@ -502,7 +588,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
       // Call 1
       const res1 = await fetch(`http://127.0.0.1:${port}/mcp`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + secret },
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 30,
@@ -520,7 +606,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
       // Call 2 with same idempotencyKey -> returns cached response
       const res2 = await fetch(`http://127.0.0.1:${port}/mcp`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + secret },
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 31,
