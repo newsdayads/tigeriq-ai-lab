@@ -38,16 +38,19 @@ export function createS10PreviewServer({distDir=DIST}={}) {
       const rootReal=await realpath(root);
       const requested=route==='/healthz'?'/index.html':route;
       const file=resolve(root,requested.slice(1));
-      const fileReal=await realpath(file);
+      let fileReal;
+      try{fileReal=await realpath(file);}catch{res.writeHead(404);res.end();return;}
       if(!fileReal.startsWith(rootReal+sep)){
         res.writeHead(404);res.end();return;
       }
       const bytes=await readFile(fileReal);
       if(route==='/healthz'){
-        json(res,200,{schema:'TIGERIQ_G06_LOCAL_PREVIEW_HEALTH_V1',previewReady:true,
+        const status={schema:'TIGERIQ_G06_LOCAL_PREVIEW_HEALTH_V1',previewReady:true,
           transport:'127.0.0.1_LOOPBACK_ONLY',indexSha256:SHA(bytes),
           nativeAdapterConnected:false,deviceLeaseVerified:false,
-          realDeviceAccepted:false,production:false});
+          realDeviceAccepted:false,production:false};
+        if(req.method==='HEAD'){res.writeHead(200,{'content-type':'application/json; charset=utf-8'});res.end();}
+        else json(res,200,status);
         return;
       }
       const extension=fileReal.slice(fileReal.lastIndexOf('.'));
