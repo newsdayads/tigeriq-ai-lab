@@ -2,6 +2,23 @@
 
 **Canonical, verified 2026-10-25 06:07 Asia/Ho_Chi_Minh.** Owner Work Order: [#5129](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129#issuecomment-6390694935). Parent [release runbook](WORKFLOW_APK_RELEASE.md). For any new UltraCar APK job, load this file **from GitHub main at the start**; old chats, snapshots, and the draft v44 PR do not supersede this real receipt.
 
+<!-- ULTRACAR_STANDING_OWNER_TEST_RELEASE_20261025 -->
+## P0 — OWNER STANDING TEST RELEASE AUTHORIZATION / KHÔNG HỎI LẠI (25/10/2026)
+
+**OWNER DECISION:** Anh Sơn đã cấp `FULL_AUTO_TEST_RELEASE=APPROVED` cho việc tiếp tục sửa, build, ký, kiểm tra và **đưa bản UltraCar TEST mới** lên Google Drive; nhắc lại trong chat: “Vậy làm đi. Rồi fix cứng đường làm sau này ko được hỏi lại nữa.” Áp dụng riêng phiên bản TEST phát sinh từ Work Order #5129 cho đến khi Owner thu hồi/đổi phạm vi. **Không yêu cầu Owner bấm duyệt lần nữa hoặc chọn RDC account** cho các bước TEST đã được cấp quyền. **Không tự nâng thành quyền Production**.
+
+**KHỞI ĐỘNG CHAT MỚI / LÀM LIỀN, KHÔNG LÒNG VÒNG:**
+1. Đọc GitHub **main mới nhất**: Loader, file này, release runbook, Issue #5129 newest receipts, Issue #504, `docs/RDC_REMOTE_POOL.md`. Giữ Owner authorization đã xác lập; không hỏi lại yêu cầu, phiên bản, đường dẫn, khóa ký, thông tin đã có. Nếu GitHub source không truy cập được thì `SOURCE_UNAVAILABLE`; không giả source cũ là mới.
+2. Kiểm tra PC01 qua RDC preflight; tự chọn **account đang Online/còn quota cao nhất** có quyền theo routing; quyền thao tác và one-writer phải có thật. Kiểm tra **đúng bước đã hoàn thành** (file/hash/task/Drive ID) rồi làm tiếp bước còn thiếu, không rebuild hoặc upload trùng.
+3. **Theo nhánh thành công**: baseline signed .43 có SHA xác minh → stage TEST mới **cô lập** → áp dụng vá ART register-safe từ `apps/ultracarhcm-v1-v44/hotfix/fix-zc4-verifier.mjs`, `v11` vẫn là `Lha4` → test Smali/tĩnh + Android verifier thật nếu môi trường có → Apktool → zipalign → apksigner v2/v3 cert hiện hữu → aapt2 versionCode mới/khác 285 → Windows **interactive** Scheduled Task `PC01\wdragons12x` copy bản có tên riêng lên Drive đã ánh xạ → đọc **Google Drive API** xác minh file ID/size/parent; khi đọc bytes được thì kiểm SHA độc lập. Tái dùng các template có biên nhận tại PC01; không chép lại hash/version/tên .44 cho APK mới.
+4. Mỗi bước có **receipt thực**, không giả PASS: `SOURCE_READY | ART_STATIC_VERIFIED | BUILD_PASS | SIGN_PASS | LOCAL_STAGED | DRIVE_CLOUD_VERIFIED | DEX_SM-F916N_QA_PASS`. Chỉ khi cloud metadata verified mới cho link TEST mới; chỉ khi app chạy không `VerifyError` và Owner nghiệm thu 5 nút/kéo thẻ trên SM-F916N mới kết luận APP DONE. **Không phát hành bản đang lỗi .44**.
+5. Khi một **hành động cụ thể** bị lớp an toàn/quyền host từ chối: **không đổi tài khoản, route, lệnh, mã hóa hoặc công cụ nhằm lách chính hành động đó**. Ghi nguyên văn `DENIED_ACTION | TOOL | PC01_STATE | NEXT_ALLOWED_STEP`, tiếp tục **bước độc lập** được phép (đọc, kiểm thử mã riêng trên GitHub, ghi evidence). Không dùng blocker của một bước để khai báo toàn bộ máy/build/Drive chết; không xin lại Full Auto đã cấp. Nếu mọi đường ghi được phép đều bị chặn, kết luận `CHƯA XONG` + cổng thật, không báo đang chạy nền.
+6. Không có bảo đảm host ChatGPT/Gemini native tự tải GitHub hay tự mở quyền. **Chính lần chat mới phải gọi công cụ để nạp nguồn này**. “Fix cứng” có nghĩa nguồn, QA gates, quyết định Owner được lưu vào GitHub main và thực thi khi kết nối cho phép; không phải bypass cơ chế an toàn hoặc âm thầm chạy background.
+
+**LIVE CHECKPOINT 25/10/2026:** PC01 RDC02 ONLINE, v43 signed tồn tại đúng hash, v44 signed (285) có trên Drive nhưng **Owner đã báo `VerifyError`**; stage `SourceFromPublished43_TEST_285` chứa **Smali sửa dở, không được build**; **chưa có APK TEST 286** hoặc link Drive 286; `SM-F916N` không hiện trong ADB PC01. Bản vá `zc4` nguồn đã merge GitHub main PR #5315, 9/9 source regression PASS; chưa chạy Android runtime QA. Các thao tác tạo stage/ghi sửa tương ứng từng bị từ chối: **không né qua đường khác**. Hãy đối chiếu live state trước khi dùng checkpoint này.
+
+<!-- /ULTRACAR_STANDING_OWNER_TEST_RELEASE_20261025 -->
+
 ## P0 UPDATE — 2026-10-25 07:24 OWNER DEVICE CRASH — SUPERSEDES v44 APP ACCEPTANCE
 
 - **Confirmed:** SM-F916N Android 13 reported `java.lang.VerifyError` in `zc4.b`. The v44 TEST file listed below was signed/published but **CRASHES / NOT ACCEPTED ON DEVICE**. Do not recommend reinstalling it; revert to signed .43 while unverified.
