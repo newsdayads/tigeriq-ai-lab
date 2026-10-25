@@ -77,6 +77,11 @@ export const PC_OPERATOR_MCP_TOOLS = Object.freeze([
 
 const LAB_SCOPE = 'TIGERIQ_PAPERCLIP_LAB_PC01_EXISTING_SANDBOX_20261018';
 const NV06_RESOURCE_ID = 'res:openclaw:operator-local:default:pc01';
+const GENERAL_OPERATOR_SCOPE = 'TIGERIQ_PC_OPERATOR_MCP_AUTHENTICATED_MUTATION';
+const MUTATING_GENERAL_TOOLS = new Set([
+  'file_write', 'shell_exec', 'task_action', 'ui_screenshot',
+  'ui_action', 'test_run', 'evidence_record',
+]);
 const leaseApiDefault = {
   acquire: acquireSharedResourceLease,
   heartbeat: heartbeatSharedResourceLease,
@@ -301,6 +306,73 @@ function wrapTool(server, name, description, schemaObj, handler) {
 export function registerPcOperatorTools(server, executePcActionImpl = executePcAction, {
   allowMutation = false, leaseDb, leaseApi = leaseApiDefault, now = () => Date.now(),
 } = {}) {
+  // The gateway's bearer is a server-side authorization gate, not a ChatGPT
+  // "allow all actions" preference. Never expose host files/shell/UI to a
+  // caller that can only reach the legacy unauthenticated Paperclip read tools.
+  const authorizedTools = {
+    tool(name, description, schema, handler) {
+      server.tool(name, description, schema, async (args = {}) => {
+        if (!allowMutation) return mcpReply({
+          ok: false, action: name, reason: 'MCP_EXISTING_AUTH_REQUIRED',
+        });
+        if (!MUTATING_GENERAL_TOOLS.has(name)) return handler(args);
+        // All mutations share the existing NV06 PC01 operator resource.
+        // A new bearer request is not an exclusive Core lease.
+        const db = leaseDb === undefined ? existingCoreLeaseDb() : leaseDb;
+        if (!db) return mcpReply({
+          ok: false, action: name, reason: 'MCP_CORE_SHARED_LEASE_DB_UNAVAILABLE',
+        });
+        const workId = 'JOB-MCP-' + randomUUID();
+        let lease = null, timer = null, leaseLost = false, released = false;
+        let reply = null, reason = null;
+        try {
+          lease = await leaseApi.acquire(db, {
+            employeeId: 'NV06', resourceId: NV06_RESOURCE_ID,
+            workId, role: 'operator', lane: 'mcp_pc_operator', ttlMs: 600000,
+            metadata: { resourceScope: GENERAL_OPERATOR_SCOPE, action: name },
+          });
+          if (!lease) reason = 'PC_OPERATOR_SHARED_LEASE_BUSY';
+          else if (!lease.lease_token || lease.resource_id !== NV06_RESOURCE_ID
+              || lease.work_id !== workId || new Date(lease.lease_until).getTime() <= now() + 30000) {
+            reason = 'PC_OPERATOR_SHARED_LEASE_INVALID';
+          } else if (!(await leaseApi.heartbeat(db, {
+            resourceId: lease.resource_id, leaseToken: lease.lease_token, ttlMs: 600000,
+          }))) {
+            reason = 'PC_OPERATOR_SHARED_LEASE_NOT_FENCED';
+          } else {
+            timer = setInterval(() => {
+              void leaseApi.heartbeat(db, {
+                resourceId: lease.resource_id, leaseToken: lease.lease_token, ttlMs: 600000,
+              }).then(ok => { if (!ok) leaseLost = true; })
+                .catch(() => { leaseLost = true; });
+            }, 30000);
+            timer.unref?.();
+            reply = await handler(args);
+            const stillOwned = await leaseApi.heartbeat(db, {
+              resourceId: lease.resource_id, leaseToken: lease.lease_token, ttlMs: 600000,
+            });
+            if (leaseLost || !stillOwned) reason = 'PC_OPERATOR_SHARED_LEASE_LOST';
+          }
+        } catch {
+          reason = 'PC_OPERATOR_MUTATION_OR_LEASE_ERROR';
+        } finally {
+          if (timer) clearInterval(timer);
+          if (lease?.lease_token) {
+            try {
+              released = await leaseApi.release(db, {
+                resourceId: lease.resource_id, leaseToken: lease.lease_token,
+              });
+            } catch { released = false; }
+            if (!released) reason = 'PC_OPERATOR_SHARED_LEASE_RELEASE_UNVERIFIED';
+          }
+        }
+        if (reason || !released || !reply) return mcpReply({
+          ok: false, action: name, reason: reason || 'PC_OPERATOR_MUTATION_NOT_ACCEPTED',
+        });
+        return reply;
+      });
+    },
+  };
   // 1. Paperclip Lab Tools (Exact backward-compatible & gated lease logic)
   for (const [action, description, targetStepId] of [
     ['paperclip_lab_preflight', 'Paperclip Lab read-only preflight.', 'R01'],
@@ -393,7 +465,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
 
   // 2. file_read
   wrapTool(
-    server,
+    authorizedTools,
     'file_read',
     'Đọc nội dung tệp văn bản từ PC01 (giới hạn an toàn trong các thư mục được phép).',
     {
@@ -427,7 +499,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
 
   // 3. file_write
   wrapTool(
-    server,
+    authorizedTools,
     'file_write',
     'Ghi nội dung văn bản vào tệp trên PC01 (tự tạo thư mục cha nếu chưa có; bảo vệ biên giới Local-Only).',
     {
@@ -459,7 +531,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
 
   // 4. file_list
   wrapTool(
-    server,
+    authorizedTools,
     'file_list',
     'Liệt kê danh sách tệp và thư mục trong đường dẫn trên PC01.',
     {
@@ -484,7 +556,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
 
   // 5. file_stat
   wrapTool(
-    server,
+    authorizedTools,
     'file_stat',
     'Xem thông tin chi tiết (kích thước, loại, thời gian sửa) của tệp hoặc thư mục.',
     {
@@ -505,7 +577,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
 
   // 6. file_search
   wrapTool(
-    server,
+    authorizedTools,
     'file_search',
     'Tìm kiếm tệp theo tên hoặc phần mở rộng trong thư mục PC01.',
     {
@@ -548,7 +620,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
 
   // 7. shell_exec
   wrapTool(
-    server,
+    authorizedTools,
     'shell_exec',
     'Chạy lệnh PowerShell hoặc CMD có kiểm soát trên PC01 với giới hạn thời gian và đầu ra.',
     {
@@ -579,7 +651,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
 
   // 8. process_list
   wrapTool(
-    server,
+    authorizedTools,
     'process_list',
     'Liệt kê các tiến trình đang chạy trên Windows PC01.',
     {
@@ -612,7 +684,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
 
   // 9. task_list
   wrapTool(
-    server,
+    authorizedTools,
     'task_list',
     'Liệt kê danh sách Scheduled Tasks trên PC01.',
     {
@@ -639,7 +711,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
 
   // 10. task_action
   wrapTool(
-    server,
+    authorizedTools,
     'task_action',
     'Thực hiện hành động (status, start, stop, restart) trên tác vụ theo lịch của Windows.',
     {
@@ -671,7 +743,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
 
   // 11. service_status
   wrapTool(
-    server,
+    authorizedTools,
     'service_status',
     'Kiểm tra trạng thái các Windows Service trên PC01.',
     {
@@ -697,7 +769,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
 
   // 12. docker_status
   wrapTool(
-    server,
+    authorizedTools,
     'docker_status',
     'Kiểm tra tình trạng Docker daemon và các container trên PC01.',
     {},
@@ -720,7 +792,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
 
   // 13. wsl_status
   wrapTool(
-    server,
+    authorizedTools,
     'wsl_status',
     'Kiểm tra trạng thái các bản phân phối WSL trên PC01.',
     {},
@@ -735,7 +807,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
 
   // 14. ui_window_list
   wrapTool(
-    server,
+    authorizedTools,
     'ui_window_list',
     'Liệt kê các cửa sổ ứng dụng đang mở trên màn hình PC01 qua PAD UI Broker.',
     {},
@@ -756,7 +828,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
 
   // 15. ui_screenshot
   wrapTool(
-    server,
+    authorizedTools,
     'ui_screenshot',
     'Chụp ảnh màn hình máy tính PC01 và lưu vào thư mục Evidence.',
     {
@@ -795,7 +867,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
 
   // 16. ui_action
   wrapTool(
-    server,
+    authorizedTools,
     'ui_action',
     'Thực hiện thao tác điều khiển giao diện PC01 qua PAD UI Broker (click, nhập text, phím tắt, cây phần tử).',
     {
@@ -824,7 +896,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
 
   // 17. core_status
   wrapTool(
-    server,
+    authorizedTools,
     'core_status',
     'Xem tình trạng hoạt động của TigerIQ Core 24x7 trên PC01.',
     {},
@@ -837,7 +909,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
 
   // 18. ollama_status
   wrapTool(
-    server,
+    authorizedTools,
     'ollama_status',
     'Xem danh sách các mô hình Ollama cục bộ đã cài đặt và đang chạy trên PC01.',
     {},
@@ -848,7 +920,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
 
   // 19. log_read
   wrapTool(
-    server,
+    authorizedTools,
     'log_read',
     'Đọc log từ thư mục Logs trên PC01.',
     {
@@ -872,7 +944,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
 
   // 20. test_run
   wrapTool(
-    server,
+    authorizedTools,
     'test_run',
     'Chạy bộ kiểm thử tự động (Vitest / Node Test) trên PC01.',
     {
@@ -897,7 +969,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
 
   // 21. evidence_record
   wrapTool(
-    server,
+    authorizedTools,
     'evidence_record',
     'Ghi nhận biên nhận nghiệm thu hoặc bằng chứng vào thư mục Evidence với mã kiểm tra.',
     {
@@ -933,7 +1005,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
 
   // 22. rdc_pool_status
   wrapTool(
-    server,
+    authorizedTools,
     'rdc_pool_status',
     'Kiểm tra tình trạng điều phối và hạn mức của các tài khoản RDC dự phòng (RDC01..RDC05).',
     {},
@@ -953,7 +1025,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
 
   // 23. work_order_status
   wrapTool(
-    server,
+    authorizedTools,
     'work_order_status',
     'Kiểm tra tiến độ và trạng thái Work Order trên TigerIQ Core.',
     {
