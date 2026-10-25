@@ -26,8 +26,11 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
-      - run: sdkmanager "platforms;android-34"
+      - name: Ensure Android API 34 exists on runner
+        run: |
+          if [ ! -f "$ANDROID_HOME/platforms/android-34/android.jar" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34"
+          fi
       - name: Compile v53 Java against Android API 34
         run: |
           mkdir -p "$RUNNER_TEMP/ultracar-v53-classes"
