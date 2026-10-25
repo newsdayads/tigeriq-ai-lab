@@ -111,8 +111,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 </section>
 <section class="tab-panel" data-panel="toolbox">
 <div class="sectiontitle">Batch operations</div>
-<div class="two"><button class="action" id="install">Install APK</button><button class="action" id="upload">Upload file</button><button class="action soft" id="launch">Launch app</button><button class="action soft" id="forceStop">Force stop</button></div>
-<div class="smallnote">APK và tệp cần đặt trong thư mục <strong>drop</strong> tại PC01.</div>
+<div class="two"><button class="action" id="install">Chọn APK và cài</button><input type="file" id="apkPicker" accept=".apk" hidden><button class="action" id="upload">Upload file</button><button class="action soft" id="launch">Launch app</button><button class="action soft" id="forceStop">Force stop</button></div>
+<div class="smallnote">Chọn điện thoại rồi chọn APK từ PC01. Ứng dụng xác nhận kết quả trên từng điện thoại.</div><div class="smallnote" id="apkStatus" aria-live="polite">Chưa chọn APK</div>
 <div class="sectiontitle">Local video recording</div>
 <div class="control-line"><span>Duration</span><select id="recordSeconds"><option value="8">8 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="60">60 seconds</option><option value="120">120 seconds</option></select></div>
 <div class="two"><button class="action" id="recordStart">Start record</button><button class="action muted" id="recordStop" disabled>Stop record</button></div>
