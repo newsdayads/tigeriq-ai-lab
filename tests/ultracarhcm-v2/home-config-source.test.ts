@@ -34,6 +34,21 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(home).not.toContain('prefs.getInt("saved_count", 0)');
   });
 
+  it('stops retired HOME video decoders before rerender and during Activity teardown', () => {
+    expect(home).toContain('private var homeVideo: VideoView? = null');
+    expect(home).toContain('private fun releaseHomeVideo()');
+    const release = home.slice(home.indexOf('private fun releaseHomeVideo()'), home.indexOf('private fun shape('));
+    expect(release).toContain('video.setOnPreparedListener(null)');
+    expect(release).toContain('video.stopPlayback()');
+    expect(release).toContain('homeVideo = null');
+
+    const rerender = home.slice(home.indexOf('private fun render()'), home.indexOf('val night = prefs.getBoolean'));
+    expect(rerender).toMatch(/releaseHomeVideo\(\)\s*root\.removeAllViews\(\)/);
+    const destroy = home.slice(home.indexOf('override fun onDestroy()'), home.indexOf('private fun releaseHomeVideo()'));
+    expect(destroy).toMatch(/tickHandler\.removeCallbacks\(clockTick\)\s*releaseHomeVideo\(\)\s*super\.onDestroy\(\)/);
+    expect(home).toContain('if (homeVideo === bot)');
+  });
+
   it('allows a real local driver-name edit without modifying the original V1 app', () => {
     expect(home).toContain('private fun editDriverName()');
     expect(home).toContain('putString("driver_name", name).apply()');
