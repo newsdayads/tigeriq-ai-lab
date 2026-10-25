@@ -1,0 +1,20 @@
+name: UltraCar ZC4 Register Safety
+on:
+  pull_request:
+    paths:
+      - 'apps/ultracarhcm-v1-v44/hotfix/**'
+      - '.github/workflows/ultracar-zc4-register-safety.yml'
+  push:
+    paths:
+      - 'apps/ultracarhcm-v1-v44/hotfix/**'
+      - '.github/workflows/ultracar-zc4-register-safety.yml'
+jobs:
+  source-only-smali-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Regression test ART register liveness in zc4
+        run: node apps/ultracarhcm-v1-v44/hotfix/fix-zc4-verifier.test.mjs
