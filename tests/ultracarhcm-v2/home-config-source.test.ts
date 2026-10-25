@@ -45,8 +45,23 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     const rerender = home.slice(home.indexOf('private fun render()'), home.indexOf('val night = prefs.getBoolean'));
     expect(rerender).toMatch(/releaseHomeVideo\(\)\s*root\.removeAllViews\(\)/);
     const destroy = home.slice(home.indexOf('override fun onDestroy()'), home.indexOf('private fun releaseHomeVideo()'));
-    expect(destroy).toMatch(/tickHandler\.removeCallbacks\(clockTick\)\s*releaseHomeVideo\(\)\s*super\.onDestroy\(\)/);
+    expect(destroy).toMatch(/homeVisible = false\s*tickHandler\.removeCallbacks\(clockTick\)\s*releaseHomeVideo\(\)\s*super\.onDestroy\(\)/);
     expect(home).toContain('if (homeVideo === bot)');
+  });
+
+  it('stops background VIDEO decoder and clock ticks, and resumes only while HOME visible', () => {
+    expect(home).toContain('private var homeVisible = false');
+    const create = home.slice(home.indexOf('override fun onCreate('), home.indexOf('override fun onResume()'));
+    expect(create).not.toContain('tickHandler.post(clockTick)');
+    expect(create).toContain('root.post { if (homeVisible && homeVideo == null) render() }');
+    const resume = home.slice(home.indexOf('override fun onResume()'), home.indexOf('override fun onConfigurationChanged('));
+    expect(resume).toMatch(/homeVisible = true\\s*tickHandler\\.removeCallbacks\\(clockTick\\)\\s*tickHandler\\.post\\(clockTick\\)/);
+    expect(resume).toContain('root.post { if (homeVisible && homeVideo == null) render() }');
+    const stop = home.slice(home.indexOf('override fun onStop()'), home.indexOf('override fun onDestroy()'));
+    expect(stop).toMatch(/homeVisible = false\\s*tickHandler\\.removeCallbacks\\(clockTick\\)\\s*releaseHomeVideo\\(\\)\\s*super\\.onStop\\(\\)/);
+    expect(home).toContain('root.post { if (homeVisible) render() }');
+    expect(home).not.toContain('root.post { render() }');
+    // Android lifecycle callback ownership is not physical Device/DeX QA.
   });
 
   it('allows a real local driver-name edit without modifying the original V1 app', () => {
