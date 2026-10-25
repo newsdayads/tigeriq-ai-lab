@@ -1,0 +1,24 @@
+name: UltraCar V53 Source Contract
+on:
+  push:
+    paths:
+      - "apps/ultracarhcm-v1-v53/**"
+      - "tests/ultracar-v53-ui.test.mjs"
+      - ".github/workflows/ultracar-v53-source-contract.yml"
+  pull_request:
+    paths:
+      - "apps/ultracarhcm-v1-v53/**"
+      - "tests/ultracar-v53-ui.test.mjs"
+      - ".github/workflows/ultracar-v53-source-contract.yml"
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --test tests/ultracar-v53-ui.test.mjs
