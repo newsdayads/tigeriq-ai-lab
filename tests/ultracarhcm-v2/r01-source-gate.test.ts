@@ -71,7 +71,7 @@ describe('GH-5135 R01 source-only gate (not native Android CI)', () => {
       '--test', fromRoot('tests/ultracarhcm-v2/stage-v1-media.test.mjs')
     ], {cwd: root, encoding: 'utf8', timeout: 15000});
     expect(verify.status, verify.stdout + verify.stderr).toBe(0);
-    expect(verify.stdout).toMatch(/# pass 7\b/);
+    expect(verify.stdout).toMatch(/# pass 9\b/);
     expect(verify.stdout).toMatch(/# fail 0\b/);
   });
 
