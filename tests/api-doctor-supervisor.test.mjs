@@ -222,6 +222,21 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(prompt.trim().endsWith(`CANARY OUTPUT CONTRACT: return exactly ${marker} and nothing else.`)).toBe(true);
   });
 
+  it('keeps Core execution-result refusal distinct from provider source-contract repairs',()=>{
+    const blocked={kind:'invalid_response',message:'EXECUTION_RESULT_BLOCKED'};
+    expect(classifyApiDoctorFailure(blocked)).toBe('execution_acceptance');
+    expect(apiDoctorAction({
+      healthState:'ERROR',credentialState:'READY',latestFailure:blocked,repeatedWorkFailures:4,
+    })).toEqual({action:'investigate',failureClass:'execution_acceptance',reason:'core_execution_acceptance_requires_causal_evidence'});
+    expect(classifyApiDoctorFailure({kind:'invalid_response',message:'EMPTY_RESPONSE'})).toBe('source_contract');
+    expect(apiDoctorAction({
+      healthState:'ERROR',credentialState:'READY',
+      latestFailure:{kind:'invalid_response',message:'EMPTY_RESPONSE'},repeatedWorkFailures:2,
+    }).action).toBe('probe_then_handoff');
+    expect(classifyApiDoctorFailure({kind:'auth',message:'HTTP_403 EXECUTION_RESULT_BLOCKED'})).toBe('auth');
+    expect(classifyApiDoctorFailure({kind:'configuration',message:'HTTP_402 EXECUTION_RESULT_BLOCKED'})).toBe('external_blocked');
+  });
+
   it('classifies quota/payment/contract failures without calling them credential failures',()=>{
     expect(classifyApiDoctorFailure({kind:'rate_limit',message:'HTTP_429'})).toBe('rate_limit');
     expect(classifyApiDoctorFailure({kind:'configuration',message:'HTTP_402'})).toBe('external_blocked');
