@@ -3,6 +3,10 @@
 // This module does not touch PC01, keystores, APKs, or Google Drive.
 export function patchV52Smali(uu2, mainActivity) {
   if (typeof uu2 !== "string" || typeof mainActivity !== "string") throw Error("INPUT_REQUIRED");
+  const uu2CRLF = uu2.includes("\r\n");
+  const mainCRLF = mainActivity.includes("\r\n");
+  uu2 = uu2.replace(/\r\n/g, "\n");
+  mainActivity = mainActivity.replace(/\r\n/g, "\n");
   if ((uu2.match(/"__START_BUTTON__"/g) || []).length !== 1) throw Error("START_ANCHOR_COUNT");
   if ((uu2.match(/"__BOTTOM_BAR__"/g) || []).length !== 2) throw Error("EXPECTED_V52_DUPLICATE_BOTTOM_ANCHOR");
 
@@ -48,5 +52,5 @@ export function patchV52Smali(uu2, mainActivity) {
 
   const fixedMain = mainActivity.slice(0, begin) + method + mainActivity.slice(end);
   if ((fixedMain.match(/V44UiBridge;->isSavedScreen/g) || []).length !== 1) throw Error("SCREEN_GUARD_NOT_UNIQUE");
-  return { uu2:fixedUu2, mainActivity:fixedMain };
+  return { uu2:uu2CRLF ? fixedUu2.replace(/\n/g, "\r\n") : fixedUu2, mainActivity:mainCRLF ? fixedMain.replace(/\n/g, "\r\n") : fixedMain };
 }
