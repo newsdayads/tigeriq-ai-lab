@@ -42,7 +42,7 @@ async function verify(){
     const blob=sha1blob(bytes);
     gate(blob===expectedBlob,'GIT_BLOB_CHANGED_OUTSIDE_ACCEPTED_SOURCE '+p);
     verified.push({path:'apps/tigeriq-game/'+p,gitBlobSha1:blob});
-    run(process.execPath,['--check',p]);
+    if(p.endsWith('.mjs'))run(process.execPath,['--check',p]);
   }
   // A working preview is an actual built game over HTTP, not a static fixture.
   run(process.execPath,['scripts/build.mjs']);
