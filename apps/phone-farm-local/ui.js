@@ -284,7 +284,68 @@ $('recordStop').onclick=async()=>{
   try{await api('/api/record/stop',{id:recordId});await checkRecording()}catch(e){toast(e.message,true)}
 };
 setInterval(checkRecording,2000);
-$('listPackages').onclick=async()=>{const s=active()[0];if(!s)return toast('Chọn thiết bị trước',true);try{const r=await api('/api/packages?serial='+encodeURIComponent(s));$('appInfo').textContent='Đã tìm thấy '+r.packages.length+' ứng dụng. '+r.packages.slice(0,12).join(' • ')}catch(e){toast(e.message,true)}};
+async function managePackages(){
+  const serial=active()[0];
+  if(!serial)return toast('Chọn thiết bị trước',true);
+  const host=$('appInfo');
+  host.textContent='Đang đọc ứng dụng của '+serial+'...';
+  try{
+    const result=await api('/api/packages?serial='+encodeURIComponent(serial));
+    if(!active().includes(serial))return toast('Danh sách chọn đã thay đổi, vui lòng mở lại',true);
+    const packages=result.packages.filter(x=>typeof x==='string').sort();
+    host.textContent='';
+    const summary=document.createElement('div');
+    summary.textContent=packages.length+' ứng dụng • nguồn '+serial+' • mở/dừng trên các máy đang chọn';
+    const search=document.createElement('input');
+    search.className='field';search.placeholder='Lọc theo package ID';
+    search.setAttribute('aria-label','Lọc ứng dụng đã cài');
+    search.style.marginTop='6px';
+    const items=document.createElement('div');
+    items.style.cssText='max-height:230px;overflow:auto;margin-top:6px';
+    host.append(summary,search,items);
+    async function command(action,pkg){
+      const serials=active();
+      if(!serials.length)return toast('Chưa chọn thiết bị',true);
+      if(action==='forceStop'&&!confirm('Dừng '+pkg+' trên '+serials.length+' thiết bị?'))return;
+      try{
+        const r=await api('/api/batch',{action,serials,package:pkg});
+        const failed=r.results.filter(x=>!x.ok);
+        toast(failed.length?'Lỗi '+failed.length+'/'+serials.length+': '+failed[0].error:
+          (action==='launch'?'Đã gửi lệnh mở ':'Đã gửi lệnh dừng ')+pkg+' • '+serials.length+' máy',failed.length>0);
+      }catch(e){toast(e.message,true)}
+    }
+    function draw(){
+      items.textContent='';
+      const query=search.value.trim().toLowerCase();
+      const filtered=packages.filter(x=>x.toLowerCase().includes(query));
+      if(!filtered.length){items.textContent='Không có ứng dụng phù hợp';return}
+      const fragment=document.createDocumentFragment();
+      for(const pkg of filtered.slice(0,80)){
+        const line=document.createElement('div');
+        line.style.cssText='display:flex;align-items:center;gap:5px;padding:4px 0;border-bottom:1px solid #d5e3f1';
+        const label=document.createElement('span');
+        label.textContent=pkg;label.style.cssText='flex:1;overflow-wrap:anywhere';
+        for(const [action,title] of [['launch','Mở'],['forceStop','Dừng']]){
+          const button=document.createElement('button');
+          button.className='action soft';button.textContent=title;
+          button.title=title+' '+pkg+' trên các máy đang chọn';
+          button.onclick=()=>command(action,pkg);
+          line.append(button);
+        }
+        line.prepend(label);
+        fragment.append(line);
+      }
+      items.append(fragment);
+      if(filtered.length>80){
+        const more=document.createElement('div');
+        more.textContent='Hiển thị 80/'+filtered.length+' • lọc để xem thêm';
+        items.append(more);
+      }
+    }
+    search.oninput=draw;draw();
+  }catch(e){host.textContent='Không đọc được ứng dụng';toast(e.message,true)}
+}
+$('listPackages').onclick=managePackages;
 $('apps').onclick=()=>setTab('toolbox');
 $('viewDevices').onclick=()=>{setTab('general');document.querySelector('.workspace').scrollTo({top:0,behavior:'smooth'})};
 $('macroTab').onclick=()=>setTab('tasks');
