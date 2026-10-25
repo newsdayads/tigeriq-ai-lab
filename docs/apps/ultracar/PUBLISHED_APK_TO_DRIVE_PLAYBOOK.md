@@ -2,6 +2,14 @@
 
 **Canonical, verified 2026-10-25 06:07 Asia/Ho_Chi_Minh.** Owner Work Order: [#5129](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129#issuecomment-6390694935). Parent [release runbook](WORKFLOW_APK_RELEASE.md). For any new UltraCar APK job, load this file **from GitHub main at the start**; old chats, snapshots, and the draft v44 PR do not supersede this real receipt.
 
+## P0 UPDATE — 2026-10-25 07:24 OWNER DEVICE CRASH — SUPERSEDES v44 APP ACCEPTANCE
+
+- **Confirmed:** SM-F916N Android 13 reported `java.lang.VerifyError` in `zc4.b`. The v44 TEST file listed below was signed/published but **CRASHES / NOT ACCEPTED ON DEVICE**. Do not recommend reinstalling it; revert to signed .43 while unverified.
+- RCA: the v44 Compose callback injection overwrites `v11` formerly holding `Lha4;` with `String`, provoking Android ART verifier rejection. An earlier syntax-only Smali repair, successful Apktool build, signing and Drive sync **did not prove app runtime safety**.
+- PC01 `SourceFromPublished43_TEST_285/smali/zc4.smali` is now in an **incomplete partially edited state**. Do not build from that stage without a fresh safe source and validation. Further PC01 source edit and new decoded stage requests were explicitly declined by the platform; do not retry the equivalent denied action with a different account/tool.
+- Source-only fix and nine regression tests: `apps/ultracarhcm-v1-v44/hotfix/` (from approved GitHub branch). Detailed evidence: [#5129 07:24 report](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129#issuecomment-6391429013). The repair must keep `v11` as `Lha4;` and use `v12` and `v13` for session ID and callback; only actual ART/SM-F916N launch acceptance clears the runtime blocker.
+- Next signed TEST APK/version and Google Drive upload **not yet done**; no production change. Don't call the next release DONE until real new APK, correct signature, Drive readback and crash-free device check.
+
 ## 0. Do not confuse build/shipping with DeX product acceptance
 
 - **Build, signing and TEST Drive publication succeeded for v1.0.44 (285).** Real Samsung Z Fold 2/DeX functional acceptance remains **PENDING**; `V44UiBridge`/5 shortcuts/reorder cannot be called QA PASS until observed working on target phone.
