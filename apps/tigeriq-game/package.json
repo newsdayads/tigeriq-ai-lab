@@ -11,7 +11,8 @@
     "lint": "node scripts/lint.mjs",
     "test": "node scripts/build.mjs && node --test tests/*.test.mjs",
     "verify": "npm run lint && npm test",
-    "ci:s10": "node scripts/s10-ci.mjs"
+    "ci:s10": "node scripts/s10-ci.mjs",
+    "build:standalone": "node scripts/build.mjs && node scripts/build-standalone.mjs"
   },
   "license": "UNLICENSED"
 }
