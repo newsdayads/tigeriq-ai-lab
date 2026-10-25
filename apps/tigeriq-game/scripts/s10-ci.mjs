@@ -13,7 +13,9 @@ const sources = Object.freeze({
   'scripts/s10-preview.mjs':'b20c40f2eeee893b8f15f904ba14af243a494b19',
   'tests/s10-preview.test.mjs':'6d2be9ae34c6f2fa7fdd4c2520a14d486f5d2485',
   'scripts/build-standalone.mjs':'87740fb62f295cf0a492e3e06be435bd6d0ed115',
-  'tests/standalone.test.mjs':'56ecde3dd166faaa196671c406326754d5eba2f2'
+  'tests/standalone.test.mjs':'56ecde3dd166faaa196671c406326754d5eba2f2',
+  'preview/robot-oops-g06-field-test.html':'4a110f2a5704825bc7fb896ed4f88ef2f9cb1ded',
+  'tests/field-preview.test.mjs':'e19c27481b74aad72d46c488b61fe8ba24d311fd'
 });
 const gate = (condition, label) => {if(!condition) throw Error(label);};
 const run = (program,args,cwd=game)=>{
@@ -40,16 +42,16 @@ async function verify(){
     const blob=sha1blob(bytes);
     gate(blob===expectedBlob,'GIT_BLOB_CHANGED_OUTSIDE_ACCEPTED_SOURCE '+p);
     verified.push({path:'apps/tigeriq-game/'+p,gitBlobSha1:blob});
-    run(process.execPath,['--check',p]);
+    if(p.endsWith('.mjs'))run(process.execPath,['--check',p]);
   }
   // A working preview is an actual built game over HTTP, not a static fixture.
   run(process.execPath,['scripts/build.mjs']);
   run(process.execPath,['scripts/build-standalone.mjs']);
   const tap=run(process.execPath,['--test','--test-reporter=tap',
-    'tests/s10-e2e.test.mjs','tests/s10-preview.test.mjs','tests/standalone.test.mjs']);
+    'tests/s10-e2e.test.mjs','tests/s10-preview.test.mjs','tests/standalone.test.mjs','tests/field-preview.test.mjs']);
   const getCount=name=>Number(new RegExp('^# '+name+' (\\d+)$','m').exec(tap)?.[1]);
   const tests=getCount('tests'),pass=getCount('pass'),fail=getCount('fail'),skipped=getCount('skipped');
-  gate(tests===25 && pass===25 && fail===0 && skipped===0,'G06_REGRESSION_MATRIX_NOT_25_OF_25');
+  gate(tests===29 && pass===29 && fail===0 && skipped===0,'G06_REGRESSION_MATRIX_NOT_29_OF_29');
   const preflight=JSON.parse(run(process.execPath,['scripts/s10-preflight.mjs','--dry-run']));
   const noAdapter=JSON.parse(run(process.execPath,['scripts/s10-e2e.mjs']));
   gate(preflight.code==='WAIT_RUNTIME_MCP_BINDING' && preflight.deviceMutation===false &&
