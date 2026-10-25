@@ -9,8 +9,14 @@ const evidence={mcpBindingVerified:true,attestedReadOnlySource:true,
   deviceSerial:'R58M123456A',deviceModel:'SM-G977N',batteryLevel:100,
   batteryOverrideDetected:false,previewUrl:'http://127.0.0.1:4173/',
   previewReachable:true,previewSsoRequired:false,buildSha:sha};
-const intent={workOrder:'GH-5284',resourceScope:'TIGERIQ_GAME_G06_S10_E2E_HARNESS'};
-const fence=()=>({accepted:true,scope:intent.resourceScope,deviceSerial:evidence.deviceSerial,expiresAtMs:Date.now()+60000});
+const intent={workOrder:'GH-5284',resourceScope:'TIGERIQ_GAME_G06_S10_E2E_HARNESS',
+  ownerId:'CORE_NATIVE_NV02',leaseId:'LEASE_GH5284_NATIVE_001',fencingToken:'FENCE_GH5284_NATIVE_001'};
+const fence=()=>({accepted:true,leaseState:'active',scope:intent.resourceScope,
+  deviceSerial:evidence.deviceSerial,ownerId:intent.ownerId,leaseId:intent.leaseId,
+  fencingToken:intent.fencingToken,expiresAtMs:Date.now()+60000});
+const session=()=>({accepted:true,fresh:true,sessionId:'S10SESSION_12345',
+  ownerId:intent.ownerId,leaseId:intent.leaseId,
+  fencingToken:intent.fencingToken,sourceSha:evidence.buildSha});
 
 test('parse only native adb devices; never treat unauthorized/offline as usable',()=>{
   const devices=parseAdbDevices('List of devices attached\nR58M123456A device\nXYZ unauthorized\nXYY offline\n');
@@ -92,7 +98,7 @@ test('no adapter, no intent, or failed fencing forbids device mutation',async()=
 test('verified adapter executes exact five levels, then own-scope cleanup',async()=>{
   const calls=[];
   const adapter={verifyFence:async()=>fence(),
-    beginOnce:async()=>({accepted:true,fresh:true,sessionId:'S10SESSION_12345'}),
+    beginOnce:async()=>session(),
     runLevel:async({level})=>{calls.push(level);return {level,pass:true,evidenceRef:'https://evidence.example/'+level}},
     cleanupOwned:async()=>{calls.push('cleanup');return {cleaned:true,sessionId:'S10SESSION_12345'}}};
   const r=await runG06E2E({evidence,ownerIntent:intent,adapter});
@@ -103,7 +109,7 @@ test('verified adapter executes exact five levels, then own-scope cleanup',async
 test('revoked token stops at next level; only owner scope may cleanup',async()=>{
   let n=0,steps=0,cleanups=0;
   const adapter={verifyFence:async()=>{n++;return n<3?fence():{accepted:false}},
-    beginOnce:async()=>({accepted:true,fresh:true,sessionId:'S10SESSION_12345'}),
+    beginOnce:async()=>session(),
     runLevel:async({level})=>{steps++;return {level,pass:true,evidenceRef:'https://evidence.example/L01'}},
     cleanupOwned:async()=>{cleanups++}};
   const r=await runG06E2E({evidence,ownerIntent:intent,adapter});
@@ -113,16 +119,46 @@ test('revoked token stops at next level; only owner scope may cleanup',async()=>
 
 test('replayed native session is blocked before any level action',async()=>{
   let levels=0;const adapter={verifyFence:async()=>fence(),
-    beginOnce:async()=>({accepted:true,fresh:false,sessionId:'S10SESSION_12345'}),
+    beginOnce:async()=>({...session(),fresh:false}),
     runLevel:async()=>{levels++},cleanupOwned:async()=>{levels++}};
   const r=await runG06E2E({adapter,evidence,ownerIntent:intent});
   assert.equal(r.code,'WAIT_DEVICE_EXCLUSIVE_FENCING');assert.equal(levels,0);
 });
 test('five levels PASS cannot be reported when scoped cleanup is unverified',async()=>{
   let count=0;const adapter={verifyFence:async()=>fence(),
-    beginOnce:async()=>({accepted:true,fresh:true,sessionId:'S10SESSION_12345'}),
+    beginOnce:async()=>session(),
     runLevel:async({level})=>{count++;return {level,pass:true,evidenceRef:'https://evidence.example/'+level}},
     cleanupOwned:async()=>({cleaned:false})};
   const r=await runG06E2E({adapter,evidence,ownerIntent:intent});
   assert.equal(count,5);assert.equal(r.status,'WAIT');assert.equal(r.reason,'CLEANUP_NOT_ATTESTED');
+});
+
+test('missing scoped native owner identity blocks before any adapter call',async()=>{
+  let nativeCalls=0;
+  const adapter={verifyFence:async()=>{nativeCalls++;return fence();},
+    beginOnce:async()=>{nativeCalls++;return session();},
+    runLevel:async()=>{nativeCalls++},cleanupOwned:async()=>{nativeCalls++}};
+  const r=await runG06E2E({evidence,ownerIntent:{...intent,fencingToken:undefined},adapter});
+  assert.equal(r.code,'WAIT_DEVICE_EXCLUSIVE_FENCING');
+  assert.equal(nativeCalls,0);
+});
+
+test('a live lease for another owner cannot authorize even the first game action',async()=>{
+  let began=0;
+  const adapter={verifyFence:async()=>({...fence(),fencingToken:'FENCE_COMPETING_OWNER_222'}),
+    beginOnce:async()=>{began++;return session();},
+    runLevel:async()=>{began++},cleanupOwned:async()=>{began++}};
+  const r=await runG06E2E({evidence,ownerIntent:intent,adapter});
+  assert.equal(r.code,'WAIT_DEVICE_EXCLUSIVE_FENCING');
+  assert.equal(began,0);
+});
+
+test('native session identity and source SHA must match the exact fenced request',async()=>{
+  let levels=0;
+  const adapter={verifyFence:async()=>fence(),
+    beginOnce:async()=>({...session(),sourceSha:'2'.repeat(40)}),
+    runLevel:async()=>{levels++},cleanupOwned:async()=>{levels++}};
+  const r=await runG06E2E({evidence,ownerIntent:intent,adapter});
+  assert.equal(r.code,'WAIT_DEVICE_EXCLUSIVE_FENCING');
+  assert.equal(levels,0);
 });
