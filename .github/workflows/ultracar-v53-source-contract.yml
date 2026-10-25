@@ -22,3 +22,13 @@ jobs:
         with:
           node-version: "22"
       - run: node --test tests/ultracar-v53-ui.test.mjs
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-34"
+      - name: Compile v53 Java against Android API 34
+        run: |
+          mkdir -p "$RUNNER_TEMP/ultracar-v53-classes"
+          javac -encoding UTF-8 --release 8 -cp "$ANDROID_HOME/platforms/android-34/android.jar" -d "$RUNNER_TEMP/ultracar-v53-classes" apps/ultracarhcm-v1-v53/src/com/tigeriq/v44/V44UiBridge.java
