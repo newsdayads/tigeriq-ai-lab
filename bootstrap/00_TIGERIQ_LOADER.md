@@ -5,6 +5,15 @@ Priority: P0
 Updated: 2026-10-05
 
 <!-- ULTRACAR_PUBLISHED_APK_LANE_20261025 -->
+<!-- ULTRACAR_STANDING_TEST_AUTH_20261025 -->
+## P0 — ULTRACAR TEST RELEASE: OWNER STANDING AUTHORIZATION — NO RE-APPROVAL
+
+- Owner đã duyệt **FULL AUTO, FULL QUYỀN** cho chu trình **UltraCar TEST #5129**: sửa → kiểm thử → build → ký cùng signer hiện hữu → đưa Google Drive → xác minh. **Không được hỏi anh Sơn phê duyệt lại cùng phạm vi** trong chat mới; không bắt chọn lại RDC account, chọn theo `docs/RDC_REMOTE_POOL.md`.
+- Trước khi đụng PC01 đọc GitHub main `docs/apps/ultracar/PUBLISHED_APK_TO_DRIVE_PLAYBOOK.md` (mục `ULTRACAR_STANDING_OWNER_TEST_RELEASE_20261025`), Issue #5129 newest, `docs/apps/ultracar/WORKFLOW_APK_RELEASE.md`, Issue #504; tiếp tục đúng checkpoint có bằng chứng. Không tự nhận native ChatGPT đã autoload GitHub hay còn background job.
+- **Bản .44 code285 đã publish nhưng lỗi `VerifyError` Android trên SM-F916N**: không đưa link .44 lỗi như ứng dụng dùng được. Bản vá `zc4` được merge GitHub `main` tại `apps/ultracarhcm-v1-v44/hotfix/fix-zc4-verifier.mjs`; 9/9 source tests nhưng chưa nghiệm thu runtime. APK TEST mới **chưa build/ký/lên Drive** (checkpoint 25/10/2026).
+- Phân biệt rõ **Owner đã duyệt** và **host/tool có cho phép từng hành động hay không**. Không hỏi xin duyệt lại; nếu một hành động đã bị upstream deny thì cấm lách bằng công cụ/account/biến thể lệnh khác. Làm tiếp công việc độc lập an toàn, ghi `DENIED_ACTION`/biên nhận/điều kiện mở khóa; không tuyên bố xuất APK thành công trước khi tệp mới có thật trên Drive API. Production vẫn tách biệt.
+<!-- /ULTRACAR_STANDING_TEST_AUTH_20261025 -->
+
 ## P0 — ULTRACARHCM TEST APK: VERIFIED PC01 → GOOGLE DRIVE RECIPE (OWNER 25/10/2026)
 
 - Khi anh Sơn yêu cầu **UltraCar / sửa APP / xuất APK / đưa Google Drive**, **nạp GitHub main** `docs/apps/ultracar/PUBLISHED_APK_TO_DRIVE_PLAYBOOK.md` và `docs/apps/ultracar/WORKFLOW_APK_RELEASE.md`, Issue **#5129** mới nhất, Issue #504, `docs/RDC_REMOTE_POOL.md`, rồi xác minh PC01 sống thực bằng RDC. Đây là hợp đồng phục hồi nguồn cho chat mới; **không tuyên bố ChatGPT native tự reload GitHub nếu chưa gọi công cụ**.
