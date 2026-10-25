@@ -1079,7 +1079,10 @@ export function createPcOperatorMcpHandler({
       const sseTransport = new SSEServerTransport('/mcp/messages', res);
       const sseServer = createServerInstance(allowMcpMutation(req.headers, existingSecret));
       await sseServer.connect(sseTransport);
-      sseTransports.set(sseTransport.sessionId, sseTransport);
+      sseTransports.set(sseTransport.sessionId, {
+        transport: sseTransport,
+        authorized: allowMcpMutation(req.headers, existingSecret),
+      });
       res.on('close', () => {
         sseTransports.delete(sseTransport.sessionId);
       });
@@ -1089,12 +1092,18 @@ export function createPcOperatorMcpHandler({
     // Route 2: Classic SSE POST /mcp/messages
     if (req.method === 'POST' && url.pathname === '/mcp/messages') {
       const sessionId = url.searchParams.get('sessionId');
-      const transport = sseTransports.get(sessionId);
-      if (!transport) {
+      const session = sseTransports.get(sessionId);
+      if (!session) {
         res.writeHead(404, { 'Content-Type': 'text/plain' }).end('SESSION_NOT_FOUND');
         return true;
       }
-      await transport.handlePostMessage(req, res);
+      // Do not let sessionId become a bearer credential for a privileged
+      // SSE connection. The original owner token is mandatory on every POST.
+      if (session.authorized && !allowMcpMutation(req.headers, existingSecret)) {
+        res.writeHead(401, { 'Content-Type': 'text/plain' }).end('MCP_AUTH_REQUIRED');
+        return true;
+      }
+      await session.transport.handlePostMessage(req, res);
       return true;
     }
 
