@@ -8,8 +8,8 @@ const game = resolve(import.meta.dirname, '..');
 const root = resolve(game, '../..');
 const sources = Object.freeze({
   'scripts/s10-preflight.mjs':'8e383434205a7041e03df98db8337198d1d39d16',
-  'scripts/s10-e2e.mjs':'999c04770b4503611ab6a764fdec1cd1f0247014',
-  'tests/s10-e2e.test.mjs':'b1eb235d019c71937dab3bdfdcb75b99e42945db'
+  'scripts/s10-e2e.mjs':'545357bcbda71a9be2250788795ebfe4a1a01fda',
+  'tests/s10-e2e.test.mjs':'688c6153dcc527a7037303e39532a9599c1f8437'
 });
 const gate = (condition, label) => {if(!condition) throw Error(label);};
 const run = (program,args,cwd=game)=>{
@@ -41,7 +41,7 @@ async function verify(){
   const tap=run(process.execPath,['--test','--test-reporter=tap','tests/s10-e2e.test.mjs']);
   const getCount=name=>Number(new RegExp('^# '+name+' (\\d+)$','m').exec(tap)?.[1]);
   const tests=getCount('tests'),pass=getCount('pass'),fail=getCount('fail'),skipped=getCount('skipped');
-  gate(tests===14 && pass===14 && fail===0 && skipped===0,'G06_REGRESSION_MATRIX_NOT_14_OF_14');
+  gate(tests===17 && pass===17 && fail===0 && skipped===0,'G06_REGRESSION_MATRIX_NOT_17_OF_17');
   const preflight=JSON.parse(run(process.execPath,['scripts/s10-preflight.mjs','--dry-run']));
   const noAdapter=JSON.parse(run(process.execPath,['scripts/s10-e2e.mjs']));
   gate(preflight.code==='WAIT_RUNTIME_MCP_BINDING' && preflight.deviceMutation===false &&
