@@ -49,7 +49,7 @@ import { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
 import { API_DOCTOR_CAPABILITY, apiDoctorGlobalAnalysisAdmission, apiDoctorAutoworkPriority, apiDoctorScannableEmployeeId, apiDoctorScanSignature, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorVerifiedNormalWorkRecovery, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorOwnerProxyReviewStatus, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
-import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
+import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord, buildR04IndependentReviewPrompt, r04IndependentReviewIdentity, verifiedR04IndependentFactualReview } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
 import { workOrderChecklistSteps } from './work-order-checklist-hard-gate.mjs';
 import { collectGithubWorkOrderIssues, closedWorkOrderBucket } from './github-work-orders-pages.mjs';
@@ -3040,7 +3040,7 @@ function publicStatus(r){
   return 'READY';
 }
 async function publicJobEvidence(jobId){
-  const row=(await pool.query(`select j.id,j.objective_id,j.kind,j.status,j.result,j.employee_id,j.resource_id,j.completed_at,o.metadata as objective_metadata
+  const row=(await pool.query(`select j.id,j.objective_id,j.kind,j.status,j.prompt,j.result,j.employee_id,j.resource_id,j.completed_at,o.metadata as objective_metadata
     from tigeriq_jobs j
     left join tigeriq_objectives o on o.id=j.objective_id
     where j.id=$1
@@ -3050,10 +3050,73 @@ async function publicJobEvidence(jobId){
     const provenance=(await pool.query(`select type,job_id,employee_id,resource_id,data from tigeriq_events
       where job_id=$1 and type in ('HOTPATH_STAGE','RESOURCE_SUCCESS','JOB_DONE') order by seq asc limit 100`,[jobId])).rows;
     row.nativeAuditEvents=provenance;
+    const identity=r04IndependentReviewIdentity(row);
+    if(identity){
+      row.r04FactualReview=(await pool.query(`select id,status,capability,kind,employee_id,resource_id,completed_at,result
+        from tigeriq_jobs where id=$1 limit 1`,[identity.reviewJobId])).rows[0]||null;
+    }
   }
   return buildPublicJobEvidenceRecord(row);
 }
 
+async function reconcileNativeR04IndependentReview(){
+  const source=(await pool.query(`select j.id,j.objective_id,j.kind,j.status,j.prompt,j.result,j.employee_id,j.resource_id,j.completed_at,o.metadata as objective_metadata
+    from tigeriq_jobs j
+    left join tigeriq_objectives o on o.id=j.objective_id
+    where j.kind='github_api_autowork'
+      and j.status='done'
+      and j.result->'autoworkAcceptance'->>'code'='GITHUB_AUTOWORK_SOURCE_OUTPUT_ACCEPTED'
+      and j.result->'autoworkAcceptance'->>'resourceScope' like 'TIGERIQ_CORE_NATIVE_R04_Q01_Q14_5144%'
+    order by j.completed_at desc nulls last
+    limit 1`)).rows[0]||null;
+  const identity=r04IndependentReviewIdentity(source);
+  if(!source||!identity)return {state:'NO_ACCEPTED_R04_SOURCE'};
+  const reviewPrompt=buildR04IndependentReviewPrompt(source);
+  if(!reviewPrompt)return {state:'R04_REVIEW_CONTEXT_UNAVAILABLE',sourceJobId:source.id};
+  const metadata={
+    source:'internal_r04_independent_factual_review',
+    sourceJobId:source.id,
+    sourceOutputSha256:identity.sourceOutputSha256,
+    resourceScope:'TIGERIQ_CORE_NATIVE_R04_Q01_Q14_5144_INDEPENDENT_FACTUAL_REVIEW',
+    finalReviewImplementerEmployeeIds:[String(source.employee_id||'').trim().toUpperCase()].filter(Boolean),
+    finalReviewImplementerResourceIds:[String(source.resource_id||'').trim()].filter(Boolean),
+  };
+  await pool.query(`insert into tigeriq_objectives(id,objective,priority,status,summary,metadata)
+    values($1,$2,'P1','active',$3,$4::jsonb)
+    on conflict(id) do nothing`,[
+      identity.reviewObjectiveId,
+      'Independently fact-check native R04 Q01-Q14 source output against its exact authoritative source context.',
+      'R04 independent factual review pending',
+      JSON.stringify(metadata),
+    ]);
+  await pool.query(`insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts)
+    values($1,$2,$3,$4,'review','github_review','queued',2)
+    on conflict(id) do nothing`,[
+      identity.reviewJobId,identity.reviewObjectiveId,
+      'Independent factual review for native R04 Q01-Q14',reviewPrompt,
+    ]);
+  const review=(await pool.query(`select id,status,capability,kind,employee_id,resource_id,completed_at,result,attempts,max_attempts
+    from tigeriq_jobs where id=$1 limit 1`,[identity.reviewJobId])).rows[0]||null;
+  if(!review)return {state:'R04_REVIEW_JOB_MISSING',sourceJobId:source.id};
+  if(review.status==='failed'&&Number(review.attempts||0)<Number(review.max_attempts||2)){
+    await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,result=null,failure=null,lease_until=null,started_at=null,completed_at=null,next_attempt_at=null where id=$1 and status='failed'",[identity.reviewJobId]);
+    return {state:'R04_REVIEW_REQUEUED',sourceJobId:source.id,reviewJobId:identity.reviewJobId};
+  }
+  if(review.status!=='done')return {state:'R04_REVIEW_PENDING',sourceJobId:source.id,reviewJobId:identity.reviewJobId};
+  const accepted=verifiedR04IndependentFactualReview(source,review);
+  const terminalState=accepted?'completed':'blocked';
+  const terminalSummary=accepted
+    ? 'Independent factual review PASS for canonical R04 source output'
+    : 'Independent factual review did not PASS; source output remains unaccepted';
+  const closed=await pool.query("update tigeriq_objectives set status=$2,summary=$3,updated_at=now() where id=$1 and status='active'",[identity.reviewObjectiveId,terminalState,terminalSummary]);
+  if(closed.rowCount===1){
+    await event(accepted?'R04_INDEPENDENT_FACTUAL_REVIEW_ACCEPTED':'R04_INDEPENDENT_FACTUAL_REVIEW_REJECTED',{
+      objectiveId:identity.reviewObjectiveId,jobId:identity.reviewJobId,sourceJobId:source.id,
+      sourceOutputSha256:identity.sourceOutputSha256,reviewerEmployeeId:review.employee_id||null,
+    });
+  }
+  return {state:accepted?'R04_REVIEW_ACCEPTED':'R04_REVIEW_REJECTED',sourceJobId:source.id,reviewJobId:identity.reviewJobId};
+}
 async function liveStatusSnapshot(){
   const sharedLeases=await activeSharedResourceLeases(pool);
   const leaseByResource=indexSharedResourceLeases(sharedLeases);
@@ -3638,6 +3701,7 @@ function getDynamicMaxParallel() {
   const healthyCount = Array.isArray(resList) ? resList.filter(r => r && (r.status === 'ready' || r.status === 'healthy' || r.healthy || r.health_state === 'READY' || r.health_state === 'ONLINE' || r.credential_state === 'LOCAL')).length : 0;
   return Math.max(3, Math.min(20, healthyCount));
 }
+let lastR04IndependentReview=0;
 let lastLightAudit = 0, lastDeepAudit = 0, activeDeepAudit = false;
 const continuousVerifyPending = createContinuousVerifyPendingQueue();
 let continuousVerifyRunning = false, continuousVerifyRunningKey = '', continuousVerifyLastRunKey = '', continuousVerifyRuntimeSha = '';
@@ -4276,6 +4340,7 @@ async function loop(){
       }
       if(t-lastRefresh>5000){await refreshResources();lastRefresh=t;}
       if(t-lastRecover>10000){await recoverStale();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;}
+      if(t-lastR04IndependentReview>5000){lastR04IndependentReview=t;await reconcileNativeR04IndependentReview();}
       if(t-lastOpenClawObjectiveReconcile>3000){await reconcileCoreDirectPcOperatorObjectives();await reconcileCoreOpenClawBoundedObjectives();lastOpenClawObjectiveReconcile=t;}
       if(!managerTickRunning&&t-lastManager>MANAGER_IDLE_MS){lastManager=t;managerTickRunning=true;void managerTick().catch(error=>console.error(JSON.stringify({event:'MANAGER_TICK_ERROR',error:String(error?.message||error)}))).finally(()=>{managerTickRunning=false;});}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}
