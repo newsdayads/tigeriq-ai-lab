@@ -47,7 +47,8 @@ describe('GitHub Core intake guardrails',()=>{
   it('materializer has no global active-GitHub-objective stop gate',()=>{
     const source=readFileSync(new URL('./github-intake.mjs',import.meta.url),'utf8');
     expect(source).not.toContain("status='active' limit 1\")).rowCount>0");
-    expect(source).toContain("select metadata from tigeriq_objectives where metadata->>'source'='github' and status='active'");
+    expect(source).toContain("select id,metadata from tigeriq_objectives where metadata->>'source'='github' and status='active'");
+    expect(source).toContain('reconcileSupersededActiveGithubObjective({pool,spec,activeRows})');
     expect(source).toContain('githubSpecBlockedByActive(spec,activeMetadata)');
     expect(source).toContain('dispatchLane:spec.dispatchLane');
   });

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
-import { GITHUB_MATERIALIZE_BATCH_DEFAULT, GITHUB_RECONCILE_INTERVAL_MS, MAX_SAME_REVISION_FALLBACK_REARMS, buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, declaredBlockedBySpec, materializeGithubIssues, parseExecutableIssue, parsePcOperatorDirectAction, reconcileSatisfiedDeclaredBlockers, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, sameRevisionFallbackRearmDecision, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
+import { GITHUB_MATERIALIZE_BATCH_DEFAULT, GITHUB_RECONCILE_INTERVAL_MS, MAX_SAME_REVISION_FALLBACK_REARMS, buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, declaredBlockedBySpec, materializeGithubIssues, parseExecutableIssue, parsePcOperatorDirectAction, reconcileSatisfiedDeclaredBlockers, reconcileSupersededActiveGithubObjective, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, sameRevisionFallbackRearmDecision, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
 import { parseOpenWorkIssue } from '../api/live-status.mjs';
 
 test('isZeroCost checks label correctly', () => {
@@ -63,7 +63,22 @@ function coreBacklogPool(options={}){
     queries.push(q);
     if(q.includes("metadata->>'source'='github' and status='active'")){
       const active=objectives.filter(o=>o.metadata?.source==='github'&&o.status==='active');
-      return {rowCount:active.length,rows:active.map(o=>({metadata:o.metadata}))};
+      return {rowCount:active.length,rows:active.map(o=>({id:o.id,status:o.status,metadata:o.metadata}))};
+    }
+    if(q.includes("update tigeriq_objectives o")&&q.includes("GITHUB_SOURCE_REVISION")){
+      throw new Error('UNEXPECTED_TEST_QUERY_MARKER');
+    }
+    if(q.includes("update tigeriq_objectives o")&&q.includes("SUPERSEDED_BY_NEW_GITHUB_SOURCE_REVISION")){
+      const row=objectives.find(o=>o.id===params[0]&&o.status==='active');
+      if(!row)return {rowCount:0,rows:[]};
+      const liveJob=jobs.some(j=>j.objective_id===row.id&&!['done','failed','cancelled'].includes(j.status));
+      const currentJob=jobs.some(j=>j.objective_id===row.id&&j.current_resource===true);
+      const activeLease=jobs.some(j=>j.objective_id===row.id&&j.active_shared_lease===true);
+      if(liveJob||currentJob||activeLease)return {rowCount:0,rows:[]};
+      row.status='blocked';
+      row.summary='SUPERSEDED_BY_NEW_GITHUB_SOURCE_REVISION';
+      row.metadata={...row.metadata,...JSON.parse(params[2])};
+      return {rowCount:1,rows:[{id:row.id}]};
     }
     if(q.includes("select id,status,summary,metadata from tigeriq_objectives where metadata->>'source'='github'")){
       const rows=objectives.filter(o=>o.metadata?.source==='github').map(o=>({id:o.id,status:o.status,summary:o.summary||'',metadata:o.metadata}));
@@ -163,6 +178,62 @@ NO_DIRECT_MAIN=true
 RESOURCE_SCOPE=SAFE_AUTO_TEST
 CAPABILITY=coding
 EXECUTION_SURFACE=CODING`;
+
+test('new GitHub source revision supersedes only an orphan active objective for the same issue and scope',async()=>{
+  const pool=coreBacklogPool();
+  const issue={number:5144,state:'open',title:'[P1] autonomous diagnosis current revision',labels:[],html_url:'https://example/5144',body:[
+    'PRIORITY=P1','OWNER_POLICY=AUTO','OWNER_HOLD=false','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED',
+    'CAPABILITY=reasoning','EXECUTION_SURFACE=CORE_REASONING','RESOURCE_SCOPE=TIGERIQ_CORE_AUTONOMOUS_SELF_DIAGNOSIS_EVOLUTION_5144',
+    'MUTATION_OWNER=CORE_DYNAMIC_LEASE','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','NO_PAID_COST=true',
+    'NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true','NO_PRODUCTION_RELEASE=true',
+    'NO_DESTRUCTIVE=true','NO_DIRECT_MAIN=true','CURRENT_STATE=READY_NATIVE_R04_OWNER_REARM'
+  ].join('\n')};
+  const spec=parseExecutableIssue(issue);
+  assert.ok(spec);
+  pool.objectives.push({id:'OBJ-GH-5144-Rold',status:'active',metadata:{
+    source:'github',issueNumber:5144,sourceRevision:'old-revision',
+    resourceScope:spec.resourceScope,workOrderDedupeKey:'legacy-key'
+  }});
+  const decision=await reconcileSupersededActiveGithubObjective({pool,spec,activeRows:pool.objectives});
+  assert.deepStrictEqual(decision,{released:true,reason:'SUPERSEDED_ACTIVE_WITHOUT_LIVE_WORK',objectiveId:'OBJ-GH-5144-Rold'});
+  assert.equal(pool.objectives[0].status,'blocked');
+
+  // Recreate from scratch to prove the normal materializer can now insert the new revision.
+  const pool2=coreBacklogPool();
+  pool2.objectives.push({id:'OBJ-GH-5144-Rold',status:'active',metadata:{
+    source:'github',issueNumber:5144,sourceRevision:'old-revision',
+    resourceScope:spec.resourceScope,workOrderDedupeKey:'legacy-key'
+  }});
+  const out=await materializeGithubIssues({pool:pool2,openIssues:[issue],token:'fake'});
+  assert.equal(out.created,1);
+  assert.equal(pool2.objectives.filter(o=>o.status==='active').length,1);
+  assert.equal(pool2.objectives.find(o=>o.id==='OBJ-GH-5144-Rold').status,'blocked');
+  assert.equal(pool2.jobs.length,1);
+  assert.equal(pool2.jobs[0].status,'queued');
+});
+
+test('new GitHub source revision cannot supersede an active objective that still has live work',async()=>{
+  const pool=coreBacklogPool();
+  const issue={number:5144,state:'open',title:'[P1] guarded active work',labels:[],html_url:'https://example/5144',body:[
+    'PRIORITY=P1','OWNER_POLICY=AUTO','OWNER_HOLD=false','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED',
+    'CAPABILITY=reasoning','EXECUTION_SURFACE=CORE_REASONING','RESOURCE_SCOPE=TIGERIQ_CORE_AUTONOMOUS_SELF_DIAGNOSIS_EVOLUTION_5144',
+    'MUTATION_OWNER=CORE_DYNAMIC_LEASE','NO_CODE_CHANGE=true','NO_PC01_SHELL=true','NO_PAID_COST=true',
+    'NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true','NO_PRODUCTION_RELEASE=true',
+    'NO_DESTRUCTIVE=true','NO_DIRECT_MAIN=true','CURRENT_STATE=READY_NATIVE_R04_OWNER_REARM'
+  ].join('\n')};
+  const spec=parseExecutableIssue(issue);
+  pool.objectives.push({id:'OBJ-GH-5144-Rold',status:'active',metadata:{
+    source:'github',issueNumber:5144,sourceRevision:'old-revision',
+    resourceScope:spec.resourceScope,workOrderDedupeKey:'legacy-key'
+  }});
+  pool.jobs.push({id:'JOB-OLD',objective_id:'OBJ-GH-5144-Rold',status:'running'});
+  const decision=await reconcileSupersededActiveGithubObjective({pool,spec,activeRows:pool.objectives});
+  assert.deepStrictEqual(decision,{released:false,reason:'ACTIVE_WORK_OR_RACE'});
+  assert.equal(pool.objectives[0].status,'active');
+  const out=await materializeGithubIssues({pool,openIssues:[issue],token:'fake'});
+  assert.equal(out.created,0);
+  assert.equal(pool.objectives[0].status,'active');
+});
 
 test('declared BLOCKED_BY references are strict and deterministic',()=>{
   assert.deepStrictEqual(declaredBlockedBySpec('BLOCKED_BY=#4462',4463),{required:true,valid:true,dependencies:[4462],raw:'#4462'});
