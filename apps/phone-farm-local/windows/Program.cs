@@ -24,6 +24,8 @@ internal sealed class FarmWindow : Form {
     BackColor = Color.FromArgb(238, 246, 253)
   };
   private Process? ownedHost;
+  private readonly System.Windows.Forms.Timer healthTimer = new() { Interval = 3000 };
+  private bool recovering;
   private const string Origin = "http://127.0.0.1:8765";
   private readonly string appDirectory = AppContext.BaseDirectory;
 
@@ -38,7 +40,11 @@ internal sealed class FarmWindow : Form {
     Controls.Add(loading);
     viewer.Visible = false;
     Shown += async (_, _) => await StartupAsync();
-    FormClosed += (_, _) => ShutdownOwnedHost();
+    healthTimer.Tick += async (_, _) => await RecoverBackendAsync();
+    FormClosed += (_, _) => {
+      healthTimer.Stop();
+      ShutdownOwnedHost();
+    };
   }
 
   private static async Task<bool> HealthyAsync(HttpClient client) {
@@ -109,11 +115,49 @@ internal sealed class FarmWindow : Form {
       loading.Visible = false;
       viewer.Visible = true;
       viewer.BringToFront();
+      healthTimer.Start();
     } catch (Exception ex) {
       loading.Text = "KHÔNG KHỞI ĐỘNG ĐƯỢC\n\n" + ex.Message + "\n\n" +
                      "Dữ liệu và ứng dụng LAIXI cũ không bị thay đổi.";
       loading.ForeColor = Color.Firebrick;
       ShutdownOwnedHost();
+    }
+  }
+
+  private async Task RecoverBackendAsync() {
+    if (recovering || IsDisposed || Disposing) return;
+
+    using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(1) };
+    if (await HealthyAsync(client)) return;
+
+    recovering = true;
+    healthTimer.Stop();
+    try {
+      ShutdownOwnedHost();
+      StartBackend();
+
+      bool ready = false;
+      for (int retry = 0; retry < 40; retry++) {
+        if (await HealthyAsync(client)) { ready = true; break; }
+        if (ownedHost is { HasExited: true }) break;
+        await Task.Delay(250);
+      }
+      if (!ready) throw new InvalidOperationException(
+        "Backend nội bộ chưa phục hồi tại 127.0.0.1:8765.");
+
+      loading.Visible = false;
+      viewer.Visible = true;
+      viewer.BringToFront();
+      if (viewer.CoreWebView2 is not null) viewer.CoreWebView2.Reload();
+      else viewer.Source = new Uri(Origin + "/");
+    } catch (Exception ex) {
+      loading.Text = "ĐANG THỬ PHỤC HỒI BỘ ĐIỀU KHIỂN\n\n" + ex.Message;
+      loading.ForeColor = Color.Firebrick;
+      loading.Visible = true;
+      viewer.Visible = false;
+    } finally {
+      recovering = false;
+      if (!IsDisposed && !Disposing) healthTimer.Start();
     }
   }
 
