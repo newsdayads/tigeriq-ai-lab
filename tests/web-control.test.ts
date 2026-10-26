@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+// @ts-expect-error Canonical runtime module is JavaScript and intentionally ships without a .d.ts.
+// Vitest executes the real module; this suppresses only TypeScript's declaration-file warning.
 import { completionProof as sharedCompletionProof } from '../apps/shared/work-center-history.mjs';
+// @ts-expect-error Bundled runtime module is JavaScript and intentionally ships without a .d.ts.
 import { completionProof as bundledCompletionProof } from '../apps/tigeriq-core/web-control-completion-proof.mjs';
 
 const web = readFileSync(resolve('apps/tigeriq-core/web-control.html'), 'utf8');
