@@ -1,0 +1,37 @@
+name: UltraCar V54 Source Contract
+on:
+  push:
+    paths:
+      - "apps/ultracarhcm-v1-v54/**"
+      - "tests/ultracar-v54-ui.test.mjs"
+      - ".github/workflows/ultracar-v54-source-contract.yml"
+  pull_request:
+    paths:
+      - "apps/ultracarhcm-v1-v54/**"
+      - "tests/ultracar-v54-ui.test.mjs"
+      - ".github/workflows/ultracar-v54-source-contract.yml"
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --test tests/ultracar-v54-ui.test.mjs
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Ensure Android API 34 exists on runner
+        run: |
+          if [ ! -f "$ANDROID_HOME/platforms/android-34/android.jar" ]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34"
+          fi
+      - name: Compile v54 Java against Android API 34
+        run: |
+          mkdir -p "$RUNNER_TEMP/ultracar-v54-classes"
+          javac -encoding UTF-8 --release 8 -cp "$ANDROID_HOME/platforms/android-34/android.jar" -d "$RUNNER_TEMP/ultracar-v54-classes" apps/ultracarhcm-v1-v54/src/com/tigeriq/v44/V44UiBridge.java

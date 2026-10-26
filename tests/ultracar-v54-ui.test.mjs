@@ -1,0 +1,11 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+const source=readFileSync(new URL("../apps/ultracarhcm-v1-v54/src/com/tigeriq/v44/V44UiBridge.java",import.meta.url),"utf8");
+test("v54 Android class and release version",()=>{assert.match(source,/package com\.tigeriq\.v44;/);assert.match(source,/class V44UiBridge/);assert.match(source,/v1\.0\.54 \(build 295\)/)});
+test("Red high contrast version badge",()=>{assert.match(source,/0xFFC62828/);assert.match(source,/setTextSize\(16f\)/);assert.match(source,/versionBadge\.setTypeface\(Typeface\.DEFAULT, Typeface\.BOLD\)/)});
+test("Home 5 slots show icon, layout name and +01 through +05",()=>{assert.match(source,/new String\[5\]/);assert.match(source,/label\.setText\(name\(item\)\)/);assert.match(source,/\+%02d/);assert.match(source,/openSlot\(slot\)/);assert.match(source,/pickSlot\(slot\)/)});
+test("Quickbar moves away from start and existing bottom dock",()=>{assert.match(source,/0\.29f/);assert.match(source,/height - dp\(142\)/);assert.match(source,/bottomBarRect\.top - barHeight - dp\(8\)/);assert.match(source,/quickBar\.setVisibility\(View\.VISIBLE\)/)});
+test("Saved layouts suppress Home bar and version badge",()=>{assert.match(source,/onSavedScreen = true/);assert.match(source,/versionBadge\.setVisibility\(View\.GONE\)/);assert.match(source,/overlay\.postDelayed\(\(\) -> \{ if \(onSavedScreen\) repairMissingGrips\(\); \}, 250\)/)});
+test("Fallback grip repairs missing Compose positions by stable session IDs",()=>{assert.match(source,/private static void repairMissingGrips/);assert.match(source,/String sessionId = id\(displayed\.get\(i\)\)/);assert.match(source,/cardBounds\.put\(sessionId,rect\)/);assert.match(source,/updateGrip\(sessionId,rect\)/);assert.match(source,/shift\.invoke\(null, from, target\)/)});
+test("No exact legacy priority drag supersedes grip, count only six",()=>{assert.match(source,/Math\.min\(displayed\.size\(\), 6\)/);assert.match(source,/grip\.setOnTouchListener\(\(v, e\) -> onGrip\(fixedId, e\)\)/);assert.doesNotMatch(source,/dragRevision == revision/)});
