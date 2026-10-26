@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
-import { GITHUB_MATERIALIZE_BATCH_DEFAULT, GITHUB_RECONCILE_INTERVAL_MS, MAX_SAME_REVISION_FALLBACK_REARMS, buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, declaredBlockedBySpec, materializeGithubIssues, parseExecutableIssue, parsePcOperatorDirectAction, reconcileSatisfiedDeclaredBlockers, reconcileSupersededActiveGithubObjective, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, sameRevisionFallbackRearmDecision, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
+import { GITHUB_MATERIALIZE_BATCH_DEFAULT, GITHUB_RECONCILE_INTERVAL_MS, MAX_SAME_REVISION_FALLBACK_REARMS, buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, declaredBlockedBySpec, materializeGithubIssues, parseExecutableIssue, parsePcOperatorDirectAction, reconcileSatisfiedDeclaredBlockers, reconcileSupersededActiveGithubObjective, githubObjectiveEncodedSourceRevision, githubActiveObjectiveSourceIsSuperseded, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, sameRevisionFallbackRearmDecision, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
 import { parseOpenWorkIssue } from '../api/live-status.mjs';
 
 test('isZeroCost checks label correctly', () => {
@@ -232,6 +232,37 @@ test('new GitHub source revision cannot supersede an active objective that still
   assert.equal(pool.objectives[0].status,'active');
   const out=await materializeGithubIssues({pool,openIssues:[issue],token:'fake'});
   assert.equal(out.created,0);
+  assert.equal(pool.objectives[0].status,'active');
+});
+
+test('stale active identity survives outcome-sync metadata sourceRevision refresh',async()=>{
+  const current='abcdef123456';
+  const spec={number:5144,sourceRevision:current,resourceScope:'TIGERIQ_CORE_AUTONOMOUS_SELF_DIAGNOSIS_EVOLUTION_5144',body:'PROJECT_ID=tigeriq-platform\nWORKSTREAM_ID=core-autonomous-diagnosis-evolution\nRESOURCE_SCOPE=TIGERIQ_CORE_AUTONOMOUS_SELF_DIAGNOSIS_EVOLUTION_5144'};
+  const row={id:'OBJ-GH-5144-R111111111111-20261023102543',status:'active',metadata:{
+    source:'github',issueNumber:5144,sourceRevision:current,managerAwaitingAcceptanceRevision:'111111111111',
+    resourceScope:spec.resourceScope,workOrderDedupeKey:workOrderDedupIdentity(spec)
+  }};
+  assert.equal(githubObjectiveEncodedSourceRevision(row.id,5144),'111111111111');
+  assert.equal(githubActiveObjectiveSourceIsSuperseded(row,spec),true);
+  const pool=coreBacklogPool();
+  pool.objectives.push(row);
+  const decision=await reconcileSupersededActiveGithubObjective({pool,spec,activeRows:pool.objectives});
+  assert.deepStrictEqual(decision,{released:true,reason:'SUPERSEDED_ACTIVE_WITHOUT_LIVE_WORK',objectiveId:row.id});
+  assert.equal(pool.objectives[0].status,'blocked');
+});
+
+test('current encoded revision is not falsely superseded and live stale work remains fenced',async()=>{
+  const current='abcdef123456';
+  const spec={number:5144,sourceRevision:current,resourceScope:'TIGERIQ_CORE_AUTONOMOUS_SELF_DIAGNOSIS_EVOLUTION_5144',body:'PROJECT_ID=tigeriq-platform\nWORKSTREAM_ID=core-autonomous-diagnosis-evolution\nRESOURCE_SCOPE=TIGERIQ_CORE_AUTONOMOUS_SELF_DIAGNOSIS_EVOLUTION_5144'};
+  const currentRow={id:'OBJ-GH-5144-Rabcdef123456-20261026160000',status:'active',metadata:{
+    source:'github',issueNumber:5144,sourceRevision:current,managerAwaitingAcceptanceRevision:current,
+    resourceScope:spec.resourceScope,workOrderDedupeKey:workOrderDedupIdentity(spec)
+  }};
+  assert.equal(githubActiveObjectiveSourceIsSuperseded(currentRow,spec),false);
+  const stale={...currentRow,id:'OBJ-GH-5144-R111111111111-20261023102543',metadata:{...currentRow.metadata,managerAwaitingAcceptanceRevision:'111111111111'}};
+  const pool=coreBacklogPool(); pool.objectives.push(stale); pool.jobs.push({id:'JOB-LIVE',objective_id:stale.id,status:'running'});
+  const decision=await reconcileSupersededActiveGithubObjective({pool,spec,activeRows:pool.objectives});
+  assert.deepStrictEqual(decision,{released:false,reason:'ACTIVE_WORK_OR_RACE'});
   assert.equal(pool.objectives[0].status,'active');
 });
 
