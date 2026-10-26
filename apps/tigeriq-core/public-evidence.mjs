@@ -392,6 +392,76 @@ export function nativeR04JobEventAudit(row={},events=[]) {
   };
 }
 
+
+export function r04IndependentReviewIdentity(row={}) {
+  const proof=row?.result?.autoworkAcceptance;
+  const hash=String(proof?.textSha256||'').toLowerCase();
+  if(row?.kind!=='github_api_autowork'||row?.status!=='done')return null;
+  if(proof?.code!=='GITHUB_AUTOWORK_SOURCE_OUTPUT_ACCEPTED'||proof?.productAccepted!==false)return null;
+  if(!/^TIGERIQ_CORE_NATIVE_R04_Q01_Q14_5144(?:_|$)/.test(String(proof?.resourceScope||'')))return null;
+  if(!/^[a-f0-9]{64}$/.test(hash))return null;
+  return {
+    sourceOutputSha256:hash,
+    reviewObjectiveId:'OBJ-R04-FACT-'+hash.slice(0,24),
+    reviewJobId:'JOB-R04-FACT-'+hash.slice(0,24),
+  };
+}
+
+export function buildR04IndependentReviewPrompt(row={}) {
+  const identity=r04IndependentReviewIdentity(row);
+  const report=typeof row?.result?.text==='string'?row.result.text.trim():'';
+  const sourceContext=typeof row?.prompt==='string'?row.prompt.trim():'';
+  if(!identity||!report||!sourceContext)return '';
+  if(report.length>160000||sourceContext.length>120000)return '';
+  return [
+    'TARGET_HEAD='+identity.sourceOutputSha256,
+    '[TIGERIQ_R04_INDEPENDENT_FACTUAL_REVIEW_INPUT_V1]',
+    'SOURCE_JOB_ID='+String(row.id||''),
+    'SOURCE_WORKER='+String(row.employee_id||''),
+    'SOURCE_OUTPUT_SHA256='+identity.sourceOutputSha256,
+    'You are an independent factual reviewer. The source worker report is private and supplied only inside Core.',
+    'Review every Q01-Q14 claim against the exact authoritative source context that was supplied to the source worker.',
+    'PASS only when every material factual claim is supported by that context or explicitly marked UNKNOWN with a justified blocker.',
+    'CHANGES_REQUIRED if any material claim is invented, unsupported, contradicts its cited source, uses a mismatched timestamp, or overstates acceptance.',
+    'Do not mutate source, do not assume missing evidence, and do not treat structure-only acceptance as factual proof.',
+    'Return exactly:',
+    '[TIGERIQ_INDEPENDENT_REVIEW_V1]',
+    'REVIEW=PASS|CHANGES_REQUIRED',
+    'TARGET_HEAD='+identity.sourceOutputSha256,
+    'SUMMARY=<short independent factual finding>',
+    'FINDINGS=<specific unsupported claims or NONE>',
+    '',
+    'PRIVATE_SOURCE_REPORT_BEGIN',
+    report,
+    'PRIVATE_SOURCE_REPORT_END',
+    '',
+    'AUTHORITATIVE_SOURCE_CONTEXT_BEGIN',
+    sourceContext,
+    'AUTHORITATIVE_SOURCE_CONTEXT_END',
+  ].join('\n');
+}
+
+export function verifiedR04IndependentFactualReview(row={},review={}) {
+  const identity=r04IndependentReviewIdentity(row);
+  if(!identity||!review||review.id!==identity.reviewJobId)return null;
+  if(review.status!=='done'||review.capability!=='review'||review.kind!=='github_review')return null;
+  const sourceEmployee=String(row.employee_id||'').trim().toUpperCase();
+  const sourceResource=String(row.resource_id||'').trim();
+  const reviewerEmployee=String(review.employee_id||'').trim().toUpperCase();
+  const reviewerResource=String(review.resource_id||'').trim();
+  if(!reviewerEmployee||!reviewerResource||reviewerEmployee===sourceEmployee||reviewerResource===sourceResource)return null;
+  const evidence=review?.result?.reviewEvidence;
+  if(!evidence||evidence.schema!=='TIGERIQ_INDEPENDENT_REVIEW_V1')return null;
+  if(String(evidence.decision||'').toUpperCase()!=='PASS')return null;
+  if(String(evidence.targetHead||'').toLowerCase()!==identity.sourceOutputSha256)return null;
+  return {
+    verified:true,
+    reviewJobId:identity.reviewJobId,
+    reviewerEmployeeId:reviewerEmployee,
+    sourceOutputSha256:identity.sourceOutputSha256,
+  };
+}
+
 export function verifiedR04AutoworkSourceAttestation(row={}) {
   if (row?.kind !== 'github_api_autowork' || row?.status !== 'done') return null;
   const proof = row?.result?.autoworkAcceptance;
@@ -404,17 +474,21 @@ export function verifiedR04AutoworkSourceAttestation(row={}) {
   if (typeof row.resource_id !== 'string' || row.resource_id.length < 3) return null;
   const completed = row.completed_at instanceof Date ? row.completed_at : new Date(row.completed_at);
   if (!Number.isFinite(completed.getTime()) || completed.getTime() > Date.now() + 60000) return null;
+  const independentReview=verifiedR04IndependentFactualReview(row,row?.r04FactualReview);
+  const reportContractAudit=nativeR04ReportContractAudit(row?.result?.text);
+  reportContractAudit.independentFactualVerification=Boolean(independentReview);
   return {
     schema: 'TIGERIQ_NATIVE_R04_SOURCE_ATTESTATION_V1',
-    status: 'SOURCE_OUTPUT_ACCEPTED_ONLY',
+    status: independentReview?'PRODUCT_ACCEPTED':'SOURCE_OUTPUT_ACCEPTED_ONLY',
     outputSha256: proof.textSha256,
     characterCount: proof.characterCount,
     questionCount: 14,
     employeeId: row.employee_id,
     completedAt: completed.toISOString(),
-    productAccepted: false,
-    reportContractAudit:nativeR04ReportContractAudit(row?.result?.text),
+    productAccepted: Boolean(independentReview),
+    reportContractAudit,
     nativeJobEventAudit:nativeR04JobEventAudit(row,row?.nativeAuditEvents),
+    ...(independentReview?{independentReview}:{}),
   };
 }
 
