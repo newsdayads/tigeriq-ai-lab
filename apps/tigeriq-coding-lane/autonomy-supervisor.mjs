@@ -125,7 +125,7 @@ export async function backfillGithubRetryReceipts(pool,{fetchImpl=fetch,limit=10
         where ack.kind='GITHUB_RECEIPT_POSTED'
           and ack.payload->>'sourceEventId'=e.id::text
       )
-    order by e.id asc
+    order by e.id desc
     limit $1`,[cap]);
   let posted=0,existing=0,failed=0;
   for(const row of q.rows||[]){
