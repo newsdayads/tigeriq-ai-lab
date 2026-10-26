@@ -75,7 +75,7 @@ export async function runG06E2E({adapter=null,evidence={},ownerIntent=null}={}) 
     }
     if(!cleaned) return wait('WAIT_DEVICE_EXCLUSIVE_FENCING',{
       mutated,attemptedLevels:steps.length,reason:'CLEANUP_NOT_ATTESTED'});
-    if(problem)return wait(problem,{mutated,attemptedLevels:steps.length});
+    if(problem)return wait(problem,{mutated,attemptedLevels:steps.length,cleanupAttested:true});
     return {workOrder:'GH-5284',code:'PASS_WITH_EVIDENCE',status:'PASS',
       mutated,levels:steps,sourceSha:evidence.buildSha,cleanupAttested:true,
       productG06Done:false,reason:'G06_ACCEPTANCE_REQUIRES_SEPARATE_REAL_DEVICE_QA'};
