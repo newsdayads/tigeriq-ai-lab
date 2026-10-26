@@ -90,6 +90,8 @@ export function createS10RdcAdapter({adbPath=DEFAULT_ADB_PATH,stateRoot=DEFAULT_
   const beginOnce=async({intent,deviceSerial,sourceSha})=>{
     if(!(await verifyFence({intent})).accepted)return {accepted:false};
     if(sourceSha!==intent.sourceSha||deviceSerial!==intent.deviceSerial)return {accepted:false};
+    const chromePath=(await adb(['-s',deviceSerial,'shell','pm','path','com.android.chrome'])).stdout.trim();
+    if(!chromePath.startsWith('package:'))return {accepted:false,reason:'CHROME_PACKAGE_UNAVAILABLE'};
     const batteryBefore=(await adb(['-s',deviceSerial,'shell','dumpsys','battery'])).stdout;
     const beforeLevel=Number(/(?:^|\n)\s*level:\s*(\d{1,3})\b/i.exec(batteryBefore)?.[1]);
     const preexistingOverride=/UPDATES\s+STOPPED/i.test(batteryBefore);
@@ -110,7 +112,7 @@ export function createS10RdcAdapter({adbPath=DEFAULT_ADB_PATH,stateRoot=DEFAULT_
       const p=sessionFile(stateRoot,sessionId);const h=await open(p,'wx');await h.writeFile(JSON.stringify({schema:'TIGERIQ_S10_SESSION_V1',sessionId,...intent,sourceSha,batteryOverrideOwned})+'\n');await h.close();
       await preparePreview();
       await adb(['-s',deviceSerial,'reverse','tcp:4173','tcp:4173']);reverseAdded=true;
-      await adb(['-s',deviceSerial,'shell','am','start','-a','android.intent.action.VIEW','-d',previewUrl]);await sleep(1200);
+      await adb(['-s',deviceSerial,'shell','am','start','-a','android.intent.action.VIEW','-p','com.android.chrome','-d',previewUrl]);await sleep(1200);
       return {accepted:true,fresh:true,sessionId,ownerId:intent.ownerId,leaseId:intent.leaseId,fencingToken:intent.fencingToken,sourceSha};
     }catch(error){
       if(reverseAdded){try{await adb(['-s',deviceSerial,'reverse','--remove','tcp:4173']);}catch{} reverseAdded=false;}
