@@ -331,7 +331,7 @@ export function buildApiDoctorRepairWorkOrder({
     'PARENT=#2890 - Sửa vòng repair provider đúng policy + không bị control-plane deny',
     'RELATED=#1255 - API Doctor — tự audit/phục hồi NV API khác + handoff source repair',
     'EXECUTION_POLICY=#1456',
-    'ACTIVE_EXECUTION=true',
+    'ACTIVE_EXECUTION=false',
     'CANONICAL_SPEC=#1255',
     'CURRENT_STATE=READY_AUTO_EXECUTION',
     'CURRENT_STEP=S01 — reproduce exact provider source-contract failure',
