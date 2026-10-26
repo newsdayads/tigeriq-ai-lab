@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { localizeOwnerFacingText, ownerStatusIcon, ownerStatusVectorIcon, ownerStatusLabel, verifiedOwnerProgress } from './owner-facing-vietnamese.mjs';
+import { isAppChromeLocalOnlyPath, isProtectedControlPlanePath } from '../shared/control-plane-lock.mjs';
 
 const CAPABILITIES=new Set(['general','reasoning','review']);
 const CODING_PREFIX=/^\s*\[(?:CODING|SOURCE_MUTATION|SOURCE)\]\s*/i;
@@ -41,6 +42,96 @@ export function normalizeTerminalWorkItems(parentObjectiveId,jobs=[]){
     });
   }
   return out;
+}
+
+export function codingHandoffPathPrefixes(item={}) {
+  if(!isCodingHandoff(item))return [];
+  const raw=String(item.scopeResourceKey||'');
+  const paths=[...new Set(raw.split(/[;,]/).map(value=>value.trim().replace(/^\.\//,'').replace(/\/+$/,'')).filter(Boolean))];
+  if(!paths.length||paths.length>6)return [];
+  const allowedRoot=/^(?:apps|api|packages|scripts|tests|docs|public|schemas|config|tools)\//;
+  if(paths.some(path=>!allowedRoot.test(path)||path.includes('..')||/[\\:*?"<>|]/.test(path)||isAppChromeLocalOnlyPath(path)))return [];
+  return paths;
+}
+
+export function buildAutonomousCodingHandoffWorkOrder({parentIssueNumber,parentObjectiveId,parentPriority='P3',item}={}) {
+  const issueNumber=Number(parentIssueNumber||0);
+  const parentId=clip(parentObjectiveId,200);
+  const priority=/^P[1-5]$/.test(String(parentPriority||'').toUpperCase())?String(parentPriority).toUpperCase():'P3';
+  const paths=codingHandoffPathPrefixes(item);
+  if(!Number.isInteger(issueNumber)||issueNumber<=0||!parentId||!item?.idempotencyKey||!paths.length)return null;
+  const protectedScope=paths.some(isProtectedControlPlanePath);
+  const suffix=String(item.idempotencyKey).slice(0,20);
+  const resourceScope='AUTO_CODING_HANDOFF_'+suffix.toUpperCase();
+  const title=`[${priority}][CORE][AUTO][CODING] ${clip(item.title||'Source repair',120)}`;
+  const executable=!protectedScope;
+  const body=[
+    'TIGERIQ_JOB_V1',
+    'WORK_ORDER_LIFECYCLE=V2',
+    'PROJECT_ID=tigeriq-platform',
+    'WORKSTREAM_ID=autonomous-coding-handoff',
+    'SOURCE=PARENT_GH_'+issueNumber+'_CORE_HANDOFF',
+    'PARENT=#'+issueNumber,
+    'PARENT_OBJECTIVE='+parentId,
+    'AUTONOMOUS_CODING_HANDOFF_KEY='+item.idempotencyKey,
+    'OWNER_DIRECT=true',
+    'OWNER_POLICY=AUTO',
+    'OWNER_HOLD=false',
+    'PRIORITY='+priority,
+    'TIGERIQ_EXECUTABLE='+(executable?'true':'false'),
+    'AUTO_QUEUE='+(executable?'INCLUDED':'EXCLUDED_NV02_CONTROL_PLANE_HANDOFF'),
+    'CAPABILITY=coding',
+    'EXECUTION_SURFACE='+(executable?'CODING_LANE':'GITHUB_CONNECTOR_ONLY'),
+    'ASSIGNED_EXECUTOR='+(executable?'ELIGIBLE_ROLE_DYNAMIC':'NV02'),
+    'MUTATION_OWNER='+(executable?'CORE_DYNAMIC_LEASE':'GITHUB_AUTHORIZED_USER_ACTIONS_ONLY'),
+    'AUTONOMOUS_CODE='+(executable?'true':'false'),
+    'ZERO_COST=true',
+    'RESOURCE_SCOPE='+resourceScope,
+    'ALLOW_PATH_PREFIX='+paths.join(','),
+    'NO_PC01_SHELL=true',
+    'NO_BROWSER_AUTH=true',
+    'NO_PAID_COST=true',
+    'NO_CREDENTIAL_CHANGE=true',
+    'NO_SECURITY_BOUNDARY_CHANGE=true',
+    'NO_DESTRUCTIVE=true',
+    'NO_PRODUCTION_RELEASE=true',
+    'NO_DIRECT_MAIN=true',
+    'APP_CHROME_MUTATION=FORBIDDEN',
+    'CURRENT_STATE=READY_CODING_HANDOFF',
+    'CURRENT_STEP=S01 — Implement bounded source repair',
+    'LAST_COMPLETED_STEP=CORE_RCA_AND_HANDOFF_MATERIALIZED',
+    'NEXT_ACTION='+clip(item.prompt,1000).replace(/\s+/g,' '),
+    'BLOCKER=NONE',
+    'STARTED_AT=NOT_STARTED',
+    'FINISHED_AT=NOT_FINISHED',
+    'ETA_STATUS=UNVERIFIED',
+    'SAME_FAILURE_RETRY_COUNT=0',
+    'SAME_FAILURE_RETRY_MAX=2',
+    'VERIFICATION_COUNT_CURRENT_HEAD=0',
+    'VERIFICATION_MAX_PER_HEAD=2',
+    'LAST_FAILURE_SIGNATURE=NONE',
+    'RETRY_RESUME_TRIGGER=NEW_SOURCE_HEAD_OR_TEST_EVIDENCE',
+    'PROGRESS_SOURCE=STRUCTURED_PROGRESS_CHECKLIST',
+    'PROGRESS_COMPLETED=0',
+    'PROGRESS_TOTAL=3',
+    'DONE=false',
+    '',
+    '## GOAL',
+    clip(item.prompt,4000),
+    '',
+    '## ACCEPTANCE',
+    '- '+clip(item.acceptance||'Produce concrete evidence that this work is complete.',1000),
+    '- Keep source mutation inside ALLOW_PATH_PREFIX and merge only through reviewed CI-green PR.',
+    '',
+    '## STRUCTURED_PROGRESS_CHECKLIST',
+    '- [ ] S01 — Implement bounded repair in declared path scope',
+    '- [ ] S02 — Exact-head tests/review pass and PR merged through normal gate',
+    '- [ ] S03 — Runtime/source acceptance receipt linked to parent #'+issueNumber,
+    '',
+    '## STOP_CONDITIONS',
+    'REAL_BLOCKER | EXTERNAL_WAIT | DONE_WITH_EVIDENCE',
+  ].join('\n');
+  return {title,body,paths,protectedScope,resourceScope,executable,marker:'AUTONOMOUS_CODING_HANDOFF_KEY='+item.idempotencyKey};
 }
 
 export function handoffGenerationKey(items=[]){

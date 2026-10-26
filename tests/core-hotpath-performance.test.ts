@@ -6,7 +6,7 @@ const core = readFileSync(new URL('../apps/tigeriq-core/core.mjs', import.meta.u
 describe('TigerIQ Core hot-path performance guard', () => {
   it('preserves manager/skill-loader structure after performance changes', () => {
     expect(core).toMatch(/async function managerTick\(\)/);
-    expect(core).toMatch(/matchAndLoadSkills\(goal\)/);
+    expect(core).toMatch(/matchAndLoadSkills\(focusedSkillRoutingText\(goal\)\)/);
     expect(core).toMatch(/async function invokeProvider\(/);
     expect(core).toMatch(/const resources = \[/);
   });

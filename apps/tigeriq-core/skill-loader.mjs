@@ -95,6 +95,22 @@ function relevanceScore(objective, skill) {
   return score;
 }
 
+export function focusedSkillRoutingText(objectiveText = '') {
+  const text=String(objectiveText||'');
+  const lines=text.replace(/\r/g,'').split('\n');
+  const fields=['CURRENT_STEP','NEXT_ACTION','WORKSTREAM_ID','CAPABILITY'];
+  const focused=[];
+  for(const key of fields){
+    const prefix=key+'=';
+    const line=lines.find(value=>value.startsWith(prefix));
+    const value=line?.slice(prefix.length).trim()||'';
+    if(value)focused.push(prefix+value);
+  }
+  return focused.some(line=>line.startsWith('CURRENT_STEP=')||line.startsWith('NEXT_ACTION='))
+    ? focused.join('\n').slice(0,4000)
+    : text;
+}
+
 export function matchAndLoadSkills(objectiveText = '', options = {}) {
   const registryPath = options.registryPath || DEFAULT_REGISTRY;
   const baseDir = resolve(options.baseDir || dirname(registryPath));

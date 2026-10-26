@@ -22,7 +22,7 @@ import { parseOwnerBacklogOrder, objectiveBacklogRank } from './owner-backlog-or
 import { managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, NV09_ENDPOINT, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 // NV09_CANARY_MARKER
-import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
+import { appendSkillContextToPrompt, focusedSkillRoutingText, matchAndLoadSkills } from './skill-loader.mjs';
 import { summarizeCoreJobEvidence } from './job-outcome-summary.mjs';
 import { compileTaskPrompt, executionPacketFromPrompt, executionResultGate, assertExecutionResultAccepted, strictExecutionRetryPrompt } from './task-prompt-compiler.mjs';
 import { invokeNativeStructuredExecution } from './ollama-native-structured.mjs';
@@ -36,7 +36,7 @@ import { planContinuousVerifyRecovery, CONTINUOUS_VERIFY_RECOVERY_EVENT_LIMIT } 
 import { assessMainCiGate } from './main-ci-health.mjs';
 import { autonomousRcaCanonicalAction, autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
 import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt } from './campaign-runner.mjs';
-import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
+import { buildAutonomousCodingHandoffWorkOrder, normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, functionalReprobeCandidates, functionalRoutingReadiness, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
@@ -2026,7 +2026,7 @@ async function runJob(j) {
     const skillObjectiveText=[j.title,j.prompt].filter(Boolean).join('\n');
     let skillRegistryError=null;
     try{
-      jobSkillContext=matchAndLoadSkills(skillObjectiveText);
+      jobSkillContext=matchAndLoadSkills(focusedSkillRoutingText(skillObjectiveText));
     }catch(error){
       skillRegistryError=String(error?.message||error).slice(0,240);
       await event('SKILL_ROUTING_REGISTRY_REJECTED',{objectiveId:j.objective_id,jobId:j.id,reason:skillRegistryError});
@@ -2248,6 +2248,63 @@ async function callManagerDecision(prompt,objectiveId){
     onFailure:async(r,error)=>localInferenceBusy(error)||isRetryableManagerOutputError(error)?releaseManagerOutputContractFailure(r,jobId,error):markResourceFailure(r,jobId,error,'RESOURCE_FAILURE',true,{taskKind:'manager',profile:r.provider==='ollama'?'LOCAL':'AUTO'}),
   });
 }
+async function githubFindAutonomousCodingHandoffIssue(spec){
+  if(!spec?.marker||!GITHUB_TOKEN)throw new Error(!GITHUB_TOKEN?'GITHUB_TOKEN_MISSING':'CODING_HANDOFF_MARKER_MISSING');
+  const q=`repo:${GITHUB_OWNER}/${GITHUB_REPO} is:issue in:body "${spec.marker}"`;
+  const found=await fetchJson('https://api.github.com/search/issues?q='+encodeURIComponent(q)+'&per_page=20',{
+    headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-Coding-Handoff'},
+  },10000);
+  if(!found||found.incomplete_results===true||!Array.isArray(found.items)||Number(found.total_count||0)>20)throw new Error('CODING_HANDOFF_DEDUPE_UNVERIFIED');
+  const matches=found.items.filter(issue=>!issue?.pull_request&&String(issue?.body||'').replace(/\r\n/g,'\n').split('\n').some(line=>line.trim()===spec.marker));
+  if(matches.length>1)throw new Error('CODING_HANDOFF_MULTIPLE_CANONICAL_MATCHES');
+  return matches[0]||null;
+}
+async function githubCreateAutonomousCodingHandoffIssue(spec){
+  if(!GITHUB_TOKEN)throw new Error('GITHUB_TOKEN_MISSING');
+  const url=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues`;
+  return fetchJson(url,{
+    method:'POST',
+    headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'Content-Type':'application/json','User-Agent':'TigerIQ-Core-Coding-Handoff'},
+    body:JSON.stringify({title:spec.title,body:spec.body}),
+  },10000);
+}
+async function materializeManagerCodingHandoff(o,decision,currentPhase){
+  const items=normalizeTerminalWorkItems(o.id,decision?.jobs||[]).filter(isCodingHandoff);
+  if(!items.length)return {handled:false,issues:[]};
+  const parentIssueNumber=Number(o?.metadata?.issueNumber||0);
+  if(!Number.isInteger(parentIssueNumber)||parentIssueNumber<=0||o?.metadata?.source!=='github'){
+    await event('AUTONOMOUS_CODING_GITHUB_CHILD_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase,reason:'GITHUB_PARENT_REQUIRED'});
+    return {handled:true,blocked:true,issues:[]};
+  }
+  const issues=[];
+  for(const item of items){
+    const spec=buildAutonomousCodingHandoffWorkOrder({
+      parentIssueNumber,parentObjectiveId:o.id,parentPriority:o.priority,item,
+    });
+    if(!spec){
+      await pool.query("update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1 and status='active'",[o.id,'Coding handoff blocked: invalid or ambiguous repository path scope']);
+      await event('AUTONOMOUS_CODING_GITHUB_CHILD_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase,idempotencyKey:item.idempotencyKey,reason:'INVALID_REPOSITORY_PATH_SCOPE'});
+      return {handled:true,blocked:true,issues};
+    }
+    let issue=await githubFindAutonomousCodingHandoffIssue(spec);
+    const created=!issue;
+    if(!issue)issue=await githubCreateAutonomousCodingHandoffIssue(spec);
+    const issueNumber=Number(issue?.number||0);
+    if(!issueNumber)throw new Error('CODING_HANDOFF_GITHUB_ISSUE_MISSING');
+    issues.push({number:issueNumber,url:String(issue?.html_url||''),created,protectedScope:spec.protectedScope,idempotencyKey:item.idempotencyKey});
+    await event(created?'AUTONOMOUS_CODING_GITHUB_CHILD_CREATED':'AUTONOMOUS_CODING_GITHUB_CHILD_REUSED',{
+      objectiveId:o.id,phaseIndex:currentPhase,parentIssueNumber,issueNumber,issueUrl:String(issue?.html_url||''),
+      idempotencyKey:item.idempotencyKey,scopeResourceKey:item.scopeResourceKey,protectedScope:spec.protectedScope,
+    });
+  }
+  const revision=String(o?.metadata?.sourceRevision||'');
+  await pool.query(
+    "update tigeriq_objectives set manager_cycles=0,summary=$2,next_check_at='infinity'::timestamptz,metadata=jsonb_set(coalesce(metadata,'{}'::jsonb),'{managerAwaitingAcceptanceRevision}',$3::jsonb,true),updated_at=now() where id=$1 and status='active'",
+    [o.id,`coding GitHub child materialized: ${issues.map(x=>'#'+x.number).join(', ')}`,JSON.stringify(revision)],
+  );
+  return {handled:true,blocked:false,issues};
+}
+
 async function reconcileAutonomousHandoff(o){
   const handoff=o?.metadata?.handoff;
   if(handoff?.state!=='waiting_children')return false;
@@ -2815,7 +2872,7 @@ async function managerTick() {
   await event('CONTEXT_GATEWAY_BUILT',{objectiveId:o.id,phaseIndex:currentPhase,...historyContext.metrics});
   let skillContext={skills:[],totalChars:0,contextBlock:'',evidence:[],skipped:[]};
   try {
-    skillContext=matchAndLoadSkills(goal);
+    skillContext=matchAndLoadSkills(focusedSkillRoutingText(goal));
     if(skillContext.evidence.length){
       await event('SKILL_CONTEXT_LOADED',{objectiveId:o.id,skillIds:skillContext.evidence.map(x=>x.id),bytes:skillContext.totalChars});
     }
@@ -2829,7 +2886,7 @@ async function managerTick() {
   const handoffContext=o.metadata?.handoff?.state==='children_completed'?`Completed autonomous child work: ${JSON.stringify(o.metadata.handoff.childResults||[]).slice(0,6000)}`:'';
   const isFinalCampaignPhase=phases.length>0&&currentPhase===phases.length-1;
   const terminalHandoffInstruction=isFinalCampaignPhase?'FINAL CAMPAIGN PHASE: when status=complete, jobs must contain ONLY additional NEXT work still required to satisfy the overall goal. Use [CODING] prefix in the title only for repository/source mutation; other next work is API/research/review/general. Every next-work prompt must include SCOPE: <resource-or-domain> and ACCEPTANCE: <observable completion>. If no further work is required, return jobs: [].':'';
-  const basePrompt=`You are TigerIQ AI Manager. Goal: ${goal}\nRecent work for this phase: ${historyContext.text}\n${handoffContext}\n${terminalHandoffInstruction}\nDecide the next useful work. Return ONLY JSON: {"status":"continue|complete|blocked","summary":"short","jobs":[{"title":"short","prompt":"standalone task instruction","capability":"general|reasoning|review|pc_operator","acceptance":["observable criterion"],"evidence_required":["required proof"],"scope":["authorized resource/domain"]}]}. On the CPU-local Manager, plan at most ONE job per decision; use compact JSON with short fields, then plan more only after real terminal evidence. The safety and independent-review requirements are unchanged. Return at most one job. Every non-pc_operator job MUST include at least one concrete acceptance criterion and one evidence_required item. Prefer independent useful work. Read-only constraints such as NO_CODE_CHANGE, NO_PC01_SHELL, NO_DIRECT_MAIN, and NO_PRODUCTION_RELEASE do not forbid normal Core general/reasoning/review jobs; they only forbid the named mutation or execution surface. When the Goal explicitly requests live Core AI validation, create bounded read-only AI jobs when eligible healthy resources exist. Use status=blocked only for a real unsatisfied dependency, resource, or safety gate. Repository implementation/coding is GitHub-only; never create coding jobs for PC01 Core. Never request paid services, Production/Main release, credential/security changes, destructive actions or reboot. For a campaign, status=complete means the CURRENT PHASE acceptance is achieved; Core will automatically advance to the next phase. Do not wait for Owner/chat between phases.`;
+  const basePrompt=`You are TigerIQ AI Manager. Goal: ${goal}\nRecent work for this phase: ${historyContext.text}\n${handoffContext}\n${terminalHandoffInstruction}\nDecide the next useful work. Return ONLY JSON: {"status":"continue|complete|blocked","summary":"short","jobs":[{"title":"short","prompt":"standalone task instruction","capability":"general|reasoning|review|pc_operator","acceptance":["observable criterion"],"evidence_required":["required proof"],"scope":["authorized resource/domain"]}]}. On the CPU-local Manager, plan at most ONE job per decision; use compact JSON with short fields, then plan more only after real terminal evidence. The safety and independent-review requirements are unchanged. Return at most one job. Every non-pc_operator job MUST include at least one concrete acceptance criterion and one evidence_required item. Prefer independent useful work. Read-only constraints such as NO_CODE_CHANGE, NO_PC01_SHELL, NO_DIRECT_MAIN, and NO_PRODUCTION_RELEASE do not forbid normal Core general/reasoning/review jobs; they only forbid the named mutation or execution surface. When the Goal explicitly requests live Core AI validation, create bounded read-only AI jobs when eligible healthy resources exist. Use status=blocked only for a real unsatisfied dependency, resource, or safety gate. Repository implementation/coding is GitHub-only; never create coding jobs for PC01 Core. If the next useful work requires repository/source mutation, return that job with a title beginning exactly [CODING], put SCOPE: <comma-separated repository path prefixes> and ACCEPTANCE: <observable result> in its prompt; Core will materialize a GitHub child instead of running it as compiled AI. Never request paid services, Production/Main release, credential/security changes, destructive actions or reboot. For a campaign, status=complete means the CURRENT PHASE acceptance is achieved; Core will automatically advance to the next phase. Do not wait for Owner/chat between phases.`;
   const prompt=appendSkillContextToPrompt(basePrompt,skillContext.contextBlock);
   // Read before the async Manager call. A GitHub evidence/revision update
   // during inference must invalidate any later terminal decision or evidence park.
@@ -2870,6 +2927,10 @@ async function managerTick() {
       [o.id,String(decision.summary||'').slice(0,2000),o.metadata?.sourceRevision??null],
     );
     if(decisionCommitted.rowCount!==1)return;
+    if(!phases.length){
+      const codingHandoff=await materializeManagerCodingHandoff(o,decision,currentPhase);
+      if(codingHandoff.handled)return;
+    }
     const doneJobs=history.filter(x=>x.status==='done').length;
     if(campaignNeedsEvidence({status:decision.status,phases,doneJobs})){
       const phase=phases[currentPhase]; const id=campaignEvidenceJobId(o.id,currentPhase);
