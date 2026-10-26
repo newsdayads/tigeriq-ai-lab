@@ -77,6 +77,16 @@ export function createS10RdcAdapter({adbPath=DEFAULT_ADB_PATH,stateRoot=DEFAULT_
   const dumpUi=async serial=>{await adb(['-s',serial,'shell','uiautomator','dump','/sdcard/tigeriq-g06.xml']);return (await adb(['-s',serial,'exec-out','cat','/sdcard/tigeriq-g06.xml'])).stdout;};
   const findNode=async(serial,needle,{contains=false,tries=12}={})=>{for(let i=0;i<tries;i++){const nodes=parseUiNodes(await dumpUi(serial));const n=nodes.find(x=>contains?(x.text||x.contentDesc).includes(needle):(x.text===needle||x.contentDesc===needle));if(n)return n;await sleep(300);}return null;};
   const tapNode=async(serial,needle,opts)=>{const n=await findNode(serial,needle,opts);if(!n)throw Error('UI_NODE_NOT_FOUND:'+needle);const p=nodeCenter(n);await adb(['-s',serial,'shell','input','tap',String(p.x),String(p.y)]);await sleep(300);return p;};
+  const resetOwnedBattery=async serial=>{
+    if(!batteryOverrideOwned)return {ok:true,reset:false};
+    try{
+      await adb(['-s',serial,'shell','dumpsys','battery','reset']);
+      const after=(await adb(['-s',serial,'shell','dumpsys','battery'])).stdout;
+      const ok=!/UPDATES\s+STOPPED/i.test(after);
+      if(ok)batteryOverrideOwned=false;
+      return {ok,reset:ok};
+    }catch{return {ok:false,reset:false};}
+  };
   const beginOnce=async({intent,deviceSerial,sourceSha})=>{
     if(!(await verifyFence({intent})).accepted)return {accepted:false};
     if(sourceSha!==intent.sourceSha||deviceSerial!==intent.deviceSerial)return {accepted:false};
@@ -96,11 +106,22 @@ export function createS10RdcAdapter({adbPath=DEFAULT_ADB_PATH,stateRoot=DEFAULT_
       }
     }
     currentIntent=intent;sessionId='S10SESSION_'+randomUUID().replaceAll('-','').slice(0,24);
-    const p=sessionFile(stateRoot,sessionId);const h=await open(p,'wx');await h.writeFile(JSON.stringify({schema:'TIGERIQ_S10_SESSION_V1',sessionId,...intent,sourceSha,batteryOverrideOwned})+'\n');await h.close();
-    await preparePreview();
-    await adb(['-s',deviceSerial,'reverse','tcp:4173','tcp:4173']);reverseAdded=true;
-    await adb(['-s',deviceSerial,'shell','am','start','-a','android.intent.action.VIEW','-d',previewUrl]);await sleep(1200);
-    return {accepted:true,fresh:true,sessionId,ownerId:intent.ownerId,leaseId:intent.leaseId,fencingToken:intent.fencingToken,sourceSha};
+    try{
+      const p=sessionFile(stateRoot,sessionId);const h=await open(p,'wx');await h.writeFile(JSON.stringify({schema:'TIGERIQ_S10_SESSION_V1',sessionId,...intent,sourceSha,batteryOverrideOwned})+'\n');await h.close();
+      await preparePreview();
+      await adb(['-s',deviceSerial,'reverse','tcp:4173','tcp:4173']);reverseAdded=true;
+      await adb(['-s',deviceSerial,'shell','am','start','-a','android.intent.action.VIEW','-d',previewUrl]);await sleep(1200);
+      return {accepted:true,fresh:true,sessionId,ownerId:intent.ownerId,leaseId:intent.leaseId,fencingToken:intent.fencingToken,sourceSha};
+    }catch(error){
+      if(reverseAdded){try{await adb(['-s',deviceSerial,'reverse','--remove','tcp:4173']);}catch{} reverseAdded=false;}
+      await closePreview().catch(()=>{});
+      const sf=sessionFile(stateRoot,sessionId);const row=await safeJson(sf);
+      if(row?.sessionId===sessionId&&matchIntent(row,intent))await unlink(sf).catch(()=>{});
+      const reset=await resetOwnedBattery(deviceSerial);
+      if(reset.ok)await releaseOwnedFence(intent).catch(()=>{});
+      if(!reset.ok)throw Error('OWNED_BATTERY_RESET_UNVERIFIED');
+      throw error;
+    }
   };
   const runLevel=async({level,intent,sessionId:given})=>{
     if(given!==sessionId||!(await verifyFence({intent})).accepted)throw Error('FENCE_LOST');
@@ -132,16 +153,9 @@ export function createS10RdcAdapter({adbPath=DEFAULT_ADB_PATH,stateRoot=DEFAULT_
     const fence=await verifyFence({intent});if(!fence.accepted)return {cleaned:false,sessionId:given};
     if(reverseAdded){try{await adb(['-s',intent.deviceSerial,'reverse','--remove','tcp:4173']);}catch{} reverseAdded=false;}
     await closePreview();
-    let batteryReset=false;
-    if(batteryOverrideOwned){
-      try{
-        await adb(['-s',intent.deviceSerial,'shell','dumpsys','battery','reset']);
-        const after=(await adb(['-s',intent.deviceSerial,'shell','dumpsys','battery'])).stdout;
-        batteryReset=!/UPDATES\s+STOPPED/i.test(after);
-      }catch{batteryReset=false;}
-      if(!batteryReset)return {cleaned:false,sessionId:given,reason:'OWNED_BATTERY_RESET_UNVERIFIED'};
-      batteryOverrideOwned=false;
-    }
+    const reset=await resetOwnedBattery(intent.deviceSerial);
+    const batteryReset=reset.reset;
+    if(!reset.ok)return {cleaned:false,sessionId:given,reason:'OWNED_BATTERY_RESET_UNVERIFIED'};
     const sf=sessionFile(stateRoot,sessionId);const row=await safeJson(sf);if(row?.sessionId===sessionId&&matchIntent(row,intent))await unlink(sf).catch(()=>{});
     if(!await releaseOwnedFence(intent))return {cleaned:false,sessionId:given};
     return {cleaned:true,sessionId:given,batteryUntouched:!batteryReset,batteryReset};
