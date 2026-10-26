@@ -25,6 +25,7 @@ test('owned fence may set 100% baseline and resets only its own override',async(
     if(s.includes('dumpsys battery set level 100')){level=100;override=true;return {stdout:'',stderr:''};}
     if(s.includes('dumpsys battery reset')){level=86;override=false;return {stdout:'',stderr:''};}
     if(s.includes('dumpsys battery'))return {stdout:(override?'UPDATES STOPPED -- use reset to restart\n':'')+' level: '+level+'\n status: 4\n',stderr:''};
+    if(s.includes('pm path com.android.chrome'))return {stdout:'package:/data/app/chrome/base.apk\n',stderr:''};
     return {stdout:'',stderr:''};
   };
   const claim=await claimAtomicFence({stateRoot:root,ownerId,deviceSerial:serial,sourceSha:sha});
@@ -35,6 +36,7 @@ test('owned fence may set 100% baseline and resets only its own override',async(
   assert.equal(clean.cleaned,true);assert.equal(clean.batteryReset,true);assert.equal(level,86);assert.equal(override,false);
   assert.equal(calls.filter(x=>x.includes('set level 100')).length,1);
   assert.equal(calls.filter(x=>x.includes('battery reset')).length,1);
+  assert.ok(calls.some(x=>x.includes('am start -a android.intent.action.VIEW -p com.android.chrome -d http://127.0.0.1:4173/')));
 });
 
 test('startup failure rolls back owned battery override and fence',async()=>{
@@ -47,6 +49,7 @@ test('startup failure rolls back owned battery override and fence',async()=>{
     if(s.includes('dumpsys battery set level 100')){level=100;override=true;return {stdout:'',stderr:''};}
     if(s.includes('dumpsys battery reset')){level=86;override=false;return {stdout:'',stderr:''};}
     if(s.includes('dumpsys battery'))return {stdout:(override?'UPDATES STOPPED -- use reset to restart\n':'')+' level: '+level+'\n status: 4\n',stderr:''};
+    if(s.includes('pm path com.android.chrome'))return {stdout:'package:/data/app/chrome/base.apk\n',stderr:''};
     if(s.includes('shell am start'))throw Error('LAUNCH_FAILED');
     return {stdout:'',stderr:''};
   };
