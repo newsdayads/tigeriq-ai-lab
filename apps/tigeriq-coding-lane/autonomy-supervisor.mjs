@@ -64,6 +64,109 @@ async function emit(pool,kind,payload){
   await pool.query('insert into tigeriq_coding_watchdog_events(kind,payload) values($1,$2)',[kind,JSON.stringify(payload)]);
   console.log(JSON.stringify({event:'CODING_AUTONOMY_WATCHDOG',kind,...payload}));
 }
+export function autonomyGithubReceiptBody({issueNumber,sourceEventId,objectiveId,sourceJobId,retryJobId,reason,cycle,retryEventCount=1}={}){
+  const issue=Math.max(1,Number(issueNumber)||0);
+  const count=Math.max(0,Number(retryEventCount)||0);
+  const fields={sourceEventId,objectiveId,sourceJobId,retryJobId,reason};
+  if(!issue||Object.values(fields).some(v=>!String(v||'').trim()))throw Error('CODING_AUTONOMY_RECEIPT_INVALID');
+  return [
+    '[TIGERIQ_CODING_AUTONOMY_RECEIPT_V1]',
+    `WORK_ORDER=#${issue}`,
+    `SOURCE_EVENT_ID=${String(sourceEventId)}`,
+    `OBJECTIVE_ID=${String(objectiveId)}`,
+    `SOURCE_JOB_ID=${String(sourceJobId)}`,
+    `RETRY_JOB_ID=${String(retryJobId)}`,
+    `EVENT=${String(reason)}`,
+    `REASON=${String(reason)}`,
+    `CYCLE=${Math.max(1,Number(cycle)||1)}`,
+    'RETRY_QUEUED=true',
+    `RETRY_EVENT_COUNT=${count}`,
+    `NO_DUPLICATE_REPAIR=${count===1?'true':'false'}`,
+  ].join('\n');
+}
+async function githubIssueComments(issueNumber,fetchImpl=fetch){
+  const token=(process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'').trim();
+  if(!token)return {ok:false,reason:'GITHUB_TOKEN_MISSING',comments:[]};
+  try{
+    const res=await fetchImpl(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/issues/${issueNumber}/comments?per_page=100&sort=created&direction=desc`,{
+      headers:{accept:'application/vnd.github+json',authorization:`Bearer ${token}`,'user-agent':'TigerIQ-Autonomy-Supervisor/1.0'},
+      signal:AbortSignal.timeout(10000),
+    });
+    if(!res.ok)return {ok:false,reason:`GITHUB_COMMENTS_HTTP_${res.status}`,comments:[]};
+    const comments=await res.json();
+    return {ok:true,comments:Array.isArray(comments)?comments:[]};
+  }catch(error){return {ok:false,reason:'GITHUB_COMMENTS_FETCH_FAILED',error:String(error?.message||error),comments:[]};}
+}
+async function postGithubIssueComment(issueNumber,body,fetchImpl=fetch){
+  const token=(process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'').trim();
+  if(!token)return {ok:false,reason:'GITHUB_TOKEN_MISSING'};
+  try{
+    const res=await fetchImpl(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/issues/${issueNumber}/comments`,{
+      method:'POST',
+      headers:{accept:'application/vnd.github+json',authorization:`Bearer ${token}`,'content-type':'application/json','user-agent':'TigerIQ-Autonomy-Supervisor/1.0'},
+      body:JSON.stringify({body}),
+      signal:AbortSignal.timeout(10000),
+    });
+    if(!res.ok)return {ok:false,reason:`GITHUB_COMMENT_HTTP_${res.status}`};
+    const out=await res.json();
+    return {ok:true,url:String(out?.html_url||'')||null};
+  }catch(error){return {ok:false,reason:'GITHUB_COMMENT_POST_FAILED',error:String(error?.message||error)};}
+}
+export async function backfillGithubRetryReceipts(pool,{fetchImpl=fetch,limit=10}={}){
+  const cap=Math.max(1,Math.min(50,Number(limit)||10));
+  const q=await pool.query(`
+    select e.id,e.payload,o.objective
+    from tigeriq_coding_watchdog_events e
+    left join tigeriq_coding_objectives o on o.id=e.payload->>'objectiveId'
+    where e.kind='RETRY_QUEUED'
+      and e.payload->>'reason'='CI_GATES_FAILED'
+      and not exists (
+        select 1 from tigeriq_coding_watchdog_events ack
+        where ack.kind='GITHUB_RECEIPT_POSTED'
+          and ack.payload->>'sourceEventId'=e.id::text
+      )
+    order by e.id asc
+    limit $1`,[cap]);
+  let posted=0,existing=0,failed=0;
+  for(const row of q.rows||[]){
+    const payload=row?.payload&&typeof row.payload==='object'?row.payload:{};
+    const issueNumber=extractGitHubIssueNumber(row?.objective);
+    const sourceEventId=String(row?.id||'').trim();
+    if(!issueNumber||!sourceEventId){
+      failed++;
+      await emit(pool,'GITHUB_RECEIPT_FAILED',{sourceEventId:sourceEventId||null,objectiveId:payload.objectiveId||null,reason:'ISSUE_OR_EVENT_ID_MISSING'});
+      continue;
+    }
+    const countQ=await pool.query(
+      "select count(*)::int n from tigeriq_coding_watchdog_events where kind='RETRY_QUEUED' and payload->>'objectiveId'=$1 and payload->>'reason'=$2",
+      [String(payload.objectiveId||''),String(payload.reason||'')]
+    );
+    const retryEventCount=Number(countQ.rows?.[0]?.n||0);
+    const body=autonomyGithubReceiptBody({issueNumber,sourceEventId,retryEventCount,...payload});
+    const comments=await githubIssueComments(issueNumber,fetchImpl);
+    if(!comments.ok){
+      failed++;
+      await emit(pool,'GITHUB_RECEIPT_FAILED',{sourceEventId,objectiveId:payload.objectiveId||null,issueNumber,reason:comments.reason});
+      continue;
+    }
+    const marker=`SOURCE_EVENT_ID=${sourceEventId}`;
+    const prior=comments.comments.find(c=>String(c?.body||'').includes('[TIGERIQ_CODING_AUTONOMY_RECEIPT_V1]')&&String(c?.body||'').includes(marker));
+    if(prior){
+      existing++;
+      await emit(pool,'GITHUB_RECEIPT_POSTED',{sourceEventId,objectiveId:payload.objectiveId||null,issueNumber,existing:true,url:String(prior?.html_url||'')||null});
+      continue;
+    }
+    const result=await postGithubIssueComment(issueNumber,body,fetchImpl);
+    if(!result.ok){
+      failed++;
+      await emit(pool,'GITHUB_RECEIPT_FAILED',{sourceEventId,objectiveId:payload.objectiveId||null,issueNumber,reason:result.reason});
+      continue;
+    }
+    posted++;
+    await emit(pool,'GITHUB_RECEIPT_POSTED',{sourceEventId,objectiveId:payload.objectiveId||null,issueNumber,existing:false,url:result.url});
+  }
+  return {posted,existing,failed};
+}
 export async function githubIssueIsOpen(issueNumber,fetchImpl=fetch){
   const token=(process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'').trim();
   if(!token||!issueNumber)return false;
@@ -163,7 +266,7 @@ export function startAutonomySupervisor(options={}){
   const tick=async()=>{
     if(stopped||busy)return;
     busy=true;
-    try{await ensureSchema(pool);await handleFailed(pool,maxJobs);await handleStale(pool,staleMs,maxJobs,onStall);}catch(error){console.error(JSON.stringify({event:'CODING_AUTONOMY_WATCHDOG_ERROR',error:String(error?.message||error)}));}finally{busy=false;}
+    try{await ensureSchema(pool);await handleFailed(pool,maxJobs);await backfillGithubRetryReceipts(pool,{fetchImpl:options.fetchImpl||fetch});await handleStale(pool,staleMs,maxJobs,onStall);}catch(error){console.error(JSON.stringify({event:'CODING_AUTONOMY_WATCHDOG_ERROR',error:String(error?.message||error)}));}finally{busy=false;}
   };
   const timer=setInterval(()=>void tick(),Math.max(5000,intervalMs));
   timer.unref?.();
