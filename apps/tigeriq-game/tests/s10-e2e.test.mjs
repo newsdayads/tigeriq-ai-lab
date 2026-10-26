@@ -109,11 +109,15 @@ test('verified adapter executes exact five levels, then own-scope cleanup',async
   const calls=[];
   const adapter={verifyFence:async()=>fence(),
     beginOnce:async()=>session(),
-    runLevel:async({level})=>{calls.push(level);return {level,pass:true,evidenceRef:'https://evidence.example/'+level}},
-    cleanupOwned:async()=>{calls.push('cleanup');return {cleaned:true,sessionId:'S10SESSION_12345'}}};
+    runLevel:async({level})=>{calls.push(level);return {level,pass:true,evidenceRef:'https://evidence.example/'+level,
+      evidencePath:'D:/evidence/'+level+'.png',evidenceSha256:'a'.repeat(64)}},
+    cleanupOwned:async()=>{calls.push('cleanup');return {cleaned:true,sessionId:'S10SESSION_12345',batteryReset:true}}};
   const r=await runG06E2E({evidence,ownerIntent:intent,adapter});
   assert.equal(r.code,'PASS_WITH_EVIDENCE');
   assert.equal(r.productG06Done,false);
+  assert.equal(r.cleanupAttested,true);assert.equal(r.batteryReset,true);
+  assert.equal(r.levels[0].evidenceSha256,'a'.repeat(64));
+  assert.match(r.levels[0].evidencePath,/L01\.png$/);
   assert.deepEqual(calls,['L01','L02','L03','L04','L05','cleanup']);
 });
 test('revoked token stops at next level; only owner scope may cleanup',async()=>{
