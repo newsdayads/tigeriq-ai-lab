@@ -1,15 +1,21 @@
 param(
   [string]$Target=(Join-Path $env:LOCALAPPDATA 'TigerIQ\PhoneFarm'),
-  [switch]$RemoveData
+  [switch]$RemoveData,
+  [switch]$NoShortcut
 )
 $ErrorActionPreference='Stop'
 $exe=Join-Path $Target 'TigerIQPhoneFarm.exe'
 Get-CimInstance Win32_Process|Where-Object{$_.Name -eq 'TigerIQPhoneFarm.exe' -and $_.ExecutablePath -eq $exe}|ForEach-Object{Stop-Process -Id $_.ProcessId -Force}
-$shell=New-Object -ComObject WScript.Shell
-$shortcutPath=Join-Path $shell.SpecialFolders('Desktop') 'TigerIQ Phone Farm.lnk'
-if(Test-Path $shortcutPath){
-  $shortcut=$shell.CreateShortcut($shortcutPath)
-  if($shortcut.TargetPath -eq $exe){Remove-Item $shortcutPath -Force}
+if(-not $NoShortcut){
+  $shell=New-Object -ComObject WScript.Shell
+  $desktop=$shell.SpecialFolders('Desktop')
+  if($desktop){
+    $shortcutPath=Join-Path $desktop 'TigerIQ Phone Farm.lnk'
+    if(Test-Path $shortcutPath){
+      $shortcut=$shell.CreateShortcut($shortcutPath)
+      if($shortcut.TargetPath -eq $exe){Remove-Item $shortcutPath -Force}
+    }
+  }
 }
 $backup=''
 if((Test-Path $Target) -and -not $RemoveData){
