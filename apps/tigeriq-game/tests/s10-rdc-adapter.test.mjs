@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {claimAtomicFence,createS10RdcAdapter,nodeCenter,parseUiNodes,pickVisibleNode} from '../scripts/s10-rdc-adapter.mjs';
+import {claimAtomicFence,createS10RdcAdapter,nodeCenter,parseUiNodes,pickTextNode,pickVisibleNode} from '../scripts/s10-rdc-adapter.mjs';
 const sha='a'.repeat(40),serial='R3CM400AKRX',ownerId='NV02_RDC_OWNER';
 const scope='TIGERIQ_GAME_G06_S10_E2E_HARNESS';
 
@@ -67,4 +67,10 @@ test('visible-node selection rejects offscreen zero bounds until scrolled into v
   assert.equal(pickVisibleNode(hidden,'CÓ THỂ SỬA',{contains:true}),null);
   const visible=parseUiNodes('<hierarchy><node text="Lệnh 2: Quay trái · CÓ THỂ SỬA" clickable="true" bounds="[300,700][1200,820]"/></hierarchy>');
   assert.equal(pickVisibleNode(visible,'CÓ THỂ SỬA',{contains:true}).text,'Lệnh 2: Quay trái · CÓ THỂ SỬA');
+});
+
+test('PASS verification accepts accessibility text even when title is clipped',()=>{
+  const nodes=parseUiNodes('<hierarchy><node text="ĐÃ GIÚP ROBOT!" clickable="false" bounds="[200,240][1972,240]"/></hierarchy>');
+  assert.equal(pickVisibleNode(nodes,'ĐÃ GIÚP ROBOT!'),null);
+  assert.equal(pickTextNode(nodes,'ĐÃ GIÚP ROBOT!').text,'ĐÃ GIÚP ROBOT!');
 });
