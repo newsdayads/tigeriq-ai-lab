@@ -170,3 +170,19 @@ Treat the receipt as evidence only for what it actually says. Independently veri
 - **Original version text color/size was NOT corrected** (only existing string updated). Its native Compose text renderer must be edited without adding views; previous direct renderer introspection attempt was denied, do not bypass. Real SM-F916N DeX quickbar/grip/runtime QA remains PENDING.
 
 **Continuation**: do not redo completed v55 source/build/zipalign. Only legitimately permitted native text style and same-signer release, Drive API confirmation, and owner DeX screenshots can close the remaining gates. Published download remains v54 until v55 is verified signed and uploaded. No Production change.
+
+<!-- ULTRACAR_OWNER_CANONICAL_SIGN_LATEST_20261026 -->
+## P0 — OWNER canonical signing & cloud publishing runner (2026-10-26)
+
+**Owner directive for future UltraCar TEST releases:** Once new TEST source has passed tests and the new `*_aligned_TEST.apk` is generated and validated, the standard preinstalled PC01 signing/publishing entrypoint is **exactly**:
+
+```cmd
+D:\TigerIQ\Tools\sign_latest.cmd
+```
+
+- **Do not** issue new direct `apksigner sign` calls containing keystore password parameters, and do not put passwords in tool command arguments. **Do not** author any new Drive synchronization `.ps1` or register any new Scheduled Task.
+- This is the **Owner-authorized PC01 standard runner**, not a request to design a new signer. Check actual runner identity/scope, current aligned TEST file and immutable version to ensure it will select the intended candidate. **Do not invoke again if a verified signed APK/Drive object already exists**, as current runner overwrites the same-named signed file.
+- Existing `sign_latest.cmd` delegates to `sign_latest.ps1`; its current implementation signs latest aligned TEST, checks signer and package and invokes the existing Drive sync. Maintain credentials locally; do not copy secrets into chat, logs or source control. Owner approval never overrides any separate platform security refusal.
+- Completion gate: read back signed APK hash, APK package/versionCode, signer cert SHA and v2/v3; read the existing sync receipt `C:\Users\wdragons12x\AppData\Local\Temp\tigeriq-drive-sync-result.txt`; independently query Google Drive provider metadata for exact cloud file ID, name, parent and size. Do not mistake source/CI PASS for Samsung DeX acceptance.
+
+**Existing verified v1.0.55 (code296), do not rerun:** PC01 `build\UltraCar_v1.0.55_296_signed_TEST.apk` = 35,170,717 bytes; exact sync receipt `SYNC_PASS|FILE=UltraCar_v1.0.55_TEST.apk|SHA256=376E9443A03BF264883422E740BC83BC0AA2F5FCDEBBA7DA709D888736C73272|BYTES=35170717|UTC=2026-10-26T01:42:47.5410767Z`. Antigravity's Issue #5129 comment #6406364818 records cert SHA-256 `71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558` and v2/v3 signed package. Independent Google Drive connector confirmed `UltraCar_v1.0.55_TEST.apk`, file ID `15MCFHueaxuZaY-L785ItvPiA8abRh61X`, 35,170,717 bytes, correct parent `1QTOWvtgrdGIml15J55LttcyKa7rLkdva`, [download](https://drive.google.com/file/d/15MCFHueaxuZaY-L785ItvPiA8abRh61X/view?usp=drivesdk). Local read-only signer re-verification in this particular session was blocked by tool safety, so that certificate report is sourced from Antigravity's Issue receipt. Independent Drive cloud-bytes hash not obtained; metadata/receipt verified. **v55 TEST release done; original subtitle red font and 5 quick slots/drag real DeX runtime QA remain pending owner test.**
