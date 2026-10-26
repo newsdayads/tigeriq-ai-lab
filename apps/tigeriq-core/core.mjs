@@ -47,7 +47,7 @@ import { withPc01LocalInferenceSlot,localInferenceBusy } from './pc01-local-infe
 import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerIdleStepStopPlan, managerTerminalProgressPlan } from './manager-cycle-policy.mjs';
 import { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAutoworkPriority, apiDoctorScannableEmployeeId, apiDoctorScanSignature, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorVerifiedNormalWorkRecovery, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorOwnerProxyReviewStatus, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorGlobalAnalysisAdmission, apiDoctorAutoworkPriority, apiDoctorScannableEmployeeId, apiDoctorScanSignature, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorVerifiedNormalWorkRecovery, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorOwnerProxyReviewStatus, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
 import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
@@ -103,8 +103,10 @@ const CORE_AUTOWORK_EMPLOYEES = Object.freeze([OLLAMA_EMPLOYEE_ID,'NV11','NV12']
 const NV09_TIMEOUT_MS = Math.max(30000, Number(process.env.TIGERIQ_NV09_TIMEOUT_MS || 240000));
 const OPENCLAW_GATEWAY_HEALTH_URL = process.env.TIGERIQ_OPENCLAW_GATEWAY_HEALTH_URL?.trim() || 'http://127.0.0.1:18789/health';
 const OPENCLAW_ACTIVATION_FILE = process.env.TIGERIQ_OPENCLAW_ACTIVATION_FILE?.trim() || 'D:\\TigerIQ\\State\\openclaw-core-resource-enabled.json';
-const API_DOCTOR_INTERVAL_MS = Math.max(60000, Number(process.env.TIGERIQ_API_DOCTOR_INTERVAL_MS || 120000));
+// Limit optional diagnostic scans; real work and resource-health probes keep their own cadence.
+const API_DOCTOR_INTERVAL_MS = Math.max(600000, Number(process.env.TIGERIQ_API_DOCTOR_INTERVAL_MS || 900000));
 const API_DOCTOR_ANALYSIS_DEDUPE_MS = Math.max(60000, Number(process.env.TIGERIQ_API_DOCTOR_ANALYSIS_DEDUPE_MS || 600000));
+const API_DOCTOR_GLOBAL_ANALYSIS_BUDGET_MS = Math.max(1800000, Number(process.env.TIGERIQ_API_DOCTOR_GLOBAL_ANALYSIS_BUDGET_MS || 1800000));
 const API_DOCTOR_VALIDATION_POLICY_VERSION = 'nonempty-v2';
 const CODING_LANE_HOST = process.env.TIGERIQ_CODING_HOST?.trim() || '127.0.0.1';
 const CODING_LANE_PORT = Number(process.env.TIGERIQ_CODING_PORT || 8797);
@@ -1462,6 +1464,17 @@ async function runApiDoctorAnalysisJobInSlot(items,scanSignature){
   `)).rows[0]?.pending;
   const priority=apiDoctorAutoworkPriority(localBacklog);
   if(priority.defer) return {skipped:'deferred_for_real_github_work',pending:localBacklog};
+  // A changing provider state can change scanSignature every cycle, bypassing
+  // signature dedupe and filling Core with internal jobs. Check a *global*
+  // accepted-or-failed local analysis window before any model claim or job.
+  const recentAnalysis=(await pool.query(
+    "select max(ts) as last_attempt_at from tigeriq_events where type in ('API_DOCTOR_ANALYSIS_DONE','API_DOCTOR_ANALYSIS_FAILED')"
+  )).rows[0];
+  const budget=apiDoctorGlobalAnalysisAdmission({
+    lastAttemptAt:recentAnalysis?.last_attempt_at,
+    minIntervalMs:API_DOCTOR_GLOBAL_ANALYSIS_BUDGET_MS,
+  });
+  if(!budget.allowed) return {skipped:'global_analysis_budget',reason:budget.reason};
   const id=`API-DOC-${randomUUID()}`;
   const prompt=buildApiDoctorPrompt(items);
   await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,started_at,lease_until,attempts,max_attempts) values($1,null,$2,$3,$4,'api_doctor','running',now(),now()+interval '2 minutes',0,1)",[id,'NV10 API Doctor analysis',prompt,API_DOCTOR_CAPABILITY]);
