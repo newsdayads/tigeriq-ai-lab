@@ -251,6 +251,19 @@ test('stale active identity survives outcome-sync metadata sourceRevision refres
   assert.equal(pool.objectives[0].status,'blocked');
 });
 
+test('legacy same-issue active objective without scope metadata can rearm only when orphaned',async()=>{
+  const current='abcdef123456';
+  const spec={number:5144,sourceRevision:current,resourceScope:'TIGERIQ_CORE_AUTONOMOUS_SELF_DIAGNOSIS_EVOLUTION_5144',body:'PROJECT_ID=tigeriq-platform\nWORKSTREAM_ID=core-autonomous-diagnosis-evolution\nRESOURCE_SCOPE=TIGERIQ_CORE_AUTONOMOUS_SELF_DIAGNOSIS_EVOLUTION_5144'};
+  const legacy={id:'OBJ-GH-5144-Rdd3af9354b7b-20261023102543',status:'active',metadata:{
+    source:'github',issueNumber:5144,sourceRevision:current,managerAwaitingAcceptanceRevision:'dd3af9354b7b'
+  }};
+  assert.equal(githubActiveObjectiveSourceIsSuperseded(legacy,spec),true);
+  const pool=coreBacklogPool(); pool.objectives.push(legacy);
+  const decision=await reconcileSupersededActiveGithubObjective({pool,spec,activeRows:pool.objectives});
+  assert.deepStrictEqual(decision,{released:true,reason:'SUPERSEDED_ACTIVE_WITHOUT_LIVE_WORK',objectiveId:legacy.id});
+  assert.equal(pool.objectives[0].status,'blocked');
+});
+
 test('current encoded revision is not falsely superseded and live stale work remains fenced',async()=>{
   const current='abcdef123456';
   const spec={number:5144,sourceRevision:current,resourceScope:'TIGERIQ_CORE_AUTONOMOUS_SELF_DIAGNOSIS_EVOLUTION_5144',body:'PROJECT_ID=tigeriq-platform\nWORKSTREAM_ID=core-autonomous-diagnosis-evolution\nRESOURCE_SCOPE=TIGERIQ_CORE_AUTONOMOUS_SELF_DIAGNOSIS_EVOLUTION_5144'};
