@@ -7,7 +7,8 @@ const sha='1'.repeat(40);
 const evidence={mcpBindingVerified:true,attestedReadOnlySource:true,
   adbExecutableVerified:true,devices:[{serial:'R58M123456A',state:'device'}],
   deviceSerial:'R58M123456A',deviceModel:'SM-G977N',batteryLevel:100,
-  batteryOverrideDetected:false,previewUrl:'http://127.0.0.1:4173/',
+  batteryOverrideDetected:false,batteryMutationRequested:false,
+  previewUrl:'http://127.0.0.1:4173/',
   previewReachable:true,previewSsoRequired:false,buildSha:sha};
 const intent={workOrder:'GH-5284',resourceScope:'TIGERIQ_GAME_G06_S10_E2E_HARNESS',
   ownerId:'CORE_NATIVE_NV02',leaseId:'LEASE_GH5284_NATIVE_001',fencingToken:'FENCE_GH5284_NATIVE_001'};
@@ -70,10 +71,19 @@ test('invalid serial/model and unavailable ADB fail closed',()=>{
   assert.equal(evaluateG06Preflight({...evidence,adbExecutableVerified:false}).code,'WAIT_ADB_UNAVAILABLE');
   assert.equal(evaluateG06Preflight({...evidence,deviceSerial:'FOREIGN'}).code,'WAIT_ADB_UNAVAILABLE');
 });
-test('owner of existing battery override is required',()=>{
-  assert.equal(evaluateG06Preflight({...evidence,batteryOverrideDetected:true}).code,'WAIT_BATTERY_OVERRIDE_OWNER');
+test('100% battery baseline permits only scoped owned mutation',()=>{
   assert.equal(evaluateG06Preflight({...evidence,batteryOverrideDetected:true,
-    batteryOverrideOwnerVerified:true}).code,'READY_FOR_DEVICE_OWNER_CLAIM');
+    batteryMutationRequested:false}).code,'READY_FOR_DEVICE_OWNER_CLAIM');
+  assert.equal(evaluateG06Preflight({...evidence,batteryOverrideDetected:true,
+    batteryMutationRequested:true}).code,'WAIT_BATTERY_OVERRIDE_OWNER');
+  assert.equal(evaluateG06Preflight({...evidence,batteryOverrideDetected:true,
+    batteryMutationRequested:true,batteryOverrideOwnerVerified:true}).code,'READY_FOR_DEVICE_OWNER_CLAIM');
+  assert.equal(evaluateG06Preflight({...evidence,batteryOverrideDetected:true,
+    batteryLevel:99,batteryMutationRequested:false}).code,'WAIT_BATTERY_OVERRIDE_OWNER');
+  assert.equal(evaluateG06Preflight({...evidence,batteryOverrideDetected:false,
+    batteryLevel:86,batteryMutationRequested:false}).code,'WAIT_BATTERY_OVERRIDE_OWNER');
+  assert.equal(evaluateG06Preflight({...evidence,batteryOverrideDetected:false,
+    batteryLevel:86,batteryMutationRequested:true}).code,'READY_FOR_DEVICE_OWNER_CLAIM');
 });
 test('reject SSO, external HTTP and preview lacking pinned SHA',()=>{
   for(const e of [{previewSsoRequired:true},{previewReachable:false},
@@ -99,11 +109,15 @@ test('verified adapter executes exact five levels, then own-scope cleanup',async
   const calls=[];
   const adapter={verifyFence:async()=>fence(),
     beginOnce:async()=>session(),
-    runLevel:async({level})=>{calls.push(level);return {level,pass:true,evidenceRef:'https://evidence.example/'+level}},
-    cleanupOwned:async()=>{calls.push('cleanup');return {cleaned:true,sessionId:'S10SESSION_12345'}}};
+    runLevel:async({level})=>{calls.push(level);return {level,pass:true,evidenceRef:'https://evidence.example/'+level,
+      evidencePath:'D:/evidence/'+level+'.png',evidenceSha256:'a'.repeat(64)}},
+    cleanupOwned:async()=>{calls.push('cleanup');return {cleaned:true,sessionId:'S10SESSION_12345',batteryReset:true}}};
   const r=await runG06E2E({evidence,ownerIntent:intent,adapter});
   assert.equal(r.code,'PASS_WITH_EVIDENCE');
   assert.equal(r.productG06Done,false);
+  assert.equal(r.cleanupAttested,true);assert.equal(r.batteryReset,true);
+  assert.equal(r.levels[0].evidenceSha256,'a'.repeat(64));
+  assert.match(r.levels[0].evidencePath,/L01\.png$/);
   assert.deepEqual(calls,['L01','L02','L03','L04','L05','cleanup']);
 });
 test('revoked token stops at next level; only owner scope may cleanup',async()=>{

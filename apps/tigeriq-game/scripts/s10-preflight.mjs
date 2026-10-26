@@ -61,11 +61,22 @@ export function evaluateG06Preflight(evidence={}) {
     return finish('WAIT_ADB_UNAVAILABLE',{reason:'AUTHORIZED_DEVICE_MODEL_OR_SERIAL_NOT_VERIFIED'});
   if(!validNumber(evidence?.batteryLevel))
     return finish('WAIT_BATTERY_OVERRIDE_OWNER',{reason:'BATTERY_BASELINE_UNVERIFIED'});
-  // A preexisting battery control/override must be explicitly owned and restored
-  // by the same principal. GitHub issue text alone cannot authorize mutation.
+  // Owner policy for G06: preserve an unknown preexisting override when the
+  // battery is already at the required 100% baseline. Any battery mutation
+  // (set/reset) still requires verified ownership by the same principal.
   if (typeof evidence?.batteryOverrideDetected !== 'boolean' ||
-    (evidence.batteryOverrideDetected && evidence.batteryOverrideOwnerVerified !== true))
-    return finish('WAIT_BATTERY_OVERRIDE_OWNER',{reason:'PREEXISTING_OVERRIDE_OWNERSHIP_UNKNOWN'});
+    typeof evidence?.batteryMutationRequested !== 'boolean')
+    return finish('WAIT_BATTERY_OVERRIDE_OWNER',{reason:'BATTERY_CONTROL_STATE_UNVERIFIED'});
+  if (evidence.batteryOverrideDetected) {
+    if (evidence.batteryMutationRequested &&
+      evidence.batteryOverrideOwnerVerified !== true)
+      return finish('WAIT_BATTERY_OVERRIDE_OWNER',{reason:'BATTERY_MUTATION_REQUIRES_VERIFIED_OVERRIDE_OWNER'});
+    if (evidence.batteryLevel!==100 &&
+      evidence.batteryOverrideOwnerVerified !== true)
+      return finish('WAIT_BATTERY_OVERRIDE_OWNER',{reason:'PREEXISTING_OVERRIDE_NOT_AT_REQUIRED_BASELINE'});
+  } else if (evidence.batteryLevel!==100 && !evidence.batteryMutationRequested) {
+    return finish('WAIT_BATTERY_OVERRIDE_OWNER',{reason:'BATTERY_100_BASELINE_REQUIRED'});
+  }
   if(!safePreview(evidence?.previewUrl) || evidence?.previewReachable!==true ||
     evidence?.previewSsoRequired!==false)
     return finish('WAIT_PREVIEW_ACCESS');
@@ -74,7 +85,9 @@ export function evaluateG06Preflight(evidence={}) {
   // A separate atomic resource/device claim is ALWAYS required before E2E.
   return finish('READY_FOR_DEVICE_OWNER_CLAIM',{
     sourceSha:evidence.buildSha,deviceModel:'SM-G977N',
-    previewKind:new URL(evidence.previewUrl).protocol.replace(':','')});
+    previewKind:new URL(evidence.previewUrl).protocol.replace(':',''),
+    batteryMutationRequested:evidence.batteryMutationRequested,
+    batteryOverridePreserved:evidence.batteryOverrideDetected===true});
 }
 
 export async function main(argv=process.argv.slice(2)) {

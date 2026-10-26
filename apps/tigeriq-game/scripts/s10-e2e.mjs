@@ -46,7 +46,7 @@ export async function runG06E2E({adapter=null,evidence={},ownerIntent=null}={}) 
       session?.sourceSha!==evidence.buildSha)
       return wait('WAIT_DEVICE_EXCLUSIVE_FENCING',{reason:'SESSION_NOT_FRESH_OR_UNVERIFIED'});
     const steps=[];
-    let mutated=false,problem=null,cleaned=false;
+    let mutated=false,problem=null,cleaned=false,cleanupReceipt=null;
     try{
       for(const level of LEVELS){
         if(!await check('level:'+level)){
@@ -59,7 +59,9 @@ export async function runG06E2E({adapter=null,evidence={},ownerIntent=null}={}) 
           !/^https:\/\/[^\s]+$/.test(result.evidenceRef)){
           problem='WAIT_RUNTIME_MCP_BINDING';break;
         }
-        steps.push({level,pass:true,evidenceRef:result.evidenceRef});
+        steps.push({level,pass:true,evidenceRef:result.evidenceRef,
+          evidencePath:typeof result.evidencePath==='string'?result.evidencePath:undefined,
+          evidenceSha256:/^[a-f0-9]{64}$/i.test(result.evidenceSha256||'')?result.evidenceSha256.toLowerCase():undefined});
       }
     } catch {problem='WAIT_RUNTIME_MCP_BINDING';}
     finally {
@@ -67,17 +69,20 @@ export async function runG06E2E({adapter=null,evidence={},ownerIntent=null}={}) 
         if(await check('cleanup')) {
           // Adapter must clean only its own session-owned state and must NOT
           // reset a preexisting battery override or a competing actor's data.
-          const result=await adapter.cleanupOwned({intent:ownerIntent,
+          cleanupReceipt=await adapter.cleanupOwned({intent:ownerIntent,
             sessionId:session.sessionId});
-          cleaned=result?.cleaned===true&&result?.sessionId===session.sessionId;
+          cleaned=cleanupReceipt?.cleaned===true&&cleanupReceipt?.sessionId===session.sessionId;
         }
       } catch {cleaned=false;}
     }
     if(!cleaned) return wait('WAIT_DEVICE_EXCLUSIVE_FENCING',{
       mutated,attemptedLevels:steps.length,reason:'CLEANUP_NOT_ATTESTED'});
-    if(problem)return wait(problem,{mutated,attemptedLevels:steps.length});
+    const cleanupFields={cleanupAttested:true,
+      batteryReset:cleanupReceipt?.batteryReset===true,
+      batteryUntouched:cleanupReceipt?.batteryUntouched===true};
+    if(problem)return wait(problem,{mutated,attemptedLevels:steps.length,...cleanupFields});
     return {workOrder:'GH-5284',code:'PASS_WITH_EVIDENCE',status:'PASS',
-      mutated,levels:steps,sourceSha:evidence.buildSha,cleanupAttested:true,
+      mutated,levels:steps,sourceSha:evidence.buildSha,...cleanupFields,
       productG06Done:false,reason:'G06_ACCEPTANCE_REQUIRES_SEPARATE_REAL_DEVICE_QA'};
   }catch{return wait('WAIT_RUNTIME_MCP_BINDING');}
 }
