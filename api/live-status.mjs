@@ -699,8 +699,8 @@ export function parseRecentClosedIssue(issue, now = Date.now()) {
   if (!issue || issue.pull_request || issue.state !== 'closed') return null;
   const reason = String(issue.state_reason || '').toLowerCase();
   const body = String(issue.body || '');
-  // Closed is authoritative for dispatch, not proof that a blocked DONE=false
-  // canonical item was accepted. Surface the mismatch; never reopen it here.
+  // GitHub closure ends dispatch, not proof of completion. Flag unfinished
+  // canonical records as discrepancies; never reopen them here.
   const phase = bodyValue(body, 'CURRENT_STATE').toUpperCase();
   // GitHub closure terminates dispatch, but "completed" with DONE=false is an
   // explicit acceptance conflict in ANY lifecycle phase (READY/WAIT/BLOCKED).
@@ -726,12 +726,12 @@ export function parseRecentClosedIssue(issue, now = Date.now()) {
     ...workflowRelationsForIssue(issue),
     closureConflict, closureReason: reason,
     closureConflictReason: closureConflict
-      ? (reason === 'completed' ? 'GitHub đã đóng completed nhưng DONE=false; chưa nghiệm thu' : 'GitHub đã đóng nhưng CURRENT_STATE vẫn BLOCKED và DONE=false')
+      ? (reason === 'completed' ? 'GitHub đã đóng với lý do hoàn tất nhưng DONE=false; chưa nghiệm thu' : 'GitHub đã đóng nhưng CURRENT_STATE vẫn BLOCKED và DONE=false')
       : null,
     blocker: closureConflict ? bodyValue(body, 'BLOCKER').slice(0, 320) || (blockedPhase ? phase : 'DONE=false') : null,
     nextStep: closureConflict ? 'Đối chiếu quyết định đóng và cổng thiết bị với Owner; không tự mở lại hoặc giao việc' : null,
     progressPercent: null, progressSource: 'closed_unverified',
-    progressDetail: closureConflict ? 'LỆCH TRẠNG THÁI: đã đóng nhưng còn blocker, chưa nghiệm thu' : 'Đã đóng trên GitHub; chưa xác minh nghiệm thu',
+    progressDetail: closureConflict ? 'LỆCH TRẠNG THÁI: GitHub đã đóng nhưng DONE=false, chưa nghiệm thu' : 'Đã đóng trên GitHub; chưa xác minh nghiệm thu',
     completionVerified: false,
     lifecycleTiming: validateWorkOrderLifecycleV2(issue).timestamps,
     closedAt, updatedAt: closedAt, url: issue.html_url || null,
