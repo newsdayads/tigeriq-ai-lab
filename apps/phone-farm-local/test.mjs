@@ -54,7 +54,9 @@ test('Windows host monitors and recovers a dead local backend', () => {
   assert.match(source,/ShutdownOwnedHost\(\);\s*StartBackend\(\);/);
   assert.match(source,/if \(viewer\.CoreWebView2 is not null\) viewer\.CoreWebView2\.Reload\(\)/);
   assert.match(source,/healthTimer\.Stop\(\);\s*ShutdownOwnedHost\(\);/);
+  assert.match(source,/if \(!ready\)[\s\S]*?healthTimer\.Start\(\);[\s\S]*?CoreWebView2Environment\.CreateAsync/);
 });
+
 
 test('batch controls validate package, files, duplicate serial and actions', () => {
   assert.equal(safePackage('com.example.demo'), true);
