@@ -369,7 +369,7 @@ describe('TigerIQ Live Work Order projection', () => {
       state:'AWAITING_NATIVE_CHILD_ACCEPTANCE'}],true)).toEqual(entries);
   });
 
-  it('honors only eligible and same-priority Owner queue ordering', () => {
+  it('honors eligible Owner queue ordering across P1-P5 while preserving gates', () => {
     const entries=[
       {number:5144,priority:'P1',status:'QUEUED',ownerDirect:true},
       {number:5290,priority:'P1',status:'QUEUED',ownerDirect:true},
@@ -377,10 +377,12 @@ describe('TigerIQ Live Work Order projection', () => {
       {number:5189,priority:'P1',status:'WAITING',ownerDirect:true,waitReason:'dependency'},
       {number:5999,priority:'P0',status:'QUEUED',ownerDirect:true},
       {number:6300,priority:'P2',status:'QUEUED',ownerDirect:true},
+      {number:6400,priority:'P1',status:'QUEUED',ownerDirect:true},
     ];
-    const rows=rankQueueRows(entries,[5290,5144,5235,5189,5999]);
-    expect(rows.map(row=>row.number)).toEqual([5290,5144,5235,6300,5189,5999]);
-    expect(rows.filter(row=>row.eligibleNow).map(row=>row.dispatchRank)).toEqual([1,2,3,4]);
+    const rows=rankQueueRows(entries,[6300,5290,5144,5235,5189,5999]);
+    expect(rows.map(row=>row.number)).toEqual([6300,5290,5144,5235,6400,5189,5999]);
+    expect(rows.filter(row=>row.eligibleNow).map(row=>row.dispatchRank)).toEqual([1,2,3,4,5]);
+    expect(rows.find(row=>row.number===6300)).toMatchObject({priority:'P2',eligibleNow:true,dispatchRank:1});
     expect(rows.find(row=>row.number===5189).eligibleNow).toBe(false);
     expect(rows.find(row=>row.number===5999).eligibleNow).toBe(false);
   });

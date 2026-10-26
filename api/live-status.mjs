@@ -924,9 +924,9 @@ export function rankQueueRows(rows = [], ownerOrder = []) {
     return normalized;
   }).sort((left, right) => {
     const fallback=compareQueueRows(left,right);
-    // A priority declaration never bypasses P0, pause or dependency gates.
+    // Explicit Owner order is authoritative across eligible P1-P5 rows, but it
+    // never bypasses P0, pause, blocked or dependency gates.
     if (!queueRowEligibleNow(left)||!queueRowEligibleNow(right))return fallback;
-    if (queuePriority(left)!==queuePriority(right))return fallback;
     if (!Array.isArray(ownerOrder)||ownerOrder.length===0)return fallback;
     const l=ownerOrder.indexOf(Number(left.number)),r=ownerOrder.indexOf(Number(right.number));
     if(l<0&&r<0)return fallback;
