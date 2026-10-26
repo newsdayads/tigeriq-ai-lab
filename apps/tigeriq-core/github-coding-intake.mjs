@@ -222,6 +222,13 @@ export function ownerCodingComment(value=''){
   for(const [pattern,label] of markers){if(pattern.test(text)){text=text.replace(pattern,label);break}}
   return text;
 }
+export function codingSourceReconcileGate(issue={}){
+  const state=String(issue?.state||'').trim().toLowerCase();
+  if(state==='open')return {allow:true,state,reason:'SOURCE_WORK_ORDER_OPEN'};
+  if(state==='closed')return {allow:false,state,reason:'SOURCE_WORK_ORDER_CLOSED'};
+  return {allow:false,state:state||'unknown',reason:'SOURCE_WORK_ORDER_STATE_UNVERIFIED'};
+}
+
 async function comment(fetchImpl,owner,repo,n,token,body){if(token)await gh(fetchImpl,owner,repo,`/issues/${n}/comments`,token,{method:'POST',body:JSON.stringify({body:ownerCodingComment(body)})})}
 async function close(fetchImpl,owner,repo,n,token){if(token)await gh(fetchImpl,owner,repo,`/issues/${n}`,token,{method:'PATCH',body:JSON.stringify({state:'closed',state_reason:'completed'})})}
 async function markerExists(pool,type,n){const q=await pool.query("select 1 from tigeriq_events where type=$1 and data->>'issueNumber'=$2 limit 1",[type,String(n)]);return q.rowCount>0}
@@ -569,6 +576,13 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
         console.warn(JSON.stringify({event:'GITHUB_CODING_HISTORICAL_LABEL_SYNC_WAIT',issueNumber:n,codingObjectiveId:historicalObjectiveId,error:String(error?.message||error)}));
         continue;
       }
+      const historicalSourceGate=codingSourceReconcileGate(historicalIssue);
+      if(!historicalSourceGate.allow){
+        if(!(await objectiveMarkerExists(pool,'GITHUB_CODING_SOURCE_QUIETED',n,historicalObjectiveId))){
+          await mark(pool,'GITHUB_CODING_SOURCE_QUIETED',{issueNumber:n,codingObjectiveId:historicalObjectiveId,reason:historicalSourceGate.reason,state:historicalSourceGate.state,stateReason:String(historicalIssue?.state_reason||''),historical:true});
+        }
+        continue;
+      }
       const historicalSourceRevision=await codingSourceRevision(fetchImpl,owner,repo,token,historicalIssue);
       const historicalSpec=parseCodingIssue(historicalIssue);
       const historicalEvidence=historicalSpec&&String(historicalFinal?.mainSha||'').trim()!==currentMainSha&&String(historicalFinal?.sourceRevision||'').trim()===String(historicalSourceRevision||'').trim()
@@ -630,6 +644,13 @@ Continue only after the canonical source materially changed. Execute zero-cost r
     catch(error){
       if(githubRateLimitCooldownMs(error)>0)throw error;
       console.warn(JSON.stringify({event:'GITHUB_CODING_SOURCE_RECONCILE_WAIT',issueNumber:n,codingObjectiveId:id,error:String(error?.message||error)}));
+      continue;
+    }
+    const sourceGate=codingSourceReconcileGate(currentIssue);
+    if(!sourceGate.allow){
+      if(!(await objectiveMarkerExists(pool,'GITHUB_CODING_SOURCE_QUIETED',n,id))){
+        await mark(pool,'GITHUB_CODING_SOURCE_QUIETED',{issueNumber:n,codingObjectiveId:id,reason:sourceGate.reason,state:sourceGate.state,stateReason:String(currentIssue?.state_reason||''),historical:false});
+      }
       continue;
     }
     const currentSourceRevision=await codingSourceRevision(fetchImpl,owner,repo,token,currentIssue);
