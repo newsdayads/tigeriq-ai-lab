@@ -47,6 +47,9 @@ export function parseUiNodes(xml){
   }return out;
 }
 export function nodeCenter(node){const [x1,y1,x2,y2]=node.bounds;return {x:Math.floor((x1+x2)/2),y:Math.floor((y1+y2)/2)};}
+export function pickTextNode(nodes,needle,{contains=false}={}){
+  return (Array.isArray(nodes)?nodes:[]).find(x=>contains?(x.text||x.contentDesc).includes(needle):(x.text===needle||x.contentDesc===needle))||null;
+}
 export function pickVisibleNode(nodes,needle,{contains=false}={}){
   const matches=(Array.isArray(nodes)?nodes:[]).filter(x=>contains?(x.text||x.contentDesc).includes(needle):(x.text===needle||x.contentDesc===needle));
   return matches.find(x=>Array.isArray(x.bounds)&&x.bounds[2]>x.bounds[0]&&x.bounds[3]>x.bounds[1])||null;
@@ -86,6 +89,14 @@ export function createS10RdcAdapter({adbPath=DEFAULT_ADB_PATH,stateRoot=DEFAULT_
       if(n)return n;
       const hidden=(nodes||[]).some(x=>contains?(x.text||x.contentDesc).includes(needle):(x.text===needle||x.contentDesc===needle));
       if(hidden||i>0)await adb(['-s',serial,'shell','input','swipe','1000','850','1000','380','250']);
+      await sleep(300);
+    }
+    return null;
+  };
+  const findTextNode=async(serial,needle,{contains=false,tries=8}={})=>{
+    for(let i=0;i<tries;i++){
+      const n=pickTextNode(parseUiNodes(await dumpUi(serial)),needle,{contains});
+      if(n)return n;
       await sleep(300);
     }
     return null;
@@ -147,7 +158,7 @@ export function createS10RdcAdapter({adbPath=DEFAULT_ADB_PATH,stateRoot=DEFAULT_
     await tapNode(serial,'CÓ THỂ SỬA',{contains:true});
     await tapNode(serial,answers[level]);
     await tapNode(serial,'CHẠY');
-    const pass=await findNode(serial,'ĐÃ GIÚP ROBOT!',{tries:14});if(!pass)throw Error('LEVEL_NOT_ACCEPTED:'+level);
+    const pass=await findTextNode(serial,'ĐÃ GIÚP ROBOT!',{tries:8});if(!pass)throw Error('LEVEL_NOT_ACCEPTED:'+level);
     const dir=join(stateRoot,'evidence',sessionId);await mkdir(dir,{recursive:true});
     const shot=(await adb(['-s',serial,'exec-out','screencap','-p'],{binary:true,timeout:20000})).stdout;
     const path=join(dir,level+'.png');await writeFile(path,shot);
