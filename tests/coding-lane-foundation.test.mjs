@@ -3,8 +3,25 @@ import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {appendEligibleCodingManagerBackups,activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertSourceWorkOrderExecutable,codingObjectiveSourcePreflightDecision,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingManagerRankingInput,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,codingCoreHealthFailureKind,codingCoreHealthReadback,createCodingCoreHealthPump,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,rankCodingManagerResources,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {appendEligibleCodingManagerBackups,activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertSourceWorkOrderExecutable,autonomousRepairCycle,codingCiRepairMode,codingObjectiveSourcePreflightDecision,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingManagerRankingInput,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,codingCoreHealthFailureKind,codingCoreHealthReadback,createCodingCoreHealthPump,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,rankCodingManagerResources,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,supervisorManagedCiRepair,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
+
+test('R12 supervisor-managed CI repair is opt-in and bounded to the current contract',()=>{
+  const marked=[
+    'TIGERIQ_JOB_V1',
+    'RETRY_RESUME_TRIGGER=CI_GATES_FAILED_ON_FIRST_PR_HEAD',
+    'AUTO_QUEUE=INCLUDED',
+    '',
+    '## GOAL',
+    'prove supervisor repair',
+  ].join('\n');
+  assert.strictEqual(supervisorManagedCiRepair(marked),true);
+  assert.deepStrictEqual(codingCiRepairMode(marked,'initial generation'),{managed:true,repairCycle:0,failFirst:true,repairBeforeGates:false});
+  assert.deepStrictEqual(codingCiRepairMode(marked,'initial\nAUTONOMOUS_REPAIR_CYCLE=2\nPREVIOUS_FAILURE=CI_GATES_FAILED'),{managed:true,repairCycle:2,failFirst:false,repairBeforeGates:true});
+  assert.strictEqual(autonomousRepairCycle('AUTONOMOUS_REPAIR_CYCLE=2'),2);
+  assert.strictEqual(supervisorManagedCiRepair('TIGERIQ_JOB_V1\nAUTO_QUEUE=INCLUDED'),false);
+  assert.deepStrictEqual(codingCiRepairMode('TIGERIQ_JOB_V1\nAUTO_QUEUE=INCLUDED','AUTONOMOUS_REPAIR_CYCLE=2'),{managed:false,repairCycle:0,failFirst:false,repairBeforeGates:false});
+});
 
 const nv11={id:'NV11',provider:'fake',model:'a'};
 const nv19={id:'NV19',provider:'fake',model:'b'};
