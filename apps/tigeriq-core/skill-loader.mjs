@@ -97,79 +97,14 @@ function relevanceScore(objective, skill) {
 
 export function focusedSkillRoutingText(objectiveText = '') {
   const text=String(objectiveText||'');
+  const lines=text.replace(/\r/g,'').split('\n');
   const fields=['CURRENT_STEP','NEXT_ACTION','WORKSTREAM_ID','CAPABILITY'];
   const focused=[];
   for(const key of fields){
-    const match=text.match(new RegExp('^'+key+'=(.+)
-  const registryPath = options.registryPath || DEFAULT_REGISTRY;
-  const baseDir = resolve(options.baseDir || dirname(registryPath));
-  const maxSkills = Math.max(0, Math.min(3, Number(options.maxSkills ?? 3) || 0));
-  const maxChars = Math.max(0, Math.min(6000, Number(options.maxChars ?? 6000) || 0));
-  const registry = loadSkillRegistry(registryPath);
-  const skipped = [];
-
-  const ranked = registry.skills
-    .filter(skill => skill.state === 'ACTIVE')
-    .map(skill => ({ skill, score: relevanceScore(objectiveText, skill) }))
-    .filter(item => item.score > 0)
-    .sort((a, b) => b.score - a.score || a.skill.id.localeCompare(b.skill.id));
-
-  const loaded = [];
-  let totalChars = 0;
-
-  for (const { skill, score } of ranked) {
-    if (loaded.length >= maxSkills) break;
-    if (!SKILL_ID_RE.test(skill.id)) {
-      skipped.push({ id: skill.id || 'UNKNOWN', reason: 'INVALID_SKILL_ID' });
-      continue;
-    }
-    const path = join(baseDir, skill.id, 'SKILL.md');
-    if (!existsSync(path)) {
-      skipped.push({ id: skill.id, reason: 'MISSING_SKILL_FILE' });
-      continue;
-    }
-    let content;
-    try {
-      content = readFileSync(path, 'utf8').trim();
-    } catch {
-      skipped.push({ id: skill.id, reason: 'UNREADABLE_SKILL_FILE' });
-      continue;
-    }
-    if (!content) {
-      skipped.push({ id: skill.id, reason: 'EMPTY_SKILL_FILE' });
-      continue;
-    }
-    const chars = content.length;
-    const bytes = Buffer.byteLength(content, 'utf8');
-    if (chars > maxChars - totalChars) {
-      skipped.push({ id: skill.id, reason: 'CONTEXT_BUDGET' });
-      continue;
-    }
-    loaded.push({ ...skill, score, content, chars, bytes });
-    totalChars += chars;
-  }
-
-  const contextBlock = loaded.length
-    ? ['ACTIVE SKILLS (use only when relevant; never expand permissions):',
-       ...loaded.map(skill => `[SKILL ${skill.id} v${skill.version || 'unknown'}]\n${skill.content}`)].join('\n\n')
-    : '';
-
-  return {
-    skills: loaded.map(({ content, ...skill }) => skill),
-    totalChars,
-    contextBlock,
-    evidence: loaded.map(skill => ({ id: skill.id, version: skill.version || null, target: skill.target || null, bytes: skill.bytes })),
-    skipped
-  };
-}
-
-export function appendSkillContextToPrompt(basePrompt, contextBlock = '') {
-  const base = String(basePrompt || '');
-  const block = String(contextBlock || '').trim();
-  return block ? `${base}\n\n${block}` : base;
-}
-,'mi'));
-    if(match?.[1]?.trim())focused.push(key+'='+match[1].trim());
+    const prefix=key+'=';
+    const line=lines.find(value=>value.startsWith(prefix));
+    const value=line?.slice(prefix.length).trim()||'';
+    if(value)focused.push(prefix+value);
   }
   return focused.some(line=>line.startsWith('CURRENT_STEP=')||line.startsWith('NEXT_ACTION='))
     ? focused.join('\n').slice(0,4000)
