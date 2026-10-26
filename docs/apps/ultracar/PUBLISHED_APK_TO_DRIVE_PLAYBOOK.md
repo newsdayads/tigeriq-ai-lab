@@ -123,3 +123,20 @@ When anh Sơn says *“tiếp tục UltraCar / sửa app / xuất APK / đưa Dr
 5. Report **XONG** only for the specifically completed **build+sign+Drive TEST publication** after actual readback. If asked whether UI/DeX fully works or app is DONE, report **CHƯA XONG** until target device user-flow acceptance; never turn a signed APK into a fabricated UI QA PASS.
 
 **Regression source:** Issue #5129 comment [#6390694935](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129#issuecomment-6390694935). Re-check the live state rather than trusting this 2026-10-25 snapshot if newer verified evidence appears.
+
+<!-- ULTRACAR_FIXED_DRIVE_SYNC_TASK_20261026 -->
+## Owner update 2026-10-26 — Fixed Drive sync task (no new scripts)
+
+Owner supplied the established sync route. After a TEST APK is built, signed and verified, **do not create a new `.ps1` file and do not invoke `Register-ScheduledTask`**. Verify that the pre-existing scheduled task is present, is the intended authorized task and targets the verified signed APK; then invoke exactly:
+
+```cmd
+schtasks /run /tn "TigerIQ_UltraCar_Sync_Drive"
+```
+
+Wait approximately 3 seconds and read the existing receipt at:
+
+```text
+C:\Users\wdragons12x\AppData\Local\Temp\tigeriq-drive-sync-result.txt
+```
+
+Treat the receipt as evidence only for what it actually says. Independently verify the uploaded file's Drive ID, parent, size, and SHA when possible. **Task presence, current APK selection, execution success, and cloud sync have not yet been verified by this documentation change.** This route never overrides an upstream tool refusal or authorizes bypassing security controls.
