@@ -1378,6 +1378,7 @@ async function runOwnerWaiverWiringCase({foreign=false,ciError=false,staleHead=f
   const deps={
     pool:{query:async(sql,params)=>{calls.push({kind:'db',sql,params});return {rows:sql.includes('select objective')?[{objective:'issue #2293: bounded source-only documentation'}]:[]};}},
     refreshCoreResourceHealth:async()=>{},
+    codingCiRepairMode,
     codingP0CanaryApplies:()=>false,codingStepPacketFromInstruction:()=>null,
     resolveCodingRepository:()=>repo,targetRepositoryFromObjective:()=>'',codingOwnerReviewWaiver,
     controlPlaneRepairIntent:()=>({}),loadAuthoritativeGithubContext:async()=>null,
