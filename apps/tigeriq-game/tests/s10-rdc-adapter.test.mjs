@@ -36,3 +36,25 @@ test('owned fence may set 100% baseline and resets only its own override',async(
   assert.equal(calls.filter(x=>x.includes('set level 100')).length,1);
   assert.equal(calls.filter(x=>x.includes('battery reset')).length,1);
 });
+
+test('startup failure rolls back owned battery override and fence',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'g06-'));
+  const preview=join(root,'preview.html');
+  await (await import('node:fs/promises')).writeFile(preview,'<!doctype html><title>x</title>');
+  let level=86,override=false;const calls=[];
+  const fake=async(file,args)=>{
+    const s=args.join(' ');calls.push(s);
+    if(s.includes('dumpsys battery set level 100')){level=100;override=true;return {stdout:'',stderr:''};}
+    if(s.includes('dumpsys battery reset')){level=86;override=false;return {stdout:'',stderr:''};}
+    if(s.includes('dumpsys battery'))return {stdout:(override?'UPDATES STOPPED -- use reset to restart\n':'')+' level: '+level+'\n status: 4\n',stderr:''};
+    if(s.includes('shell am start'))throw Error('LAUNCH_FAILED');
+    return {stdout:'',stderr:''};
+  };
+  const claim=await claimAtomicFence({stateRoot:root,ownerId,deviceSerial:serial,sourceSha:sha});
+  const adapter=createS10RdcAdapter({stateRoot:root,previewHtmlPath:preview,execFile:fake});
+  await assert.rejects(()=>adapter.beginOnce({intent:claim.intent,deviceSerial:serial,sourceSha:sha}),/LAUNCH_FAILED/);
+  assert.equal(level,86);assert.equal(override,false);
+  assert.ok(calls.some(x=>x.includes('reverse --remove tcp:4173')));
+  assert.ok(calls.some(x=>x.includes('battery reset')));
+  await assert.rejects(()=>readFile(claim.path,'utf8'),e=>e?.code==='ENOENT');
+});
