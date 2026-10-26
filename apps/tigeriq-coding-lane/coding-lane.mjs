@@ -280,6 +280,20 @@ export function managerResourceFailurePlan(error,objective={},nowMs=Date.now()){
 export function shouldResumeExistingPr(job){
   return Boolean(String(job?.branch||'').trim()&&Number(job?.pr_number)>0);
 }
+export function supervisorManagedCiRepair(objective=''){
+  const contract=currentSourceWorkOrderContract(objective);
+  return /^\s*RETRY_RESUME_TRIGGER\s*=\s*CI_GATES_FAILED_ON_FIRST_PR_HEAD\s*$/im.test(contract);
+}
+export function autonomousRepairCycle(instruction=''){
+  const match=String(instruction||'').match(/(?:^|\n)AUTONOMOUS_REPAIR_CYCLE=(\d+)(?:\n|$)/);
+  const cycle=Number(match?.[1]||0);
+  return Number.isInteger(cycle)&&cycle>0?cycle:0;
+}
+export function codingCiRepairMode(objective='',instruction=''){
+  const managed=supervisorManagedCiRepair(objective);
+  const repairCycle=managed?autonomousRepairCycle(instruction):0;
+  return {managed,repairCycle,failFirst:managed&&repairCycle===0,repairBeforeGates:managed&&repairCycle>0};
+}
 
 export function validateObjectiveRoutingInput({targetEmployee=null,currentPr=null,targetHead=null}={}){
   const employee=String(targetEmployee||'').trim().toUpperCase();
@@ -1944,6 +1958,7 @@ async function runJob(j){
   j.paths=Array.isArray(j.paths)?j.paths:j.paths||[];
   const objectiveRow=(await pool.query('select objective from tigeriq_coding_objectives where id=$1',[j.objective_id])).rows[0];
   const canonicalObjective=String(objectiveRow?.objective||j.instruction||'').slice(0,24000);
+  const ciRepairMode=codingCiRepairMode(canonicalObjective,j.instruction);
   const canary=codingP0CanaryApplies(canonicalObjective);
   // A stored canary packet must never silently fall back into legacy auto-merge
   // after config is disabled, target Issue is changed, or objective is missing.
@@ -1993,6 +2008,22 @@ async function runJob(j){
     if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
     }
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci',next_attempt_at=null,completed_at=null where id=$1",[j.id,worker.id,reviewer?.id||null]);
+    if(ciRepairMode.repairBeforeGates){
+      const repairGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);
+      if(storedGithubContext)assertLiveGithubContextFresh(storedGithubContext,repairGithubContext);
+      j.liveGithubContext=repairGithubContext;
+      await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
+      const repaired=await generateAndWriteRepair(worker,j,branch,[
+        `AUTONOMOUS_REPAIR_CYCLE=${ciRepairMode.repairCycle}`,
+        `CI gate failure on same PR #${pr.number}`,
+      ],cooldownExcludes,mutationAuth,canonicalObjective,repairGithubContext,targetRepository);
+      worker=repaired.worker;gen=repaired.payload;
+      if(reviewer?.id===worker.id){
+        reviewer=pickResource([worker.id,...cooldownExcludes]);
+        if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
+      }
+      await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer?.id||null]);
+    }
   }else{
     // generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext)
     generated=await generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext,targetRepository);worker=generated.resource;gen=generated.payload;
@@ -2017,7 +2048,9 @@ async function runJob(j){
     await pool.query("update tigeriq_coding_jobs set pr_number=$2,status='waiting_ci' where id=$1",[j.id,pr.number]);
   }
   let review=null,gates=null,approvedHead='',approvedReviewer='',approvedImplementer='';
-  const waitGatesFn=async()=>runGateWithRepair({
+  const waitGatesFn=async()=>{
+    if(ciRepairMode.managed)return waitGates(branch,pr.number,targetRepository);
+    return runGateWithRepair({
 
       // waitGates(branch,pr.number)
       waitFn:()=>waitGates(branch,pr.number,targetRepository),
@@ -2034,6 +2067,7 @@ async function runJob(j){
       maxRepairCycles:canary?2:3,
       timeoutRetries:1,
     });
+  };
   const onGatesPassed=async({gates:cycleGates})=>{
     await pool.query("update tigeriq_coding_jobs set status=$3,head_sha=$2 where id=$1",[j.id,cycleGates.sha,ownerWaiver?'waiting_ci':'review']);
   };

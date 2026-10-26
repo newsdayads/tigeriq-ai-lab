@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {autonomyGithubReceiptBody,backfillGithubRetryReceipts,githubIssueIsOpen,isRetryableFailure,isStaleJob,normalizeRepairFailure,repairInstruction,repairJobTitle,retryResumeIdentity,shouldRetry} from '../apps/tigeriq-coding-lane/autonomy-supervisor.mjs';
+import {autonomyGithubReceiptBody,backfillGithubRetryReceipts,githubIssueIsOpen,isRetryableFailure,isStaleJob,normalizeRepairFailure,repairInstruction,repairJobTitle,retryResumeIdentity,retryResumeState,shouldRetry} from '../apps/tigeriq-coding-lane/autonomy-supervisor.mjs';
 
 // We need to test githubIssueIsOpen or objectiveIsEligible via exported functions or by mocking fetch.
 // Since githubIssueIsOpen is not exported directly, we can test it through mock fetch or test helper exports if available, or we can test handleFailed / objectiveIsEligible if exported or test logic via mock.
@@ -31,6 +31,18 @@ describe('coding autonomy supervisor repair policy',()=>{
   it('preserves existing PR identity across bounded repair jobs',()=>{
     expect(retryResumeIdentity({branch:'tigeriq/nv12/job',pr_number:1267,head_sha:'abc'})).toEqual({branch:'tigeriq/nv12/job',prNumber:1267,headSha:'abc'});
     expect(retryResumeIdentity({branch:'',pr_number:1267})).toEqual({branch:null,prNumber:null,headSha:null});
+  });
+  it('preserves the live GitHub generation baseline for same-PR supervisor retry',()=>{
+    const state=retryResumeState({
+      branch:'tigeriq/nv12/job',pr_number:1267,head_sha:'abc',
+      live_github_context:{fingerprint:'ctx-1',refs:[1,2]},
+      live_github_context_fingerprint:'ctx-1',
+    });
+    expect(state).toEqual({
+      branch:'tigeriq/nv12/job',prNumber:1267,headSha:'abc',
+      liveGithubContext:{fingerprint:'ctx-1',refs:[1,2]},
+      liveGithubContextFingerprint:'ctx-1',
+    });
   });
 
   it('detects only stale active coding states',()=>{

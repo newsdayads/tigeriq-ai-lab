@@ -45,6 +45,12 @@ export function retryResumeIdentity(job){
   if(!branch||!Number.isInteger(prNumber)||prNumber<=0)return {branch:null,prNumber:null,headSha:null};
   return {branch,prNumber,headSha:String(job?.head_sha||'').trim()||null};
 }
+export function retryResumeState(job){
+  const identity=retryResumeIdentity(job);
+  const liveGithubContext=job?.live_github_context&&typeof job.live_github_context==='object'?job.live_github_context:null;
+  const liveGithubContextFingerprint=String(job?.live_github_context_fingerprint||'').trim()||null;
+  return {...identity,liveGithubContext,liveGithubContextFingerprint};
+}
 export function repairInstruction(job,reason,cycle){
   const detail=typeof job.failure==='object'&&job.failure?JSON.stringify(job.failure):String(job.failure||'');
   const resume=retryResumeIdentity(job);
@@ -212,9 +218,10 @@ async function queueRetry(pool,job,reason,maxJobs){
   const retryId=`CODE-${randomUUID()}`;
   const cycle=total+1;
   const paths=Array.isArray(job.paths)?job.paths:[];
-  const resume=retryResumeIdentity(job);
-  await pool.query('insert into tigeriq_coding_jobs(id,objective_id,title,instruction,paths,status,branch,pr_number,head_sha) values($1,$2,$3,$4,$5,\'queued\',$6,$7,$8)',[
-    retryId,job.objective_id,repairJobTitle(job.title,cycle),repairInstruction(job,reason,cycle),JSON.stringify(paths),resume.branch,resume.prNumber,resume.headSha
+  const resume=retryResumeState(job);
+  await pool.query('insert into tigeriq_coding_jobs(id,objective_id,title,instruction,paths,status,branch,pr_number,head_sha,live_github_context,live_github_context_fingerprint) values($1,$2,$3,$4,$5,\'queued\',$6,$7,$8,$9,$10)',[
+    retryId,job.objective_id,repairJobTitle(job.title,cycle),repairInstruction(job,reason,cycle),JSON.stringify(paths),
+    resume.branch,resume.prNumber,resume.headSha,resume.liveGithubContext?JSON.stringify(resume.liveGithubContext):null,resume.liveGithubContextFingerprint
   ]);
   await pool.query("update tigeriq_coding_objectives set status='active',summary=$2,updated_at=now() where id=$1",[job.objective_id,`AUTO_REPAIR_QUEUED:${retryId}:${reason}`]);
   await emit(pool,'RETRY_QUEUED',{objectiveId:job.objective_id,sourceJobId:job.id,retryJobId:retryId,reason,cycle});
