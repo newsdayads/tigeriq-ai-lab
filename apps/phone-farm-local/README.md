@@ -15,8 +15,8 @@
 
 ## Bằng chứng PC01 ngày 26/10/2026
 
-- 18 thiết bị Android thật online đồng thời; UI hiển thị đủ 18 card.
-- E2E UI: điều khiển HOME thật PASS; screenshot PNG 18/18 PASS; vòng E2E 26.19 giây.
+- 19 thiết bị Android thật online đồng thời; UI hiển thị đủ 19 card.
+- E2E UI: điều khiển HOME thật PASS; screenshot PNG 19/19 PASS; vòng E2E 24.54 giây.
 - APK smoke tự tạo không quyền nhạy cảm: install 2/2, launch 2/2 có PID, force-stop 2/2, uninstall 2/2 và xác minh sạch.
 - Clipboard PC → input Android qua UI PASS.
 - Scheduler: lưu lịch, kill backend, watchdog phục hồi, lịch tiếp tục chạy HOME và hoàn thành; lịch QA đã xóa.
@@ -26,7 +26,7 @@
 ## Hạn chế đã xác minh
 
 - Một thử nghiệm WiFi ADB qua LAN có IP thật nhưng TCP/5555 không reachable từ PC01; thiết bị thử đã được trả về USB mode. Vì vậy không được tuyên bố LAN/WiFi runtime đã nghiệm thu trên topology hiện tại.
-- Một Samsung SM-G977N bị mất khỏi ADB inventory sau thử reconnect USB; các bài tải tiếp theo dùng 18 thiết bị còn online. Không tự nhận 20/100/300 máy.
+- ADB server restart đã tái phát hiện 19/19 thiết bị trong 500 ms; không tự nhận 20/100/300 máy.
 - TigerIQ EXE hiện chưa có code-signing certificate. Dùng SHA-256 + CI để kiểm tra toàn vẹn; không tắt Defender/SmartScreen.
 - Auto.js parity là tập macro tương đương có giới hạn, không phải engine Auto.js đầy đủ.
 
