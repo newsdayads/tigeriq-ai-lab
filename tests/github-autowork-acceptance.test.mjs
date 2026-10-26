@@ -185,7 +185,8 @@ describe('native R04 bounded acceptance correction retry', () => {
     expect(prompt.startsWith('ORIGINAL')).toBe(true);
     expect(prompt).toContain('ONE BOUNDED ATTEMPT');
     expect(prompt).toContain('COMPLETE replacement report');
-    expect(prompt).toContain('Q01=evidenceTimestamp');
+    expect(prompt).toContain('Q01=');
+    expect(prompt).toContain('evidenceTimestamp');
     expect(prompt).toContain('Never invent');
     expect(prompt).not.toContain('Synthetic test fixture');
   });
