@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {githubIssueIsOpen,isRetryableFailure,isStaleJob,normalizeRepairFailure,repairInstruction,repairJobTitle,retryResumeIdentity,shouldRetry} from '../apps/tigeriq-coding-lane/autonomy-supervisor.mjs';
+import {autonomyGithubReceiptBody,backfillGithubRetryReceipts,githubIssueIsOpen,isRetryableFailure,isStaleJob,normalizeRepairFailure,repairInstruction,repairJobTitle,retryResumeIdentity,shouldRetry} from '../apps/tigeriq-coding-lane/autonomy-supervisor.mjs';
 
 // We need to test githubIssueIsOpen or objectiveIsEligible via exported functions or by mocking fetch.
 // Since githubIssueIsOpen is not exported directly, we can test it through mock fetch or test helper exports if available, or we can test handleFailed / objectiveIsEligible if exported or test logic via mock.
@@ -46,6 +46,103 @@ describe('coding autonomy supervisor repair policy',()=>{
     expect(p).toContain('Do not broaden scope');
     const existing=repairInstruction({instruction:'fix Y',branch:'tigeriq/nv12/job',pr_number:1267,failure:{}},'OUTPUT_CONTRACT_EXHAUSTED',3);
     expect(existing).toContain('existing PR #1267 branch');
+  });
+});
+
+
+describe('coding autonomy durable GitHub receipts',()=>{
+  it('formats a deterministic bounded CI repair receipt without credentials',()=>{
+    const body=autonomyGithubReceiptBody({
+      issueNumber:5358,sourceEventId:'42',objectiveId:'CODEOBJ-r12',sourceJobId:'CODE-old',
+      retryJobId:'CODE-new',reason:'CI_GATES_FAILED',cycle:2,retryEventCount:1,
+    });
+    expect(body).toContain('[TIGERIQ_CODING_AUTONOMY_RECEIPT_V1]');
+    expect(body).toContain('WORK_ORDER=#5358');
+    expect(body).toContain('SOURCE_EVENT_ID=42');
+    expect(body).toContain('SOURCE_JOB_ID=CODE-old');
+    expect(body).toContain('RETRY_JOB_ID=CODE-new');
+    expect(body).toContain('EVENT=CI_GATES_FAILED');
+    expect(body).toContain('NO_DUPLICATE_REPAIR=true');
+    expect(body).not.toContain('fake-token');
+  });
+
+  it('backfills one historical CI retry receipt and records durable acknowledgement',async()=>{
+    process.env.TIGERIQ_GITHUB_TOKEN='fake-token';
+    const emitted=[];
+    const db={async query(sql,params=[]){
+      if(sql.includes("select e.id,e.payload,o.objective"))return {rows:[{
+        id:'42',
+        payload:{objectiveId:'CODEOBJ-r12',sourceJobId:'CODE-old',retryJobId:'CODE-new',reason:'CI_GATES_FAILED',cycle:2},
+        objective:'GitHub autonomous coding issue #5358 — R12 canary',
+      }]};
+      if(sql.includes("select count(*)::int n from tigeriq_coding_watchdog_events"))return {rows:[{n:1}]};
+      if(sql.startsWith('insert into tigeriq_coding_watchdog_events')){
+        emitted.push({kind:params[0],payload:JSON.parse(params[1])});
+        return {rows:[],rowCount:1};
+      }
+      throw new Error('UNEXPECTED_SQL:'+sql);
+    }};
+    const calls=[];
+    const fetchMock=async(url,options={})=>{
+      calls.push({url,options});
+      if(!options.method)return {ok:true,status:200,json:async()=>[]};
+      return {ok:true,status:201,json:async()=>({html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/5358#issuecomment-1'})};
+    };
+    await expect(backfillGithubRetryReceipts(db,{fetchImpl:fetchMock})).resolves.toEqual({posted:1,existing:0,failed:0});
+    const post=calls.find(x=>x.options.method==='POST');
+    expect(post).toBeTruthy();
+    const payload=JSON.parse(post.options.body);
+    expect(payload.body).toContain('SOURCE_EVENT_ID=42');
+    expect(payload.body).toContain('NO_DUPLICATE_REPAIR=true');
+    expect(emitted.some(x=>x.kind==='GITHUB_RECEIPT_POSTED'&&x.payload.sourceEventId==='42')).toBe(true);
+    expect(JSON.stringify(emitted)).not.toContain('fake-token');
+  });
+
+  it('does not duplicate an already-posted GitHub receipt',async()=>{
+    process.env.TIGERIQ_GITHUB_TOKEN='fake-token';
+    const emitted=[];
+    const db={async query(sql,params=[]){
+      if(sql.includes("select e.id,e.payload,o.objective"))return {rows:[{
+        id:'43',
+        payload:{objectiveId:'CODEOBJ-r12',sourceJobId:'CODE-old',retryJobId:'CODE-new',reason:'CI_GATES_FAILED',cycle:2},
+        objective:'GitHub autonomous coding issue #5358',
+      }]};
+      if(sql.includes("select count(*)::int n from tigeriq_coding_watchdog_events"))return {rows:[{n:1}]};
+      if(sql.startsWith('insert into tigeriq_coding_watchdog_events')){
+        emitted.push({kind:params[0],payload:JSON.parse(params[1])});return {rows:[],rowCount:1};
+      }
+      throw new Error('UNEXPECTED_SQL:'+sql);
+    }};
+    let posts=0;
+    const fetchMock=async(_url,options={})=>{
+      if(options.method==='POST'){posts++;return {ok:true,status:201,json:async()=>({})};}
+      return {ok:true,status:200,json:async()=>[{body:'[TIGERIQ_CODING_AUTONOMY_RECEIPT_V1]\nSOURCE_EVENT_ID=43',html_url:'https://example.test/existing'}]};
+    };
+    await expect(backfillGithubRetryReceipts(db,{fetchImpl:fetchMock})).resolves.toEqual({posted:0,existing:1,failed:0});
+    expect(posts).toBe(0);
+    expect(emitted.some(x=>x.kind==='GITHUB_RECEIPT_POSTED'&&x.payload.existing===true)).toBe(true);
+  });
+
+  it('fails open when GitHub comment delivery fails and records a durable error event',async()=>{
+    process.env.TIGERIQ_GITHUB_TOKEN='fake-token';
+    const emitted=[];
+    const db={async query(sql,params=[]){
+      if(sql.includes("select e.id,e.payload,o.objective"))return {rows:[{
+        id:'44',
+        payload:{objectiveId:'CODEOBJ-r12',sourceJobId:'CODE-old',retryJobId:'CODE-new',reason:'CI_GATES_FAILED',cycle:2},
+        objective:'GitHub autonomous coding issue #5358',
+      }]};
+      if(sql.includes("select count(*)::int n from tigeriq_coding_watchdog_events"))return {rows:[{n:1}]};
+      if(sql.startsWith('insert into tigeriq_coding_watchdog_events')){
+        emitted.push({kind:params[0],payload:JSON.parse(params[1])});return {rows:[],rowCount:1};
+      }
+      throw new Error('UNEXPECTED_SQL:'+sql);
+    }};
+    const fetchMock=async(_url,options={})=>options.method==='POST'
+      ? {ok:false,status:503,json:async()=>({})}
+      : {ok:true,status:200,json:async()=>[]};
+    await expect(backfillGithubRetryReceipts(db,{fetchImpl:fetchMock})).resolves.toEqual({posted:0,existing:0,failed:1});
+    expect(emitted.some(x=>x.kind==='GITHUB_RECEIPT_FAILED'&&x.payload.reason==='GITHUB_COMMENT_HTTP_503')).toBe(true);
   });
 });
 
