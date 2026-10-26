@@ -1,4 +1,4 @@
-/** GH-5284: host-native RDC adapter. Direct adb.exe only, no shell, no battery mutation. */
+/** GH-5284: host-native RDC adapter. Direct adb.exe only, no shell; battery mutation only after owned fence. */
 import {execFile as execFileCb} from 'node:child_process';
 import {promisify} from 'node:util';
 import {createServer} from 'node:http';
@@ -49,7 +49,7 @@ export function parseUiNodes(xml){
 export function nodeCenter(node){const [x1,y1,x2,y2]=node.bounds;return {x:Math.floor((x1+x2)/2),y:Math.floor((y1+y2)/2)};}
 
 export function createS10RdcAdapter({adbPath=DEFAULT_ADB_PATH,stateRoot=DEFAULT_STATE_ROOT,previewHtmlPath=resolve(import.meta.dirname,'../preview/robot-oops-g06-field-test.html'),execFile=execFileAsync,now=Date.now}={}){
-  let server=null,sessionId=null,currentIntent=null,previewUrl=null,reverseAdded=false;
+  let server=null,sessionId=null,currentIntent=null,previewUrl=null,reverseAdded=false,batteryOverrideOwned=false;
   const adb=async(args,{binary=false,timeout=15000}={})=>{
     const r=await execFile(adbPath,args,{windowsHide:true,timeout,maxBuffer:8*1024*1024,encoding:binary?null:'utf8',shell:false});
     return {stdout:r.stdout,stderr:r.stderr};
@@ -80,8 +80,23 @@ export function createS10RdcAdapter({adbPath=DEFAULT_ADB_PATH,stateRoot=DEFAULT_
   const beginOnce=async({intent,deviceSerial,sourceSha})=>{
     if(!(await verifyFence({intent})).accepted)return {accepted:false};
     if(sourceSha!==intent.sourceSha||deviceSerial!==intent.deviceSerial)return {accepted:false};
+    const batteryBefore=(await adb(['-s',deviceSerial,'shell','dumpsys','battery'])).stdout;
+    const beforeLevel=Number(/(?:^|\n)\s*level:\s*(\d{1,3})\b/i.exec(batteryBefore)?.[1]);
+    const preexistingOverride=/UPDATES\s+STOPPED/i.test(batteryBefore);
+    if(beforeLevel!==100){
+      if(preexistingOverride)return {accepted:false,reason:'PREEXISTING_BATTERY_OVERRIDE_NOT_100'};
+      await adb(['-s',deviceSerial,'shell','dumpsys','battery','set','level','100']);
+      batteryOverrideOwned=true;
+      const verify=(await adb(['-s',deviceSerial,'shell','dumpsys','battery'])).stdout;
+      const verifiedLevel=Number(/(?:^|\n)\s*level:\s*(\d{1,3})\b/i.exec(verify)?.[1]);
+      if(verifiedLevel!==100||!/UPDATES\s+STOPPED/i.test(verify)){
+        try{await adb(['-s',deviceSerial,'shell','dumpsys','battery','reset']);}catch{}
+        batteryOverrideOwned=false;
+        return {accepted:false,reason:'OWNED_BATTERY_OVERRIDE_NOT_VERIFIED'};
+      }
+    }
     currentIntent=intent;sessionId='S10SESSION_'+randomUUID().replaceAll('-','').slice(0,24);
-    const p=sessionFile(stateRoot,sessionId);const h=await open(p,'wx');await h.writeFile(JSON.stringify({schema:'TIGERIQ_S10_SESSION_V1',sessionId,...intent,sourceSha})+'\n');await h.close();
+    const p=sessionFile(stateRoot,sessionId);const h=await open(p,'wx');await h.writeFile(JSON.stringify({schema:'TIGERIQ_S10_SESSION_V1',sessionId,...intent,sourceSha,batteryOverrideOwned})+'\n');await h.close();
     await preparePreview();
     await adb(['-s',deviceSerial,'reverse','tcp:4173','tcp:4173']);reverseAdded=true;
     await adb(['-s',deviceSerial,'shell','am','start','-a','android.intent.action.VIEW','-d',previewUrl]);await sleep(1200);
@@ -117,9 +132,19 @@ export function createS10RdcAdapter({adbPath=DEFAULT_ADB_PATH,stateRoot=DEFAULT_
     const fence=await verifyFence({intent});if(!fence.accepted)return {cleaned:false,sessionId:given};
     if(reverseAdded){try{await adb(['-s',intent.deviceSerial,'reverse','--remove','tcp:4173']);}catch{} reverseAdded=false;}
     await closePreview();
-    const sf=sessionFile(stateRoot,sessionId);const s=await safeJson(sf);if(s?.sessionId===sessionId&&matchIntent(s,intent))await unlink(sf).catch(()=>{});
+    let batteryReset=false;
+    if(batteryOverrideOwned){
+      try{
+        await adb(['-s',intent.deviceSerial,'shell','dumpsys','battery','reset']);
+        const after=(await adb(['-s',intent.deviceSerial,'shell','dumpsys','battery'])).stdout;
+        batteryReset=!/UPDATES\s+STOPPED/i.test(after);
+      }catch{batteryReset=false;}
+      if(!batteryReset)return {cleaned:false,sessionId:given,reason:'OWNED_BATTERY_RESET_UNVERIFIED'};
+      batteryOverrideOwned=false;
+    }
+    const sf=sessionFile(stateRoot,sessionId);const row=await safeJson(sf);if(row?.sessionId===sessionId&&matchIntent(row,intent))await unlink(sf).catch(()=>{});
     if(!await releaseOwnedFence(intent))return {cleaned:false,sessionId:given};
-    return {cleaned:true,sessionId:given,batteryUntouched:true,batteryReset:false};
+    return {cleaned:true,sessionId:given,batteryUntouched:!batteryReset,batteryReset};
   };
   return {adb,inspectDevice,preparePreview,verifyFence,beginOnce,runLevel,cleanupOwned,closePreview,releaseOwnedFence};
 }
@@ -133,7 +158,8 @@ export async function runS10Acceptance({serial,sourceSha,ownerId='NV02_RDC_GH528
     mcpBindingVerified:true,attestedReadOnlySource:true,adbExecutableVerified:true,
     devices:parseAdbDevices(observed.devicesText),deviceSerial:serial,
     deviceModel:observed.deviceModel,batteryLevel:observed.batteryLevel,
-    batteryOverrideDetected:observed.batteryOverrideDetected,batteryMutationRequested:false,
+    batteryOverrideDetected:observed.batteryOverrideDetected,
+    batteryMutationRequested:observed.batteryLevel!==100&&!observed.batteryOverrideDetected,
     batteryOverrideOwnerVerified:false,previewUrl:preview.url,
     previewReachable:preview.reachable,previewSsoRequired:false,buildSha:sourceSha
   };
@@ -156,11 +182,12 @@ export async function runS10Acceptance({serial,sourceSha,ownerId='NV02_RDC_GH528
     }
   }finally{
     await adapter.closePreview().catch(()=>{});
-    if(intent)await adapter.releaseOwnedFence(intent).catch(()=>{});
+    if(intent&&result?.mutated!==true)await adapter.releaseOwnedFence(intent).catch(()=>{});
   }
   const receipt={schema:'TIGERIQ_GH5284_S10_RDC_ACCEPTANCE_V1',workOrder:'GH-5284',
     sourceSha,serial,model:observed.deviceModel,batteryLevel:observed.batteryLevel,
-    batteryOverrideDetected:observed.batteryOverrideDetected,batteryMutationRequested:false,
+    batteryOverrideDetected:observed.batteryOverrideDetected,
+    batteryMutationRequested:observed.batteryLevel!==100&&!observed.batteryOverrideDetected,
     deviceE2EAccepted:result?.code==='PASS_WITH_EVIDENCE',result};
   if(receiptPath){await mkdir(resolve(receiptPath,'..'),{recursive:true});await writeFile(receiptPath,JSON.stringify(receipt,null,2)+'\n');}
   return receipt;
