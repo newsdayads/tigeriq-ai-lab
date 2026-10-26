@@ -82,6 +82,9 @@ describe('coding autonomy durable GitHub receipts',()=>{
       }
       throw new Error('UNEXPECTED_SQL:'+sql);
     }};
+    const firstSql=[];
+    const originalQuery=db.query.bind(db);
+    db.query=async(sql,params=[])=>{firstSql.push(sql);return originalQuery(sql,params);};
     const calls=[];
     const fetchMock=async(url,options={})=>{
       calls.push({url,options});
@@ -89,6 +92,7 @@ describe('coding autonomy durable GitHub receipts',()=>{
       return {ok:true,status:201,json:async()=>({html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/5358#issuecomment-1'})};
     };
     await expect(backfillGithubRetryReceipts(db,{fetchImpl:fetchMock})).resolves.toEqual({posted:1,existing:0,failed:0});
+    expect(firstSql[0]).toContain('order by e.id desc');
     const post=calls.find(x=>x.options.method==='POST');
     expect(post).toBeTruthy();
     const payload=JSON.parse(post.options.body);
