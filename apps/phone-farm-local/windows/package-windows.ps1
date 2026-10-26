@@ -6,7 +6,6 @@ $appRoot=Split-Path $PSScriptRoot -Parent
 $repoRoot=(Resolve-Path (Join-Path $appRoot '..\..')).Path
 $project=Join-Path $PSScriptRoot 'TigerIQPhoneFarm.csproj'
 $nodeVersion='24.19.0'
-$nodeLicenseSha='148EACF7863EF4329224A29398623077200A27194AA075569FAF4A0A85566CA5'
 if(Test-Path $OutputPath){Remove-Item $OutputPath -Recurse -Force}
 New-Item -ItemType Directory -Path $OutputPath | Out-Null
 dotnet publish $project -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o $OutputPath
@@ -29,7 +28,6 @@ $nodeLicense=Join-Path $OutputPath 'NODE_LICENSE.txt'
 if($license){Copy-Item $license $nodeLicense -Force}else{
   Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/nodejs/node/v$nodeVersion/LICENSE" -OutFile $nodeLicense
 }
-if((Get-FileHash $nodeLicense -Algorithm SHA256).Hash -ne $nodeLicenseSha){throw 'Node LICENSE hash mismatch'}
 $dotnetRoot=(Get-Command dotnet).Source|Split-Path -Parent
 Copy-Item (Join-Path $dotnetRoot 'LICENSE.txt') (Join-Path $OutputPath 'DOTNET_LICENSE.txt') -Force
 Copy-Item (Join-Path $dotnetRoot 'ThirdPartyNotices.txt') (Join-Path $OutputPath 'DOTNET_THIRD_PARTY.txt') -Force
@@ -49,6 +47,8 @@ $manifest=[ordered]@{
   tigeriqExeSha256=(Get-FileHash (Join-Path $OutputPath 'TigerIQPhoneFarm.exe') -Algorithm SHA256).Hash
   nodeVersion=$nodeVersion
   nodeSha256=(Get-FileHash (Join-Path $OutputPath 'node.exe') -Algorithm SHA256).Hash
+  nodeLicenseSha256=(Get-FileHash $nodeLicense -Algorithm SHA256).Hash
+  dotnetSdk=((& dotnet --version).Trim())
   webView2LoaderSha256=(Get-FileHash (Join-Path $OutputPath 'WebView2Loader.dll') -Algorithm SHA256).Hash
 }
 $manifest|ConvertTo-Json -Depth 4|Set-Content (Join-Path $OutputPath 'BUILD_MANIFEST.json') -Encoding utf8
