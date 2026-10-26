@@ -47,9 +47,14 @@ function repairInvalidJsonEscapes(input){
   return out;
 }
 
+function stripTrailingCommas(input){
+  return String(input||'').replace(/,\s*([}\]])/g,'$1');
+}
 function parseJsonCandidate(candidate){
   try{return JSON.parse(candidate)}catch(first){
-    try{return JSON.parse(repairInvalidJsonEscapes(candidate))}catch{throw first}
+    try{return JSON.parse(repairInvalidJsonEscapes(candidate))}catch{
+      try{return JSON.parse(stripTrailingCommas(repairInvalidJsonEscapes(candidate)))}catch{throw first}
+    }
   }
 }
 
@@ -343,9 +348,20 @@ export function expandCompactChanges(prompt,text,canonicalFiles=null){
       const replace=String(edit?.replace??'');
       if(!search)throw new Error(`COMPACT_EDIT_SEARCH_EMPTY:${path}`);
       const first=content.indexOf(search);
-      if(first<0)throw new Error(`COMPACT_EDIT_SEARCH_MISSING:${path}`);
-      if(content.indexOf(search,first+search.length)>=0)throw new Error(`COMPACT_EDIT_SEARCH_AMBIGUOUS:${path}`);
-      content=content.slice(0,first)+replace+content.slice(first+search.length);
+      if(first<0){
+        const normContent = content.replace(/\r\n/g, '\n');
+        const normSearch = search.replace(/\r\n/g, '\n');
+        const normReplace = replace.replace(/\r\n/g, '\n');
+        const normFirst = normContent.indexOf(normSearch);
+        if(normFirst<0)throw new Error(`COMPACT_EDIT_SEARCH_MISSING:${path}`);
+        if(normContent.indexOf(normSearch,normFirst+normSearch.length)>=0)throw new Error(`COMPACT_EDIT_SEARCH_AMBIGUOUS:${path}`);
+        const hasCrlf = content.includes('\r\n');
+        const updatedNorm = normContent.slice(0,normFirst)+normReplace+normContent.slice(normFirst+normSearch.length);
+        content = hasCrlf ? updatedNorm.replace(/\n/g, '\r\n') : updatedNorm;
+      }else{
+        if(content.indexOf(search,first+search.length)>=0)throw new Error(`COMPACT_EDIT_SEARCH_AMBIGUOUS:${path}`);
+        content=content.slice(0,first)+replace+content.slice(first+search.length);
+      }
     }
     changed.set(path,content);
   }
