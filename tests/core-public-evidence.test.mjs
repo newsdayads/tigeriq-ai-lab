@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   appendPublicEvidenceToSummary,
   buildPublicJobEvidenceRecord,
+  buildR04IndependentReviewPrompt,
+  r04IndependentReviewIdentity,
   verifiedR04AutoworkSourceAttestation,
   nativeR04ReportContractAudit,
   nativeR04JobEventAudit,
@@ -224,6 +226,85 @@ describe('Core public evidence for direct PC receipts', () => {
       expect(verifiedR04AutoworkSourceAttestation(invalid)).toBeNull();
       expect(buildPublicJobEvidenceRecord(invalid).sourceAttestation).toBeUndefined();
     }
+  });
+
+
+  it('accepts canonical R04 product evidence only after an independent factual PASS bound to the source output hash',()=>{
+    const report=Array.from({length:14},(_,i)=>{
+      const id='Q'+String(i+1).padStart(2,'0');
+      return [
+        id+':',
+        'OBSERVATION: Durable source context supports this bounded observation.',
+        'REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: GitHub receipt 2026-10-26T01:56:21Z.',
+        'EXPECTED: Evidence is source-bound.',
+        'DEVIATION: NONE.',
+        'CONFIDENCE: HIGH.',
+        'NEXT_ACTION: Preserve the verified receipt.',
+      ].join('\n');
+    }).join('\n');
+    const hash='d'.repeat(64);
+    const row={
+      id:'JOB-OBJ-GH-5235-RTEST-API-AUTOWORK',
+      objective_id:'OBJ-GH-5235-RTEST',
+      kind:'github_api_autowork',
+      status:'done',
+      prompt:'Authoritative GitHub and Core source context with durable receipts.',
+      employee_id:'NV12',
+      resource_id:'res:gemini:source',
+      completed_at:'2026-10-26T01:56:21.176Z',
+      objective_metadata:{},
+      nativeAuditEvents:[
+        {type:'HOTPATH_STAGE',job_id:'JOB-OBJ-GH-5235-RTEST-API-AUTOWORK',data:{stage:'CLAIMED'}},
+        {type:'RESOURCE_SUCCESS',job_id:'JOB-OBJ-GH-5235-RTEST-API-AUTOWORK',employee_id:'NV12',resource_id:'res:gemini:source'},
+        {type:'JOB_DONE',job_id:'JOB-OBJ-GH-5235-RTEST-API-AUTOWORK',employee_id:'NV12',resource_id:'res:gemini:source'},
+      ],
+      result:{text:report,autoworkAcceptance:{
+        code:'GITHUB_AUTOWORK_SOURCE_OUTPUT_ACCEPTED',
+        resourceScope:'TIGERIQ_CORE_NATIVE_R04_Q01_Q14_5144_20261023',
+        productAccepted:false,questionCount:14,characterCount:report.length,
+        employeeId:'NV12',textSha256:hash,
+      }},
+    };
+    const identity=r04IndependentReviewIdentity(row);
+    expect(identity).toEqual({
+      sourceOutputSha256:hash,
+      reviewObjectiveId:'OBJ-R04-FACT-'+hash.slice(0,24),
+      reviewJobId:'JOB-R04-FACT-'+hash.slice(0,24),
+    });
+    const privatePrompt=buildR04IndependentReviewPrompt(row);
+    expect(privatePrompt).toContain('PRIVATE_SOURCE_REPORT_BEGIN');
+    expect(privatePrompt).toContain(report);
+    expect(privatePrompt).toContain('TARGET_HEAD='+hash);
+
+    const before=buildPublicJobEvidenceRecord(row);
+    expect(before.sourceAttestation).toMatchObject({
+      status:'SOURCE_OUTPUT_ACCEPTED_ONLY',productAccepted:false,
+      reportContractAudit:{independentFactualVerification:false},
+    });
+    expect(JSON.stringify(before)).not.toContain('Durable source context supports');
+
+    row.r04FactualReview={
+      id:identity.reviewJobId,status:'done',capability:'review',kind:'github_review',
+      employee_id:'NV11',resource_id:'res:groq:review',
+      result:{reviewEvidence:{
+        schema:'TIGERIQ_INDEPENDENT_REVIEW_V1',decision:'PASS',targetHead:hash,
+        summary:'All fourteen claims are supported by supplied source context.',findings:'NONE',
+      }},
+    };
+    const accepted=buildPublicJobEvidenceRecord(row);
+    expect(accepted.sourceAttestation).toMatchObject({
+      status:'PRODUCT_ACCEPTED',productAccepted:true,
+      reportContractAudit:{independentFactualVerification:true},
+      independentReview:{
+        verified:true,reviewJobId:identity.reviewJobId,reviewerEmployeeId:'NV11',sourceOutputSha256:hash,
+      },
+    });
+    expect(JSON.stringify(accepted)).not.toContain(report);
+
+    row.r04FactualReview={...row.r04FactualReview,employee_id:'NV12'};
+    const collision=buildPublicJobEvidenceRecord(row);
+    expect(collision.sourceAttestation.productAccepted).toBe(false);
+    expect(collision.sourceAttestation.reportContractAudit.independentFactualVerification).toBe(false);
   });
 
 
