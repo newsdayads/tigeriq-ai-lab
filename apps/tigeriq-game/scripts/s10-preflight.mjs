@@ -67,12 +67,16 @@ export function evaluateG06Preflight(evidence={}) {
   if (typeof evidence?.batteryOverrideDetected !== 'boolean' ||
     typeof evidence?.batteryMutationRequested !== 'boolean')
     return finish('WAIT_BATTERY_OVERRIDE_OWNER',{reason:'BATTERY_CONTROL_STATE_UNVERIFIED'});
-  if (evidence.batteryMutationRequested &&
-    evidence.batteryOverrideOwnerVerified !== true)
-    return finish('WAIT_BATTERY_OVERRIDE_OWNER',{reason:'BATTERY_MUTATION_REQUIRES_VERIFIED_OVERRIDE_OWNER'});
-  if (evidence.batteryOverrideDetected && evidence.batteryLevel!==100 &&
-    evidence.batteryOverrideOwnerVerified !== true)
-    return finish('WAIT_BATTERY_OVERRIDE_OWNER',{reason:'PREEXISTING_OVERRIDE_NOT_AT_REQUIRED_BASELINE'});
+  if (evidence.batteryOverrideDetected) {
+    if (evidence.batteryMutationRequested &&
+      evidence.batteryOverrideOwnerVerified !== true)
+      return finish('WAIT_BATTERY_OVERRIDE_OWNER',{reason:'BATTERY_MUTATION_REQUIRES_VERIFIED_OVERRIDE_OWNER'});
+    if (evidence.batteryLevel!==100 &&
+      evidence.batteryOverrideOwnerVerified !== true)
+      return finish('WAIT_BATTERY_OVERRIDE_OWNER',{reason:'PREEXISTING_OVERRIDE_NOT_AT_REQUIRED_BASELINE'});
+  } else if (evidence.batteryLevel!==100 && !evidence.batteryMutationRequested) {
+    return finish('WAIT_BATTERY_OVERRIDE_OWNER',{reason:'BATTERY_100_BASELINE_REQUIRED'});
+  }
   if(!safePreview(evidence?.previewUrl) || evidence?.previewReachable!==true ||
     evidence?.previewSsoRequired!==false)
     return finish('WAIT_PREVIEW_ACCESS');
@@ -82,7 +86,7 @@ export function evaluateG06Preflight(evidence={}) {
   return finish('READY_FOR_DEVICE_OWNER_CLAIM',{
     sourceSha:evidence.buildSha,deviceModel:'SM-G977N',
     previewKind:new URL(evidence.previewUrl).protocol.replace(':',''),
-    batteryMutationRequested:false,
+    batteryMutationRequested:evidence.batteryMutationRequested,
     batteryOverridePreserved:evidence.batteryOverrideDetected===true});
 }
 
