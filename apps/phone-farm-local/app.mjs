@@ -58,6 +58,12 @@ export function validInput(body) {
       && body.text.length <= 200 && /^[\x20-\x7e]+$/.test(body.text);
   return false;
 }
+export function mirrorOptions(body={}) {
+  const maxFps=body.maxFps ?? 25, maxSize=body.maxSize ?? 1080, videoBitRateMbps=body.videoBitRateMbps ?? 4;
+  if(![15,25,30,60].includes(maxFps) || ![720,1080,1440,2160].includes(maxSize) ||
+     ![2,4,8,12].includes(videoBitRateMbps)) return null;
+  return {maxFps,maxSize,videoBitRateMbps};
+}
 async function run(args, extra = {}) {
   return exec(adb, args, { timeout: 18000, windowsHide: true, maxBuffer: 20 * 1024 * 1024, ...extra });
 }
@@ -287,10 +293,13 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/open') {
       const b = await bodyJson(req);
       if (!safeSerial(b.serial)) return json(res, 400, { error: 'Thiết bị không hợp lệ' });
+      const mirror=mirrorOptions(b);
+      if (!mirror) return json(res, 400, { error: 'Thiết lập mirror không hợp lệ' });
       if (!(await devices()).some(x => x.serial === b.serial && x.state === 'device')) return json(res, 409, { error: 'Thiết bị không khả dụng' });
       if (!fs.existsSync(scrcpy)) return json(res, 424, { error: 'Không tìm thấy scrcpy.exe' });
       if (windows.has(b.serial) && !windows.get(b.serial).killed) return json(res, 200, { ok: true, already: true });
-      const args = ['--serial', b.serial, '--no-audio', '--max-fps=25', '--max-size=1080', '--window-title=TigerIQ - ' + b.serial];
+      const args = ['--serial', b.serial, '--no-audio', '--max-fps='+mirror.maxFps, '--max-size='+mirror.maxSize,
+        '--video-bit-rate='+mirror.videoBitRateMbps+'M', '--window-title=TigerIQ - ' + b.serial];
       const child = spawn(scrcpy, args, { cwd: path.dirname(scrcpy), windowsHide: false, detached: false, stdio: 'ignore' });
       windows.set(b.serial, child);
       child.on('exit', () => windows.delete(b.serial));

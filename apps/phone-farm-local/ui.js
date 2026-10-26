@@ -238,27 +238,41 @@ setInterval(()=>{
 },1600);
 
 async function openMirror(serial){
-  try{const x=await api('/api/open',{serial});toast(x.already?'Cửa sổ đã mở':'Đã gửi lệnh mở cửa sổ Android')}catch(e){toast(e.message,true)}
+  const payload={serial,maxFps:Number($('mirrorFps').value),maxSize:Number($('mirrorSize').value),videoBitRateMbps:Number($('mirrorBitrate').value)};
+  try{const x=await api('/api/open',payload);toast(x.already?'Cửa sổ đã mở':'Đã mở mirror realtime')}catch(e){toast(e.message,true)}
 }
 $('mirrorSelected').onclick=()=>{const ss=active();if(!ss.length)return toast('Chọn thiết bị trước',true);showControl(ss[0]);if(ss.length>1)toast('Đang điều khiển máy đầu tiên; bật Đồng bộ để gửi tới cả nhóm')};
 $('openFirst').onclick=()=>{const s=active()[0];if(!s)return toast('Chọn thiết bị',true);showControl(s)};
+$('openScrcpy').onclick=()=>{const s=active()[0];if(!s)return toast('Chọn thiết bị',true);openMirror(s)};
 document.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=>sendInput($('syncKeys').checked?active():active().slice(0,1),{action:'key',key:b.dataset.key}));
 $('sendText').onclick=()=>{
   const text=$('sendValue').value;
   sendInput($('syncKeys').checked?active():active().slice(0,1),{action:'text',text});
+};
+$('pasteClipboard').onclick=async()=>{
+  const serials=$('syncKeys').checked?active():active().slice(0,1);
+  if(!serials.length)return toast('Chọn thiết bị trước',true);
+  try{
+    const text=await navigator.clipboard.readText();
+    if(!text||text.length>200||!/^\x20-\x7e+$/.test(text))throw Error('Clipboard phải là ASCII và tối đa 200 ký tự');
+    $('sendValue').value=text;
+    await sendInput(serials,{action:'text',text});
+    toast('Đã dán clipboard PC tới '+serials.length+' máy');
+  }catch(e){toast('Clipboard: '+e.message,true)}
 };
 async function batch(action){
   const serials=active();if(!serials.length)return toast('Chọn thiết bị trước',true);
   const fileMode=['upload','install'].includes(action);
   const name=prompt(fileMode?'Tên tệp trong thư mục drop':'Android package ID (vd: com.example.app)');
   if(name===null)return;
+  if(action==='uninstall'&&!confirm('Gỡ '+name+' khỏi '+serials.length+' thiết bị?'))return;
   try{
     const result=await api('/api/batch',{action,serials,...(fileMode?{file:name}:{package:name})});
     const failed=result.results.filter(x=>!x.ok);
     toast(failed.length?'Thất bại '+failed.length+'/'+serials.length+': '+failed[0].error:'Hoàn tất '+serials.length+'/'+serials.length,failed.length>0);
   }catch(e){toast(e.message,true)}
 }
-for(const id of ['install','upload','launch','forceStop'])$(id).onclick=()=>batch(id);
+for(const id of ['install','upload','launch','forceStop','uninstall'])$(id).onclick=()=>batch(id);
 let recordId=null;
 async function checkRecording(){
   if(!recordId)return;
@@ -307,11 +321,12 @@ async function managePackages(){
       const serials=active();
       if(!serials.length)return toast('Chưa chọn thiết bị',true);
       if(action==='forceStop'&&!confirm('Dừng '+pkg+' trên '+serials.length+' thiết bị?'))return;
+      if(action==='uninstall'&&!confirm('Gỡ '+pkg+' khỏi '+serials.length+' thiết bị?'))return;
       try{
         const r=await api('/api/batch',{action,serials,package:pkg});
         const failed=r.results.filter(x=>!x.ok);
         toast(failed.length?'Lỗi '+failed.length+'/'+serials.length+': '+failed[0].error:
-          (action==='launch'?'Đã gửi lệnh mở ':'Đã gửi lệnh dừng ')+pkg+' • '+serials.length+' máy',failed.length>0);
+          (action==='launch'?'Đã gửi lệnh mở ':action==='uninstall'?'Đã gỡ ':'Đã gửi lệnh dừng ')+pkg+' • '+serials.length+' máy',failed.length>0);
       }catch(e){toast(e.message,true)}
     }
     function draw(){
@@ -325,7 +340,7 @@ async function managePackages(){
         line.style.cssText='display:flex;align-items:center;gap:5px;padding:4px 0;border-bottom:1px solid #d5e3f1';
         const label=document.createElement('span');
         label.textContent=pkg;label.style.cssText='flex:1;overflow-wrap:anywhere';
-        for(const [action,title] of [['launch','Mở'],['forceStop','Dừng']]){
+        for(const [action,title] of [['launch','Mở'],['forceStop','Dừng'],['uninstall','Gỡ']]){
           const button=document.createElement('button');
           button.className='action soft';button.textContent=title;
           button.title=title+' '+pkg+' trên các máy đang chọn';

@@ -94,6 +94,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 <div class="sectiontitle">Display & quality</div>
 <div class="control-line"><span>Small screen width</span><strong id="tileValue">146px</strong></div><input id="tileSize" type="range" min="85" max="290" value="146" step="5" style="width:100%;accent-color:#208af0">
 <div class="control-line"><span>Refresh interval</span><select id="refreshRate"><option value="4000">4 seconds</option><option value="8000">8 seconds</option><option value="15000">15 seconds</option></select></div>
+<div class="control-line"><span>Realtime mirror FPS</span><select id="mirrorFps"><option value="15">15</option><option value="25" selected>25</option><option value="30">30</option><option value="60">60</option></select></div>
+<div class="control-line"><span>Mirror max size</span><select id="mirrorSize"><option value="720">720</option><option value="1080" selected>1080</option><option value="1440">1440</option><option value="2160">2160</option></select></div>
+<div class="control-line"><span>Mirror bitrate</span><select id="mirrorBitrate"><option value="2">2 Mbps</option><option value="4" selected>4 Mbps</option><option value="8">8 Mbps</option><option value="12">12 Mbps</option></select></div>
 <div class="control-line"><label><input id="autoRefresh" type="checkbox" checked> Auto refresh screens</label></div>
 <div class="sectiontitle">Groups</div><div class="groupbar"><button id="groupAll" class="action">All devices</button><button id="groupAdd" class="action soft">+ New group</button></div>
 <div id="groupList" class="groupslist">Tất cả thiết bị</div>
@@ -104,14 +107,14 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 <section class="tab-panel" data-panel="tasks">
 <div class="sectiontitle">Group commands</div>
 <div class="two"><button class="action" data-key="HOME">Home</button><button class="action" data-key="BACK">Back</button><button class="action soft" data-key="APP_SWITCH">Recent apps</button><button class="action soft" data-key="POWER">Power</button></div>
-<div class="sectiontitle">Text input to selected devices</div><input class="field" id="sendValue" placeholder="Input text (ASCII)"><button class="action wide" id="sendText" style="margin-top:6px">Send text</button>
+<div class="sectiontitle">Text input to selected devices</div><input class="field" id="sendValue" placeholder="Input text (ASCII)"><div class="two" style="margin-top:6px"><button class="action" id="sendText">Send text</button><button class="action soft" id="pasteClipboard">Dán clipboard PC</button></div>
 <div class="sectiontitle">Macro automation</div><textarea id="macroSteps" class="field macro">[{"action":"key","key":"HOME"},{"action":"wait","ms":500}]</textarea>
 <div class="two" style="margin-top:6px"><button class="action" id="runMacro">Run macro</button><button class="action muted" id="stopMacro" disabled>Stop</button></div><div class="smallnote" id="macroStatus">Không có macro đang chạy</div>
 <div class="sectiontitle">Local scheduler</div><div class="two"><button class="action" id="saveSchedule">+ New schedule</button><button class="action soft" id="refreshSchedules">Refresh list</button></div><div id="scheduleList" class="schedule-list"></div>
 </section>
 <section class="tab-panel" data-panel="toolbox">
 <div class="sectiontitle">Batch operations</div>
-<div class="two"><button class="action" id="install">Cài APK từ thư mục drop</button><button class="action" id="upload">Upload file</button><button class="action soft" id="launch">Launch app</button><button class="action soft" id="forceStop">Force stop</button></div>
+<div class="two"><button class="action" id="install">Cài APK từ thư mục drop</button><button class="action" id="upload">Upload file</button><button class="action soft" id="launch">Launch app</button><button class="action soft" id="forceStop">Force stop</button><button class="action soft" id="uninstall">Gỡ app</button></div>
 <div class="smallnote">Chọn điện thoại, nhập tên APK đã đặt trong thư mục drop của ứng dụng. Chọn tệp trực tiếp từ PC chưa hỗ trợ.</div>
 <div class="sectiontitle">Local video recording</div>
 <div class="control-line"><span>Duration</span><select id="recordSeconds"><option value="8">8 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="60">60 seconds</option><option value="120">120 seconds</option></select></div>
@@ -119,7 +122,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 <div class="smallnote" id="recordStatus">Chưa ghi màn hình</div>
 <div class="smallnote">Bản ghi MKV được lưu cục bộ trên PC01, không tải lên máy chủ.</div>
 <div class="sectiontitle">Device details</div><button id="listPackages" class="action wide">Quản lý ứng dụng Android</button><div id="appInfo" class="smallnote">Chọn ít nhất một thiết bị</div>
-<div class="sectiontitle">Control</div><button id="openFirst" class="action wide">Điều khiển phóng lớn</button>
+<div class="sectiontitle">Control</div><div class="two"><button id="openFirst" class="action">Điều khiển phóng lớn</button><button id="openScrcpy" class="action soft">Mirror realtime</button></div>
 <div class="sectiontitle">System health</div><div id="health" class="smallnote">Đang kiểm tra...</div>
 </section>
 <footer class="footer">TigerIQ AI Lab • Android local controller<br>Không dùng bản quyền hoặc mã nguồn LAIXI</footer>

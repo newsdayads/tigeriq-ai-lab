@@ -27,7 +27,7 @@ export function validBatch(b) {
       new Set(b.serials).size !== b.serials.length) return false;
   if (b.action === 'install' || b.action === 'upload') return safeFilename(b.file) &&
     (b.action !== 'install' || /\.apk$/i.test(b.file));
-  if (b.action === 'launch' || b.action === 'forceStop') return safePackage(b.package);
+  if (b.action === 'launch' || b.action === 'forceStop' || b.action === 'uninstall') return safePackage(b.package);
   return false;
 }
 export function fileInDrop(drop, filename) {
@@ -67,6 +67,10 @@ export async function executeBatch(adb, b, drop, isConnected) {
             break;
           case 'forceStop':
             args = ['-s',serial,'shell','am','force-stop',b.package];
+            break;
+          case 'uninstall':
+            args = ['-s',serial,'uninstall',b.package];
+            timeout = 120000;
             break;
         }
         const r = await adbExec(adb,args,timeout);

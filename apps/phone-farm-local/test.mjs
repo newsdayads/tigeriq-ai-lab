@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import assert from 'node:assert/strict';
-import { parseDevices, safeSerial, validInput, privateWifiAddress, server } from './app.mjs';
+import { parseDevices, safeSerial, validInput, privateWifiAddress, mirrorOptions, server } from './app.mjs';
 
 test('ADB inventory parses connected, offline, unauthorized devices', () => {
   const devices=parseDevices('List of devices attached\nR3CM400AKRX device product:beyondxks model:SM_G977N transport_id:1\n192.168.0.9:5555 offline\nABCD unauthorized\n');
@@ -43,7 +43,12 @@ test('browser controller parses under strict CSP external-script policy', () => 
   const html=fs.readFileSync(path.join(dir,'index.html'),'utf8');
   assert.match(html,/<script src="\/ui\.js" type="module"><\/script>/);
   assert.doesNotMatch(html,/<script type="module">/);
-  assert.doesNotThrow(()=>new Script(fs.readFileSync(path.join(dir,'ui.js'),'utf8')));
+  const ui=fs.readFileSync(path.join(dir,'ui.js'),'utf8');
+  assert.doesNotThrow(()=>new Script(ui));
+  assert.match(html,/id="pasteClipboard"/);
+  assert.match(html,/id="openScrcpy"/);
+  assert.match(html,/id="mirrorFps"/);
+  assert.match(ui,/navigator\.clipboard\.readText\(\)/);
 });
 
 test('Windows host monitors and recovers a dead local backend', () => {
@@ -69,8 +74,17 @@ test('batch controls validate package, files, duplicate serial and actions', () 
   assert.equal(validBatch({action:'install',serials:['A1'],file:'sample.csv'}),false);
   assert.equal(validBatch({action:'upload',serials:['A1'],file:'sample.csv'}),true);
   assert.equal(validBatch({action:'launch',serials:['A1'],package:'com.example.demo'}),true);
+  assert.equal(validBatch({action:'uninstall',serials:['A1'],package:'com.example.demo'}),true);
   assert.equal(validBatch({action:'shell',serials:['A1'],cmd:'unsafe'}),false);
   assert.equal(validBatch({action:'forceStop',serials:['A1','A1'],package:'com.example.demo'}),false);
+});
+
+test('scrcpy mirror options are bounded and have safe defaults', () => {
+  assert.deepEqual(mirrorOptions({}),{maxFps:25,maxSize:1080,videoBitRateMbps:4});
+  assert.deepEqual(mirrorOptions({maxFps:60,maxSize:2160,videoBitRateMbps:12}),{maxFps:60,maxSize:2160,videoBitRateMbps:12});
+  assert.equal(mirrorOptions({maxFps:240,maxSize:1080,videoBitRateMbps:4}),null);
+  assert.equal(mirrorOptions({maxFps:25,maxSize:9999,videoBitRateMbps:4}),null);
+  assert.equal(mirrorOptions({maxFps:25,maxSize:1080,videoBitRateMbps:99}),null);
 });
 
 test('batch file lookup is confined to approved drop directory', () => {
