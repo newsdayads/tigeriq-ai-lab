@@ -14,12 +14,17 @@ export function validRecordRequest(b) {
 export function isValidMkv(file) {
   try {
     const st = fs.statSync(file);
-    if (!st.isFile() || st.size <= 1024) return false;
+    if (!st.isFile() || st.size <= 4096) return false;
     const fd = fs.openSync(file, 'r');
     try {
-      const bytes = Buffer.alloc(4);
-      if (fs.readSync(fd, bytes, 0, 4, 0) !== 4) return false;
-      return bytes.equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
+      const limit=Math.min(st.size,2*1024*1024);
+      const bytes=Buffer.alloc(limit);
+      if(fs.readSync(fd,bytes,0,limit,0)!==limit)return false;
+      const has=id=>bytes.indexOf(Buffer.from(id))>=0;
+      return bytes.subarray(0,4).equals(Buffer.from([0x1a,0x45,0xdf,0xa3])) &&
+        has([0x18,0x53,0x80,0x67]) && // Segment
+        has([0x16,0x54,0xae,0x6b]) && // Tracks
+        has([0x1f,0x43,0xb6,0x75]);   // Cluster
     } finally { fs.closeSync(fd); }
   } catch { return false; }
 }

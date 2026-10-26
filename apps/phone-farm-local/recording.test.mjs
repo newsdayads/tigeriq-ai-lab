@@ -18,16 +18,20 @@ test('video capture only allows bounded serials/durations and local MKV output',
   assert.throws(()=>buildRecordArgs('R3CM400AKRX',8,'../wrong.mp4'));
 });
 
-test('zero-exit recording only passes for valid EBML header and length', async () => {
+test('zero-exit recording requires MKV EBML, Segment, Tracks and Cluster structure', async () => {
   const folder=fs.mkdtempSync(path.join(os.tmpdir(),'tigeriq-record-unit-'));
-  const original=Buffer.from([0x1a,0x45,0xdf,0xa3]);
+  const structured=Buffer.alloc(8192);
+  Buffer.from([0x1a,0x45,0xdf,0xa3]).copy(structured,0);
+  Buffer.from([0x18,0x53,0x80,0x67]).copy(structured,64);
+  Buffer.from([0x16,0x54,0xae,0x6b]).copy(structured,512);
+  Buffer.from([0x1f,0x43,0xb6,0x75]).copy(structured,2048);
   function launch(_exe,args) {
     const child=new EventEmitter();
     child.stderr=new EventEmitter();
     child.kill=()=>{child.emit('exit',1);return true};
     setImmediate(()=>{
       const file=args.find(x=>x.startsWith('--record=')).slice(9);
-      fs.writeFileSync(file,Buffer.concat([original,Buffer.alloc(2048)]));
+      fs.writeFileSync(file,structured);
       child.emit('exit',0);
     });
     return child;
@@ -39,12 +43,13 @@ test('zero-exit recording only passes for valid EBML header and length', async (
     await new Promise(resolve=>setTimeout(resolve,15));
     const completed=manager.status(started.id);
     assert.equal(completed.state,'completed');
-    assert.ok(completed.bytes>=2052);
+    assert.equal(completed.bytes,structured.length);
     assert.equal(completed._child,undefined);
     assert.equal(manager.stop(started.id),false);
     assert.equal(isValidMkv(completed.file),true);
     const invalid=path.join(folder,'wrong.mkv');
-    fs.writeFileSync(invalid,Buffer.alloc(2500));
+    const headerOnly=Buffer.alloc(8192);Buffer.from([0x1a,0x45,0xdf,0xa3]).copy(headerOnly);
+    fs.writeFileSync(invalid,headerOnly);
     assert.equal(isValidMkv(invalid),false);
     assert.equal(isValidMkv(path.join(folder,'missing.mkv')),false);
   } finally {fs.rmSync(folder,{recursive:true,force:true});}
