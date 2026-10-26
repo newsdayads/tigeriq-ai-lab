@@ -22,4 +22,4 @@ Chạy `powershell -ExecutionPolicy Bypass -File .\uninstall-user.ps1` từ gói
 
 ## Trạng thái nghiệm thu 26/10/2026
 
-Đã thử 18 Android thật đồng thời; screenshot 18/18; APK install/launch/stop/uninstall 2/2; clipboard; macro cancel; scheduler phục hồi sau backend kill; MKV 5 giây. WiFi ADB LAN thật chưa PASS vì TCP/5555 từ PC01 tới điện thoại bị topology hiện tại chặn.
+Đã thử 19 Android thật đồng thời; screenshot 19/19; APK install/launch/stop/uninstall 2/2; clipboard; macro cancel; scheduler phục hồi sau backend kill; MKV 5 giây. WiFi ADB LAN thật chưa PASS vì TCP/5555 từ PC01 tới điện thoại bị topology hiện tại chặn.
