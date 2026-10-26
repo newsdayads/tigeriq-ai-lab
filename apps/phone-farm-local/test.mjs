@@ -46,6 +46,16 @@ test('browser controller parses under strict CSP external-script policy', () => 
   assert.doesNotThrow(()=>new Script(fs.readFileSync(path.join(dir,'ui.js'),'utf8')));
 });
 
+test('Windows host monitors and recovers a dead local backend', () => {
+  const dir=path.dirname(fileURLToPath(import.meta.url));
+  const source=fs.readFileSync(path.join(dir,'windows','Program.cs'),'utf8');
+  assert.match(source,/healthTimer\.Tick \+= async \(_, _\) => await RecoverBackendAsync\(\)/);
+  assert.match(source,/if \(await HealthyAsync\(client\)\) return;/);
+  assert.match(source,/ShutdownOwnedHost\(\);\s*StartBackend\(\);/);
+  assert.match(source,/if \(viewer\.CoreWebView2 is not null\) viewer\.CoreWebView2\.Reload\(\)/);
+  assert.match(source,/healthTimer\.Stop\(\);\s*ShutdownOwnedHost\(\);/);
+});
+
 test('batch controls validate package, files, duplicate serial and actions', () => {
   assert.equal(safePackage('com.example.demo'), true);
   assert.equal(safePackage('com.example;cmd'), false);
