@@ -254,7 +254,7 @@ $('pasteClipboard').onclick=async()=>{
   if(!serials.length)return toast('Chọn thiết bị trước',true);
   try{
     const text=await navigator.clipboard.readText();
-    if(!text||text.length>200||!/^\x20-\x7e+$/.test(text))throw Error('Clipboard phải là ASCII và tối đa 200 ký tự');
+    if(!text||text.length>200||!^[\x20-\x7e]+$/.test(text))throw Error('Clipboard phải là ASCII và tối đa 200 ký tự');
     $('sendValue').value=text;
     await sendInput(serials,{action:'text',text});
     toast('Đã dán clipboard PC tới '+serials.length+' máy');
