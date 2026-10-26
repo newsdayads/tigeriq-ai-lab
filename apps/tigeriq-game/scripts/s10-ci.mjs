@@ -9,9 +9,9 @@ const root = resolve(game, '../..');
 const sources = Object.freeze({
   'scripts/s10-preflight.mjs':'84e95f730600deb23614f5de5ec59dca628a3b1c',
   'scripts/s10-e2e.mjs':'daff9344db434626fc6d28025c9339475ba323fd',
-  'scripts/s10-rdc-adapter.mjs':'c8d3832a211a12cf7b8726a8c20ed7b79a1020f6',
+  'scripts/s10-rdc-adapter.mjs':'7b7f6f94269e2ab9ab767c54b79fcbda02e5fa9c',
   'tests/s10-e2e.test.mjs':'fc8282ede4d8b22b0991416e714127f9e53f9d86',
-  'tests/s10-rdc-adapter.test.mjs':'507da40b7f778a6665e54878918d797b0fb1cb9c',
+  'tests/s10-rdc-adapter.test.mjs':'04be295dc10cc6399213cc71fcdf254c0fc6293c',
   'scripts/s10-preview.mjs':'b20c40f2eeee893b8f15f904ba14af243a494b19',
   'tests/s10-preview.test.mjs':'6d2be9ae34c6f2fa7fdd4c2520a14d486f5d2485',
   'scripts/build-standalone.mjs':'87740fb62f295cf0a492e3e06be435bd6d0ed115',
