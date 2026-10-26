@@ -1,9 +1,7 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-// Bundled PC01 runtime may not yet have the shared parser; fail closed, never fake DONE.
-const completionModule=await import('../shared/work-center-history.mjs').catch(()=>import('../../apps/shared/work-center-history.mjs').catch(()=>null));
-const completionProof=completionModule?.completionProof||(()=>({verified:false,timing:null}));
+import { webControlCompletionProof as completionProof } from './web-control-completion-proof.mjs';
 function sourceCompletionDiagnostic(issue={}){
   const closed=String(issue?.state||'').toLowerCase()==='closed';
   const proof=completionProof(issue);
