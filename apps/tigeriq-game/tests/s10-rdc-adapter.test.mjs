@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {claimAtomicFence,createS10RdcAdapter,nodeCenter,parseUiNodes} from '../scripts/s10-rdc-adapter.mjs';
+import {claimAtomicFence,createS10RdcAdapter,nodeCenter,parseUiNodes,pickVisibleNode} from '../scripts/s10-rdc-adapter.mjs';
 const sha='a'.repeat(40),serial='R3CM400AKRX',ownerId='NV02_RDC_OWNER';
 const scope='TIGERIQ_GAME_G06_S10_E2E_HARNESS';
 
@@ -60,4 +60,11 @@ test('startup failure rolls back owned battery override and fence',async()=>{
   assert.ok(calls.some(x=>x.includes('reverse --remove tcp:4173')));
   assert.ok(calls.some(x=>x.includes('battery reset')));
   await assert.rejects(()=>readFile(claim.path,'utf8'),e=>e?.code==='ENOENT');
+});
+
+test('visible-node selection rejects offscreen zero bounds until scrolled into view',()=>{
+  const hidden=parseUiNodes('<hierarchy><node text="Lệnh 2: Quay trái · CÓ THỂ SỬA" clickable="true" bounds="[0,0][0,0]"/></hierarchy>');
+  assert.equal(pickVisibleNode(hidden,'CÓ THỂ SỬA',{contains:true}),null);
+  const visible=parseUiNodes('<hierarchy><node text="Lệnh 2: Quay trái · CÓ THỂ SỬA" clickable="true" bounds="[300,700][1200,820]"/></hierarchy>');
+  assert.equal(pickVisibleNode(visible,'CÓ THỂ SỬA',{contains:true}).text,'Lệnh 2: Quay trái · CÓ THỂ SỬA');
 });
