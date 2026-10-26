@@ -3,6 +3,22 @@ import {isRetryableManagerOutputError} from './manager-json.mjs';
 
 export const API_DOCTOR_CAPABILITY='api_doctor';
 
+// Diagnosis is optional internal work: one local model analysis across *all*
+// changing scan signatures per budget window. Provider health/cooldown probes,
+// real Core jobs, and owner-scoped repair intake remain independent.
+export function apiDoctorGlobalAnalysisAdmission({
+  lastAttemptAt=null, nowMs=Date.now(), minIntervalMs=30*60*1000,
+}={}){
+  const previous=lastAttemptAt==null?NaN:Date.parse(String(lastAttemptAt));
+  if(!Number.isFinite(Number(nowMs)) || !Number.isFinite(Number(minIntervalMs))
+    || Number(minIntervalMs)<60_000) return {allowed:false,reason:'INVALID_BUDGET_INPUT'};
+  if(!Number.isFinite(previous))return {allowed:true,reason:'NO_PREVIOUS_ANALYSIS'};
+  if(Number(nowMs)<previous) return {allowed:false,reason:'CLOCK_OR_SOURCE_TIME_INVALID'};
+  if(Number(nowMs)-previous<Number(minIntervalMs))
+    return {allowed:false,reason:'GLOBAL_API_DOCTOR_ANALYSIS_BUDGET'};
+  return {allowed:true,reason:'BUDGET_WINDOW_ELAPSED'};
+}
+
 // API Doctor owns provider diagnosis for cloud NV11–NV20 only. Local NV06,
 // NV08 and NV09 use their own health/manager/coding lifecycles.
 export function apiDoctorScannableEmployeeId(employeeId=''){
