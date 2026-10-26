@@ -39,9 +39,18 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Build self-contained Windows x64 host
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.19.0'
+      - name: Build audited Windows package
         shell: pwsh
         run: |
-          dotnet publish apps/phone-farm-local/windows/TigerIQPhoneFarm.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$env:RUNNER_TEMP/phonefarm"
-          if (!(Test-Path "$env:RUNNER_TEMP/phonefarm/TigerIQPhoneFarm.exe")) { throw "Native Windows EXE missing" }
-          Get-Item "$env:RUNNER_TEMP/phonefarm/TigerIQPhoneFarm.exe" | Select-Object Name,Length
+          & apps/phone-farm-local/windows/package-windows.ps1 -OutputPath "$env:RUNNER_TEMP/phonefarm"
+          node --test "$env:RUNNER_TEMP/phonefarm/test.mjs" "$env:RUNNER_TEMP/phonefarm/recording.test.mjs"
+          Compress-Archive -Path "$env:RUNNER_TEMP/phonefarm/*" -DestinationPath "$env:RUNNER_TEMP/TigerIQ-PhoneFarm-Windows.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TigerIQ-PhoneFarm-Windows
+          path: ${{ runner.temp }}/TigerIQ-PhoneFarm-Windows.zip
+          retention-days: 14
+          if-no-files-found: error

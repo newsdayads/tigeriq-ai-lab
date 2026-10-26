@@ -1,51 +1,42 @@
-# TigerIQ Phone Farm — Windows Local DEV v0.4
+# TigerIQ Phone Farm — Windows Local RC
 
-Mã nguồn độc lập, không dùng thư viện hoặc máy chủ xác thực LAIXI. **Chưa nghiệm thu FULL.** Không giới hạn số thiết bị bằng giấy phép; giới hạn thực tế phụ thuộc phần cứng và mạng ADB.
+Ứng dụng Windows độc lập do TigerIQ viết để quản lý Android qua ADB/scrcpy cục bộ. Không dùng binary, tài khoản, máy chủ hoặc cơ chế cấp phép LAIXI. Không tuyên bố tương thích LAIXI 100% hay “không giới hạn” phần cứng.
 
-## Cấu hình PC01
+## Chức năng đã triển khai
 
-- Windows + Node.js 20 trở lên, ADB `D:\TigerIQ\Tools\platform-tools\adb.exe`, scrcpy `D:\TigerIQ\Tools\scrcpy\scrcpy-win64-v4.1\scrcpy.exe`.
-- Điện thoại đã cấp quyền gỡ lỗi Android cho PC01.
-- Chạy tại `apps/phone-farm-local`: `node --test test.mjs` và `node app.mjs`.
-- Truy cập **trên PC01**: `http://127.0.0.1:8765/`. Ứng dụng chỉ bind `127.0.0.1`, không mở cổng LAN.
-- Nếu cần đổi đường dẫn: biến môi trường `TIGERIQ_ADB`, `TIGERIQ_SCRCPY`, `TIGERIQ_PHONE_FARM_PORT`.
+- Phát hiện nhiều thiết bị USB ADB; kết nối WiFi ADB chỉ tới IPv4 LAN riêng; tự refresh inventory; đổi tên và nhóm cục bộ.
+- Lưới ảnh nhiều máy, điều khiển phóng lớn, chạm/vuốt/phím, đồng bộ nhóm, nhập ASCII và dán clipboard PC.
+- Mirror realtime scrcpy với FPS 15/25/30/60, max-size 720/1080/1440/2160 và bitrate 2/4/8/12 Mbps.
+- App Manager và thao tác nhóm: cài/gỡ/mở/force-stop APK/package, upload file vào `/sdcard/Download/TigerIQ/`.
+- Macro tương đương Auto.js cho tập hành động được phép: `tap`, `swipe`, `key`, `text`, `wait`; có trạng thái, hủy và khóa thiết bị khi chạy.
+- Scheduler bền vững một lần/chu kỳ 1–1440 phút; không replay backlog quá 1 giờ; sống qua backend restart.
+- Screenshot PNG và ghi MKV cục bộ có kiểm tra EBML + Segment + Tracks + Cluster.
+- Windows host có watchdog 3 giây tự phục hồi Node backend.
 
-## Chức năng có mã nguồn
+## Bằng chứng PC01 ngày 26/10/2026
 
-- Giao diện Windows xanh-trắng tham chiếu bố cục LAIXI (thiết kế lại, không sao chép mã/đồ họa): sidebar General / Tasks / Toolbox, lưới ảnh Android nhỏ có tùy chỉnh kích thước, chọn máy bằng số, nhóm cục bộ, công cụ theo nhóm.
-- Tìm/đổi tên thiết bị USB/WiFi ADB; ảnh màn hình PNG; chạm, vuốt, phím và nhập liệu ASCII; đồng bộ theo nhóm. Mở scrcpy riêng. WiFi ADB kết nối đến địa chỉ LAN riêng đã ghép đôi, không quét ngoài mạng.
-- Đọc ứng dụng bên thứ ba: `GET /api/packages?serial=...`.
-- Các hành động nhóm: `POST /api/batch` với `install` (APK), `upload` (tệp tới `/sdcard/Download/TigerIQ/`), `launch`, `forceStop`.
-- Chỉ cho phép các tên tệp an toàn trong thư mục `drop/` bên cạnh `app.mjs`. Sao chép APK/tệp từ Windows vào thư mục này **trước** khi yêu cầu ứng dụng gửi/cài.
-- Kịch bản JSON giới hạn 50 bước, chỉ cho phép `tap`, `swipe`, `key`, `text`, `wait`; có chạy nhóm, theo dõi tiến độ và hủy. API `/api/macro/start`, `/api/macro/status`, `/api/macro/stop`. Không chấp nhận lệnh shell tự do.
-- Lịch chạy cục bộ lưu `schedules.json`: chạy một lần hoặc lặp mỗi 1–1440 phút, nhận diện lịch trễ trên 1 giờ để không tự chạy bù. API `/api/schedules` GET/POST và `/api/schedules/delete` POST. Yêu cầu ứng dụng Node luôn đang chạy khi đến thời điểm hẹn.
+- 18 thiết bị Android thật online đồng thời; UI hiển thị đủ 18 card.
+- E2E UI: điều khiển HOME thật PASS; screenshot PNG 18/18 PASS; vòng E2E 26.19 giây.
+- APK smoke tự tạo không quyền nhạy cảm: install 2/2, launch 2/2 có PID, force-stop 2/2, uninstall 2/2 và xác minh sạch.
+- Clipboard PC → input Android qua UI PASS.
+- Scheduler: lưu lịch, kill backend, watchdog phục hồi, lịch tiếp tục chạy HOME và hoàn thành; lịch QA đã xóa.
+- Video 5 giây: 53,134 bytes, SHA-256 `D4189CD5C803BFEC689AE49FDC1FE27BE39618ECCF4D4D4AC88C38313F629A10`, MKV structural guard PASS.
+- Runtime network: Node chỉ LISTEN `127.0.0.1:8765`; EXE không có TCP; không có login/password/license service.
 
-Ví dụ kịch bản an toàn trong giao diện:
+## Hạn chế đã xác minh
 
-```json
-[{"action":"key","key":"HOME"},{"action":"wait","ms":500}]
-```
+- Một thử nghiệm WiFi ADB qua LAN có IP thật nhưng TCP/5555 không reachable từ PC01; thiết bị thử đã được trả về USB mode. Vì vậy không được tuyên bố LAN/WiFi runtime đã nghiệm thu trên topology hiện tại.
+- Một Samsung SM-G977N bị mất khỏi ADB inventory sau thử reconnect USB; các bài tải tiếp theo dùng 18 thiết bị còn online. Không tự nhận 20/100/300 máy.
+- TigerIQ EXE hiện chưa có code-signing certificate. Dùng SHA-256 + CI để kiểm tra toàn vẹn; không tắt Defender/SmartScreen.
+- Auto.js parity là tập macro tương đương có giới hạn, không phải engine Auto.js đầy đủ.
 
-## Bằng chứng PC01 24/10/2026
+## Chạy từ source
 
-- Kiểm thử Node.js **12/12 PASS**. Bộ lịch lưu sau khởi động và skip lịch quá hạn đã kiểm thử unit; tạo→đọc→xóa lịch bằng API đạt. **Lịch thực tế đã tự kích hoạt** macro HOME trên Samsung, trạng thái `completed`, 1/1 bước, không lỗi (24/10/2026, PC01).
-- 1 Samsung thật: liệt kê thiết bị, 49 gói ứng dụng bên thứ ba, hiển thị màn hình; API HOME thành công.
-- Tệp `tigeriq-smoke.txt` được upload tới Android, hash SHA-256 khớp hai đầu: `773f22f660572e85148c3ece4b51113de2a2e58f9584fb44bc21c7492edae6ce`; đã xóa tệp sau kiểm thử.
-- Macro nhóm thử trên 1 máy: HOME → đợi 500ms → HOME, 3/3 bước, trạng thái `completed`, không lỗi.
-- Chưa chứng minh APK được cài thật. Quy trình tạo thử APK bị chặn ở bước ký; không can thiệp thêm.
+Yêu cầu Windows, ADB và scrcpy được chủ sở hữu cài riêng. Mặc định PC01 dùng:
+`D:\TigerIQ\Tools\platform-tools\adb.exe` và `D:\TigerIQ\Tools\scrcpy\scrcpy-win64-v4.1\scrcpy.exe`.
 
-## Hạn chế / kiểm thử còn thiếu
+Tại `apps/phone-farm-local`:
+`node --test test.mjs recording.test.mjs` rồi `node app.mjs`.
+Controller chỉ mở `http://127.0.0.1:8765/`.
 
-- Native upstream ADB Device Farm v3.0.0 đã hiển thị 1 điện thoại và chụp ảnh thành công; tham khảo `NATIVE_AUDIT_20261024.md`. Chưa được đóng gói dưới thương hiệu TigerIQ.
-- Bản Node này chưa có phát trực tiếp video trong lưới, script Auto.js, quay phim, chuyển nhiều PC, ghi màn hình hàng loạt hay bản EXE. Lịch đã kích hoạt được đúng chu kỳ kiểm tra trên một thiết bị thật; chưa nghiệm thu phục hồi sau lỗi runtime/khởi động lại dài ngày hoặc mức tải nhiều máy.
-- Chưa kiểm thử 2+ điện thoại thật và chế độ mất Internet hoàn toàn. **Không được ghi nhận bản FULL hoặc không giới hạn vật lý.**
-- Trước khi chạy, người dùng phải chọn thiết bị; các lệnh ADB bị giới hạn và đầu vào có kiểm tra. Không tắt Play Protect, không sửa quyền root, không vá bản quyền.
-- Dừng `node app.mjs` để ngắt dịch vụ; xóa thư mục DEV nếu cần gỡ. Không sửa dữ liệu LAIXI.
-
-Theo dõi: [GH-5291](https://github.com/newsdayads/tigeriq-ai-lab/issues/5291), [PR-5292](https://github.com/newsdayads/tigeriq-ai-lab/pull/5292).
-
-## Giao diện v0.4 và giới hạn
-- Bố cục lấy cảm hứng từ ảnh giao diện và tài liệu LAIXI công khai tại `https://docs.laixi.app/en/docs/tutorial-extras/批量控制屏幕/` cùng website `https://www.laixi.app/`; đây là mã nguồn UI riêng do TigerIQ viết, **không phải LAIXI bị loại bỏ server**.
-- Sidebar xanh/trắng, lưới màn hình Android, điều khiển nhóm, nút macro, lịch, ứng dụng và truyền tệp là chức năng có triển khai. Chưa có khả năng điều khiển từ xa đa PC qua Internet, Auto.js tương thích đầy đủ hay chứng nhận hơn 300 thiết bị. Số lượng đồng thời thực tế phải kiểm thử phần cứng Box.
-- Giao diện thử nghiệm: `http://127.0.0.1:8765/`; shortcut Desktop mở ứng dụng trong Chrome. **Không yêu cầu hoặc phát sinh tài khoản LAIXI.**
-- E2E trên PC01 với Chrome/Puppeteer: ảnh Android 1080×2220, chọn 1 máy, chuyển Tasks, macro 2/2 hoàn thành, đọc 49 ứng dụng, chỉnh độ rộng tile 110px, 0 JS exception. Backend unit 13/13 PASS.
+Theo dõi: GH-5291 và PR-5292.
