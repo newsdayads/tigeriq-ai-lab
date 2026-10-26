@@ -100,7 +100,10 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(server).toContain('parseWebControlOwnerOrder');
     expect(server).toContain('sortWebControlWorkOrders');
     expect(server).toContain('ownerBacklogOrderVerified');
+    expect(server).toContain("from './web-control-completion-proof.mjs'");
+    expect(server).not.toContain("import('../shared/work-center-history.mjs')");
     expect(bundleLauncher).toContain("'owner-backlog-order.mjs'");
+    expect(bundleLauncher).toContain("'work-order-lifecycle-v2.mjs'");
     expect(bundleLauncher).toContain("'web-control-*.mjs'");
     expect(truth).toContain('d?.workOrders');
     expect(truth).toContain("s === 'working' && status === 'BUSY'");
