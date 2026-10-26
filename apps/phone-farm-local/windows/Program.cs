@@ -95,6 +95,11 @@ internal sealed class FarmWindow : Form {
         "Không thể kết nối bộ điều khiển tại 127.0.0.1:8765. " +
         "Kiểm tra cổng đang được sử dụng và quyền ADB trên PC.");
 
+      // Start backend supervision before WebView2 initialization. WebView2 may be
+      // delayed in non-interactive or restoring desktop sessions, but the local
+      // controller must remain self-healing independently of renderer startup.
+      healthTimer.Start();
+
       string userFolder = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "TigerIQ", "PhoneFarm", "WebView2");
@@ -115,7 +120,6 @@ internal sealed class FarmWindow : Form {
       loading.Visible = false;
       viewer.Visible = true;
       viewer.BringToFront();
-      healthTimer.Start();
     } catch (Exception ex) {
       loading.Text = "KHÔNG KHỞI ĐỘNG ĐƯỢC\n\n" + ex.Message + "\n\n" +
                      "Dữ liệu và ứng dụng LAIXI cũ không bị thay đổi.";
