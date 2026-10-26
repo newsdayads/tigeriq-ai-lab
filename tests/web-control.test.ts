@@ -10,6 +10,7 @@ const unified = readFileSync(resolve('apps/tigeriq-core/web-control-unified.js')
 const unifiedCss = readFileSync(resolve('apps/tigeriq-core/web-control-unified.css'), 'utf8');
 const mobileCss = readFileSync(resolve('apps/tigeriq-core/web-control-mobile.css'), 'utf8');
 const launcher = readFileSync(resolve('scripts/tigeriq-core/run-web-control.ps1'), 'utf8');
+const bundleLauncher = readFileSync(resolve('scripts/tigeriq-core/run-web-control-bundle.ps1'), 'utf8');
 const apiHealth = readFileSync(resolve('apps/tigeriq-core/dashboard.html'), 'utf8');
 const workforceCss = readFileSync(resolve('public/work-ui.css'), 'utf8');
 const visualCss = readFileSync(resolve('public/work-center-visual.css'), 'utf8');
@@ -96,6 +97,11 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(server).toContain('/web-control-health-model.js');
     expect(server).toContain('githubWorkOrders');
     expect(server).toContain('workOrdersMeta');
+    expect(server).toContain('parseWebControlOwnerOrder');
+    expect(server).toContain('sortWebControlWorkOrders');
+    expect(server).toContain('ownerBacklogOrderVerified');
+    expect(bundleLauncher).toContain("'owner-backlog-order.mjs'");
+    expect(bundleLauncher).toContain("'web-control-*.mjs'");
     expect(truth).toContain('d?.workOrders');
     expect(truth).toContain("s === 'working' && status === 'BUSY'");
     expect(unified).toContain('__tigerIqApplyOwnerHealth');
