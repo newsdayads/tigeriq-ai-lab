@@ -5,7 +5,7 @@ Authority: GitHub `main` + Issue #5129 (Work Order V1) + Issue #504 + live PC01 
    - File Drive: `UltraCar_v1.0.57_TEST.apk`, ID `1NhaeZdHfTQaYYRwiD33a5mBzVRwd_wzp`, size `35,170,717 bytes`.
    - Download Link: https://drive.google.com/file/d/1NhaeZdHfTQaYYRwiD33a5mBzVRwd_wzp/view?usp=drivesdk .
    - Parent Folder ID: `1QTOWvtgrdGIml15J55LttcyKa7rLkdva` (Folder `TigerIQ UltraCar`).
-   - SHA-256: `D5BEC23162028EA81C3CF516408E19A13C18D87683E98D61CDCA8E3F7F6B9BDA`.
+   - SHA-256: `0E6451F6004F8675F724618EF80F53981547777EC3E508EB998A286BF2973202`.
    - Chứng chỉ SHA-256 `71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558`, v2/v3 PASS. Package `com.tigeriq.dexsplit`, versionCode 298, versionName `TigerIQ_HCM_v1.0.57`.
    - Biên nhận đồng bộ `SYNC_PASS` tại `C:\Users\wdragons12x\AppData\Local\Temp\tigeriq-drive-sync-result.txt`.
 2. **Giao diện 5 nút Quick Layouts tích hợp Native Compose:**
