@@ -846,6 +846,11 @@ Continue only after the canonical source materially changed. Execute zero-cost r
   return {progress,results};
 }
 
+export function githubCodingEventIssue(payload){
+  const issue=githubEventIssue(payload);
+  return issue&&parseCodingIssue(issue)?issue:null;
+}
+
 export function startGithubCodingIntake({databaseUrl=process.env.DATABASE_URL,fetchImpl=fetch,owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,intervalMs=Number(process.env.TIGERIQ_GITHUB_CODING_RECONCILE_MS||process.env.TIGERIQ_GITHUB_RECONCILE_MS||DEFAULT_INTERVAL_MS),initialDelayMs=20000}={}){
   if(!databaseUrl)return {enabled:false,stop(){}};
   const pool=new Pool({connectionString:databaseUrl,max:1});
@@ -866,9 +871,9 @@ export function startGithubCodingIntake({databaseUrl=process.env.DATABASE_URL,fe
 
   const processEvent=async(event)=>{
     if(stopped)return;
-    if(busy||githubCooldownUntil>Date.now()){pendingEvents.push(event);return}
-    const issue=githubEventIssue(event?.payload);
+    const issue=githubCodingEventIssue(event?.payload);
     if(!issue)return;
+    if(busy||githubCooldownUntil>Date.now()){pendingEvents.push(event);return}
     busy=true;
     try{
       const a=await materializeGithubCodingIssues({pool,fetchImpl,owner,repo,token,codingLaneUrl,openIssues:[issue]});
@@ -883,7 +888,7 @@ export function startGithubCodingIntake({databaseUrl=process.env.DATABASE_URL,fe
   const unsubscribe=subscribeGithubEvents(event=>{
     const fullName=String(event?.payload?.repository?.full_name||'');
     if(fullName&&fullName!==owner+'/'+repo)return;
-    if(githubEventIssue(event?.payload))void processEvent(event);
+    if(githubCodingEventIssue(event?.payload))void processEvent(event);
   });
 
   const tick=async()=>{

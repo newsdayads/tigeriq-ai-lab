@@ -5,7 +5,7 @@ import {githubRequestJson,githubTransportSnapshot,invalidateGithubCache} from '.
 import {githubEventIssue,githubEventNumber,subscribeGithubEvents,publishGithubEvent} from '../apps/tigeriq-core/github-event-bus.mjs';
 import {validateGithubActionsClaims} from '../apps/tigeriq-core/github-actions-oidc.mjs';
 import {GITHUB_RECONCILE_INTERVAL_MS} from '../apps/tigeriq-core/github-intake.mjs';
-import {GITHUB_CODING_RECONCILE_INTERVAL_MS} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {GITHUB_CODING_RECONCILE_INTERVAL_MS,githubCodingEventIssue} from '../apps/tigeriq-core/github-coding-intake.mjs';
 
 function headers(values={}){const map=new Map(Object.entries(values).map(([k,v])=>[k.toLowerCase(),String(v)]));return {get:key=>map.get(String(key).toLowerCase())??null}}
 function response(status,body,hs={}){return {status,ok:status>=200&&status<300,headers:headers(hs),text:async()=>status===304?'':JSON.stringify(body)}}
@@ -31,6 +31,25 @@ test('shared GitHub client uses memory cache then ETag conditional request',asyn
   assert.deepEqual(second,{value:1});
   assert.equal(calls.length,2);
   assert.ok(githubTransportSnapshot().notModified>=1);
+});
+
+test('coding event intake drops non-coding issues before they can starve the queue',()=>{
+  const repo={full_name:'newsdayads/tigeriq-ai-lab'};
+  const nonCoding={repository:repo,issue:{number:5144,state:'open',title:'reasoning',body:[
+    'PRIORITY=P1','OWNER_POLICY=AUTO','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED',
+    'CAPABILITY=reasoning','EXECUTION_SURFACE=CORE_REASONING','DONE=false',
+  ].join('\\n')}};
+  assert.equal(githubCodingEventIssue(nonCoding),null);
+  const codingBody=[
+    'PRIORITY=P1','OWNER_POLICY=AUTO','OWNER_HOLD=false','TIGERIQ_EXECUTABLE=true','AUTO_QUEUE=INCLUDED',
+    'CAPABILITY=coding','EXECUTION_SURFACE=CODING','AUTONOMOUS_CODE=true','MUTATION_OWNER=CORE_DYNAMIC_LEASE',
+    'RESOURCE_SCOPE=R12_EVENT_FILTER_TEST','ALLOW_PATH_PREFIX=tests/r12-event-filter.test.mjs',
+    'ZERO_COST=true','NO_PC01_SHELL=true','NO_BROWSER_AUTH=true','NO_PAID_COST=true',
+    'NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true','NO_DESTRUCTIVE=true',
+    'NO_PRODUCTION_RELEASE=true','NO_DIRECT_MAIN=true','DONE=false',
+  ].join('\\n');
+  const coding={repository:repo,issue:{number:5358,state:'open',title:'coding',body:codingBody}};
+  assert.equal(githubCodingEventIssue(coding)?.number,5358);
 });
 
 test('event bus extracts Work Order and wakes subscribers without inventing UI routing',async()=>{
