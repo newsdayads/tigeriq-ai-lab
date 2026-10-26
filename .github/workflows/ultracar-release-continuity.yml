@@ -1,0 +1,26 @@
+name: UltraCar Release Continuity
+on:
+  pull_request:
+    paths:
+      - 'bootstrap/00_TIGERIQ_LOADER.md'
+      - 'docs/apps/ultracar/PUBLISHED_APK_TO_DRIVE_PLAYBOOK.md'
+      - 'tests/ultracar-release-continuity.test.mjs'
+      - 'apps/ultracarhcm-v1-v44/hotfix/**'
+      - '.github/workflows/ultracar-release-continuity.yml'
+  push:
+    paths:
+      - 'bootstrap/00_TIGERIQ_LOADER.md'
+      - 'docs/apps/ultracar/PUBLISHED_APK_TO_DRIVE_PLAYBOOK.md'
+      - 'tests/ultracar-release-continuity.test.mjs'
+      - 'apps/ultracarhcm-v1-v44/hotfix/**'
+      - '.github/workflows/ultracar-release-continuity.yml'
+jobs:
+  verify-standing-release-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/ultracar-release-continuity.test.mjs
+      - run: node apps/ultracarhcm-v1-v44/hotfix/fix-zc4-verifier.test.mjs

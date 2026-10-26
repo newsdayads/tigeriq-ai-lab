@@ -3,12 +3,177 @@ import {
   appendPublicEvidenceToSummary,
   buildPublicJobEvidenceRecord,
   verifiedR04AutoworkSourceAttestation,
+  nativeR04ReportContractAudit,
+  nativeR04JobEventAudit,
   extractPublicEvidence,
   parsePublicEvidenceKeys,
   validatePublicEvidenceKeys,
 } from '../apps/tigeriq-core/public-evidence.mjs';
 
 describe('Core public evidence for direct PC receipts', () => {
+  it('retrospectively audits a native 14-question output without publishing content',()=>{
+    const report=Array.from({length:14},(_,i)=>{
+      const id='Q'+String(i+1).padStart(2,'0');
+      return [
+        id+':',
+        'OBSERVATION: Core runtime checked independently.',
+        'REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: Core /health 2026-10-24T05:07:51Z.',
+        'EXPECTED: Worker produces evidence with accurate source data.',
+        'DEVIATION: UNKNOWN until independently reviewed.',
+        'CONFIDENCE: UNKNOWN.',
+        'NEXT_ACTION: Review the raw claim against a trustworthy source.',
+      ].join('\n');
+    }).join('\n');
+    const valid=nativeR04ReportContractAudit(report);
+    expect(valid).toMatchObject({
+      requiredQuestionCount:14,foundQuestionCount:14,questionsWithAllRequiredFields:14,
+      questionsWithTimestamp:14,questionsWithConfidenceValue:14,
+      structuralPass:true,independentFactualVerification:false,missingFields:{},
+    });
+    expect(JSON.stringify(valid)).not.toContain('Worker produces evidence');
+    const invalid=nativeR04ReportContractAudit(report.replace('Q14:', 'Q14:\nNEXT_ACTION: '));
+    expect(invalid.structuralPass).toBe(false);
+    expect(invalid.missingFields.Q14).toContain('nextAction');
+    const missingSource=nativeR04ReportContractAudit(report.replace(
+      'REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: Core /health 2026-10-24T05:07:51Z.',
+      'Source unknown without timestamp.'
+    ));
+    expect(missingSource.structuralPass).toBe(false);
+    expect(missingSource.missingFields.Q01).toContain('evidenceSource');
+    expect(missingSource.missingFields.Q01).toContain('evidenceTimestamp');
+  });
+
+  it('rejects present-but-empty Q fields, echoed field labels, and prompt placeholders',()=>{
+    const report=Array.from({length:14},(_,i)=>[
+      'Q'+String(i+1).padStart(2,'0')+':',
+      'OBSERVATION: Core runtime was inspected.',
+      'REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: Core /health 2026-10-24T05:07:51Z.',
+      'EXPECTED: A timestamped real-source receipt.',
+      'DEVIATION: NONE.',
+      'CONFIDENCE: HIGH.',
+      'NEXT_ACTION: Independently check provenance.',
+    ].join('\n')).join('\n');
+    const cases=[
+      ['OBSERVATION: Core runtime was inspected.','OBSERVATION:   ','observation'],
+      ['EXPECTED: A timestamped real-source receipt.','EXPECTED:','expected'],
+      ['DEVIATION: NONE.','DEVIATION: <specific factual value or explicit UNKNOWN>','deviation'],
+      ['NEXT_ACTION: Independently check provenance.','NEXT_ACTION: ...','nextAction'],
+      ['OBSERVATION: Core runtime was inspected.','The OBSERVATION term is mentioned but not answered.','observation'],
+      ['OBSERVATION: Core runtime was inspected.','OBSERVATION: Core runtime was inspected.\nOBSERVATION: conflicting value','observation'],
+    ];
+    for(const [before,after,key] of cases){
+      const audit=nativeR04ReportContractAudit(report.replace(before,after));
+      expect(audit).toMatchObject({
+        foundQuestionCount:14,questionsWithAllRequiredFields:13,
+        structuralPass:false,independentFactualVerification:false,
+      });
+      expect(audit.missingFields.Q01).toContain(key);
+      expect(JSON.stringify(audit)).not.toContain('Core runtime was inspected');
+    }
+    expect(nativeR04ReportContractAudit(report).structuralPass).toBe(true);
+  });
+
+  it('accepts a complete R04 markdown-bold label syntax without accepting blank fields',()=>{
+    const q=Array.from({length:14},(_,i)=>[
+      'Q'+String(i+1).padStart(2,'0')+':',
+      '**OBSERVATION:** Runtime source inspected.',
+      '**REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP:** /health observed 2026-10-24T05:07:51Z.',
+      '**EXPECTED:** Source evidence must be traceable.',
+      '**DEVIATION:** UNKNOWN pending independent audit.',
+      '**CONFIDENCE:** UNKNOWN.',
+      '**NEXT_ACTION:** Compare authenticated source data.',
+    ].join('\n')).join('\n');
+    const audit=nativeR04ReportContractAudit(q);
+    expect(audit.questionsWithAllRequiredFields).toBe(14);
+    expect(audit.structuralPass).toBe(true);
+    expect(audit.independentFactualVerification).toBe(false);
+  });
+
+  it('does not use an unrelated observation timestamp to certify an unknown evidence source',()=>{
+    const source='REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: Core /health 2026-10-24T05:07:51Z.';
+    const report=Array.from({length:14},(_,i)=>[
+      'Q'+String(i+1).padStart(2,'0')+':',
+      'OBSERVATION: Core may be running, no independent source verified.',
+      source,
+      'EXPECTED: Actual source timestamp linked to each finding.',
+      'DEVIATION: UNKNOWN.',
+      'CONFIDENCE: UNKNOWN.',
+      'NEXT_ACTION: Verify actual source before acceptance.',
+    ].join('\n')).join('\n');
+    const misleading=report.replace(
+      'OBSERVATION: Core may be running, no independent source verified.',
+      'OBSERVATION: A separate note was written on 2026-10-24T05:07:51Z.'
+    ).replace(source,'REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: UNKNOWN');
+    const audit=nativeR04ReportContractAudit(misleading);
+    expect(audit).toMatchObject({
+      foundQuestionCount:14,questionsWithTimestamp:13,questionsWithAllRequiredFields:13,
+      structuralPass:false,independentFactualVerification:false,
+    });
+    expect(audit.missingFields.Q01).toContain('evidenceSource');
+    expect(audit.missingFields.Q01).toContain('evidenceTimestamp');
+    expect(JSON.stringify(audit)).not.toContain('separate note');
+    const valid=nativeR04ReportContractAudit(report);
+    expect(valid.structuralPass).toBe(true);
+    expect(valid.questionsWithTimestamp).toBe(14);
+  });
+
+  it('rejects an empty or undated evidence field regardless of other dates in a Q section',()=>{
+    const q=(source)=>[
+      'Q01:', 'OBSERVATION: Checked 2026-10-24T05:07:51Z.',
+      'REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: '+source,
+      'EXPECTED: Confirm true source.', 'DEVIATION: UNKNOWN.',
+      'CONFIDENCE: HIGH.', 'NEXT_ACTION: Recheck source.',
+    ].join('\n');
+    for(const value of ['Core /health UNKNOWN','', '<specific factual value or explicit UNKNOWN>']){
+      const audit=nativeR04ReportContractAudit(q(value));
+      expect(audit.missingFields.Q01).toContain('evidenceTimestamp');
+    }
+  });
+
+  it('binds confidence to the confidence field, not unrelated DEVIATION: UNKNOWN',()=>{
+    const q=[
+      'Q01:', 'OBSERVATION: Health reviewed.',
+      'REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: Core /health 2026-10-24T05:07:51Z.',
+      'EXPECTED: Evidence exists.', 'DEVIATION: UNKNOWN.',
+      'CONFIDENCE: cannot estimate confidence.', 'NEXT_ACTION: Request verification.',
+    ].join('\n');
+    const audit=nativeR04ReportContractAudit(q);
+    expect(audit.missingFields.Q01).toContain('confidenceValue');
+    expect(audit.questionsWithConfidenceValue).toBe(0);
+    expect(audit.independentFactualVerification).toBe(false);
+  });
+
+  it('checks authentic claim, resource success and JOB_DONE for one matching worker/resource',()=>{
+    const row={id:'JOB-OBJ-GH-5235-F1-test',employee_id:'NV12',resource_id:'res:gemini:free'};
+    const events=[
+      {type:'HOTPATH_STAGE',job_id:row.id,data:{stage:'CLAIMED'}},
+      {type:'RESOURCE_SUCCESS',job_id:row.id,employee_id:'NV12',resource_id:row.resource_id},
+      {type:'JOB_DONE',job_id:row.id,employee_id:'NV12',resource_id:row.resource_id},
+      {type:'RESOURCE_SUCCESS',job_id:'OTHER',employee_id:'NV12',resource_id:row.resource_id},
+    ];
+    expect(nativeR04JobEventAudit(row,events)).toMatchObject({
+      claimed:true,resourceSuccess:true,jobDone:true,workerAndResourceConsistent:true,allEventsVerified:true,
+    });
+    expect(nativeR04JobEventAudit(row,events.slice(0,2)).allEventsVerified).toBe(false);
+    expect(nativeR04JobEventAudit(row,[events[0],{...events[1],employee_id:'NV09'},events[2]]).allEventsVerified).toBe(false);
+
+    // Even if RESOURCE_SUCCESS and JOB_DONE belong to the right job, a
+    // claimed-stage event from a different worker or resource is not proof.
+    for(const conflictingClaim of [
+      {...events[0],employee_id:'NV09'},
+      {...events[0],resource_id:'res:other'},
+      {...events[0],employee_id:'NV09',resource_id:'res:other'},
+    ]){
+      expect(nativeR04JobEventAudit(row,[conflictingClaim,events[1],events[2]])).toMatchObject({
+        claimed:false,resourceSuccess:true,jobDone:true,
+        workerAndResourceConsistent:true,allEventsVerified:false,
+      });
+    }
+    expect(nativeR04JobEventAudit(row,[
+      {...events[0],employee_id:row.employee_id,resource_id:row.resource_id},events[1],events[2],
+    ]).allEventsVerified).toBe(true);
+  });
+
   it('exposes only a redacted source attestation for a genuine terminal R04 Core job', () => {
     const stamp='2026-10-24T04:42:00.000Z';
     const secretText='SECRET_DO_NOT_LEAK_Q01_Q14';

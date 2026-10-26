@@ -901,7 +901,19 @@ export function compareQueueRows(a, b) {
   return Number(a?.number || 0) - Number(b?.number || 0);
 }
 
-export function rankQueueRows(rows = []) {
+export function applyCoreAcceptanceWaits(rows = [], waits = [], runtimeConnected = false) {
+  if (runtimeConnected !== true || !Array.isArray(waits) || !Array.isArray(rows)) return rows;
+  const parked = new Set(waits
+    .filter(item=>item?.source==='core_objective_live'
+      && item?.state==='AWAITING_NATIVE_CHILD_ACCEPTANCE'
+      && Number.isSafeInteger(item?.issueNumber)&&item.issueNumber>0)
+    .map(item=>item.issueNumber));
+  return rows.map(row=>row?.status==='QUEUED' && parked.has(Number(row.number))
+    ?{...row,status:'WAITING',waitReason:'Core có child job · chờ nghiệm thu có biên nhận',
+      coreAcceptancePending:true} : row);
+}
+
+export function rankQueueRows(rows = [], ownerOrder = []) {
   let dispatchRank = 0;
   return (Array.isArray(rows) ? rows : []).map((row) => {
     const priority = queuePriority(row);
@@ -910,7 +922,18 @@ export function rankQueueRows(rows = []) {
       ? { ...row, status: 'WAITING', waitReason: row.waitReason || 'P0 chờ Owner/assignment' }
       : row;
     return normalized;
-  }).sort(compareQueueRows).map((row) => {
+  }).sort((left, right) => {
+    const fallback=compareQueueRows(left,right);
+    // A priority declaration never bypasses P0, pause or dependency gates.
+    if (!queueRowEligibleNow(left)||!queueRowEligibleNow(right))return fallback;
+    if (queuePriority(left)!==queuePriority(right))return fallback;
+    if (!Array.isArray(ownerOrder)||ownerOrder.length===0)return fallback;
+    const l=ownerOrder.indexOf(Number(left.number)),r=ownerOrder.indexOf(Number(right.number));
+    if(l<0&&r<0)return fallback;
+    if(l<0)return 1;
+    if(r<0)return -1;
+    return l-r;
+  }).map((row) => {
     const eligibleNow = queueRowEligibleNow(row);
     return {
       ...row,
@@ -2089,7 +2112,9 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
           : 'Chờ ' + waiting.map((n) => '#' + n).join(', '),
       };
     });
-    const rankedQueue = rankQueueRows(resolvedQueue);
+    const safelyResolvedQueue=applyCoreAcceptanceWaits(
+      resolvedQueue, base.coreAcceptanceWaits, base.liveConnected===true);
+    const rankedQueue = rankQueueRows(safelyResolvedQueue, ownerBacklogOrder);
     const nextQueue = rankedQueue.slice(0, QUEUE_LIMIT);
     const nextExecutable = rankedQueue.find((row) => row.eligibleNow) || null;
 
@@ -2137,7 +2162,11 @@ export async function buildWorkSections(base, fetchImpl = fetch, known = {}) {
     const actionable = openWork.filter((row) => row.workKind === 'WORK');
     const openSummary = {
       open: openWork.length,
+      // 'actionable' is legacy count of open WORK cards, NOT dispatch-ready work.
       actionable: actionable.length,
+      dispatchReady: rankedQueue.filter((row) => row.eligibleNow === true).length,
+      dispatchCandidates: rankedQueue.length,
+      coreAcceptancePending: rankedQueue.filter(row=>row.coreAcceptancePending===true).length,
       owner: actionable.filter((row) => row.status === 'OWNER_GATE').length,
       running: actionable.filter((row) => row.status === 'WORKING').length,
       review: actionable.filter((row) => ['REVIEW','VERIFY'].includes(row.status)).length,
@@ -2348,6 +2377,11 @@ export function sanitizeRuntimePayload(payload) {
     workers,
     mobileWorkers,
     coreUiAssignments,
+    coreAcceptanceWaits:payload.source?.core===true && Array.isArray(payload.coreAcceptanceWaits)
+      ?payload.coreAcceptanceWaits.filter(x=>Number.isSafeInteger(x?.issueNumber)
+        && x.issueNumber>0 && x.source==='core_objective_live'
+        && x.state==='AWAITING_NATIVE_CHILD_ACCEPTANCE').slice(0,40)
+        .map(x=>({issueNumber:x.issueNumber,source:x.source,state:x.state})) : [],
     activeWork: runtimeWorkRows(workers).map(ownerFacingWorkRow),
     nextQueue: [],
     nextQueueTotal: 0,

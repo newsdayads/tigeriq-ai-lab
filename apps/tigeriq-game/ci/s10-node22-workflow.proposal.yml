@@ -1,0 +1,41 @@
+# GH-5284 CI ACTIVATION PROPOSAL ONLY.
+# This app-local file is NOT an active GitHub Actions workflow. A separately
+# authorized CI owner must review and install it under .github/workflows/.
+name: TigerIQ Game G06 S10 Node22
+on:
+  pull_request:
+    paths:
+      - 'apps/tigeriq-game/**'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/tigeriq-game/**'
+permissions:
+  contents: read
+jobs:
+  verify-game:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify whole game build lint and tests under Node22
+        run: npm --prefix apps/tigeriq-game run verify
+      - name: Verify exact SHA, static syntax and 14 G06 tests
+        env:
+          TIGERIQ_GAME_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          node apps/tigeriq-game/scripts/s10-ci.mjs --receipt="$RUNNER_TEMP/gh5284-node22-receipt.json"
+      - name: Save verifiable Node22 result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gh5284-node22-${{ github.run_id }}
+          path: ${{ runner.temp }}/gh5284-node22-receipt.json
+          if-no-files-found: warn
+          retention-days: 14

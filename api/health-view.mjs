@@ -5,8 +5,14 @@ import { request as httpsRequest } from 'node:https';
 // Native IPv4 HTTPS retry is restricted to the same validated Tailscale Funnel origin.
 // No redirects, authentication changes, new domains, or writes.
 export function isResetConnection(error) {
-  const codes = [error?.code, error?.cause?.code, error?.cause?.cause?.code];
-  return codes.some(code => ['ECONNRESET','ETIMEDOUT','ENETUNREACH','EHOSTUNREACH','EAI_AGAIN'].includes(String(code||'')));
+  const causes = [error, error?.cause, error?.cause?.cause];
+  // Native fetch + AbortSignal.timeout() throws DOMException TimeoutError
+  // (numeric code 23), not ETIMEDOUT. Permit only the existing GET/IPv4
+  // fallback to the SAME validated Tailscale origin; no new trust boundary.
+  return causes.some(cause =>
+    ['ECONNRESET','ETIMEDOUT','ENETUNREACH','EHOSTUNREACH','EAI_AGAIN'].includes(String(cause?.code||''))
+    || (cause?.name==='TimeoutError' && Number(cause?.code)===23)
+  );
 }
 export function readIpv4Https(target, token, requestImpl=httpsRequest) {
   return new Promise((resolve,reject)=>{

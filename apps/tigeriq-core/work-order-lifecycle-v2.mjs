@@ -36,6 +36,13 @@ function activeText(value=''){
 function activeHeader(value=''){
   const text=activeText(value),lines=text.split(/\r?\n/);
   const first=lines.findIndex(s=>/^#{1,6}\s+\S/.test(s));
+  // A canonical root-level TIGERIQ_JOB_V1 may declare Lifecycle V2 before
+  // its first checklist heading. Never discard these current source fields.
+  // activeText() has already fenced off superseded/historical blocks.
+  if(first>0){
+    const rootHeader=lines.slice(0,first).join('\n');
+    if(/^WORK_ORDER_LIFECYCLE=V2\s*$/m.test(rootHeader))return rootHeader;
+  }
   const from=first<0?0:first+1;
   const next=lines.findIndex((s,i)=>i>=from&&/^#{1,6}\s+\S/.test(s));
   return lines.slice(from,next<0?lines.length:next).join('\n');

@@ -99,7 +99,45 @@ export function verifiedOwnerReceiptForChild(childBody,commentBody) {
   return {parentIssueNumber:parent,requestId:id,message:message.trim(),receiptUrl:url};
 }
 
-export function ownerCoreTriageReceiptPlan(childBody,row={}) {
+// A terminal objective/summary alone cannot verify Core AI work. Only a
+// persisted, provenance-bound github_api_autowork result qualifies as source
+// output. This is not product acceptance or permission to bypass the checklist.
+export function verifiedOwnerTriageNativeJob(job={},expectedScope='') {
+  const proof=job?.result?.autoworkAcceptance;
+  const completed=job?.completed_at instanceof Date?job.completed_at:new Date(job?.completed_at);
+  return job?.kind==='github_api_autowork'
+    &&job?.status==='done'
+    &&/^NV\d{2}$/.test(String(job?.employee_id||''))
+    &&String(job?.resource_id||'').length>=3
+    &&Number.isFinite(completed.getTime())
+    &&completed.getTime()<=Date.now()+60000
+    &&proof?.code==='GITHUB_AUTOWORK_SOURCE_OUTPUT_ACCEPTED'
+    &&proof?.productAccepted===false
+    &&String(proof?.resourceScope||'')===String(expectedScope||'')
+    &&Boolean(expectedScope)
+    &&proof?.employeeId===job.employee_id
+    &&Number.isSafeInteger(proof?.characterCount)
+    &&proof.characterCount>=80
+    &&/^[a-f0-9]{64}$/.test(String(proof?.textSha256||''));
+}
+
+// A completed planning objective must not be published as a finished Owner
+// result until BOTH the original checklist and a provenance-bound native Core
+// worker output are accepted. This never claims or fabricates a Core lease.
+export function ownerTriageCompletionPublicationGate(childBody='',row={}) {
+  if(!/^SOURCE=AUTHENTICATED_OWNER_WORK_CARD$/m.test(String(childBody||'')) || row?.status!=='completed')
+    return {defer:false,reason:'NOT_COMPLETED_OWNER_TRIAGE'};
+  if(row?.githubChecklistAccepted!==true)
+    return {defer:true,reason:'GITHUB_CHECKLIST_PENDING'};
+  if(row?.nativeCoreJobAccepted!==true)
+    return {defer:true,reason:'NATIVE_CORE_JOB_NOT_VERIFIED'};
+  return {defer:false,reason:'SOURCE_AND_NATIVE_EVIDENCE_PRESENT'};
+}
+
+// The exact, authenticated receipt is required to recognize a no-side-effect
+// intake smoke test. Ordinary actionable instructions NEVER resolve from
+// planning alone, even when the Core planning objective completed.
+export function ownerCoreTriageReceiptPlan(childBody,row={},ownerReceipt='') {
   const body=String(childBody||'');
   if(!/^SOURCE=AUTHENTICATED_OWNER_WORK_CARD$/m.test(body))return null;
   const parent=Number(/^PARENT_ISSUE=#(\d+)$/m.exec(body)?.[1]||0);
@@ -107,9 +145,20 @@ export function ownerCoreTriageReceiptPlan(childBody,row={}) {
   if(!parent||!requestId||!['completed','blocked'].includes(row?.status))return null;
   const jobId=String(row.id||'');
   if(!/^OBJ-GH-\d+/.test(jobId)||jobId.length>128)return null;
-  const status=row.status==='completed'?'PLAN_SHOWN':'BLOCKED';
   const summary=String(row.summary||'').trim().slice(0,2000);
+  let authenticatedSmoke=false;
+  if(row.status==='completed'&&row.nativeCoreJobAccepted===true&&row.githubChecklistAccepted===true&&summary.length>=12&&ownerReceipt){
+    try{
+      authenticatedSmoke=verifiedOwnerReceiptForChild(body,ownerReceipt).message==='Thử gửi yêu cầu';
+    }catch{
+      // A mismatched, unavailable or forged receipt cannot resolve an instruction.
+      authenticatedSmoke=false;
+    }
+  }
+  const status=authenticatedSmoke?'ANSWERED':(row.status==='completed'?'PLAN_SHOWN':'BLOCKED');
   const reply='CORE_TRIAGE_OBJECTIVE_ID='+jobId+' — '+(summary||'Chưa có đầu ra được xác minh')+
-    ' — Đây chỉ là kết quả phân tích của Core; yêu cầu Owner chưa được nghiệm thu thực thi.';
+    (authenticatedSmoke
+      ?' — Đã xử lý yêu cầu thử tiếp nhận; không thực hiện thay đổi trên thẻ gốc.'
+      :' — Đây chỉ là kết quả phân tích của Core; yêu cầu Owner chưa được nghiệm thu thực thi.');
   return {parentIssueNumber:parent,requestId,status,reply,objectiveId:jobId};
 }

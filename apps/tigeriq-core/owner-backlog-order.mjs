@@ -5,6 +5,34 @@ export const OWNER_BACKLOG_KEYS=['CORE_ORDER','NEWS_ORDER','WORKFLOW_ORDER','OTH
 export function parseOwnerBacklogOrder(body=''){
   const source=String(body||'');
 
+  // The first authoritative block in #280 is deliberately isolated from
+  // historical markdown tables, snapshots and issue-comment examples.
+  const begin='<!-- TIGERIQ_OWNER_PRIORITY_V2_BEGIN -->';
+  const end='<!-- TIGERIQ_OWNER_PRIORITY_V2_END -->';
+  const hasBegin=source.includes(begin),hasEnd=source.includes(end);
+  if(hasBegin||hasEnd){
+    // A malformed or duplicated authoritative declaration MUST fail closed;
+    // silently accepting a stale historical priority is unsafe.
+    if(!hasBegin||!hasEnd||source.indexOf(begin)!==source.lastIndexOf(begin)
+      ||source.indexOf(end)!==source.lastIndexOf(end))return [];
+    const start=source.indexOf(begin)+begin.length,finish=source.indexOf(end);
+    if(finish<=start)return [];
+    const block=source.slice(start,finish);
+    const lines=block.split(/\r?\n/).filter(x=>/^OWNER_PRIORITY_ORDER=/.test(x));
+    if(lines.length!==1)return [];
+    const raw=lines[0].slice('OWNER_PRIORITY_ORDER='.length).trim();
+    const parts=raw.split(/\s*>\s*/);
+    if(parts.length<1||parts.length>40)return [];
+    const ids=[];
+    for(const part of parts){
+      if(!/^#[1-9]\d{0,7}$/.test(part))return [];
+      const id=Number(part.slice(1));
+      if(ids.includes(id))return [];
+      ids.push(id);
+    }
+    return ids;
+  }
+
   // 1. Single-board format (Issue #280 reconciled format: QUEUE_VERSION=OWNER_RECONCILED_SINGLE_BOARD_...)
   if(source.includes('QUEUE_VERSION=OWNER_RECONCILED_SINGLE_BOARD_') || source.includes('TIGERIQ — HÀNG ĐỢI ĐIỀU HÀNH DUY NHẤT')){
     const ids=[];

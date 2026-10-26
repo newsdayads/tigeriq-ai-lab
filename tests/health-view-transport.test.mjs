@@ -8,6 +8,15 @@ test('transport retry is exclusively for reset and network failures',()=>{
   assert.equal(isResetConnection({cause:{code:'ECONNRESET'}}),true);
   assert.equal(isResetConnection({code:'ETIMEDOUT'}),true);
   assert.equal(isResetConnection({code:'EAI_AGAIN'}),true);
+  // Production 2026-10-24: Vercel logs reported TimeoutError code 23.
+  // AbortSignal.timeout() uses DOMException, not ETIMEDOUT.
+  const nativeTimeout=new DOMException('The operation was aborted due to timeout','TimeoutError');
+  assert.equal(nativeTimeout.code,23);
+  assert.equal(isResetConnection(nativeTimeout),true);
+  assert.equal(isResetConnection({cause:nativeTimeout}),true);
+  assert.equal(isResetConnection({cause:{cause:nativeTimeout}}),true);
+  assert.equal(isResetConnection({code:23,name:'OtherError'}),false);
+  assert.equal(isResetConnection(new DOMException('User cancelled','AbortError')),false);
   assert.equal(isResetConnection(new Error('ordinary web failure')),false);
   assert.equal(isResetConnection({code:'EPERM'}),false);
 });

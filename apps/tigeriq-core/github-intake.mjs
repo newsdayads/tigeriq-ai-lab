@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
-import { verifiedOwnerReceiptForChild, ownerCoreTriageReceiptPlan } from '../shared/owner-work-dispatch.mjs';
+import { verifiedOwnerReceiptForChild, ownerCoreTriageReceiptPlan, verifiedOwnerTriageNativeJob, ownerTriageCompletionPublicationGate } from '../shared/owner-work-dispatch.mjs';
 import { makeOwnerResultReceipt } from '../shared/owner-work-request.mjs';
+import { reconcileVerifiedOwnerSmoke } from './owner-smoke-closure.mjs';
 import { managerAcceptanceRevisionRefresh, managerAcceptanceWakePlan } from './manager-cycle-policy.mjs';
 import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
@@ -1708,6 +1709,72 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       continue;
     }
     const sourceBody=String(sourceIssueForGate?.body||'');
+    // Exact no-side-effect Owner canary only: fenced source-backed closure.
+    if(number===5290 && row.status==='active'
+       && /^SOURCE=AUTHENTICATED_OWNER_WORK_CARD$/m.test(sourceBody)){
+      const ref=/^OWNER_REQUEST_RECEIPT=https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/5252#issuecomment-(\d+)$/m.exec(sourceBody);
+      if(ref){
+        try{
+          const root='https://api.github.com/repos/'+owner+'/'+repo;
+          const original=await ghJson(fetchImpl,root+'/issues/comments/'+ref[1],token,{freshMs:0});
+          const jobs=(await pool.query(
+            "select id,kind,status,employee_id,resource_id,started_at,completed_at,result from tigeriq_jobs where objective_id=$1 and kind='github_api_autowork' and status='done' order by completed_at desc limit 5",
+            [row.id]
+          )).rows||[];
+          const freshIssue=()=>ghJson(fetchImpl,root+'/issues/'+number,token,{freshMs:0});
+          for(const job of jobs){
+            const smoke=await reconcileVerifiedOwnerSmoke({
+              pool,sourceIssue:sourceIssueForGate,originalReceipt:original,job,
+              io:{
+                readIssue:freshIssue,
+                readComment:async receiptUrl=>{
+                  const match=String(receiptUrl).match(/^https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/5290#issuecomment-(\d+)$/);
+                  return match?ghJson(fetchImpl,root+'/issues/comments/'+match[1],token,{freshMs:0}):null;
+                },
+                createComment:async(id,body)=>ghJson(fetchImpl,root+'/issues/'+id+'/comments',token,{
+                  method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({body}),
+                }),
+                writeIssue:async(id,patch)=>ghJson(fetchImpl,root+'/issues/'+id,token,{
+                  method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(patch),
+                }),
+                findComment:async(id,signature)=>{
+                  const fresh=await freshIssue();
+                  const page=Math.max(1,Math.ceil(Number(fresh.comments||0)/100));
+                  const found=await ghJson(fetchImpl,root+'/issues/'+id+'/comments?per_page=100&page='+page,token,{freshMs:0});
+                  return (Array.isArray(found)?found:[]).find(x=>String(x.body||'').startsWith(signature))||null;
+                },
+              },
+            });
+            if(smoke.ok){
+              const accepted={githubChecklistAccepted:true,nativeCoreJobAccepted:true,
+                githubResultReported:false,githubCompletionPending:false,
+                githubOwnerTriagePendingReason:null,ownerSmokeNativeJobId:smoke.jobId,
+                ownerSmokeClosureReadback:true};
+              const written=await pool.query(
+                "update tigeriq_objectives set status='completed',summary=$2,metadata=metadata||$3::jsonb,updated_at=now() where id=$1 and status='active' and (metadata->>'sourceRevision') is not distinct from $4::text",
+                [row.id,'Source-verified bounded Owner smoke accepted and GitHub closed; native job='+smoke.jobId,
+                  JSON.stringify(accepted),row.metadata?.sourceRevision??null]
+              );
+              if(written.rowCount===1){
+                row.status='completed';row.summary='Source-verified bounded Owner smoke accepted; '+smoke.jobId;
+                row.metadata={...row.metadata,...accepted};
+                await pool.query("insert into tigeriq_events(type,objective_id,data) values('OWNER_SMOKE_GITHUB_CLOSED',$1,$2::jsonb)",
+                  [row.id,JSON.stringify({issueNumber:number,jobId:smoke.jobId,scope:smoke.scope})]);
+              }
+              break;
+            }
+            if(['NATIVE_CORE_WORKER_NOT_ACCEPTED','OWNER_MESSAGE_ABSENT_FROM_NATIVE_RESULT','WORKER_TEXT_HASH_MISMATCH'].includes(smoke.reason))
+              continue;
+            // Any other failure is a single attempt, not a reason to multiply writes.
+            console.warn(JSON.stringify({event:'OWNER_SMOKE_ACCEPTANCE_PENDING',issueNumber:number,reason:smoke.reason}));
+            break;
+          }
+        }catch(error){
+          if(githubRateLimitCooldownMs(error)>0)throw error;
+          console.error(JSON.stringify({event:'OWNER_SMOKE_RECONCILE_ERROR',issueNumber:number,error:String(error?.message||error).slice(0,200)}));
+        }
+      }
+    }
     const currentSourceRevision=githubIssueSourceRevision(sourceIssueForGate||{});
     const sourceExecutionExclusion=activeGithubObjectiveSourceExclusion(sourceIssueForGate);
     if(row.status==='active'&&sourceExecutionExclusion){
@@ -2011,31 +2078,45 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
       const checklist=partialStep
         ?workOrderChecklistGate(actualIssue,{stepId,requireAll:false})
         :workOrderChecklistGate(actualIssue,{requireAll:true});
-      if(!checklist.ok){
+      if(/^SOURCE=AUTHENTICATED_OWNER_WORK_CARD$/m.test(sourceBody)){
+        // Preserve terminal Core output until the original GitHub checklist
+        // is accepted; a missing checklist must not permanently block the
+        // Owner triage objective or impersonate an accepted Worker result.
+        row.githubChecklistAccepted=checklist.ok;
+        row.nativeCoreJobAccepted=false;
+        if(checklist.ok){
+          const native=(await pool.query(
+            "select kind,status,employee_id,resource_id,completed_at,result from tigeriq_jobs where objective_id=$1 and kind='github_api_autowork' order by created_at desc limit 1",
+            [row.id]
+          )).rows[0]||null;
+          row.nativeCoreJobAccepted=verifiedOwnerTriageNativeJob(native,row.metadata?.resourceScope||'');
+        }
+      }else if(!checklist.ok){
         const reason=`CHECKLIST_NOT_SYNCED:${checklist.reason}:${(checklist.missing||[]).join(',')}`;
         row.status='blocked';
         row.summary=`Completion refused until checked GitHub card readback: ${reason}`;
         await pool.query("update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1",[row.id,row.summary]);
       }
     }
+    const ownerPublication=ownerTriageCompletionPublicationGate(sourceBody,row);
+    if(ownerPublication.defer){
+      // A Core objective marked completed is NOT a published Owner result.
+      // Keep the objective and its genuine AI output intact, and rotate the
+      // reconciliation cursor so one pending checklist cannot starve the queue.
+      // This never writes a checklist or acquires someone else's Core lease.
+      await pool.query(
+        "update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",
+        [row.id,JSON.stringify({githubOwnerTriagePendingReason:ownerPublication.reason})]
+      );
+      row.metadata={...row.metadata,githubOwnerTriagePendingReason:ownerPublication.reason};
+      continue;
+    }
     if(['completed','blocked'].includes(row.status)&&(!row.metadata?.githubResultReported||row.metadata?.githubCompletionPending)){
       const firstReport=!row.metadata?.githubResultReported;
       if(firstReport){
         const resultComment=formatResultComment(row);
         await commentIssue(fetchImpl,owner,repo,number,resultComment,token);
-        // A Core planner result updates the parent Owner history but NEVER
-        // supplies VERIFIED or clears an unexecuted Owner instruction.
-        const ownerTriage=ownerCoreTriageReceiptPlan(sourceBody,row);
-        if(ownerTriage){
-          const parentIssue=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${ownerTriage.parentIssueNumber}`,token);
-          const page=Math.max(1,Math.ceil(Math.max(0,Number(parentIssue.comments||0))/100));
-          const recent=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${ownerTriage.parentIssueNumber}/comments?per_page=100&page=${page}`,token);
-          const key='CORE_TRIAGE_OBJECTIVE_ID='+ownerTriage.objectiveId;
-          if(!(Array.isArray(recent)?recent:[]).some(comment=>String(comment?.body||'').includes(key))){
-            await commentIssue(fetchImpl,owner,repo,ownerTriage.parentIssueNumber,
-              makeOwnerResultReceipt(ownerTriage.requestId,ownerTriage.status,ownerTriage.reply),token);
-          }
-        }
+
 
         if(row.status==='completed'&&P1_P5_PRIORITIES.has(bodyValue(sourceBody,'PRIORITY').toUpperCase())&&number!==OWNER_RESULT_INBOX_ISSUE){
           const sourceTitle=String(sourceIssueForGate?.title||row.metadata?.issueTitle||'Work Order').slice(0,300);
@@ -2045,6 +2126,41 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
             token
           ));
         }
+      }
+      // Repeat on a future tick: PLAN_SHOWN cannot swallow a newly verified
+      // ANSWERED for the same Objective after checklist acceptance.
+      if(/^SOURCE=AUTHENTICATED_OWNER_WORK_CARD$/m.test(sourceBody)){
+      // A completed planning objective can resolve ONLY the exact no-effect
+      // intake smoke test, after re-reading its authenticated Owner receipt.
+      // Other actions stay PLAN_SHOWN until separately verified as executed.
+      let ownerReceipt='';
+      if(row.status==='completed'&&/^SOURCE=AUTHENTICATED_OWNER_WORK_CARD$/m.test(sourceBody)){
+        const receiptUrl=/^OWNER_REQUEST_RECEIPT=(https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/\d+#issuecomment-(\d+))$/m.exec(sourceBody);
+        if(receiptUrl){
+          try{
+            const original=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/comments/${receiptUrl[2]}`,token);
+            if(String(original?.html_url||'')===receiptUrl[1])ownerReceipt=String(original?.body||'');
+          }catch(error){
+            if(githubRateLimitCooldownMs(error)>0)throw error;
+            // Safe fallback: absent evidence keeps the request nonterminal.
+            console.error(JSON.stringify({event:'OWNER_TRIAGE_RECEIPT_RECHECK_UNAVAILABLE',objectiveId:row.id,issueNumber:number,error:String(error?.message||error)}));
+          }
+        }
+      }
+      const ownerTriage=ownerCoreTriageReceiptPlan(sourceBody,row,ownerReceipt);
+      if(ownerTriage){
+        const parentIssue=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${ownerTriage.parentIssueNumber}`,token);
+        const page=Math.max(1,Math.ceil(Math.max(0,Number(parentIssue.comments||0))/100));
+        const recent=await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues/${ownerTriage.parentIssueNumber}/comments?per_page=100&page=${page}`,token);
+        const key='CORE_TRIAGE_OBJECTIVE_ID='+ownerTriage.objectiveId;
+        if(!(Array.isArray(recent)?recent:[]).some(comment=>{
+          const text=String(comment?.body||'');
+          return text.includes(key)&&text.includes('OWNER_REQUEST_STATUS='+ownerTriage.status);
+        })){
+          await commentIssue(fetchImpl,owner,repo,ownerTriage.parentIssueNumber,
+            makeOwnerResultReceipt(ownerTriage.requestId,ownerTriage.status,ownerTriage.reply),token);
+        }
+      }
       }
       const keepOpenOnStepComplete=githubKeepOpenOnStepComplete(row.metadata,sourceBody);
       let githubClosed=false,githubCompletionPending=false;
@@ -2069,7 +2185,7 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
           }
         }
       }
-      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed,githubCompletionPending,keepOpenOnStepComplete})]);
+      await pool.query("update tigeriq_objectives set metadata=metadata||$2::jsonb,updated_at=now() where id=$1",[row.id,JSON.stringify({githubResultReported:true,githubClosed,githubCompletionPending,keepOpenOnStepComplete,...(row.metadata?.githubOwnerTriagePendingReason?{githubOwnerTriagePendingReason:null}:{})})]);
       row.metadata={...row.metadata,githubResultReported:true,githubClosed,githubCompletionPending,keepOpenOnStepComplete};
       if(firstReport||githubClosed||githubCompletionPending!==Boolean(row.metadata?.githubCompletionPending))results++;
     }

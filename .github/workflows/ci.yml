@@ -106,3 +106,23 @@ jobs:
           path: artifacts/revenue-lab/gh2293-public-demo/
           if-no-files-found: error
           retention-days: 30
+
+  tigeriq-game-s10-node22:
+    name: TigerIQ Game S10 Node22
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact source revision
+        env:
+          TIGERIQ_GAME_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$TIGERIQ_GAME_EXPECTED_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Verify S10 preflight and E2E harness without device mutations
+        env:
+          TIGERIQ_GAME_EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node apps/tigeriq-game/scripts/s10-ci.mjs

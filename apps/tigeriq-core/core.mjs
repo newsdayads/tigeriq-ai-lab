@@ -1,4 +1,4 @@
-import { evaluateGithubAutoworkOutput } from './github-autowork-acceptance.mjs';
+import { evaluateGithubAutoworkOutput, reinforceGithubAutoworkPrompt, githubAutoworkAcceptanceRetryEligible, githubAutoworkAcceptanceRetryPrompt } from './github-autowork-acceptance.mjs';
 import { executeFencedPaperclipBrokerInstall, executeFencedPaperclipHealth } from './paperclip-direct-lease.mjs';
 import { readFencedPaperclipHealth } from '../openclaw-tigeriq-runtime/paperclip-lab.mjs';
 import { inspectPaperclipBackupProvenance } from '../openclaw-tigeriq-runtime/paperclip-backup-provenance.mjs';
@@ -2024,21 +2024,45 @@ async function runJob(j) {
     if(jobSkillContext.skipped.length){
       await event('SKILL_CONTEXT_SKIPPED',{objectiveId:j.objective_id,jobId:j.id,skipped:jobSkillContext.skipped.map(x=>({id:x.id,reason:x.reason}))});
     }
-    const routedPrompt=appendSkillContextToPrompt(j.prompt,jobSkillContext.contextBlock);
+    const routedPrompt=reinforceGithubAutoworkPrompt({
+      kind:j.kind,resourceScope:j.objective_metadata?.resourceScope||'',
+      prompt:appendSkillContextToPrompt(j.prompt,jobSkillContext.contextBlock),
+    });
     const compiledPacket=String(j.kind||'').startsWith('compiled_')?executionPacketFromPrompt(j.prompt):null;
     const validateText=compiledPacket?(text)=>assertExecutionResultAccepted(text,compiledPacket):null;
     const stabilityAllowlist=stabilityV2EmployeeAllowlist(j.objective_metadata);
     const employeeAllowlist=j.kind==='github_api_autowork'?githubAutoworkEmployeeAllowlist(j,CORE_AUTOWORK_EMPLOYEES):stabilityAllowlist;
     let routed=await invokeRouted(routedPrompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:effectiveCoreJobRoutingProfile(j),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist,validateText,compiledPacket});
-    const autoworkOutput=evaluateGithubAutoworkOutput({
+    let autoworkOutput=evaluateGithubAutoworkOutput({
       kind:j.kind,text:routed.text,resourceScope:j.objective_metadata?.resourceScope||'',
       employeeId:routed.resource?.id,resourceId:routed.resource?.resourceId,
     });
+    if(autoworkOutput.applicable&&!autoworkOutput.accepted&&githubAutoworkAcceptanceRetryEligible({
+      kind:j.kind,resourceScope:j.objective_metadata?.resourceScope||'',result:autoworkOutput,
+    })){
+      await event('GITHUB_AUTOWORK_ACCEPTANCE_RETRY',{
+        objectiveId:j.objective_id,jobId:j.id,code:autoworkOutput.code,
+        employeeId:routed.resource?.id||null,resourceId:routed.resource?.resourceId||null,
+        missingQuestions:autoworkOutput.missingQuestions||[],missingFields:autoworkOutput.missingFields||{},
+      });
+      const correctionPrompt=githubAutoworkAcceptanceRetryPrompt(routedPrompt,autoworkOutput);
+      const originalEmployeeId=routed.resource?.id||null;
+      routed=await invokeRouted(correctionPrompt,j.capability,j.id,1,{
+        taskKind:j.kind||'ai',profile:effectiveCoreJobRoutingProfile(j),reviewerResourceIds,
+        preferredEmployeeId:originalEmployeeId||j.objective_metadata?.targetWorker||null,
+        employeeAllowlist:originalEmployeeId?[originalEmployeeId]:employeeAllowlist,
+        validateText,compiledPacket,
+      });
+      autoworkOutput=evaluateGithubAutoworkOutput({
+        kind:j.kind,text:routed.text,resourceScope:j.objective_metadata?.resourceScope||'',
+        employeeId:routed.resource?.id,resourceId:routed.resource?.resourceId,
+      });
+    }
     if(autoworkOutput.applicable&&!autoworkOutput.accepted){
       await event('GITHUB_AUTOWORK_OUTPUT_REJECTED',{
         objectiveId:j.objective_id,jobId:j.id,code:autoworkOutput.code,
         employeeId:routed.resource?.id||null,resourceId:routed.resource?.resourceId||null,
-        missingQuestions:autoworkOutput.missingQuestions||[],
+        missingQuestions:autoworkOutput.missingQuestions||[],missingFields:autoworkOutput.missingFields||{},
       });
       throw Object.assign(new Error(autoworkOutput.code),{kind:'invalid_response'});
     }
@@ -3003,6 +3027,11 @@ async function publicJobEvidence(jobId){
     where j.id=$1
     limit 1`,[jobId])).rows[0]||null;
   if(!row)return null;
+  if(row.kind==='github_api_autowork'&&row.status==='done'&&row.result?.autoworkAcceptance?.code==='GITHUB_AUTOWORK_SOURCE_OUTPUT_ACCEPTED'){
+    const provenance=(await pool.query(`select type,job_id,employee_id,resource_id,data from tigeriq_events
+      where job_id=$1 and type in ('HOTPATH_STAGE','RESOURCE_SUCCESS','JOB_DONE') order by seq asc limit 100`,[jobId])).rows;
+    row.nativeAuditEvents=provenance;
+  }
   return buildPublicJobEvidenceRecord(row);
 }
 
