@@ -453,9 +453,12 @@ export async function reconcileSupersededActiveGithubObjective({pool,spec,active
   const sourceRevision=String(spec?.sourceRevision||'').trim();
   if(!issueNumber||!sourceRevision)return {released:false,reason:'SOURCE_IDENTITY_REQUIRED'};
   const candidate=(Array.isArray(activeRows)?activeRows:[]).find((row)=>{
-    const metadata=row?.metadata||{};
-    if(!githubActiveObjectiveSourceIsSuperseded(row,spec))return false;
-    return githubSpecBlockedByActive(spec,[metadata]);
+    // Same canonical GitHub issue is itself a durable identity boundary.
+    // Legacy objectives may predate resourceScope/workOrderDedupeKey metadata;
+    // requiring those fields would leave an orphan ACTIVE row permanently
+    // blocking a newer source revision. The SQL fence below still requires
+    // zero nonterminal jobs, zero resource bindings and zero live shared leases.
+    return githubActiveObjectiveSourceIsSuperseded(row,spec);
   });
   if(!candidate?.id)return {released:false,reason:'NO_SUPERSEDED_ACTIVE_OBJECTIVE'};
   const supersedeMeta={
