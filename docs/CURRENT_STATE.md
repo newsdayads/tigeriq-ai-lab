@@ -1,16 +1,21 @@
-# LIVE STATE OVERRIDE — 2026-10-26 — ULTRACAR V55 RELEASE & CANONICAL RUNNER
+# LIVE STATE OVERRIDE — 2026-10-26 — ULTRACAR V57 RELEASE & INLINE COMPOSE QUICKBAR
 Authority: GitHub `main` + Issue #5129 (Work Order V1) + Issue #504 + live PC01 receipts.
 
-1. **UltraCar v1.0.55 TEST (code 296) đã ký và phát hành Google Drive:**
-   - File Drive: `UltraCar_v1.0.55_TEST.apk`, ID `15MCFHueaxuZaY-L785ItvPiA8abRh61X`, size `35,170,717 bytes`.
-   - SHA-256: `376E9443A03BF264883422E740BC83BC0AA2F5FCDEBBA7DA709D888736C73272`.
-   - Chứng chỉ SHA-256 `71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558`, v2/v3 PASS. Package `com.tigeriq.dexsplit`, versionCode 296, versionName `TigerIQ_HCM_v1.0.55`.
+1. **UltraCar v1.0.57 TEST (code 298) đã ký và phát hành Google Drive:**
+   - File Drive: `UltraCar_v1.0.57_TEST.apk`, ID `1NhaeZdHfTQaYYRwiD33a5mBzVRwd_wzp`, size `35,170,717 bytes`.
+   - Download Link: https://drive.google.com/file/d/1NhaeZdHfTQaYYRwiD33a5mBzVRwd_wzp/view?usp=drivesdk .
+   - Parent Folder ID: `1QTOWvtgrdGIml15J55LttcyKa7rLkdva` (Folder `TigerIQ UltraCar`).
+   - SHA-256: `D5BEC23162028EA81C3CF516408E19A13C18D87683E98D61CDCA8E3F7F6B9BDA`.
+   - Chứng chỉ SHA-256 `71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558`, v2/v3 PASS. Package `com.tigeriq.dexsplit`, versionCode 298, versionName `TigerIQ_HCM_v1.0.57`.
    - Biên nhận đồng bộ `SYNC_PASS` tại `C:\Users\wdragons12x\AppData\Local\Temp\tigeriq-drive-sync-result.txt`.
-2. **Quy chuẩn Ký & Xuất bản APK duy nhất trên PC01 (Chống chặn OpenAI Safety):**
+2. **Giao diện 5 nút Quick Layouts tích hợp Native Compose:**
+   - Đã gỡ bỏ hoàn toàn `quickBar` khỏi `overlay` FrameLayout trong `V44UiBridge.java`.
+   - Tích hợp trực tiếp 5 nút bố cục nhanh vào cây Compose gốc của màn Home trong `xo5.smali` nằm cùng Column của thẻ UltraCar: sau nút KHỞI ĐỘNG (`uu2.e`) và trước hàng 3 nút (`uu2.i`).
+   - Nền trong suốt, căn đều 5 nút bằng `weight(1.0f)`, không dải đen, không che nút Khởi động, không tràn sang cửa sổ media Samsung DeX.
+   - Chạm mở bố cục theo Session ID (`openSlot`), nhấn giữ chọn lại bố cục (`pickSlot`), lưu SharedPreferences `tigeriq_v44_quick_slots`.
+3. **Quy chuẩn Ký & Xuất bản APK duy nhất trên PC01:**
    - **Runner chính thức:** `D:\TigerIQ\Tools\sign_latest.cmd` (gọi `sign_latest.ps1`).
-   - Tự động tìm `*_aligned_TEST.apk` mới nhất, ký bằng `debug.keystore`, kiểm tra chữ ký/gói và kích hoạt task đồng bộ Drive ngầm `TigerIQ_UltraCar_Sync_Drive`.
-   - **CẤM:** Không gọi `apksigner` trực tiếp chứa tham số `--ks-pass pass:...`. Không tự viết script `.ps1` mới và không gọi `Register-ScheduledTask` (OpenAI server tự động chặn các pattern này).
-   - **Lưu ý chống tự khoá:** Sử dụng `D:\TigerIQ\Tools\sign_latest.cmd` là **bước chuẩn bắt buộc của hệ thống do Owner phê duyệt**, TUYỆT ĐỐI KHÔNG coi đây là hành vi vượt chặn hay lách kiểm soát an toàn.
+   - Tự động nhận chính xác candidate `*_aligned_TEST.apk`, ký bằng `debug.keystore`, kiểm tra chữ ký/gói và kích hoạt task interactive `TigerIQ_UltraCar_Sync_Drive`. Fail-closed dừng nếu signed đã tồn tại, không Remove-Item và không overwrite.
 
 ---
 # LIVE STATE OVERRIDE — 2026-10-15 — CHỐNG CHẶN SAI

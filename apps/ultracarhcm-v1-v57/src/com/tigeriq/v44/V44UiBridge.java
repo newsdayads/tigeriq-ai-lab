@@ -55,6 +55,55 @@ public final class V44UiBridge {
     private static boolean onSavedScreen = false;
     private static float grabOffsetX, grabOffsetY;
 
+    private static Object composeSlotState = null;
+
+    public static void registerComposeState(Object state) {
+        composeSlotState = state;
+    }
+
+    public static void notifyComposeStateChanged() {
+        if (composeSlotState != null && activity != null) {
+            activity.runOnUiThread(() -> {
+                try {
+                    Method m = composeSlotState.getClass().getMethod("setValue", Object.class);
+                    m.invoke(composeSlotState, System.currentTimeMillis());
+                } catch(Exception ignored){}
+            });
+        }
+    }
+
+    public static String getSlotLabel(int slot) {
+        if (slot < 0 || slot >= 5) return "";
+        if (activity != null) {
+            String sid = prefs().getString("slot_" + slot, "");
+            if (sid != null && !sid.trim().isEmpty()) {
+                for (Object s : sessions()) {
+                    if (sid.equals(id(s))) {
+                        String n = name(s);
+                        if (n != null && !n.trim().isEmpty()) return n;
+                        break;
+                    }
+                }
+                return sid;
+            }
+        }
+        return String.format(java.util.Locale.US, "+%02d", slot + 1);
+    }
+
+    public static boolean isSlotAssigned(int slot) {
+        if (slot < 0 || slot >= 5 || activity == null) return false;
+        String sid = prefs().getString("slot_" + slot, "");
+        return sid != null && !sid.trim().isEmpty();
+    }
+
+    public static void onSlotClick(int slot) {
+        openSlot(slot);
+    }
+
+    public static void onSlotLongClick(int slot) {
+        pickSlot(slot);
+    }
+
     private V44UiBridge(){}
 
     private static int dp(float value){
@@ -154,7 +203,7 @@ public final class V44UiBridge {
             quickBar.setLayoutParams(lp);
             quickBar.setVisibility(View.GONE);
 
-            overlay.addView(quickBar);
+            // overlay.addView(quickBar); // QuickBar overlay removed: 5 quick layout buttons now render inline in Compose (xo5.smali)
 
             for (int i = 0; i < 5; i++) {
                 slotIds[i] = prefs().getString("slot_" + i, "");
@@ -618,7 +667,7 @@ public final class V44UiBridge {
                 layoutName,
                 () -> {
                     prefs().edit().putString("slot_" + slot, sid).apply();
-                    slotIds[slot] = sid;
+                    slotIds[slot] = sid; notifyComposeStateChanged();
                     renderBar();
                     dialog.dismiss();
                     Toast.makeText(activity, "\u0110\u00e3 g\u00e1n \u00f4 " + (slot + 1) + ": " + layoutName, Toast.LENGTH_SHORT).show();
