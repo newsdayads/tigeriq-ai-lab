@@ -47,6 +47,10 @@ export function parseUiNodes(xml){
   }return out;
 }
 export function nodeCenter(node){const [x1,y1,x2,y2]=node.bounds;return {x:Math.floor((x1+x2)/2),y:Math.floor((y1+y2)/2)};}
+export function pickVisibleNode(nodes,needle,{contains=false}={}){
+  const matches=(Array.isArray(nodes)?nodes:[]).filter(x=>contains?(x.text||x.contentDesc).includes(needle):(x.text===needle||x.contentDesc===needle));
+  return matches.find(x=>Array.isArray(x.bounds)&&x.bounds[2]>x.bounds[0]&&x.bounds[3]>x.bounds[1])||null;
+}
 
 export function createS10RdcAdapter({adbPath=DEFAULT_ADB_PATH,stateRoot=DEFAULT_STATE_ROOT,previewHtmlPath=resolve(import.meta.dirname,'../preview/robot-oops-g06-field-test.html'),execFile=execFileAsync,now=Date.now}={}){
   let server=null,sessionId=null,currentIntent=null,previewUrl=null,reverseAdded=false,batteryOverrideOwned=false;
@@ -75,7 +79,17 @@ export function createS10RdcAdapter({adbPath=DEFAULT_ADB_PATH,stateRoot=DEFAULT_
     previewUrl='http://127.0.0.1:4173/';return {url:previewUrl,reachable:true};
   };
   const dumpUi=async serial=>{await adb(['-s',serial,'shell','uiautomator','dump','/sdcard/tigeriq-g06.xml']);return (await adb(['-s',serial,'exec-out','cat','/sdcard/tigeriq-g06.xml'])).stdout;};
-  const findNode=async(serial,needle,{contains=false,tries=12}={})=>{for(let i=0;i<tries;i++){const nodes=parseUiNodes(await dumpUi(serial));const n=nodes.find(x=>contains?(x.text||x.contentDesc).includes(needle):(x.text===needle||x.contentDesc===needle));if(n)return n;await sleep(300);}return null;};
+  const findNode=async(serial,needle,{contains=false,tries=12}={})=>{
+    for(let i=0;i<tries;i++){
+      const nodes=parseUiNodes(await dumpUi(serial));
+      const n=pickVisibleNode(nodes,needle,{contains});
+      if(n)return n;
+      const hidden=(nodes||[]).some(x=>contains?(x.text||x.contentDesc).includes(needle):(x.text===needle||x.contentDesc===needle));
+      if(hidden||i>0)await adb(['-s',serial,'shell','input','swipe','1000','850','1000','380','250']);
+      await sleep(300);
+    }
+    return null;
+  };
   const tapNode=async(serial,needle,opts)=>{const n=await findNode(serial,needle,opts);if(!n)throw Error('UI_NODE_NOT_FOUND:'+needle);const p=nodeCenter(n);await adb(['-s',serial,'shell','input','tap',String(p.x),String(p.y)]);await sleep(300);return p;};
   const resetOwnedBattery=async serial=>{
     if(!batteryOverrideOwned)return {ok:true,reset:false};
