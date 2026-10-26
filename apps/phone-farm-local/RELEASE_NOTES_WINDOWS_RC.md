@@ -3,7 +3,7 @@
 ## Đã nghiệm thu thực tế trên PC01
 
 - Windows host tự phục hồi Node backend sau khi child process bị kill.
-- 18 Android thật online; UI 18/18 card; screenshot 18/18; E2E 26.19 giây.
+- 19 Android thật online; UI 19/19 card; screenshot 19/19; E2E 26.19 giây.
 - Điều khiển HOME thật và đồng bộ nhiều máy hoạt động.
 - Clipboard PC → Android input hoạt động.
 - Realtime scrcpy nhận cấu hình FPS / kích thước / bitrate có whitelist; cấu hình ngoài whitelist bị HTTP 400.
