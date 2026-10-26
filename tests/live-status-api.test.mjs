@@ -359,7 +359,7 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(rankQueueRows(entries,[5290,5144]).filter(x=>x.eligibleNow)).toHaveLength(2);
     const fixed=rankQueueRows(applyCoreAcceptanceWaits(entries,waits,true),[5290,5144]);
     expect(fixed.map(x=>({id:x.number,eligible:x.eligibleNow}))).toEqual([
-      {id:5144,eligible:true},{id:5290,eligible:false},{id:5189,eligible:false},
+      {id:5144,eligible:true},{id:5189,eligible:false},{id:5290,eligible:false},
     ]);
     expect(fixed.find(x=>x.number===5290)).toMatchObject({
       status:'WAITING',coreAcceptancePending:true,
