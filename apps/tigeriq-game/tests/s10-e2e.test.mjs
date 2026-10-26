@@ -71,7 +71,7 @@ test('invalid serial/model and unavailable ADB fail closed',()=>{
   assert.equal(evaluateG06Preflight({...evidence,adbExecutableVerified:false}).code,'WAIT_ADB_UNAVAILABLE');
   assert.equal(evaluateG06Preflight({...evidence,deviceSerial:'FOREIGN'}).code,'WAIT_ADB_UNAVAILABLE');
 });
-test('preexisting 100% override is preserved; mutation still requires verified owner',()=>{
+test('100% battery baseline permits only scoped owned mutation',()=>{
   assert.equal(evaluateG06Preflight({...evidence,batteryOverrideDetected:true,
     batteryMutationRequested:false}).code,'READY_FOR_DEVICE_OWNER_CLAIM');
   assert.equal(evaluateG06Preflight({...evidence,batteryOverrideDetected:true,
@@ -80,6 +80,10 @@ test('preexisting 100% override is preserved; mutation still requires verified o
     batteryMutationRequested:true,batteryOverrideOwnerVerified:true}).code,'READY_FOR_DEVICE_OWNER_CLAIM');
   assert.equal(evaluateG06Preflight({...evidence,batteryOverrideDetected:true,
     batteryLevel:99,batteryMutationRequested:false}).code,'WAIT_BATTERY_OVERRIDE_OWNER');
+  assert.equal(evaluateG06Preflight({...evidence,batteryOverrideDetected:false,
+    batteryLevel:86,batteryMutationRequested:false}).code,'WAIT_BATTERY_OVERRIDE_OWNER');
+  assert.equal(evaluateG06Preflight({...evidence,batteryOverrideDetected:false,
+    batteryLevel:86,batteryMutationRequested:true}).code,'READY_FOR_DEVICE_OWNER_CLAIM');
 });
 test('reject SSO, external HTTP and preview lacking pinned SHA',()=>{
   for(const e of [{previewSsoRequired:true},{previewReachable:false},
