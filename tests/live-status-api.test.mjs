@@ -528,6 +528,25 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(closureAuditWatchNumbers([{...root,body:'- [x] R10 — checked NV102 #2949'}])).toEqual([]);
   });
 
+  it('flags closed/completed DONE=false in READY or WAIT phases without fabricating acceptance', () => {
+    const now=Date.parse('2026-10-27T03:00:00Z');
+    const base={
+      number:5243,title:'[P1][API DOCTOR] NV17 source repair',state:'closed',
+      state_reason:'completed',closed_at:'2026-10-24T00:23:04Z',
+      html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/5243',
+      body:'CURRENT_STATE=READY_AUTO_EXECUTION\nDONE=false\nPRIORITY=P1',
+    };
+    expect(parseRecentCompletedIssue(base,now)).toBeNull();
+    expect(parseRecentClosedIssue(base,now)).toMatchObject({
+      number:5243,status:'CLOSED_UNVERIFIED',closureConflict:true,completionVerified:false,
+      blocker:'DONE=false',progressPercent:null,
+    });
+    expect(parseRecentClosedIssue({...base,body:'CURRENT_STATE=WAIT_REAL_JOB\nDONE=false\nPRIORITY=P1'},now)?.closureConflict).toBe(true);
+    expect(parseRecentClosedIssue({...base,body:'CURRENT_STATE=READY_AUTO_EXECUTION\nDONE=true\nPRIORITY=P1'},now)?.closureConflict).toBe(false);
+    expect(parseRecentClosedIssue({...base,state_reason:'not_planned'},now)).toBeNull();
+    expect(parseRecentClosedIssue({...base,state_reason:'duplicate'},now)).toBeNull();
+  });
+
   it('does not treat historical closed issues as verified completions without V2 receipts', () => {
     const now=Date.parse('2026-09-25T00:00:00Z');
     expect(parseRecentCompletedIssue({
