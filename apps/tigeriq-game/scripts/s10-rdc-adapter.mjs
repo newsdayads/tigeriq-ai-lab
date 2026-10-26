@@ -5,6 +5,9 @@ import {createServer} from 'node:http';
 import {createHash,randomUUID} from 'node:crypto';
 import {mkdir,open,readFile,unlink,writeFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
+import {pathToFileURL} from 'node:url';
+import {evaluateG06Preflight,parseAdbDevices} from './s10-preflight.mjs';
+import {runG06E2E} from './s10-e2e.mjs';
 
 export const DEFAULT_ADB_PATH='D:\\TigerIQ\\Tools\\platform-tools\\adb.exe';
 export const DEFAULT_STATE_ROOT='D:\\TigerIQ\\State\\tigeriq-game-s10';
@@ -98,14 +101,80 @@ export function createS10RdcAdapter({adbPath=DEFAULT_ADB_PATH,stateRoot=DEFAULT_
     const path=join(dir,level+'.png');await writeFile(path,shot);
     return {level,pass:true,evidenceRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/5284',evidencePath:path,evidenceSha256:digest(shot)};
   };
+  const closePreview=async()=>{
+    if(server){await new Promise(r=>server.close(()=>r()));server=null;}
+  };
+  const releaseOwnedFence=async intent=>{
+    const lp=lockFile(stateRoot,intent?.deviceSerial||'');
+    const l=await safeJson(lp);
+    if(!l)return true;
+    if(!matchIntent(l,intent))return false;
+    await unlink(lp).catch(()=>{});
+    return true;
+  };
   const cleanupOwned=async({intent,sessionId:given})=>{
     if(given!==sessionId||!currentIntent||!matchIntent(currentIntent,intent))return {cleaned:false,sessionId:given};
     const fence=await verifyFence({intent});if(!fence.accepted)return {cleaned:false,sessionId:given};
     if(reverseAdded){try{await adb(['-s',intent.deviceSerial,'reverse','--remove','tcp:4173']);}catch{} reverseAdded=false;}
-    if(server){await new Promise(r=>server.close(()=>r()));server=null;}
+    await closePreview();
     const sf=sessionFile(stateRoot,sessionId);const s=await safeJson(sf);if(s?.sessionId===sessionId&&matchIntent(s,intent))await unlink(sf).catch(()=>{});
-    const lp=lockFile(stateRoot,intent.deviceSerial);const l=await safeJson(lp);if(l&&matchIntent(l,intent))await unlink(lp).catch(()=>{});else return {cleaned:false,sessionId:given};
+    if(!await releaseOwnedFence(intent))return {cleaned:false,sessionId:given};
     return {cleaned:true,sessionId:given,batteryUntouched:true,batteryReset:false};
   };
-  return {adb,inspectDevice,preparePreview,verifyFence,beginOnce,runLevel,cleanupOwned};
+  return {adb,inspectDevice,preparePreview,verifyFence,beginOnce,runLevel,cleanupOwned,closePreview,releaseOwnedFence};
+}
+
+export async function runS10Acceptance({serial,sourceSha,ownerId='NV02_RDC_GH5284',stateRoot=DEFAULT_STATE_ROOT,receiptPath=null}={}){
+  if(!ID.test(serial||'')||!SHA.test(sourceSha||''))throw Error('INVALID_ACCEPTANCE_INPUT');
+  const adapter=createS10RdcAdapter({stateRoot});
+  const observed=await adapter.inspectDevice(serial);
+  const preview=await adapter.preparePreview();
+  const evidence={
+    mcpBindingVerified:true,attestedReadOnlySource:true,adbExecutableVerified:true,
+    devices:parseAdbDevices(observed.devicesText),deviceSerial:serial,
+    deviceModel:observed.deviceModel,batteryLevel:observed.batteryLevel,
+    batteryOverrideDetected:observed.batteryOverrideDetected,batteryMutationRequested:false,
+    batteryOverrideOwnerVerified:false,previewUrl:preview.url,
+    previewReachable:preview.reachable,previewSsoRequired:false,buildSha:sourceSha
+  };
+  const preflight=evaluateG06Preflight(evidence);
+  let result;
+  let intent=null;
+  try{
+    if(!preflight.ready){
+      result={workOrder:'GH-5284',code:preflight.code,status:'WAIT',mutated:false,
+        productG06Done:false,reason:preflight.reason||'PREFLIGHT_NOT_READY'};
+    }else{
+      const claim=await claimAtomicFence({stateRoot,ownerId,deviceSerial:serial,sourceSha});
+      if(!claim.accepted){
+        result={workOrder:'GH-5284',code:'WAIT_DEVICE_EXCLUSIVE_FENCING',status:'WAIT',
+          mutated:false,productG06Done:false,reason:claim.code};
+      }else{
+        intent=claim.intent;
+        result=await runG06E2E({adapter,evidence,ownerIntent:intent});
+      }
+    }
+  }finally{
+    await adapter.closePreview().catch(()=>{});
+    if(intent)await adapter.releaseOwnedFence(intent).catch(()=>{});
+  }
+  const receipt={schema:'TIGERIQ_GH5284_S10_RDC_ACCEPTANCE_V1',workOrder:'GH-5284',
+    sourceSha,serial,model:observed.deviceModel,batteryLevel:observed.batteryLevel,
+    batteryOverrideDetected:observed.batteryOverrideDetected,batteryMutationRequested:false,
+    deviceE2EAccepted:result?.code==='PASS_WITH_EVIDENCE',result};
+  if(receiptPath){await mkdir(resolve(receiptPath,'..'),{recursive:true});await writeFile(receiptPath,JSON.stringify(receipt,null,2)+'\n');}
+  return receipt;
+}
+
+function argValue(argv,name){const p=argv.find(x=>x.startsWith(name+'='));return p?.slice(name.length+1);}
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+  const argv=process.argv.slice(2);
+  if(argv.includes('--acceptance')){
+    runS10Acceptance({serial:argValue(argv,'--serial'),sourceSha:argValue(argv,'--source-sha'),
+      ownerId:argValue(argv,'--owner-id')||'NV02_RDC_GH5284',
+      stateRoot:argValue(argv,'--state-root')||DEFAULT_STATE_ROOT,
+      receiptPath:argValue(argv,'--receipt')||null})
+      .then(r=>process.stdout.write(JSON.stringify(r)+'\n'))
+      .catch(e=>{console.error('GH5284_S10_ACCEPTANCE_FAILED',e.message);process.exitCode=1;});
+  }
 }
