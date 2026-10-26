@@ -422,6 +422,31 @@ export function githubSpecBlockedByActive(spec,activeMetadata=[]){
   });
 }
 
+export function githubObjectiveEncodedSourceRevision(objectiveId='',issueNumber=''){
+  const id=String(objectiveId||'').trim();
+  const number=String(issueNumber||'').trim();
+  if(!/^\d+$/.test(number))return '';
+  const rearm=id.match(new RegExp('^OBJ-GH-'+number+'-R([0-9a-f]{12})(?:-|$)','i'));
+  if(rearm)return String(rearm[1]||'').toLowerCase();
+  const fallback=id.match(new RegExp('^OBJ-GH-'+number+'-F\\d+-([0-9a-f]{12})(?:-|$)','i'));
+  return String(fallback?.[1]||'').toLowerCase();
+}
+
+export function githubActiveObjectiveSourceIsSuperseded(row={},spec={}){
+  const metadata=row?.metadata||{};
+  const issueNumber=String(spec?.number||'').trim();
+  const currentRevision=String(spec?.sourceRevision||'').trim().toLowerCase();
+  if(!issueNumber||!currentRevision||String(metadata?.issueNumber||'')!==issueNumber)return false;
+  const metadataRevision=String(metadata?.sourceRevision||'').trim().toLowerCase();
+  const parkedRevision=String(metadata?.managerAwaitingAcceptanceRevision||'').trim().toLowerCase();
+  const encodedRevision=githubObjectiveEncodedSourceRevision(row?.id,issueNumber);
+  return Boolean(
+    (metadataRevision&&metadataRevision!==currentRevision)
+    ||(parkedRevision&&parkedRevision!==currentRevision)
+    ||(encodedRevision&&encodedRevision!==currentRevision)
+  );
+}
+
 export async function reconcileSupersededActiveGithubObjective({pool,spec,activeRows=[]}={}){
   if(!pool||!spec)return {released:false,reason:'INVALID_INPUT'};
   const issueNumber=String(spec?.number||'').trim();
@@ -429,9 +454,7 @@ export async function reconcileSupersededActiveGithubObjective({pool,spec,active
   if(!issueNumber||!sourceRevision)return {released:false,reason:'SOURCE_IDENTITY_REQUIRED'};
   const candidate=(Array.isArray(activeRows)?activeRows:[]).find((row)=>{
     const metadata=row?.metadata||{};
-    if(String(metadata?.issueNumber||'')!==issueNumber)return false;
-    const activeRevision=String(metadata?.sourceRevision||'').trim();
-    if(!activeRevision||activeRevision===sourceRevision)return false;
+    if(!githubActiveObjectiveSourceIsSuperseded(row,spec))return false;
     return githubSpecBlockedByActive(spec,[metadata]);
   });
   if(!candidate?.id)return {released:false,reason:'NO_SUPERSEDED_ACTIVE_OBJECTIVE'};
