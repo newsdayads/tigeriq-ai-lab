@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // @ts-ignore — runtime JS module is intentionally tested without a declaration file.
-import { appendSkillContextToPrompt, loadSkillRegistry, matchAndLoadSkills, parseSkillRegistry } from '../apps/tigeriq-core/skill-loader.mjs';
+import { appendSkillContextToPrompt, focusedSkillRoutingText, loadSkillRegistry, matchAndLoadSkills, parseSkillRegistry } from '../apps/tigeriq-core/skill-loader.mjs';
 
 type Entry = { id: string; state: string; title?: string; version?: string; target?: string; summary?: string; triggers?: string };
 
@@ -88,6 +88,21 @@ test('only relevant ACTIVE skill loads', () => {
   } finally { f.cleanup(); }
 });
 
+test('focuses GitHub skill routing on the active step instead of historical body keywords', () => {
+  const text=[
+    'CURRENT_STEP=R05 — detect router defect and create coding child',
+    'NEXT_ACTION=Fix Core routing and source handoff',
+    'WORKSTREAM_ID=core-router',
+    'CAPABILITY=reasoning',
+    '',
+    'Historical Q11: screenshot visual layout accessibility UI verification',
+  ].join('\n');
+  const focused=focusedSkillRoutingText(text);
+  assert.match(focused,/CURRENT_STEP=R05/);
+  assert.match(focused,/Core routing/);
+  assert.doesNotMatch(focused,/screenshot|visual layout|accessibility/);
+});
+
 test('missing SKILL.md is skipped with evidence', () => {
   const f = fixture([{ id: 'missing-skill', state: 'ACTIVE', triggers: 'missing' }]);
   try {
@@ -133,7 +148,7 @@ test('manager prompt integration appends only matched ACTIVE skill context', () 
 
 test('Core manager invokes loader and appends matched skill context', () => {
   const core = readFileSync(join(process.cwd(), 'apps/tigeriq-core/core.mjs'), 'utf8');
-  assert.match(core, /matchAndLoadSkills\(goal\)/);
+  assert.match(core, /matchAndLoadSkills\(focusedSkillRoutingText\(goal\)\)/);
   assert.match(core, /appendSkillContextToPrompt\(basePrompt,skillContext\.contextBlock\)/);
   assert.match(core, /SKILL_REGISTRY_REJECTED/);
   assert.match(core, /SKILL_CONTEXT_LOADED/);
