@@ -3,8 +3,43 @@ import {readFileSync} from 'node:fs';
 import {test as vitestTest} from 'vitest';
 const test=(name,fn)=>vitestTest(name,async()=>{const t={test:async(_name,subfn)=>subfn(t)};return fn(t)});
 import assert from 'node:assert';
-import {appendEligibleCodingManagerBackups,activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertSourceWorkOrderExecutable,autonomousRepairCycle,codingCiRepairMode,codingObjectiveSourcePreflightDecision,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingManagerRankingInput,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,codingCoreHealthFailureKind,codingCoreHealthReadback,createCodingCoreHealthPump,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,rankCodingManagerResources,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,supervisorManagedCiRepair,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {appendEligibleCodingManagerBackups,activeProviderCooldownIds,applyCompactEdits,assertGenerationContextPaths,assertSourceWorkOrderExecutable,autonomousRepairCycle,codingCiRepairMode,codingObjectiveSourcePreflightDecision,enforceR12SelfHealCanaryChanges,assertLiveGithubContextFresh,assertPrOpenState,buildLocalFileContext,canonicalCodingJobTitle,canonicalWorkTitleFromObjective,classifyAiFailure,codingManagerRankingInput,codingMergeCommitTitle,codingOutputTokenLimit,codingPathsOverlap,cooldownWaitFailure,coreResourceStateEligible,codingCoreHealthFailureKind,codingCoreHealthReadback,createCodingCoreHealthPump,extractLiveGithubContextRefs,formatAuthoritativeGithubContext,gateFailureIssues,githubApiRateLimitBackoffUntil,invokeJsonWithFailover,isRefreshableCompactPatchError,isResourceTransientError,isVietnameseWorkTitle,loadAuthoritativeGithubContext,managerResourceFailurePlan,partitionGenerationFiles,preserveGenerationPrompt,providerCooldownPollPlan,rankCodingManagerResources,reviewReworkDecision,runReviewReworkLifecycle,recoverAfterCodingRestart,recoverStaleRunningJobs,armStaleRunningRuntimeCanary,settleStaleRunningRuntimeCanary,cleanupStaleRunningRuntimeCanary,requiresLiveGithubContext,resourceWaitPlan,restartRecoveryDecision,restartWaitingResourceDecision,staleRunningRecoveryDecision,runGateWithRepair,r12SelfHealCanaryApplies,shouldResumeExistingPr,shrinkAiPrompt,sourceIssueNumberFromObjective,supervisorManagedCiRepair,validateCompactEdits,validateManagerJobPaths,validateManagerJobTitle} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,parseJsonObject} from '../apps/tigeriq-coding-lane/policy.mjs';
+
+test('R12 self-heal canary artifact contract forces a real red initial diff and bounded green repair',()=>{
+  const objective=[
+    'TIGERIQ_JOB_V1',
+    'WORKSTREAM_ID=gh5144-r12-ci-self-heal-canary',
+    'RETRY_RESUME_TRIGGER=CI_GATES_FAILED_ON_FIRST_PR_HEAD',
+    'ALLOW_PATH_PREFIX=tests/r12-ci-self-heal-canary.test.mjs,vitest.config.ts',
+    '',
+    '## GOAL',
+    'prove one red-to-green cycle',
+  ].join('\n');
+  assert.strictEqual(r12SelfHealCanaryApplies(objective),true);
+  const initial=enforceR12SelfHealCanaryChanges({
+    objective,instruction:'initial generation',
+    changes:[{path:'vitest.config.ts',content:'unchanged candidate'},{path:'tests/r12-ci-self-heal-canary.test.mjs',content:'already passing'}],
+  });
+  assert.deepStrictEqual(initial.map(x=>x.path),['tests/r12-ci-self-heal-canary.test.mjs']);
+  assert.match(initial[0].content,/TIGERIQ_R12_EXPECTED_INITIAL_CI_FAILURE/);
+  assert.match(initial[0].content,/R12_REPAIR_PENDING/);
+  assert.match(initial[0].content,/expect\(true\)\.toBe\(false\)/);
+  assert.doesNotMatch(initial[0].content,/R12_REPAIR_COMPLETE/);
+
+  const repaired=enforceR12SelfHealCanaryChanges({
+    objective,instruction:'AUTONOMOUS_REPAIR_CYCLE=1\nPREVIOUS_FAILURE=CI_GATES_FAILED',
+    changes:[{path:'tests/r12-ci-self-heal-canary.test.mjs',content:'still failing'}],
+  });
+  assert.deepStrictEqual(repaired.map(x=>x.path),['tests/r12-ci-self-heal-canary.test.mjs']);
+  assert.match(repaired[0].content,/TIGERIQ_R12_AUTONOMOUS_REPAIR_PASS/);
+  assert.match(repaired[0].content,/R12_REPAIR_COMPLETE/);
+  assert.match(repaired[0].content,/expect\(true\)\.toBe\(true\)/);
+  assert.doesNotMatch(repaired[0].content,/R12_REPAIR_PENDING/);
+
+  const ordinary=[{path:'tests/ordinary.test.mjs',content:'x'}];
+  assert.deepStrictEqual(enforceR12SelfHealCanaryChanges({objective:'TIGERIQ_JOB_V1\nAUTO_QUEUE=INCLUDED',instruction:'AUTONOMOUS_REPAIR_CYCLE=1',changes:ordinary}),ordinary);
+});
 
 test('R12 supervisor-managed CI repair is opt-in and bounded to the current contract',()=>{
   const marked=[
