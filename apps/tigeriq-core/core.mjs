@@ -1342,12 +1342,18 @@ async function apiDoctorRepairLifecycleEvidence(existingHandoff){
   if(String(repairPr?.base?.ref||'')!=='main')return {ready:false,reason:'repair_pr_not_main',issueNumber,repairPrNumber};
   const repairRevision=apiDoctorSha(repairPr?.merge_commit_sha);
   if(!repairRevision)return {ready:false,reason:'repair_merge_revision_missing',issueNumber,repairPrNumber};
+  const declaredInstalledRevision=apiDoctorSha((issueBody.match(/^R04_INSTALLED_SHA=([a-f0-9]{40})$/m)||[])[1]);
   const verifiedOpenSourceRelease=openSourceCandidate
     &&apiDoctorSha((issueBody.match(/^SOURCE_MERGE_MAIN_SHA=([a-f0-9]{40})$/m)||[])[1])===repairRevision
-    &&apiDoctorSha((issueBody.match(/^R04_INSTALLED_SHA=([a-f0-9]{40})$/m)||[])[1])===repairRevision
+    &&Boolean(declaredInstalledRevision)
     &&Number.isFinite(Date.parse(String(repairPr?.merged_at||'')));
   if(openSourceCandidate&&!verifiedOpenSourceRelease)
     return {ready:false,reason:'open_source_release_provenance_mismatch',issueNumber,repairPrNumber};
+  if(verifiedOpenSourceRelease&&declaredInstalledRevision!==repairRevision){
+    const declaredCompare=await fetchJson(`${base}/compare/${repairRevision}...${declaredInstalledRevision}`,{headers},10000);
+    if(!['ahead','identical'].includes(String(declaredCompare?.status||'').toLowerCase()))
+      return {ready:false,reason:'open_source_release_declared_runtime_missing_repair',issueNumber,repairPrNumber,repairRevision,declaredInstalledRevision};
+  }
 
   const runtimeSourceState=readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE);
   const updaterState=readSelfAuditJsonState(CORE_RUNTIME_UPDATER_STATE);
