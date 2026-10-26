@@ -534,15 +534,15 @@ describe('TigerIQ Live Work Order projection', () => {
       number:5243,title:'[P1][API DOCTOR] NV17 source repair',state:'closed',
       state_reason:'completed',closed_at:'2026-10-24T00:23:04Z',
       html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/5243',
-      body:'CURRENT_STATE=READY_AUTO_EXECUTION\\nDONE=false\\nPRIORITY=P1',
+      body:'CURRENT_STATE=READY_AUTO_EXECUTION\nDONE=false\nPRIORITY=P1',
     };
     expect(parseRecentCompletedIssue(base,now)).toBeNull();
     expect(parseRecentClosedIssue(base,now)).toMatchObject({
       number:5243,status:'CLOSED_UNVERIFIED',closureConflict:true,completionVerified:false,
       blocker:'DONE=false',progressPercent:null,
     });
-    expect(parseRecentClosedIssue({...base,body:'CURRENT_STATE=WAIT_REAL_JOB\\nDONE=false\\nPRIORITY=P1'},now)?.closureConflict).toBe(true);
-    expect(parseRecentClosedIssue({...base,body:'CURRENT_STATE=READY_AUTO_EXECUTION\\nDONE=true\\nPRIORITY=P1'},now)?.closureConflict).toBe(false);
+    expect(parseRecentClosedIssue({...base,body:'CURRENT_STATE=WAIT_REAL_JOB\nDONE=false\nPRIORITY=P1'},now)?.closureConflict).toBe(true);
+    expect(parseRecentClosedIssue({...base,body:'CURRENT_STATE=READY_AUTO_EXECUTION\nDONE=true\nPRIORITY=P1'},now)?.closureConflict).toBe(false);
     expect(parseRecentClosedIssue({...base,state_reason:'not_planned'},now)).toBeNull();
     expect(parseRecentClosedIssue({...base,state_reason:'duplicate'},now)).toBeNull();
   });
