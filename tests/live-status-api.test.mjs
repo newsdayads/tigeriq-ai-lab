@@ -6,6 +6,7 @@ import {
   ghAllPages,
   fetchPc01Live,
   rankQueueRows,
+  applyCoreAcceptanceWaits,
   normalizeRuntimeWorkerActivity,
   parseIssueNumber,
   pullWorkOrderNumber,
@@ -345,6 +346,27 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(rows.slice(0, 2).map((row) => row.dispatchRank)).toEqual([1, 2]);
     expect(rows.slice(2).every((row) => row.dispatchRank === null && row.eligibleNow === false)).toBe(true);
     expect(rows.at(-1)).toMatchObject({ number: 1888, status: 'WAITING', waitReason: 'P0 chờ Owner/assignment' });
+  });
+
+  it('parks only live Core acceptance-blocked cards, not an open GitHub READY declaration',()=>{
+    const entries=[
+      {number:5290,status:'QUEUED',priority:'P1'},
+      {number:5144,status:'QUEUED',priority:'P1'},
+      {number:5189,status:'WAITING',priority:'P1'},
+    ];
+    const waits=[{issueNumber:5290,source:'core_objective_live',
+      state:'AWAITING_NATIVE_CHILD_ACCEPTANCE'}];
+    expect(rankQueueRows(entries,[5290,5144]).filter(x=>x.eligibleNow)).toHaveLength(2);
+    const fixed=rankQueueRows(applyCoreAcceptanceWaits(entries,waits,true),[5290,5144]);
+    expect(fixed.map(x=>({id:x.number,eligible:x.eligibleNow}))).toEqual([
+      {id:5144,eligible:true},{id:5189,eligible:false},{id:5290,eligible:false},
+    ]);
+    expect(fixed.find(x=>x.number===5290)).toMatchObject({
+      status:'WAITING',coreAcceptancePending:true,
+    });
+    expect(applyCoreAcceptanceWaits(entries,waits,false)).toEqual(entries);
+    expect(applyCoreAcceptanceWaits(entries,[{issueNumber:5290,source:'unverified',
+      state:'AWAITING_NATIVE_CHILD_ACCEPTANCE'}],true)).toEqual(entries);
   });
 
   it('honors only eligible and same-priority Owner queue ordering', () => {

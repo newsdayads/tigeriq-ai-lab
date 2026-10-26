@@ -2150,9 +2150,10 @@ function render(){
   }
   // Distinguish the complete work-card inventory from dispatchable work.
   const count=Number(snapshot?.openSummary?.dispatchReady);
+  const pending=Number(snapshot?.openSummary?.coreAcceptancePending);
   const queueFresh=!(snapshot?.staleAll||snapshot?.workProjection?.stale);
   $('workMeta').textContent=queueFresh&&Number.isInteger(count)&&count>=0
-    ?count+' ứng viên xét giao · '+rows.length+' mục đang xem'
+    ?count+' ứng viên xét giao · '+(Number.isInteger(pending)&&pending>0?pending+' chờ nghiệm thu Core · ':'')+rows.length+' mục đang xem'
     :rows.length+' mục · quyền nhận việc chưa xác minh';
   const box=$('workList');
   TigerIQWorkCenter.renderCards(box,rows,{fresh:!(snapshot?.staleAll||snapshot?.workProjection?.stale),sourceGate:true,onOpen:(row,element)=>openDrawer(row,element)});
