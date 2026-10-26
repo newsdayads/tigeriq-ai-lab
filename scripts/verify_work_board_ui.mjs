@@ -128,6 +128,8 @@ assert.match(liveApi, /parseOwnerBacklogOrder/);
 assert.match(liveApi, /ownerBacklogOrder,/);
 assert.match(liveApi, /dispatchReady: rankedQueue\.filter/);
 assert.match(publicView, /ứng viên xét giao/);
+assert.match(publicView, /chờ nghiệm thu Core/);
+assert.match(liveApi, /coreAcceptancePending: rankedQueue.filter/);
 assert.match(publicView, /const liveRanks=new Map/);
 assert.match(publicView, /item\.eligibleNow===true/);
 assert.match(publicView, /Number\(item\.dispatchRank\)/);
