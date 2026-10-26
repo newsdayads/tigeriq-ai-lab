@@ -492,6 +492,10 @@ describe('#1255 NV10 API Doctor policy',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     expect(core).toContain('const openSourceCandidate=');
     expect(core).toContain('const verifiedOpenSourceRelease=openSourceCandidate');
+    expect(core).toContain('const declaredInstalledRevision=apiDoctorSha(');
+    expect(core).not.toContain("apiDoctorSha((issueBody.match(/^R04_INSTALLED_SHA=([a-f0-9]{40})$/m)||[])[1])===repairRevision");
+    expect(core).toContain("${base}/compare/${repairRevision}...${declaredInstalledRevision}");
+    expect(core).toContain("open_source_release_declared_runtime_missing_repair");
     expect(core).toContain('repairPr?.merge_commit_sha');
     expect(core).toContain('repairPr.merged_at');
     expect(core).toContain('apiDoctorOwnerProxyRepairPrEvidence(');
