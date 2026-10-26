@@ -1407,7 +1407,7 @@ async function apiDoctorOpenRepairIssueBySignature(signature){
   }
 }
 async function githubCreateApiDoctorRepairIssue(spec){
-  if(process.env.TIGERIQ_ENABLE_AUTO_ISSUE_CREATION !== 'true'){
+  if(globalThis.process?.env?.TIGERIQ_DISABLE_AUTO_ISSUE_CREATION === 'true'){
     return {number:null,html_url:null,skipped:true};
   }
   if(!GITHUB_TOKEN)throw Object.assign(new Error('GITHUB_TOKEN_MISSING'),{kind:'credential'});
@@ -4075,7 +4075,7 @@ async function persistSelfAuditResult(result,store=pool,{nowMs=Date.now(),cooldo
 }
 
 async function githubCreateAutonomousRcaIssue(spec){
-  if(process.env.TIGERIQ_ENABLE_AUTO_ISSUE_CREATION !== 'true'){
+  if(globalThis.process?.env?.TIGERIQ_DISABLE_AUTO_ISSUE_CREATION === 'true'){
     return {number:null,html_url:null,skipped:true};
   }
   if(!GITHUB_TOKEN)throw Object.assign(new Error('GITHUB_TOKEN_MISSING'),{kind:'credential'});
@@ -4184,7 +4184,7 @@ async function materializeAutonomousRca({store=pool}={}){
     {candidates:0,workOrders:0,ownerExceptions:0,observeOnly:0,deduped:0,blocked:0,skipped:'ANOTHER_CORE_OWNS_RCA_LOCK'};
 }
 async function materializeAutonomousRcaUnlocked({store=pool}={}){
-  if(process.env.TIGERIQ_ENABLE_AUTO_ISSUE_CREATION !== 'true'){
+  if(globalThis.process?.env?.TIGERIQ_DISABLE_AUTO_ISSUE_CREATION === 'true'){
     return {candidates:0,workOrders:0,ownerExceptions:0,observeOnly:0,deduped:0,blocked:0,skipped:'AUTO_ISSUE_CREATION_DISABLED'};
   }
   const rows=(await store.query(`select signature,contract_id,severity,status,count,evidence
