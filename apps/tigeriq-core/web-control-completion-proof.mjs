@@ -14,7 +14,7 @@ export function structuredProgressConsistency(body,steps=[]){
   const number=(key)=>{
     const value=val(body,key);
     const parsed=Number(value);
-    return /^(0|[1-9]\\d*)$/.test(value)&&Number.isSafeInteger(parsed)?parsed:null;
+    return /^(0|[1-9]\d*)$/.test(value)&&Number.isSafeInteger(parsed)?parsed:null;
   };
   const declaredCompletedSteps=number('PROGRESS_COMPLETED');
   const declaredTotalSteps=number('PROGRESS_TOTAL');
