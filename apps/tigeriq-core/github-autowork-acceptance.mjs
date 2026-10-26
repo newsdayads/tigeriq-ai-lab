@@ -43,6 +43,36 @@ export function reinforceGithubAutoworkPrompt({ kind = '', resourceScope = '', p
  * Source quality gate, not an owner/product acceptance receipt. Never publish
  * the model's response or claim an independently verified Q01-Q14 finding.
  */
+export function githubAutoworkAcceptanceRetryEligible({ kind = '', resourceScope = '', result = null } = {}) {
+  if (kind !== 'github_api_autowork' || !R04_Q01_Q14_SCOPE.test(String(resourceScope))) return false;
+  if (!result || result.accepted !== false) return false;
+  return ['GITHUB_AUTOWORK_Q_REPORT_INCOMPLETE', 'GITHUB_AUTOWORK_Q_REPORT_CONTRACT_INCOMPLETE'].includes(String(result.code || ''));
+}
+
+export function githubAutoworkAcceptanceRetryPrompt(originalPrompt = '', result = null) {
+  const prompt = typeof originalPrompt === 'string' ? originalPrompt : '';
+  const missingQuestions = Array.isArray(result?.missingQuestions) ? result.missingQuestions : [];
+  const missingFields = result?.missingFields && typeof result.missingFields === 'object' ? result.missingFields : {};
+  const detail = REQUIRED_QUESTION_IDS.map(id => {
+    const fields = Array.isArray(missingFields[id]) ? missingFields[id] : [];
+    if (!missingQuestions.includes(id) && !fields.length) return null;
+    return fields.length ? id + '=' + fields.join(',') : id + '=section';
+  }).filter(Boolean);
+  return [
+    prompt,
+    '',
+    '[NATIVE R04 CORRECTION RETRY — ONE BOUNDED ATTEMPT]',
+    'The previous answer was rejected by the deterministic R04 output contract.',
+    'Return a COMPLETE replacement report, not a patch or commentary.',
+    'Preserve exactly Q01 through Q14 and fill all six required fields in every section.',
+    'Every REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP value must name a source actually present in the supplied task context and include its observed timestamp.',
+    'Never invent or substitute the current time. If the task context has no factual source for a claim, keep the observation narrow and use an actually observed source that supports that narrow observation.',
+    'CONFIDENCE must be exactly HIGH, MEDIUM, LOW or UNKNOWN.',
+    detail.length ? 'Previous deterministic gaps: ' + detail.join('; ') : 'Previous deterministic gap: report structure incomplete.',
+    'This is the only bounded correction retry. If evidence is insufficient, fail closed rather than fabricate.',
+  ].join('\n');
+}
+
 export function evaluateGithubAutoworkOutput({
   kind = '', text = '', resourceScope = '', employeeId = '', resourceId = '',
 } = {}) {

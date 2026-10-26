@@ -1,4 +1,4 @@
-import { evaluateGithubAutoworkOutput, reinforceGithubAutoworkPrompt } from './github-autowork-acceptance.mjs';
+import { evaluateGithubAutoworkOutput, reinforceGithubAutoworkPrompt, githubAutoworkAcceptanceRetryEligible, githubAutoworkAcceptanceRetryPrompt } from './github-autowork-acceptance.mjs';
 import { executeFencedPaperclipBrokerInstall, executeFencedPaperclipHealth } from './paperclip-direct-lease.mjs';
 import { readFencedPaperclipHealth } from '../openclaw-tigeriq-runtime/paperclip-lab.mjs';
 import { inspectPaperclipBackupProvenance } from '../openclaw-tigeriq-runtime/paperclip-backup-provenance.mjs';
@@ -2033,15 +2033,36 @@ async function runJob(j) {
     const stabilityAllowlist=stabilityV2EmployeeAllowlist(j.objective_metadata);
     const employeeAllowlist=j.kind==='github_api_autowork'?githubAutoworkEmployeeAllowlist(j,CORE_AUTOWORK_EMPLOYEES):stabilityAllowlist;
     let routed=await invokeRouted(routedPrompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:effectiveCoreJobRoutingProfile(j),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist,validateText,compiledPacket});
-    const autoworkOutput=evaluateGithubAutoworkOutput({
+    let autoworkOutput=evaluateGithubAutoworkOutput({
       kind:j.kind,text:routed.text,resourceScope:j.objective_metadata?.resourceScope||'',
       employeeId:routed.resource?.id,resourceId:routed.resource?.resourceId,
     });
+    if(autoworkOutput.applicable&&!autoworkOutput.accepted&&githubAutoworkAcceptanceRetryEligible({
+      kind:j.kind,resourceScope:j.objective_metadata?.resourceScope||'',result:autoworkOutput,
+    })){
+      await event('GITHUB_AUTOWORK_ACCEPTANCE_RETRY',{
+        objectiveId:j.objective_id,jobId:j.id,code:autoworkOutput.code,
+        employeeId:routed.resource?.id||null,resourceId:routed.resource?.resourceId||null,
+        missingQuestions:autoworkOutput.missingQuestions||[],missingFields:autoworkOutput.missingFields||{},
+      });
+      const correctionPrompt=githubAutoworkAcceptanceRetryPrompt(routedPrompt,autoworkOutput);
+      const originalEmployeeId=routed.resource?.id||null;
+      routed=await invokeRouted(correctionPrompt,j.capability,j.id,1,{
+        taskKind:j.kind||'ai',profile:effectiveCoreJobRoutingProfile(j),reviewerResourceIds,
+        preferredEmployeeId:originalEmployeeId||j.objective_metadata?.targetWorker||null,
+        employeeAllowlist:originalEmployeeId?[originalEmployeeId]:employeeAllowlist,
+        validateText,compiledPacket,
+      });
+      autoworkOutput=evaluateGithubAutoworkOutput({
+        kind:j.kind,text:routed.text,resourceScope:j.objective_metadata?.resourceScope||'',
+        employeeId:routed.resource?.id,resourceId:routed.resource?.resourceId,
+      });
+    }
     if(autoworkOutput.applicable&&!autoworkOutput.accepted){
       await event('GITHUB_AUTOWORK_OUTPUT_REJECTED',{
         objectiveId:j.objective_id,jobId:j.id,code:autoworkOutput.code,
         employeeId:routed.resource?.id||null,resourceId:routed.resource?.resourceId||null,
-        missingQuestions:autoworkOutput.missingQuestions||[],
+        missingQuestions:autoworkOutput.missingQuestions||[],missingFields:autoworkOutput.missingFields||{},
       });
       throw Object.assign(new Error(autoworkOutput.code),{kind:'invalid_response'});
     }
