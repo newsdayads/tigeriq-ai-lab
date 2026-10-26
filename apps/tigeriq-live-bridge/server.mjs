@@ -130,6 +130,25 @@ function extractCoreUiAssignments(core) {
 }
 
 
+// Project only the stable, Core-authored parked state; it is NOT a worker
+// heartbeat or proof that a GitHub checklist was accepted.
+function extractCoreAcceptanceWaits(core) {
+  if (core?.ok !== true || !Array.isArray(core.objectives)) return [];
+  const out=[],seen=new Set();
+  for (const row of core.objectives.slice(0,100)) {
+    const meta=row?.metadata||{};
+    const issue=Number(meta.issueNumber);
+    if (row?.status !== 'active' || meta.source !== 'github'
+       || !String(meta.managerAwaitingAcceptanceRevision||'').trim()
+       || !Number.isSafeInteger(issue)||issue<1||seen.has(issue)) continue;
+    seen.add(issue);
+    out.push({issueNumber:issue,source:'core_objective_live',
+      state:'AWAITING_NATIVE_CHILD_ACCEPTANCE'});
+    if(out.length>=40)break;
+  }
+  return out;
+}
+
 function extractCoreMobileWorkers(core, generatedAt = new Date().toISOString()) {
   // Mobile Worker presence is not a Core API/UI job and never proves Android task acceptance.
   if (core?.ok !== true || !Array.isArray(core.mobileWorkers)) return [];
@@ -171,7 +190,7 @@ async function snapshot(){
   for(const id of ['NV02','NV03','NV04'])workers.push(uiWorker(id,uiController,uiOk));
   const rank={working:0,waiting:1,blocked:2,unknown:3,idle:4,paused:5};workers.sort((a,b)=>(rank[a.state]??9)-(rank[b.state]??9)||a.employeeId.localeCompare(b.employeeId));
   const summary={working:workers.filter(w=>w.state==='working').length,waiting:workers.filter(w=>w.state==='waiting').length,blocked:workers.filter(w=>w.state==='blocked').length,idle:workers.filter(w=>w.state==='idle').length,unknown:workers.filter(w=>w.state==='unknown').length,total:workers.length};
-  return {ok:PSTACK_BRIDGE_READ_ONLY?false:true,generatedAt,refreshSeconds:5,authority:PSTACK_BRIDGE_READ_ONLY?'PSTACK_SANDBOX_NONAUTHORITATIVE':'PC01 live runtime',source:{core:!!core,coding:!!coding,uiAutopilot:uiOk,uiController:!!uiController,coreError,codingError,uiError},summary,workers,coreUiAssignments:extractCoreUiAssignments(core),mobileWorkers:extractCoreMobileWorkers(core,generatedAt)};
+  return {ok:PSTACK_BRIDGE_READ_ONLY?false:true,generatedAt,refreshSeconds:5,authority:PSTACK_BRIDGE_READ_ONLY?'PSTACK_SANDBOX_NONAUTHORITATIVE':'PC01 live runtime',source:{core:!!core,coding:!!coding,uiAutopilot:uiOk,uiController:!!uiController,coreError,codingError,uiError},summary,workers,coreUiAssignments:extractCoreUiAssignments(core),coreAcceptanceWaits:extractCoreAcceptanceWaits(core),mobileWorkers:extractCoreMobileWorkers(core,generatedAt)};
 }
 async function readRaw(req,max=512*1024){
   const chunks=[];let size=0;
