@@ -64,6 +64,7 @@ export default defineConfig({
       'tests/pc-operator-mcp.test.mjs',
       'tests/pc-operator-mcp-nv06-negative-receipts.test.mjs',
       'tests/pc-operator-mcp-paperclip-completed-step.test.mjs',
+      'tests/r12-ci-self-heal-canary.test.mjs',
     ],
     environment: 'node'
   }
