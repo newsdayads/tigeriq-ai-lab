@@ -91,6 +91,15 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(nv17WorkOrder.body).toContain('MUTATION_OWNER=CORE_DYNAMIC_LEASE');
   });
 
+  it('handles NV11 groq provider source-contract execution blocking and validation',()=>{
+    const resourceId='res:groq:openai-gpt-oss-120b:default:core';
+    const nv11WorkOrder=buildApiDoctorRepairWorkOrder({employeeId:'NV11',provider:'groq',resourceId,failureClass:'source_contract'});
+    expect(nv11WorkOrder.resourceScope).toBe('API_DOCTOR_SOURCE_REPAIR_NV11_GROQ');
+    expect(nv11WorkOrder.body).toContain(`API_DOCTOR_RESOURCE_ID=${resourceId}`);
+    expect(nv11WorkOrder.signature).toContain('NV11|groq|source_contract');
+    expect(nv11WorkOrder.body).toContain('MUTATION_OWNER=CORE_DYNAMIC_LEASE');
+  });
+
   it('adopts an idempotent, PC01-scoped one-time real NV09 JSON canary without a shell',()=>{
     const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     const start=source.indexOf('async function owner4595CanaryOnce(){');
