@@ -1,0 +1,111 @@
+/** GH-5284: host-native RDC adapter. Direct adb.exe only, no shell, no battery mutation. */
+import {execFile as execFileCb} from 'node:child_process';
+import {promisify} from 'node:util';
+import {createServer} from 'node:http';
+import {createHash,randomUUID} from 'node:crypto';
+import {mkdir,open,readFile,unlink,writeFile} from 'node:fs/promises';
+import {join,resolve} from 'node:path';
+
+export const DEFAULT_ADB_PATH='D:\\TigerIQ\\Tools\\platform-tools\\adb.exe';
+export const DEFAULT_STATE_ROOT='D:\\TigerIQ\\State\\tigeriq-game-s10';
+const execFileAsync=promisify(execFileCb);
+const ID=/^[A-Za-z0-9._:-]{8,128}$/;
+const SHA=/^[0-9a-f]{40}$/;
+const answers=Object.freeze({L01:'Đi tới',L02:'Quay trái',L03:'Quay phải',L04:'Đi tới',L05:'Quay trái'});
+const names=Object.freeze({L01:'1. Lạc hướng',L02:'2. Rẽ sai',L03:'3. Bấm nhầm',L04:'4. Giao gói hàng',L05:'5. Đường vòng'});
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const digest=b=>createHash('sha256').update(b).digest('hex');
+const lockFile=(root,serial)=>join(root,'locks',serial+'.json');
+const sessionFile=(root,id)=>join(root,'sessions',id+'.json');
+const safeJson=async p=>{try{return JSON.parse(await readFile(p,'utf8'));}catch{return null;}};
+const matchIntent=(a,b)=>['ownerId','leaseId','fencingToken','resourceScope'].every(k=>a?.[k]===b?.[k]);
+const publicLease=x=>x?{ownerId:x.ownerId,workOrder:x.workOrder,resourceScope:x.resourceScope,deviceSerial:x.deviceSerial,leaseId:x.leaseId,leaseState:x.leaseState,expiresAtMs:x.expiresAtMs}:null;
+
+export async function claimAtomicFence({stateRoot=DEFAULT_STATE_ROOT,ownerId,workOrder='GH-5284',resourceScope='TIGERIQ_GAME_G06_S10_E2E_HARNESS',deviceSerial,sourceSha,ttlMs=300000,now=Date.now}={}){
+  if(!ID.test(ownerId||'')||!ID.test(deviceSerial||'')||!SHA.test(sourceSha||''))throw Error('INVALID_FENCE_INPUT');
+  await mkdir(join(stateRoot,'locks'),{recursive:true});
+  await mkdir(join(stateRoot,'sessions'),{recursive:true});
+  const path=lockFile(stateRoot,deviceSerial);
+  const leaseId='LEASE_'+randomUUID().replaceAll('-','');
+  const fencingToken='FENCE_'+randomUUID().replaceAll('-','');
+  const value={schema:'TIGERIQ_S10_DEVICE_FENCE_V1',ownerId,workOrder,resourceScope,deviceSerial,sourceSha,leaseId,fencingToken,leaseState:'active',createdAtMs:now(),expiresAtMs:now()+ttlMs};
+  let h;
+  try{h=await open(path,'wx');await h.writeFile(JSON.stringify(value,null,2)+'\n');await h.close();}
+  catch(e){try{await h?.close();}catch{} if(e?.code==='EEXIST'){const existing=await safeJson(path);return {accepted:false,code:'DEVICE_ALREADY_FENCED',existing:publicLease(existing),path};} throw e;}
+  return {accepted:true,intent:{ownerId,workOrder,resourceScope,deviceSerial,sourceSha,leaseId,fencingToken},lease:publicLease(value),path};
+}
+
+export function parseUiNodes(xml){
+  if(typeof xml!=='string')return [];
+  const out=[];for(const tag of xml.match(/<node\b[^>]*>/g)||[]){
+    const attrs={};for(const m of tag.matchAll(/([A-Za-z0-9_-]+)="([^"]*)"/g))attrs[m[1]]=m[2];
+    const b=/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(attrs.bounds||'');
+    if(b)out.push({text:attrs.text||'',contentDesc:attrs['content-desc']||'',clickable:attrs.clickable==='true',bounds:b.slice(1).map(Number)});
+  }return out;
+}
+export function nodeCenter(node){const [x1,y1,x2,y2]=node.bounds;return {x:Math.floor((x1+x2)/2),y:Math.floor((y1+y2)/2)};}
+
+export function createS10RdcAdapter({adbPath=DEFAULT_ADB_PATH,stateRoot=DEFAULT_STATE_ROOT,previewHtmlPath=resolve(import.meta.dirname,'../preview/robot-oops-g06-field-test.html'),execFile=execFileAsync,now=Date.now}={}){
+  let server=null,sessionId=null,currentIntent=null,previewUrl=null,reverseAdded=false;
+  const adb=async(args,{binary=false,timeout=15000}={})=>{
+    const r=await execFile(adbPath,args,{windowsHide:true,timeout,maxBuffer:8*1024*1024,encoding:binary?null:'utf8',shell:false});
+    return {stdout:r.stdout,stderr:r.stderr};
+  };
+  const verifyFence=async({intent})=>{
+    const row=await safeJson(lockFile(stateRoot,intent?.deviceSerial||''));
+    const ok=row?.schema==='TIGERIQ_S10_DEVICE_FENCE_V1'&&row.leaseState==='active'&&matchIntent(row,intent)&&row.deviceSerial===intent.deviceSerial&&row.expiresAtMs>now();
+    return ok?{accepted:true,leaseState:'active',scope:row.resourceScope,deviceSerial:row.deviceSerial,ownerId:row.ownerId,leaseId:row.leaseId,fencingToken:row.fencingToken,expiresAtMs:row.expiresAtMs}:{accepted:false};
+  };
+  const inspectDevice=async serial=>{
+    const devices=await adb(['devices','-l']);
+    const model=(await adb(['-s',serial,'shell','getprop','ro.product.model'])).stdout.trim();
+    const battery=(await adb(['-s',serial,'shell','dumpsys','battery'])).stdout;
+    const state=(devices.stdout.split(/\r?\n/).find(x=>x.trim().startsWith(serial+' '))||'').includes(' device')?'device':'unavailable';
+    const level=Number(/(?:^|\n)\s*level:\s*(\d{1,3})\b/i.exec(battery)?.[1]);
+    return {devicesText:devices.stdout,deviceSerial:serial,deviceState:state,deviceModel:model,batteryText:battery,batteryLevel:Number.isInteger(level)?level:null,batteryOverrideDetected:/UPDATES\s+STOPPED/i.test(battery)};
+  };
+  const preparePreview=async()=>{
+    if(server)return {url:previewUrl,reachable:true};
+    const html=await readFile(previewHtmlPath);
+    server=createServer((req,res)=>{if(req.url==='/healthz'){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({previewReady:true,production:false})+'\n');return;} if(req.url!=='/'){res.writeHead(404);res.end();return;} res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store'});res.end(html);});
+    await new Promise((ok,bad)=>{server.once('error',bad);server.listen(4173,'127.0.0.1',ok);});
+    previewUrl='http://127.0.0.1:4173/';return {url:previewUrl,reachable:true};
+  };
+  const dumpUi=async serial=>{await adb(['-s',serial,'shell','uiautomator','dump','/sdcard/tigeriq-g06.xml']);return (await adb(['-s',serial,'exec-out','cat','/sdcard/tigeriq-g06.xml'])).stdout;};
+  const findNode=async(serial,needle,{contains=false,tries=12}={})=>{for(let i=0;i<tries;i++){const nodes=parseUiNodes(await dumpUi(serial));const n=nodes.find(x=>contains?(x.text||x.contentDesc).includes(needle):(x.text===needle||x.contentDesc===needle));if(n)return n;await sleep(300);}return null;};
+  const tapNode=async(serial,needle,opts)=>{const n=await findNode(serial,needle,opts);if(!n)throw Error('UI_NODE_NOT_FOUND:'+needle);const p=nodeCenter(n);await adb(['-s',serial,'shell','input','tap',String(p.x),String(p.y)]);await sleep(300);return p;};
+  const beginOnce=async({intent,deviceSerial,sourceSha})=>{
+    if(!(await verifyFence({intent})).accepted)return {accepted:false};
+    if(sourceSha!==intent.sourceSha||deviceSerial!==intent.deviceSerial)return {accepted:false};
+    currentIntent=intent;sessionId='S10SESSION_'+randomUUID().replaceAll('-','').slice(0,24);
+    const p=sessionFile(stateRoot,sessionId);const h=await open(p,'wx');await h.writeFile(JSON.stringify({schema:'TIGERIQ_S10_SESSION_V1',sessionId,...intent,sourceSha})+'\n');await h.close();
+    await preparePreview();
+    await adb(['-s',deviceSerial,'reverse','tcp:4173','tcp:4173']);reverseAdded=true;
+    await adb(['-s',deviceSerial,'shell','am','start','-a','android.intent.action.VIEW','-d',previewUrl]);await sleep(1200);
+    return {accepted:true,fresh:true,sessionId,ownerId:intent.ownerId,leaseId:intent.leaseId,fencingToken:intent.fencingToken,sourceSha};
+  };
+  const runLevel=async({level,intent,sessionId:given})=>{
+    if(given!==sessionId||!(await verifyFence({intent})).accepted)throw Error('FENCE_LOST');
+    const serial=intent.deviceSerial;
+    const home=await findNode(serial,'Chọn màn',{tries:2});if(home){const p=nodeCenter(home);await adb(['-s',serial,'shell','input','tap',String(p.x),String(p.y)]);await sleep(300);}
+    await tapNode(serial,names[level]);
+    await tapNode(serial,'CÓ THỂ SỬA',{contains:true});
+    await tapNode(serial,answers[level]);
+    await tapNode(serial,'CHẠY');
+    const pass=await findNode(serial,'ĐÃ GIÚP ROBOT!',{tries:14});if(!pass)throw Error('LEVEL_NOT_ACCEPTED:'+level);
+    const dir=join(stateRoot,'evidence',sessionId);await mkdir(dir,{recursive:true});
+    const shot=(await adb(['-s',serial,'exec-out','screencap','-p'],{binary:true,timeout:20000})).stdout;
+    const path=join(dir,level+'.png');await writeFile(path,shot);
+    return {level,pass:true,evidenceRef:'https://github.com/newsdayads/tigeriq-ai-lab/issues/5284',evidencePath:path,evidenceSha256:digest(shot)};
+  };
+  const cleanupOwned=async({intent,sessionId:given})=>{
+    if(given!==sessionId||!currentIntent||!matchIntent(currentIntent,intent))return {cleaned:false,sessionId:given};
+    const fence=await verifyFence({intent});if(!fence.accepted)return {cleaned:false,sessionId:given};
+    if(reverseAdded){try{await adb(['-s',intent.deviceSerial,'reverse','--remove','tcp:4173']);}catch{} reverseAdded=false;}
+    if(server){await new Promise(r=>server.close(()=>r()));server=null;}
+    const sf=sessionFile(stateRoot,sessionId);const s=await safeJson(sf);if(s?.sessionId===sessionId&&matchIntent(s,intent))await unlink(sf).catch(()=>{});
+    const lp=lockFile(stateRoot,intent.deviceSerial);const l=await safeJson(lp);if(l&&matchIntent(l,intent))await unlink(lp).catch(()=>{});else return {cleaned:false,sessionId:given};
+    return {cleaned:true,sessionId:given,batteryUntouched:true,batteryReset:false};
+  };
+  return {adb,inspectDevice,preparePreview,verifyFence,beginOnce,runLevel,cleanupOwned};
+}
