@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateGithubAutoworkOutput, reinforceGithubAutoworkPrompt } from '../apps/tigeriq-core/github-autowork-acceptance.mjs';
+import { evaluateGithubAutoworkOutput, reinforceGithubAutoworkPrompt, githubAutoworkAcceptanceRetryEligible, githubAutoworkAcceptanceRetryPrompt } from '../apps/tigeriq-core/github-autowork-acceptance.mjs';
 
 const base = {
   kind: 'github_api_autowork',
@@ -153,5 +153,40 @@ describe('github_api_autowork output acceptance (fail closed)', () => {
   it('requires real new output rather than relying on a previous done status', () => {
     const result = evaluateGithubAutoworkOutput({ ...base, text: undefined });
     expect(result.code).toBe('GITHUB_AUTOWORK_OUTPUT_EMPTY');
+  });
+});
+
+describe('native R04 bounded acceptance correction retry', () => {
+  it('retries only deterministic canonical R04 structure failures', () => {
+    const rejected=evaluateGithubAutoworkOutput({
+      ...base,
+      text: fullAnswer.replace('REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: Synthetic test fixture 2026-10-24T05:07:51Z.',
+        'REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: UNKNOWN'),
+    });
+    expect(githubAutoworkAcceptanceRetryEligible({
+      kind:base.kind,resourceScope:base.resourceScope,result:rejected,
+    })).toBe(true);
+    expect(githubAutoworkAcceptanceRetryEligible({
+      kind:base.kind,resourceScope:'OTHER_SCOPE',result:rejected,
+    })).toBe(false);
+    expect(githubAutoworkAcceptanceRetryEligible({
+      kind:base.kind,resourceScope:base.resourceScope,
+      result:{applicable:true,accepted:false,code:'GITHUB_AUTOWORK_WORKER_UNVERIFIED'},
+    })).toBe(false);
+  });
+
+  it('builds a complete-replacement correction prompt without fabricating evidence', () => {
+    const rejected=evaluateGithubAutoworkOutput({
+      ...base,
+      text: fullAnswer.replace('REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: Synthetic test fixture 2026-10-24T05:07:51Z.',
+        'REAL_EVIDENCE_SOURCE_WITH_TIMESTAMP: UNKNOWN'),
+    });
+    const prompt=githubAutoworkAcceptanceRetryPrompt('ORIGINAL',rejected);
+    expect(prompt.startsWith('ORIGINAL')).toBe(true);
+    expect(prompt).toContain('ONE BOUNDED ATTEMPT');
+    expect(prompt).toContain('COMPLETE replacement report');
+    expect(prompt).toContain('Q01=evidenceTimestamp');
+    expect(prompt).toContain('Never invent');
+    expect(prompt).not.toContain('Synthetic test fixture');
   });
 });
