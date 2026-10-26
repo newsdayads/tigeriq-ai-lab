@@ -10,8 +10,13 @@ $nodeLicenseSha='148EACF7863EF4329224A29398623077200A27194AA075569FAF4A0A85566CA
 if(Test-Path $OutputPath){Remove-Item $OutputPath -Recurse -Force}
 New-Item -ItemType Directory -Path $OutputPath | Out-Null
 dotnet publish $project -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o $OutputPath
+if($LASTEXITCODE -ne 0){throw "dotnet publish failed: $LASTEXITCODE"}
 $runtime=@('app.mjs','farm-ops.mjs','index.html','macro-engine.mjs','recording.mjs','recording.test.mjs','schedule-engine.mjs','test.mjs','ui.js','README.md','INSTALL_WINDOWS.md','RELEASE_NOTES_WINDOWS_RC.md','SUPPLY_CHAIN_RC_20261026.md')
 foreach($name in $runtime){Copy-Item (Join-Path $appRoot $name) (Join-Path $OutputPath $name) -Force}
+$sourceDir=Join-Path $OutputPath 'windows'
+New-Item -ItemType Directory -Path $sourceDir -Force | Out-Null
+Copy-Item (Join-Path $PSScriptRoot 'Program.cs') (Join-Path $sourceDir 'Program.cs') -Force
+Copy-Item (Join-Path $PSScriptRoot 'TigerIQPhoneFarm.csproj') (Join-Path $sourceDir 'TigerIQPhoneFarm.csproj') -Force
 Copy-Item (Join-Path $PSScriptRoot 'install-user.ps1') (Join-Path $OutputPath 'install-user.ps1') -Force
 Copy-Item (Join-Path $PSScriptRoot 'uninstall-user.ps1') (Join-Path $OutputPath 'uninstall-user.ps1') -Force
 $node=(Get-Command node -ErrorAction Stop).Source

@@ -47,6 +47,7 @@ jobs:
         run: |
           & apps/phone-farm-local/windows/package-windows.ps1 -OutputPath "$env:RUNNER_TEMP/phonefarm"
           node --test "$env:RUNNER_TEMP/phonefarm/test.mjs" "$env:RUNNER_TEMP/phonefarm/recording.test.mjs"
+          if ($LASTEXITCODE -ne 0) { throw "Bundled self-tests failed: $LASTEXITCODE" }
           Compress-Archive -Path "$env:RUNNER_TEMP/phonefarm/*" -DestinationPath "$env:RUNNER_TEMP/TigerIQ-PhoneFarm-Windows.zip"
       - uses: actions/upload-artifact@v4
         with:
