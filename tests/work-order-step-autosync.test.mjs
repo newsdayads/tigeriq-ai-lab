@@ -57,3 +57,43 @@ test('handles bold markdown step IDs and suffixed section headers',()=>{
  assert.match(planned.newBody, /- \[x\] \*\*R00\*\*.*— \[Biên nhận nghiệm thu\]/);
 });
 
+
+
+test('structured Lifecycle V2 atomically updates the exact progress counter, never twice',async()=>{
+ const original=['RESOURCE_SCOPE=TIGERIQ_CANARY','CHECKLIST_RECEIPT_STABLE_REVISION=V2',
+  'PROGRESS_SOURCE=STRUCTURED_PROGRESS_CHECKLIST','PROGRESS_COMPLETED=1','PROGRESS_TOTAL=2',
+  '## STRUCTURED_PROGRESS_CHECKLIST',
+  '- [x] R00 — Verified source [Biên nhận](https://github.com/newsdayads/tigeriq-ai-lab/issues/4780#issuecomment-1)',
+  '- [ ] R01 — Verify runtime','## ACCEPTANCE'].join('\n');
+ let issue={...initial(),body:original},writes=0;
+ const args={...env().args,stepId:'R01',
+  verifyEvidence:async()=>({verified:true,stepId:'R01',evidenceUrl:url,resourceScope:'TIGERIQ_CANARY',workOrder:'#4780'}),
+  readIssue:async()=>({...issue}),
+  writeIssue:async(n,newBody)=>{assert.equal(n,4780);writes++;issue={...issue,body:newBody};}};
+ const first=await syncAcceptedChecklistStep(args);
+ assert.equal(first.ok,true);
+ assert.match(issue.body,/^PROGRESS_COMPLETED=2$/m);
+ assert.match(issue.body,/- \[x\] R01.*\[Biên nhận nghiệm thu\]/);
+ assert.equal(writes,1);
+ const repeated=await syncAcceptedChecklistStep(args);
+ assert.equal(repeated.ok,true);assert.equal(writes,1);
+ const drift={...initial(),body:original.replace('PROGRESS_COMPLETED=1','PROGRESS_COMPLETED=0')};
+ assert.equal(planAcceptedChecklistStep({issue:drift,stepId:'R01',evidenceUrl:url,resourceScope:'TIGERIQ_CANARY'}).reason,
+  'CHECKLIST_PROGRESS_COUNTER_MISMATCH');
+});
+
+test('a partial previous evidence link is retained after a new native-verified full receipt',async()=>{
+ const partial='https://github.com/newsdayads/tigeriq-ai-lab/issues/4780#issuecomment-10';
+ let issue={...initial(),body:body.replace('- [ ] R00 — Kiểm tra',
+  '- [ ] R00 — Kiểm tra [Bằng chứng một phần]('+partial+')')},writes=0;
+ const e=env();
+ const args={...e.args,readIssue:async()=>({...issue}),
+  writeIssue:async(n,newBody)=>{writes++;issue={...issue,body:newBody}}};
+ assert.equal((await syncAcceptedChecklistStep({...args,verifyEvidence:async()=>({verified:false})})).reason,
+  'ORIGINAL_STEP_ACCEPTANCE_NOT_VERIFIED');
+ assert.equal(writes,0);
+ assert.equal((await syncAcceptedChecklistStep(args)).ok,true);
+ assert.equal(writes,1);
+ assert.ok(issue.body.includes('[Bằng chứng một phần]('+partial+')'));
+ assert.ok(issue.body.includes('[Biên nhận nghiệm thu]('+url+')'));
+});
