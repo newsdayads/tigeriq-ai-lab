@@ -278,9 +278,26 @@ function Get-OwnerProjectReleaseApproval([string]$targetSha,[string]$installedSh
     if($LASTEXITCODE -ne 0){return @{approved=$false;reason='OWNER_PROJECT_ACTIVATION_BASELINE_MISMATCH'}}
     & git -C $controlRepo merge-base --is-ancestor $installedSha $targetSha 2>$null
     if($LASTEXITCODE -ne 0 -or $installedSha -ceq $targetSha){return @{approved=$false;reason='OWNER_PROJECT_ANCESTRY_INVALID'}}
-    if(-not $changedPaths -or @($changedPaths).Count -eq 0){return @{approved=$false;reason='RELEASE_CHANGED_PATHS_MISSING'}}
+    $metadataOnly=$false
+    if(-not $changedPaths -or @($changedPaths).Count -eq 0){
+      # A protected target may be a real descendant commit with the exact same
+      # Git tree (for example a fail->repair canary whose net source diff is
+      # zero). Exact-main CI + standing Owner project authority + ancestry are
+      # still required. Accept empty paths only when Git proves the two trees
+      # are byte-identical; otherwise keep the existing fail-closed behavior.
+      $installedTree=(& git -C $controlRepo rev-parse ($installedSha+'^{tree}') 2>$null|Out-String).Trim()
+      if($LASTEXITCODE -ne 0 -or $installedTree -cnotmatch '^[a-f0-9]{40}$'){
+        return @{approved=$false;reason='OWNER_PROJECT_SOURCE_PROVENANCE_INVALID'}
+      }
+      $targetTree=(& git -C $controlRepo rev-parse ($targetSha+'^{tree}') 2>$null|Out-String).Trim()
+      if($LASTEXITCODE -ne 0 -or $targetTree -cnotmatch '^[a-f0-9]{40}$'){
+        return @{approved=$false;reason='OWNER_PROJECT_SOURCE_PROVENANCE_INVALID'}
+      }
+      if($installedTree -cne $targetTree){return @{approved=$false;reason='RELEASE_CHANGED_PATHS_MISSING'}}
+      $metadataOnly=$true
+    }
     $seen=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
-    foreach($name in $changedPaths){
+    foreach($name in @($changedPaths)){
       if(-not $name -or $name -cnotmatch '^[A-Za-z0-9_./-]+$' -or $name.StartsWith('/') -or
          @($name.Split('/')|Where-Object{$_ -in @('..','.','')}).Count -gt 0 -or -not $seen.Add($name)){
         return @{approved=$false;reason='OWNER_PROJECT_PATH_INVALID'}
@@ -309,7 +326,8 @@ function Get-OwnerProjectReleaseApproval([string]$targetSha,[string]$installedSh
         return @{approved=$false;reason='RELEASE_ATTEMPT_ALREADY_RECORDED'}
       }
     }
-    return @{approved=$true;reason='OWNER_PROJECT_AUTHORIZED';requestId=$requestId;policy='OWNER_PROJECT_AUTONOMY_V2';authorizationRef=[string]$p.authorizationRef}
+    $reason=if($metadataOnly){'OWNER_PROJECT_METADATA_ONLY_AUTHORIZED'}else{'OWNER_PROJECT_AUTHORIZED'}
+    return @{approved=$true;reason=$reason;requestId=$requestId;policy='OWNER_PROJECT_AUTONOMY_V2';authorizationRef=[string]$p.authorizationRef}
   }catch{return @{approved=$false;reason='OWNER_PROJECT_POLICY_OR_PROVENANCE_INVALID'}}
 }
 function Sync-ApprovedReleaseRuntime([string]$runtimeRepo,[string]$updaterRuntime,[string]$releaseGuardScript){
