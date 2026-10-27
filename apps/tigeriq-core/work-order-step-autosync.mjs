@@ -21,8 +21,8 @@ export function planAcceptedChecklistStep({issue,stepId,evidenceUrl,resourceScop
  const strictProgress=/^PROGRESS_SOURCE=STRUCTURED_PROGRESS_CHECKLIST$/m.test(issue.body);
  let completedBefore=null;
  if(strictProgress){
-  const declaredCompleted=[...issue.body.matchAll(/^PROGRESS_COMPLETED=(\\d+)$/gm)];
-  const declaredTotal=[...issue.body.matchAll(/^PROGRESS_TOTAL=(\\d+)$/gm)];
+  const declaredCompleted=[...issue.body.matchAll(/^PROGRESS_COMPLETED=(\d+)$/gm)];
+  const declaredTotal=[...issue.body.matchAll(/^PROGRESS_TOTAL=(\d+)$/gm)];
   const checkedBefore=parsed.steps.filter(s=>s.checked).length;
   if(declaredCompleted.length!==1||declaredTotal.length!==1||
      Number(declaredCompleted[0][1])!==checkedBefore||
@@ -48,7 +48,7 @@ export function planAcceptedChecklistStep({issue,stepId,evidenceUrl,resourceScop
  if(hits!==1)return {ok:false,reason:'STEP_LINE_AMBIGUOUS'};
  let newBody=result.join('\n');
  if(strictProgress){
-  newBody=newBody.replace(/^PROGRESS_COMPLETED=\\d+$/m,'PROGRESS_COMPLETED='+(completedBefore+1));
+  newBody=newBody.replace(/^PROGRESS_COMPLETED=\d+$/m,'PROGRESS_COMPLETED='+(completedBefore+1));
  }
  const check=workOrderChecklistGate({...issue,body:newBody},{stepId:id,expectedEvidenceUrl:url,requireAll:false});
  if(!check.ok)return {ok:false,reason:'CHECKLIST_PATCH_INVALID_'+check.reason};
