@@ -128,7 +128,17 @@ export async function resolveSafeTarget(url, { lookupFn = dns.lookup } = {}) {
   if (!rows.length || rows.some(row => !row?.address || isBlockedAddress(row.address))) {
     throw new AuditError('PRIVATE_TARGET', 'DNS resolved to a private or unsafe address.');
   }
-  return { address: rows[0].address, family: rows[0].family || net.isIP(rows[0].address) };
+
+  // Pin one verified public address for the socket. Prefer IPv4 when a host is
+  // dual-stack: some hosted/isolated runners resolve AAAA first but have no
+  // usable IPv6 route, which makes a healthy public site fail immediately.
+  // Every DNS answer has already passed the fail-closed safety check above;
+  // IPv6 remains the fallback for IPv6-only targets.
+  const selected = rows.find(row => (row.family || net.isIP(row.address)) === 4) || rows[0];
+  return {
+    address: selected.address,
+    family: selected.family || net.isIP(selected.address),
+  };
 }
 
 function headerValue(headers, name) {
