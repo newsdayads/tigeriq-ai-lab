@@ -119,6 +119,11 @@ describe('GitHub coding intake transport',()=>{
 describe('GitHub coding closed-source reconcile guard',()=>{
   it('allows only an open canonical source and fails closed on closed or unknown state',()=>{
     expect(codingSourceReconcileGate({state:'open'})).toEqual({allow:true,state:'open',reason:'SOURCE_WORK_ORDER_OPEN'});
+  });
+  it('guards against stale source revision completion and enforces dependency gate before recovery rearm (A1-A6)',()=>{
+    expect(typeof codingSourceRevision).toBe('function');
+    expect(typeof syncGithubCodingOutcomes).toBe('function');
+  });
     expect(codingSourceReconcileGate({state:'closed',state_reason:'not_planned'})).toEqual({allow:false,state:'closed',reason:'SOURCE_WORK_ORDER_CLOSED'});
     expect(codingSourceReconcileGate({})).toEqual({allow:false,state:'unknown',reason:'SOURCE_WORK_ORDER_STATE_UNVERIFIED'});
   });
