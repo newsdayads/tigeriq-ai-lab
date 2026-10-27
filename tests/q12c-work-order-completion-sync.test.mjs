@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {codingIssueCompletionGate,sourceCompletionDiagnostic} from '../apps/shared/work-order-acceptance-sync.mjs';
+import {codingIssueCompletionGate,sourceCompletionDiagnostic,sourceTerminalDependencyAccepted} from '../apps/shared/work-order-acceptance-sync.mjs';
 import {projectWorkOrder} from '../apps/tigeriq-core/web-control-server.mjs';
 
 const repo='https://github.com/newsdayads/tigeriq-ai-lab/issues/7001';
@@ -67,4 +67,17 @@ test('Open source with DONE declaration is never displayed as completed before G
  const issue=acceptedIssue();
  assert.equal(sourceCompletionDiagnostic(issue).completionVerified,false);
  assert.equal(projectWorkOrder(issue).completionVerified,false);
+});
+
+test('closed completed without V2 evidence cannot unblock a parent Work Order',()=>{
+ const completed={...acceptedIssue(),state:'closed',state_reason:'completed'};
+ assert.equal(sourceTerminalDependencyAccepted(completed),true);
+ const notDone={...completed,body:completed.body.replace('DONE=true','DONE=false')};
+ assert.equal(sourceTerminalDependencyAccepted(notDone),false);
+ const noFinish={...completed,body:completed.body.replace('FINISH_RECEIPT_URL='+receipt,'FINISH_RECEIPT_URL=NOT_AVAILABLE')};
+ assert.equal(sourceTerminalDependencyAccepted(noFinish),false);
+ assert.equal(sourceTerminalDependencyAccepted({...completed,state_reason:'not_planned'}),false);
+ const legacy={number:7000,title:'Legacy pre-V2',state:'closed',state_reason:'completed',
+   created_at:'2026-09-01T00:00:00Z',body:'LEGACY_WORK_ORDER=true'};
+ assert.equal(sourceTerminalDependencyAccepted(legacy),true);
 });
