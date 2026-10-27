@@ -278,9 +278,259 @@ function Get-OwnerProjectReleaseApproval([string]$targetSha,[string]$installedSh
     if($LASTEXITCODE -ne 0){return @{approved=$false;reason='OWNER_PROJECT_ACTIVATION_BASELINE_MISMATCH'}}
     & git -C $controlRepo merge-base --is-ancestor $installedSha $targetSha 2>$null
     if($LASTEXITCODE -ne 0 -or $installedSha -ceq $targetSha){return @{approved=$false;reason='OWNER_PROJECT_ANCESTRY_INVALID'}}
-    if(-not $changedPaths -or @($changedPaths).Count -eq 0){return @{approved=$false;reason='RELEASE_CHANGED_PATHS_MISSING'}}
+    $metadataOnly=$false
+    if(-not $changedPaths -or @($changedPaths).Count -eq 0){
+      # A protected target may be a real descendant commit with the exact same
+      # Git tree (for example a fail->repair canary whose net source diff is
+      # zero). Exact-main CI + standing Owner project authority + ancestry are
+      # still required. Accept empty paths only when Git proves the two trees
+      # are byte-identical; otherwise keep the existing fail-closed behavior.
+      $installedTree=(& git -C $controlRepo rev-parse ($installedSha+'^{tree}') 2>$null|Out-String).Trim()
+      if($LASTEXITCODE -ne 0 -or $installedTree -cnotmatch '^[a-f0-9]{40}
+      if(-not $name -or $name -cnotmatch '^[A-Za-z0-9_./-]+$' -or $name.StartsWith('/') -or
+         @($name.Split('/')|Where-Object{$_ -in @('..','.','')}).Count -gt 0 -or -not $seen.Add($name)){
+        return @{approved=$false;reason='OWNER_PROJECT_PATH_INVALID'}
+      }
+      # The grant covers project CODE (including security/workflows/updater),
+      # never private runtime credentials or secret material outside the repo.
+      if($name -match '(?i)(^|/)(secrets|credentials)(/|$)|(^|/)\.env($|\.)'){
+        return @{approved=$false;reason='OWNER_PROJECT_PRIVATE_MATERIAL'}
+      }
+      $entry=(& git -C $controlRepo ls-tree $targetSha -- $name 2>$null|Out-String).Trim()
+      if($LASTEXITCODE -ne 0){return @{approved=$false;reason='OWNER_PROJECT_SOURCE_PROVENANCE_INVALID'}}
+      if($entry -cmatch '^(100644|100755) blob [a-f0-9]{40}\s') {continue}
+      # A real deletion is allowed; symlinks/submodules/unknown paths are not
+      # silently interpreted as regular runtime files.
+      if(-not $entry){
+        $deleted=(& git -C $controlRepo diff --diff-filter=D --name-only $installedSha $targetSha -- $name 2>$null|Out-String).Trim()
+        if($LASTEXITCODE -eq 0 -and $deleted -ceq $name){continue}
+      }
+      return @{approved=$false;reason='OWNER_PROJECT_SOURCE_PROVENANCE_INVALID'}
+    }
+    $requestId='OWNER-PROJECT-'+$targetSha
+    if(Test-Path -LiteralPath $releaseAttemptPath){
+      $attempt=Get-Content -Raw -LiteralPath $releaseAttemptPath|ConvertFrom-Json -ErrorAction Stop
+      if([string]$attempt.result -ceq 'STARTED'){return @{approved=$false;reason='OWNER_PROJECT_INFLIGHT_ATTEMPT'}}
+      if([string]$attempt.targetSha -ceq $targetSha -or [string]$attempt.requestId -ceq $requestId){
+        return @{approved=$false;reason='RELEASE_ATTEMPT_ALREADY_RECORDED'}
+      }
+    }
+    $reason=if($metadataOnly){'OWNER_PROJECT_METADATA_ONLY_AUTHORIZED'}else{'OWNER_PROJECT_AUTHORIZED'}
+    return @{approved=$true;reason=$reason;requestId=$requestId;policy='OWNER_PROJECT_AUTONOMY_V2';authorizationRef=[string]$p.authorizationRef}
+  }catch{return @{approved=$false;reason='OWNER_PROJECT_POLICY_OR_PROVENANCE_INVALID'}}
+}
+function Sync-ApprovedReleaseRuntime([string]$runtimeRepo,[string]$updaterRuntime,[string]$releaseGuardScript){
+  $source=Join-Path $runtimeRepo 'scripts\tigeriq-core\update-core-runtime.ps1';if(-not(Test-Path -LiteralPath $source)){throw 'UPDATER_SOURCE_MISSING'}
+  # Called only inside an approved release or its rollback. Refresh the guard
+  # from that same verified snapshot; a code merge cannot activate an Owner grant.
+  $guardSource=Join-Path $runtimeRepo 'scripts\tigeriq-core\pc01-release-guard.ps1'
+  if(-not(Test-Path -LiteralPath $guardSource)){throw 'RELEASE_GUARD_SOURCE_MISSING'}
+  $parseTokens=$null;$parseErrors=$null
+  $null=[Management.Automation.Language.Parser]::ParseFile($guardSource,[ref]$parseTokens,[ref]$parseErrors)
+  if(@($parseErrors).Count -gt 0){throw 'RELEASE_GUARD_SOURCE_PARSE_FAILED'}
+  $null=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$parseTokens,[ref]$parseErrors)
+  if(@($parseErrors).Count -gt 0){throw 'UPDATER_SOURCE_PARSE_FAILED'}
+  New-Item -ItemType Directory -Path (Split-Path -Parent $updaterRuntime) -Force|Out-Null
+  $tmp=$updaterRuntime+'.tmp';Copy-Item -LiteralPath $source -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $updaterRuntime -Force
+  $sourceHash=(Get-FileHash -LiteralPath $guardSource -Algorithm SHA256).Hash
+  $oldHash=if(Test-Path -LiteralPath $releaseGuardScript){(Get-FileHash -LiteralPath $releaseGuardScript -Algorithm SHA256).Hash}else{''}
+  if($sourceHash -ne $oldHash){
+    if($oldHash){
+      $guardBackup=Join-Path (Join-Path (Split-Path -Parent $releaseGuardScript) 'Backup') ('guard-'+$oldHash+'.ps1')
+      if(-not(Test-Path -LiteralPath $guardBackup)){Copy-Item -LiteralPath $releaseGuardScript -Destination $guardBackup -ErrorAction Stop}
+    }
+    $guardTmp=$releaseGuardScript+'.tmp'
+    Copy-Item -LiteralPath $guardSource -Destination $guardTmp -Force
+    Move-Item -LiteralPath $guardTmp -Destination $releaseGuardScript -Force
+  }
+}
+function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable]$impact,[string[]]$changedPaths,[string]$verifiedGateSha=''){
+  # The local file is an operational approval record, not cryptographic proof
+  # of Owner identity. An independently authorized local procedure MUST provision it.
+  if($targetSha -notmatch '^[a-f0-9]{40}$' -or $installedSha -notmatch '^[a-f0-9]{40}$'){return @{approved=$false;reason='RELEASE_BASELINE_UNVERIFIED'}}
+  $projectApproval=Get-OwnerProjectReleaseApproval $targetSha $installedSha $changedPaths $verifiedGateSha
+  if($null -ne $projectApproval){return $projectApproval}
+  if(-not(Test-Path -LiteralPath $releaseApprovalPath)){return @{approved=$false;reason='RELEASE_LOCAL_APPROVAL_MISSING'}}
+  if(-not(Test-ReleaseApprovalAcl)){return @{approved=$false;reason='RELEASE_APPROVAL_ACL_UNTRUSTED'}}
+  try{
+    $a=Get-Content -Raw -LiteralPath $releaseApprovalPath|ConvertFrom-Json -ErrorAction Stop
+    $snapshotV2=([string]$a.schema -ceq 'TIGERIQ_PC01_RELEASE_APPROVAL_V2')
+    if(-not $snapshotV2 -and [string]$a.schema -ne 'TIGERIQ_PC01_RELEASE_APPROVAL_V1'){return @{approved=$false;reason='RELEASE_APPROVAL_SCHEMA_INVALID'}}
+    if($snapshotV2 -and [string]$a.releasePolicy -cne 'SCOPED_SNAPSHOT_V2'){return @{approved=$false;reason='RELEASE_V2_POLICY_INVALID'}}
+    if([string]$a.scope -ne 'TIGERIQ_PC01_GATED_RELEASE_NO_RDC_PHASE1'){return @{approved=$false;reason='RELEASE_APPROVAL_SCOPE_INVALID'}}
+    if([string]$a.targetSha -cne $targetSha){return @{approved=$false;reason='RELEASE_TARGET_MISMATCH'}}
+    if([string]$a.expectedInstalledSha -cne $installedSha -or [string]$a.rollbackSha -cne $installedSha){return @{approved=$false;reason='RELEASE_BASELINE_MISMATCH'}}
+    if([string]$a.requestId -notmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{3,119}$'){return @{approved=$false;reason='RELEASE_REQUEST_ID_INVALID'}}
+    if($a.approved -cne $true){return @{approved=$false;reason='RELEASE_NOT_APPROVED'}}
+    $expiry=[DateTime]::Parse([string]$a.expiresAtUtc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
+    $now=(Get-Date).ToUniversalTime()
+    if($expiry -le $now -or $expiry -gt $now.AddDays(7)){return @{approved=$false;reason='RELEASE_APPROVAL_EXPIRED_OR_TOO_LONG'}}
+    if($impact.liveBridge){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
+    if(-not $snapshotV2 -and $impact.coding){
+      foreach($wanted in $ownerCodingContractBlobs.Keys){
+        if(@($changedPaths|Where-Object{$_ -ceq $wanted}).Count -ne 1){return @{approved=$false;reason='RELEASE_CODING_CONTRACT_BUNDLE_INCOMPLETE'}}
+      }
+    }
+    if(-not $snapshotV2 -and $impact.web){
+      # Exception applies only to the FULL eight-file PR #4746 bundle and protected
+      # Core/Updater maintenance changes; no unrelated web deployment becomes eligible.
+      if(-not($impact.core -and $impact.updater)){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
+      foreach($wanted in $ownerOneTapBlobs.Keys){
+        if(@($changedPaths|Where-Object{$_ -ceq $wanted}).Count -ne 1){return @{approved=$false;reason='RELEASE_ONE_TAP_BUNDLE_INCOMPLETE'}}
+      }
+      $webChanged=@($changedPaths|Where-Object{$_ -match '^apps/tigeriq-core/web-control(?:\.|-)' -or $_ -eq 'apps/tigeriq-core/owner-facing-vietnamese.mjs' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-web-control'})
+      foreach($webPath in $webChanged){
+        if(@($ownerOneTapWebPaths|Where-Object{$_ -ceq $webPath}).Count -ne 1){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
+      }
+    }
+    $pathDenial=if($snapshotV2){Assert-ReleaseChangedPathsV2 $changedPaths $impact $targetSha}else{Assert-ReleaseChangedPaths $changedPaths $impact $targetSha}
+    if($pathDenial){return @{approved=$false;reason=$pathDenial}}
+    if(-not($impact.coding -or $impact.core -or $impact.openclaw -or $impact.updater)){return @{approved=$false;reason='RELEASE_NO_APPROVED_COMPONENT_IMPACT'}}
+    $wanted=@(@('coding','core','openclaw','updater')|Where-Object{$impact[$_] }|Sort-Object)
+    $provided=@($a.components|ForEach-Object{[string]$_}|Sort-Object)
+    if(($provided -join ',') -cne ($wanted -join ',')){return @{approved=$false;reason='RELEASE_COMPONENTS_MISMATCH'}}
+    if(Test-Path -LiteralPath $releaseAttemptPath){
+      $previous=Get-Content -Raw -LiteralPath $releaseAttemptPath|ConvertFrom-Json -ErrorAction Stop
+      if([string]$previous.requestId -ceq [string]$a.requestId -or [string]$previous.targetSha -ceq $targetSha){return @{approved=$false;reason='RELEASE_ATTEMPT_ALREADY_RECORDED'}}
+    }
+    return @{approved=$true;reason='LOCAL_RELEASE_APPROVAL_PRESENT';requestId=[string]$a.requestId}
+  }catch{return @{approved=$false;reason='RELEASE_LOCAL_APPROVAL_INVALID'}}
+}
+function Save-ReleaseAttempt([string]$requestId,[string]$targetSha,[string]$previousSha,[string]$result){
+  $d=[ordered]@{schema='TIGERIQ_PC01_RELEASE_ATTEMPT_V1';requestId=$requestId;targetSha=$targetSha;previousSha=$previousSha;result=$result;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
+  $tmp=$releaseAttemptPath+'.tmp'
+  [IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 4),(New-Object Text.UTF8Encoding($false)))
+  Move-Item -Force -LiteralPath $tmp -Destination $releaseAttemptPath
+}
+
+){
+        return @{approved=$false;reason='OWNER_PROJECT_SOURCE_PROVENANCE_INVALID'}
+      }
+      $targetTree=(& git -C $controlRepo rev-parse ($targetSha+'^{tree}') 2>$null|Out-String).Trim()
+      if($LASTEXITCODE -ne 0 -or $targetTree -cnotmatch '^[a-f0-9]{40}
+      if(-not $name -or $name -cnotmatch '^[A-Za-z0-9_./-]+$' -or $name.StartsWith('/') -or
+         @($name.Split('/')|Where-Object{$_ -in @('..','.','')}).Count -gt 0 -or -not $seen.Add($name)){
+        return @{approved=$false;reason='OWNER_PROJECT_PATH_INVALID'}
+      }
+      # The grant covers project CODE (including security/workflows/updater),
+      # never private runtime credentials or secret material outside the repo.
+      if($name -match '(?i)(^|/)(secrets|credentials)(/|$)|(^|/)\.env($|\.)'){
+        return @{approved=$false;reason='OWNER_PROJECT_PRIVATE_MATERIAL'}
+      }
+      $entry=(& git -C $controlRepo ls-tree $targetSha -- $name 2>$null|Out-String).Trim()
+      if($LASTEXITCODE -ne 0){return @{approved=$false;reason='OWNER_PROJECT_SOURCE_PROVENANCE_INVALID'}}
+      if($entry -cmatch '^(100644|100755) blob [a-f0-9]{40}\s') {continue}
+      # A real deletion is allowed; symlinks/submodules/unknown paths are not
+      # silently interpreted as regular runtime files.
+      if(-not $entry){
+        $deleted=(& git -C $controlRepo diff --diff-filter=D --name-only $installedSha $targetSha -- $name 2>$null|Out-String).Trim()
+        if($LASTEXITCODE -eq 0 -and $deleted -ceq $name){continue}
+      }
+      return @{approved=$false;reason='OWNER_PROJECT_SOURCE_PROVENANCE_INVALID'}
+    }
+    $requestId='OWNER-PROJECT-'+$targetSha
+    if(Test-Path -LiteralPath $releaseAttemptPath){
+      $attempt=Get-Content -Raw -LiteralPath $releaseAttemptPath|ConvertFrom-Json -ErrorAction Stop
+      if([string]$attempt.result -ceq 'STARTED'){return @{approved=$false;reason='OWNER_PROJECT_INFLIGHT_ATTEMPT'}}
+      if([string]$attempt.targetSha -ceq $targetSha -or [string]$attempt.requestId -ceq $requestId){
+        return @{approved=$false;reason='RELEASE_ATTEMPT_ALREADY_RECORDED'}
+      }
+    }
+    return @{approved=$true;reason='OWNER_PROJECT_AUTHORIZED';requestId=$requestId;policy='OWNER_PROJECT_AUTONOMY_V2';authorizationRef=[string]$p.authorizationRef}
+  }catch{return @{approved=$false;reason='OWNER_PROJECT_POLICY_OR_PROVENANCE_INVALID'}}
+}
+function Sync-ApprovedReleaseRuntime([string]$runtimeRepo,[string]$updaterRuntime,[string]$releaseGuardScript){
+  $source=Join-Path $runtimeRepo 'scripts\tigeriq-core\update-core-runtime.ps1';if(-not(Test-Path -LiteralPath $source)){throw 'UPDATER_SOURCE_MISSING'}
+  # Called only inside an approved release or its rollback. Refresh the guard
+  # from that same verified snapshot; a code merge cannot activate an Owner grant.
+  $guardSource=Join-Path $runtimeRepo 'scripts\tigeriq-core\pc01-release-guard.ps1'
+  if(-not(Test-Path -LiteralPath $guardSource)){throw 'RELEASE_GUARD_SOURCE_MISSING'}
+  $parseTokens=$null;$parseErrors=$null
+  $null=[Management.Automation.Language.Parser]::ParseFile($guardSource,[ref]$parseTokens,[ref]$parseErrors)
+  if(@($parseErrors).Count -gt 0){throw 'RELEASE_GUARD_SOURCE_PARSE_FAILED'}
+  $null=[Management.Automation.Language.Parser]::ParseFile($source,[ref]$parseTokens,[ref]$parseErrors)
+  if(@($parseErrors).Count -gt 0){throw 'UPDATER_SOURCE_PARSE_FAILED'}
+  New-Item -ItemType Directory -Path (Split-Path -Parent $updaterRuntime) -Force|Out-Null
+  $tmp=$updaterRuntime+'.tmp';Copy-Item -LiteralPath $source -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $updaterRuntime -Force
+  $sourceHash=(Get-FileHash -LiteralPath $guardSource -Algorithm SHA256).Hash
+  $oldHash=if(Test-Path -LiteralPath $releaseGuardScript){(Get-FileHash -LiteralPath $releaseGuardScript -Algorithm SHA256).Hash}else{''}
+  if($sourceHash -ne $oldHash){
+    if($oldHash){
+      $guardBackup=Join-Path (Join-Path (Split-Path -Parent $releaseGuardScript) 'Backup') ('guard-'+$oldHash+'.ps1')
+      if(-not(Test-Path -LiteralPath $guardBackup)){Copy-Item -LiteralPath $releaseGuardScript -Destination $guardBackup -ErrorAction Stop}
+    }
+    $guardTmp=$releaseGuardScript+'.tmp'
+    Copy-Item -LiteralPath $guardSource -Destination $guardTmp -Force
+    Move-Item -LiteralPath $guardTmp -Destination $releaseGuardScript -Force
+  }
+}
+function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable]$impact,[string[]]$changedPaths,[string]$verifiedGateSha=''){
+  # The local file is an operational approval record, not cryptographic proof
+  # of Owner identity. An independently authorized local procedure MUST provision it.
+  if($targetSha -notmatch '^[a-f0-9]{40}$' -or $installedSha -notmatch '^[a-f0-9]{40}$'){return @{approved=$false;reason='RELEASE_BASELINE_UNVERIFIED'}}
+  $projectApproval=Get-OwnerProjectReleaseApproval $targetSha $installedSha $changedPaths $verifiedGateSha
+  if($null -ne $projectApproval){return $projectApproval}
+  if(-not(Test-Path -LiteralPath $releaseApprovalPath)){return @{approved=$false;reason='RELEASE_LOCAL_APPROVAL_MISSING'}}
+  if(-not(Test-ReleaseApprovalAcl)){return @{approved=$false;reason='RELEASE_APPROVAL_ACL_UNTRUSTED'}}
+  try{
+    $a=Get-Content -Raw -LiteralPath $releaseApprovalPath|ConvertFrom-Json -ErrorAction Stop
+    $snapshotV2=([string]$a.schema -ceq 'TIGERIQ_PC01_RELEASE_APPROVAL_V2')
+    if(-not $snapshotV2 -and [string]$a.schema -ne 'TIGERIQ_PC01_RELEASE_APPROVAL_V1'){return @{approved=$false;reason='RELEASE_APPROVAL_SCHEMA_INVALID'}}
+    if($snapshotV2 -and [string]$a.releasePolicy -cne 'SCOPED_SNAPSHOT_V2'){return @{approved=$false;reason='RELEASE_V2_POLICY_INVALID'}}
+    if([string]$a.scope -ne 'TIGERIQ_PC01_GATED_RELEASE_NO_RDC_PHASE1'){return @{approved=$false;reason='RELEASE_APPROVAL_SCOPE_INVALID'}}
+    if([string]$a.targetSha -cne $targetSha){return @{approved=$false;reason='RELEASE_TARGET_MISMATCH'}}
+    if([string]$a.expectedInstalledSha -cne $installedSha -or [string]$a.rollbackSha -cne $installedSha){return @{approved=$false;reason='RELEASE_BASELINE_MISMATCH'}}
+    if([string]$a.requestId -notmatch '^[A-Za-z0-9][A-Za-z0-9._:-]{3,119}$'){return @{approved=$false;reason='RELEASE_REQUEST_ID_INVALID'}}
+    if($a.approved -cne $true){return @{approved=$false;reason='RELEASE_NOT_APPROVED'}}
+    $expiry=[DateTime]::Parse([string]$a.expiresAtUtc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
+    $now=(Get-Date).ToUniversalTime()
+    if($expiry -le $now -or $expiry -gt $now.AddDays(7)){return @{approved=$false;reason='RELEASE_APPROVAL_EXPIRED_OR_TOO_LONG'}}
+    if($impact.liveBridge){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
+    if(-not $snapshotV2 -and $impact.coding){
+      foreach($wanted in $ownerCodingContractBlobs.Keys){
+        if(@($changedPaths|Where-Object{$_ -ceq $wanted}).Count -ne 1){return @{approved=$false;reason='RELEASE_CODING_CONTRACT_BUNDLE_INCOMPLETE'}}
+      }
+    }
+    if(-not $snapshotV2 -and $impact.web){
+      # Exception applies only to the FULL eight-file PR #4746 bundle and protected
+      # Core/Updater maintenance changes; no unrelated web deployment becomes eligible.
+      if(-not($impact.core -and $impact.updater)){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
+      foreach($wanted in $ownerOneTapBlobs.Keys){
+        if(@($changedPaths|Where-Object{$_ -ceq $wanted}).Count -ne 1){return @{approved=$false;reason='RELEASE_ONE_TAP_BUNDLE_INCOMPLETE'}}
+      }
+      $webChanged=@($changedPaths|Where-Object{$_ -match '^apps/tigeriq-core/web-control(?:\.|-)' -or $_ -eq 'apps/tigeriq-core/owner-facing-vietnamese.mjs' -or $_ -match '^scripts/tigeriq-core/(?:run|install)-web-control'})
+      foreach($webPath in $webChanged){
+        if(@($ownerOneTapWebPaths|Where-Object{$_ -ceq $webPath}).Count -ne 1){return @{approved=$false;reason='RELEASE_IMPACT_OUT_OF_SCOPE'}}
+      }
+    }
+    $pathDenial=if($snapshotV2){Assert-ReleaseChangedPathsV2 $changedPaths $impact $targetSha}else{Assert-ReleaseChangedPaths $changedPaths $impact $targetSha}
+    if($pathDenial){return @{approved=$false;reason=$pathDenial}}
+    if(-not($impact.coding -or $impact.core -or $impact.openclaw -or $impact.updater)){return @{approved=$false;reason='RELEASE_NO_APPROVED_COMPONENT_IMPACT'}}
+    $wanted=@(@('coding','core','openclaw','updater')|Where-Object{$impact[$_] }|Sort-Object)
+    $provided=@($a.components|ForEach-Object{[string]$_}|Sort-Object)
+    if(($provided -join ',') -cne ($wanted -join ',')){return @{approved=$false;reason='RELEASE_COMPONENTS_MISMATCH'}}
+    if(Test-Path -LiteralPath $releaseAttemptPath){
+      $previous=Get-Content -Raw -LiteralPath $releaseAttemptPath|ConvertFrom-Json -ErrorAction Stop
+      if([string]$previous.requestId -ceq [string]$a.requestId -or [string]$previous.targetSha -ceq $targetSha){return @{approved=$false;reason='RELEASE_ATTEMPT_ALREADY_RECORDED'}}
+    }
+    return @{approved=$true;reason='LOCAL_RELEASE_APPROVAL_PRESENT';requestId=[string]$a.requestId}
+  }catch{return @{approved=$false;reason='RELEASE_LOCAL_APPROVAL_INVALID'}}
+}
+function Save-ReleaseAttempt([string]$requestId,[string]$targetSha,[string]$previousSha,[string]$result){
+  $d=[ordered]@{schema='TIGERIQ_PC01_RELEASE_ATTEMPT_V1';requestId=$requestId;targetSha=$targetSha;previousSha=$previousSha;result=$result;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
+  $tmp=$releaseAttemptPath+'.tmp'
+  [IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 4),(New-Object Text.UTF8Encoding($false)))
+  Move-Item -Force -LiteralPath $tmp -Destination $releaseAttemptPath
+}
+
+){
+        return @{approved=$false;reason='OWNER_PROJECT_SOURCE_PROVENANCE_INVALID'}
+      }
+      if($installedTree -cne $targetTree){return @{approved=$false;reason='RELEASE_CHANGED_PATHS_MISSING'}}
+      $metadataOnly=$true
+    }
     $seen=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
-    foreach($name in $changedPaths){
+    foreach($name in @($changedPaths)){
       if(-not $name -or $name -cnotmatch '^[A-Za-z0-9_./-]+$' -or $name.StartsWith('/') -or
          @($name.Split('/')|Where-Object{$_ -in @('..','.','')}).Count -gt 0 -or -not $seen.Add($name)){
         return @{approved=$false;reason='OWNER_PROJECT_PATH_INVALID'}
