@@ -222,7 +222,7 @@ export function classifyAiFailure(error){
   if(isProviderRequestRejected(error))return 'provider_request_rejected';
   if(status===429||/HTTP_429\b|RATE_LIMIT|RESOURCE_EXHAUSTED/i.test(msg))return 'rate_limit';
   if(error?.name==='AbortError'||/ETIMEDOUT|timeout|aborted|ECONNRESET|socket/i.test(msg))return 'timeout';
-  if(/MANAGER_(?:SOFT_BLOCK|SCOPE_MISMATCH|PATHS_INVALID|TITLE_NOT_VI)|JSON_OBJECT_(?:INVALID|MISSING)|CODING_CHANGES_COUNT_INVALID|schema|unterminated|truncat|COMPACT_EDIT/i.test(msg))return 'output_contract';
+  if(/MANAGER_(?:SOFT_BLOCK|SCOPE_MISMATCH|PATHS_INVALID|TITLE_NOT_VI)|JSON_OBJECT_(?:INVALID|MISSING)|CODING_CHANGES_COUNT_INVALID|CODING_COMPACT_EDIT_NO_SOURCE_CHANGE|schema|unterminated|truncat|COMPACT_EDIT/i.test(msg))return 'output_contract';
   if(/EMPTY_RESPONSE|invalid_response/i.test(msg))return 'invalid_response';
   if([408,409,413,500,502,503,504].includes(status)||/fetch failed|HTTP_(?:408|409|413|500|502|503|504)\b/i.test(msg))return 'provider_unavailable';
   return isRetryableAiError(error)?'other_retryable':'other';
@@ -295,20 +295,34 @@ export function codingCiRepairMode(objective='',instruction=''){
   return {managed,repairCycle,failFirst:managed&&repairCycle===0,repairBeforeGates:managed&&repairCycle>0};
 }
 const R12_SELF_HEAL_CANARY_PATH='tests/r12-ci-self-heal-canary.test.mjs';
+function selfHealCanaryPaths(contract=''){
+  return String(String(contract||'').match(/^\s*ALLOW_PATH_PREFIX\s*=\s*(.+)$/im)?.[1]||'')
+    .split(',').map(x=>x.trim()).filter(Boolean);
+}
 export function r12SelfHealCanaryApplies(objective=''){
   const contract=currentSourceWorkOrderContract(objective);
-  const paths=String(contract.match(/^\s*ALLOW_PATH_PREFIX\s*=\s*(.+)$/im)?.[1]||'')
-    .split(',').map(x=>x.trim()).filter(Boolean);
   return supervisorManagedCiRepair(contract)
     && /^\s*WORKSTREAM_ID\s*=\s*gh5144-r12-ci-self-heal-canary\s*$/im.test(contract)
-    && paths.includes(R12_SELF_HEAL_CANARY_PATH);
+    && selfHealCanaryPaths(contract).includes(R12_SELF_HEAL_CANARY_PATH);
+}
+export function r13OneTapCanaryApplies(objective=''){
+  const contract=currentSourceWorkOrderContract(objective);
+  return supervisorManagedCiRepair(contract)
+    && /^\s*WORKSTREAM_ID\s*=\s*gh5144-r13-one-tap-e2e-canary\s*$/im.test(contract)
+    && selfHealCanaryPaths(contract).includes(R12_SELF_HEAL_CANARY_PATH);
 }
 export function enforceR12SelfHealCanaryChanges({objective='',instruction='',changes=[]}={}){
-  if(!r12SelfHealCanaryApplies(objective))return Array.isArray(changes)?changes:[];
+  const r12=r12SelfHealCanaryApplies(objective);
+  const r13=r13OneTapCanaryApplies(objective);
+  if(!r12&&!r13)return Array.isArray(changes)?changes:[];
   const mode=codingCiRepairMode(objective,instruction);
-  const content=mode.repairBeforeGates
-    ? "import { describe, it, expect } from 'vitest';\n\ndescribe('R12 CI Self-Heal Canary', () => {\n  it('passes after the bounded autonomous repair cycle', () => {\n    // TIGERIQ_R12_AUTONOMOUS_REPAIR_PASS\n    // R12_REPAIR_COMPLETE\n    expect(true).toBe(true);\n  });\n});\n"
-    : "import { describe, it, expect } from 'vitest';\n\ndescribe('R12 CI Self-Heal Canary', () => {\n  it('fails intentionally on the initial autonomous generation', () => {\n    // TIGERIQ_R12_EXPECTED_INITIAL_CI_FAILURE\n    // R12_REPAIR_PENDING\n    expect(true).toBe(false);\n  });\n});\n";
+  const content=r13
+    ? mode.repairBeforeGates
+      ? "import { describe, it, expect } from 'vitest';\n\ndescribe('R12 CI Self-Heal Canary', () => {\n  it('passes after the R13 bounded autonomous repair cycle', () => {\n    // TIGERIQ_R13_AUTONOMOUS_REPAIR_PASS\n    // R13_REPAIR_COMPLETE\n    expect(true).toBe(true);\n  });\n});\n"
+      : "import { describe, it, expect } from 'vitest';\n\ndescribe('R12 CI Self-Heal Canary', () => {\n  it('fails intentionally on the R13 initial autonomous generation', () => {\n    // TIGERIQ_R13_EXPECTED_INITIAL_CI_FAILURE\n    // R13_REPAIR_PENDING\n    expect(true).toBe(false);\n  });\n});\n"
+    : mode.repairBeforeGates
+      ? "import { describe, it, expect } from 'vitest';\n\ndescribe('R12 CI Self-Heal Canary', () => {\n  it('passes after the bounded autonomous repair cycle', () => {\n    // TIGERIQ_R12_AUTONOMOUS_REPAIR_PASS\n    // R12_REPAIR_COMPLETE\n    expect(true).toBe(true);\n  });\n});\n"
+      : "import { describe, it, expect } from 'vitest';\n\ndescribe('R12 CI Self-Heal Canary', () => {\n  it('fails intentionally on the initial autonomous generation', () => {\n    // TIGERIQ_R12_EXPECTED_INITIAL_CI_FAILURE\n    // R12_REPAIR_PENDING\n    expect(true).toBe(false);\n  });\n});\n";
   return [{path:R12_SELF_HEAL_CANARY_PATH,content}];
 }
 
@@ -1167,7 +1181,7 @@ async function createBranch(name,sha,repository=SOURCE_REPOSITORY){
     throw error;
   }
 }
-async function writeFile(branch,change,mutationAuth={},repository=SOURCE_REPOSITORY){assertExecutionPlaneMutationPaths([change.path],mutationAuth);const old=await readRepoFile(change.path,branch,repository);assertSafeFileChange({path:change.path,before:old.sha?old.content:null,after:change.content,isNew:!old.sha});const body={message:`TigerIQ ${change.path}`,content:Buffer.from(change.content,'utf8').toString('base64'),branch};if(old.sha)body.sha=old.sha;return ghRepo(repository,`/contents/${change.path.split('/').map(encodeURIComponent).join('/')}`,{method:'PUT',body:JSON.stringify(body)})}
+async function writeFile(branch,change,mutationAuth={},repository=SOURCE_REPOSITORY){assertExecutionPlaneMutationPaths([change.path],mutationAuth);const old=await readRepoFile(change.path,branch,repository);if(old.sha&&old.content===String(change.content??'')){const e=new Error(`CODING_COMPACT_EDIT_NO_SOURCE_CHANGE:${change.path}`);e.code='CODING_COMPACT_EDIT_NO_SOURCE_CHANGE';throw e}assertSafeFileChange({path:change.path,before:old.sha?old.content:null,after:change.content,isNew:!old.sha});const body={message:`TigerIQ ${change.path}`,content:Buffer.from(change.content,'utf8').toString('base64'),branch};if(old.sha)body.sha=old.sha;return ghRepo(repository,`/contents/${change.path.split('/').map(encodeURIComponent).join('/')}`,{method:'PUT',body:JSON.stringify(body)})}
 async function openPr(branch,title,body,repository=SOURCE_REPOSITORY,{canary=false}={}){return ghRepo(repository,'/pulls',{method:'POST',body:JSON.stringify({title,head:branch,base:'main',body,draft:canary,maintainer_can_modify:true})})}
 async function headSha(branch,repository=SOURCE_REPOSITORY){return (await ghRepo(repository,`/git/ref/heads/${encodeURIComponent(branch)}`)).object.sha}
 async function waitGates(branch,prNumber,repository=SOURCE_REPOSITORY,timeoutMs=20*60*1000){const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){assertPrOpenState(await ghRepo(repository,`/pulls/${prNumber}`));const sha=await headSha(branch,repository);const x=await ghRepo(repository,`/commits/${sha}/check-runs?per_page=100`);const g=checkRepositoryGateState(x.check_runs||[],repository);if(g.state==='passed')return {sha,...g};if(g.state==='failed'){const e=Object.assign(new Error('CI_GATES_FAILED'),{code:'CI_GATES_FAILED',detail:g});throw e}await sleep(15000)}const e=new Error('CI_GATES_TIMEOUT');e.code='CI_GATES_TIMEOUT';throw e}
@@ -1772,7 +1786,7 @@ export function codingMicroContext(files=[],request='',budgetChars=9000){
     return {context:before,telemetry:{fallbackReason:'SLICE_ERROR',charsBefore:before.length,charsAfter:before.length,symbolsSelected:[],dependencyEdges:[]}};
   }
 }
-async function filesFor(paths,ref='main',repository=SOURCE_REPOSITORY){const files=[];for(const p of paths){const f=await readRepoFile(p,ref,repository);files.push({path:p,content:f.content})}return files}
+async function filesFor(paths,ref='main',repository=SOURCE_REPOSITORY){const files=[];for(const p of paths){const f=await readRepoFile(p,ref,repository);files.push({path:p,content:f.content,sha:f.sha||null})}return files}
 async function contextFor(paths,ref='main',repository=SOURCE_REPOSITORY){return buildLocalFileContext(await filesFor(paths,ref,repository))}
 export function partitionGenerationFiles(files=[],maxBatchChars=9000){
   const batches=[];let current=[],size=0;
@@ -1800,7 +1814,7 @@ async function generationContextsFor(paths,ref='main',maxBatchChars=9000,reposit
     const micro=codingMicroContext(files,request,maxBatchChars);
     return {paths:files.map(x=>x.path),context:micro.context,contextTelemetry:micro.telemetry,
       // Keep the exact full repository contents outside the model prompt.
-      canonicalFiles:files.map(x=>({path:x.path,content:String(x.content??'')}))};
+      canonicalFiles:files.map(x=>({path:x.path,content:String(x.content??''),sha:x.sha||null}))};
   });
 }
 export function validateCompactEdits(edits,allowedPaths=[]){
@@ -1862,6 +1876,21 @@ export function assertGenerationContextPaths(prompt,allowedPaths=[]){
   if(missing.length){const e=new Error(`CODING_GENERATION_CONTEXT_PATH_MISSING:${missing.join(',')}`);e.code='CODING_GENERATION_CONTEXT_PATH_MISSING';throw e}
   return true;
 }
+export function assertActualSourceMutation(changes,canonicalFiles=[]){
+  const existing=new Map((Array.isArray(canonicalFiles)?canonicalFiles:[])
+    .filter(file=>String(file?.sha||'').trim())
+    .map(file=>[String(file.path||''),String(file.content??'')]));
+  const unchanged=(Array.isArray(changes)?changes:[])
+    .filter(change=>existing.has(String(change?.path||''))&&existing.get(String(change.path))===String(change?.content??''))
+    .map(change=>String(change.path));
+  if(unchanged.length){
+    const error=new Error('CODING_COMPACT_EDIT_NO_SOURCE_CHANGE:'+unchanged.join(','));
+    error.code='CODING_COMPACT_EDIT_NO_SOURCE_CHANGE';
+    error.detail={unchanged};
+    throw error;
+  }
+  return true;
+}
 async function invokeCompactGeneration(worker,prompt,allowedPaths,exclude=[],leaseContext=null,canonicalFiles=null){
   assertGenerationContextPaths(prompt,allowedPaths);
   const modelPrompt=compactPromptForChanges(prompt,{maxContextChars:6000,maxOutputChars:3200});
@@ -1870,7 +1899,7 @@ async function invokeCompactGeneration(worker,prompt,allowedPaths,exclude=[],lea
       ?{summary:d.summary,edits:d.__tigeriqCompactEdits}:d;
     return expandCompactChanges(prompt,JSON.stringify(raw),canonicalFiles);
   };
-  const validateData=d=>{const expanded=expand(d);if(expanded.changes.length){validateChanges(expanded.changes,allowedPaths);validateJobScope(allowedPaths,expanded.changes)}else if(!(expanded.noop===true&&/^BATCH_NOOP_ALLOWED=true$/m.test(prompt)))throw new Error('CODING_BATCH_NOOP_INVALID')};
+  const validateData=d=>{const expanded=expand(d);if(expanded.changes.length){validateChanges(expanded.changes,allowedPaths);validateJobScope(allowedPaths,expanded.changes);assertActualSourceMutation(expanded.changes,canonicalFiles)}else if(!(expanded.noop===true&&/^BATCH_NOOP_ALLOWED=true$/m.test(prompt)))throw new Error('CODING_BATCH_NOOP_INVALID')};
   const invoked=await invokeJsonWithFailover(worker,modelPrompt,{exclude,validateData,parseData:parseCompactEditJson,shrinkPrompt:preserveGenerationPrompt,maxSameResourceAttempts:codingP0CanaryApplies(leaseContext?.objective)?1:2,leaseContext});
   return {payload:expand(invoked.data),resource:invoked.resource};
 }
