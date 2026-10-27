@@ -801,6 +801,24 @@ test('literal IPv6 private and reserved targets reject before any DNS or injecte
   }
 });
 
+test('dual-stack DNS prefers verified IPv4 when IPv6 is listed first', async () => {
+  const result = await resolveSafeTarget('https://dual-stack.audit.invalid/', {
+    lookupFn: async () => [
+      { address: '2606:4700:4700::1111', family: 6 },
+      { address: '8.8.8.8', family: 4 },
+    ],
+  });
+  assert.deepEqual(result, { address: '8.8.8.8', family: 4 });
+
+  const ipv6Only = await resolveSafeTarget('https://ipv6-only.audit.invalid/', {
+    lookupFn: async () => [
+      { address: '2606:4700:4700::1111', family: 6 },
+      { address: '2001:4860:4860::8888', family: 6 },
+    ],
+  });
+  assert.deepEqual(ipv6Only, { address: '2606:4700:4700::1111', family: 6 });
+});
+
 test('public IPv6 URL literal resolves directly, never using DNS or a mismatched family', async () => {
   let lookups = 0;
   for (const url of [
