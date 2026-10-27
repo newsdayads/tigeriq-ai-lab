@@ -391,7 +391,7 @@ describe('GitHub coding intake dependencies',()=>{
     const downstream=issue(`${SAFE}\nDEPENDS_ON=#677,681`,{number:702});
     const fetchImpl=async(url)=>{
       if(url.includes('/issues?'))return response([downstream]);
-      if(url.includes('/issues/677')||url.includes('/issues/681'))return response({state:'closed'});
+      if(url.includes('/issues/677')||url.includes('/issues/681'))return response({state:'closed',state_reason:'completed'});
       if(url.includes('/api/objectives')){posted++;return response({id:'obj-702'});}
       if(url.includes('/comments'))return response({});
       return response({});
@@ -1408,7 +1408,7 @@ describe('GitHub coding source revision completion guard',()=>{
       if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
       if(url.includes('/compare/old-main...new-main'))return response({files:[{filename:'docs/evidence/rev-dep.md'}]});
       if(url.includes('/issues/824/comments'))return response([]);
-      if(url.includes('/issues/900'))return response({number:900,state:depState});
+      if(url.includes('/issues/900'))return response({number:900,state:depState,state_reason:depState==='closed'?'completed':null});
       if(url.includes('/issues/824'))return response(current);
       if(url.includes('/api/objectives')){posted++;return response({id:'obj-824-recovery'});}
       if(url.includes('/comments'))return response({});
@@ -1562,7 +1562,7 @@ describe('GitHub coding source revision completion guard',()=>{
       if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
       if(url.includes('/compare/old-main...new-main'))return response({files:[{filename:'tests/github-coding-intake.test.mjs'}]});
       if(url.includes('/issues/1605/comments'))return response([]);
-      if(url.includes('/issues/1935'))return response({number:1935,state:dependencyClosed?'closed':'open'});
+      if(url.includes('/issues/1935'))return response({number:1935,state:dependencyClosed?'closed':'open',state_reason:dependencyClosed?'completed':null});
       if(url.includes('/issues/1605'))return response(current);
       if(url.includes('/api/objectives')){
         posted++;

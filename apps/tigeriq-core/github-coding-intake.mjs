@@ -8,7 +8,7 @@ import {addTerminalBlockedLabel,clearTerminalBlockedLabel} from './github-lifecy
 import {githubRequestJson} from './github-shared-client.mjs';
 import {githubEventIssue,subscribeGithubEvents} from './github-event-bus.mjs';
 import {localizeOwnerFacingText} from './owner-facing-vietnamese.mjs';
-import {codingIssueCompletionGate} from '../shared/work-order-acceptance-sync.mjs';
+import {codingIssueCompletionGate,sourceTerminalDependencyAccepted} from '../shared/work-order-acceptance-sync.mjs';
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
 export const DEFAULT_CODING_URL='http://127.0.0.1:8797';
@@ -443,6 +443,7 @@ async function dependencyGate(fetchImpl,owner,repo,token,dependsOn){
     let depIssue;
     try{depIssue=await gh(fetchImpl,owner,repo,`/issues/${depNum}`,token)}catch(error){if(githubRateLimitCooldownMs(error)>0)throw error;return {ok:false,reason:'DEPENDENCY_LOOKUP_FAILED',dependency:depNum,error:String(error?.message||error)}}
     if(!depIssue||depIssue.pull_request||depIssue.state!=='closed')return {ok:false,reason:'DEPENDENCY_OPEN',dependency:depNum,state:String(depIssue?.state||'unknown')};
+    if(!sourceTerminalDependencyAccepted(depIssue))return {ok:false,reason:'DEPENDENCY_NOT_TERMINAL_ACCEPTED',dependency:depNum,state:String(depIssue?.state||'unknown'),stateReason:String(depIssue?.state_reason||'')};
   }
   return {ok:true};
 }
