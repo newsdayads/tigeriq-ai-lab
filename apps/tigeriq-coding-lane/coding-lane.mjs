@@ -1899,7 +1899,8 @@ async function invokeCompactGeneration(worker,prompt,allowedPaths,exclude=[],lea
       ?{summary:d.summary,edits:d.__tigeriqCompactEdits}:d;
     return expandCompactChanges(prompt,JSON.stringify(raw),canonicalFiles);
   };
-  const validateData=d=>{const expanded=expand(d);if(expanded.changes.length){validateChanges(expanded.changes,allowedPaths);validateJobScope(allowedPaths,expanded.changes);assertActualSourceMutation(expanded.changes,canonicalFiles)}else if(!(expanded.noop===true&&/^BATCH_NOOP_ALLOWED=true$/m.test(prompt)))throw new Error('CODING_BATCH_NOOP_INVALID')};
+  const deterministicSelfHeal=r12SelfHealCanaryApplies(leaseContext?.objective)||r13OneTapCanaryApplies(leaseContext?.objective);
+  const validateData=d=>{const expanded=expand(d);if(expanded.changes.length){validateChanges(expanded.changes,allowedPaths);validateJobScope(allowedPaths,expanded.changes);if(!deterministicSelfHeal)assertActualSourceMutation(expanded.changes,canonicalFiles)}else if(!(expanded.noop===true&&/^BATCH_NOOP_ALLOWED=true$/m.test(prompt)))throw new Error('CODING_BATCH_NOOP_INVALID')};
   const invoked=await invokeJsonWithFailover(worker,modelPrompt,{exclude,validateData,parseData:parseCompactEditJson,shrinkPrompt:preserveGenerationPrompt,maxSameResourceAttempts:codingP0CanaryApplies(leaseContext?.objective)?1:2,leaseContext});
   return {payload:expand(invoked.data),resource:invoked.resource};
 }
