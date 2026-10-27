@@ -648,6 +648,12 @@ describe('GitHub Core intake guardrails',()=>{
     expect(openGate).toMatchObject({allow:false,reason:'dependency_not_terminal_accepted',dependency:2709,state:'open'});
     const closedGate=await githubTerminalDependencyGate(async()=>new Response(JSON.stringify({number:2709,state:'closed',state_reason:'completed'}),{status:200,headers:{'content-type':'application/json'}}),'newsdayads','tigeriq-ai-lab','fake',source,new Map());
     expect(closedGate).toMatchObject({allow:true,reason:'dependencies_terminal_accepted',dependencies:[2709]});
+    const invalidV2={number:2709,title:'[P1][CORE] V2 unaccepted child',created_at:'2026-10-26T00:00:00Z',
+      state:'closed',state_reason:'completed',body:'WORK_ORDER_LIFECYCLE=V2\nDONE=false\nCURRENT_STATE=READY'};
+    const invalidGate=await githubTerminalDependencyGate(
+      async()=>new Response(JSON.stringify(invalidV2),{status:200,headers:{'content-type':'application/json'}}),
+      'newsdayads','tigeriq-ai-lab','fake',source,new Map());
+    expect(invalidGate).toMatchObject({allow:false,reason:'dependency_lifecycle_v2_unaccepted',dependency:2709});
   });
 
   it('keeps a completed Core objective open when its canonical dependency is not terminal accepted',async()=>{
