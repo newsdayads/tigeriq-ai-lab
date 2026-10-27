@@ -1337,6 +1337,36 @@ describe('GitHub coding source revision completion guard',()=>{
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RESULT_REPORTED')).toHaveLength(0);
   });
 
+  it('rearms a reported completed result when the canonical source changes later',async()=>{
+    const pool=fakePool(); let closed=false,posted=0;
+    const prior=issue(SAFE+'\nRESOURCE_SCOPE=REV_POST_RESULT\nALLOW_PATH_PREFIX=tests/github-coding-intake.test.mjs',{number:1605,title:'Post-result source revision',comments:0});
+    const current={...prior,body:prior.body+'\nCURRENT_STATE=OWNER_CHANGED_AFTER_REPORTED_RESULT'};
+    const oldRevision=codingSourceTruthRevision({...prior,repository_owner:'newsdayads'},[]);
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:1605,codingObjectiveId:'obj-1605',sourceRevision:oldRevision,scopeLease:{resourceScope:'REV_POST_RESULT',paths:['tests/github-coding-intake.test.mjs'],ambiguous:false}}},
+      {type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:1605,codingObjectiveId:'obj-1605',status:'completed'}}
+    );
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({objectives:[{id:'obj-1605',status:'completed',summary:'Previously reported result'}],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'same-main'}});
+      if(url.includes('/issues/1605/comments'))return response([]);
+      if(url.includes('/issues/1605')){
+        if(init.method==='PATCH'){closed=true;return response({...current,state:'closed'});}
+        return response(current);
+      }
+      if(url.includes('/api/objectives')){posted++;return response({id:'obj-1605-current'});}
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(closed).toBe(false);
+    expect(posted).toBe(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REJECTED')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REARMED')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED'&&e.data.issueNumber===1605)).toHaveLength(2);
+  });
+
   it('treats an authoritative Owner directive change as a source revision change',async()=>{
     const pool=fakePool();
     const current=issue(SAFE+'\nRESOURCE_SCOPE=REV_OWNER\nALLOW_PATH_PREFIX=docs/evidence/rev-owner.md',{number:823,title:'Revision owner',comments:1});

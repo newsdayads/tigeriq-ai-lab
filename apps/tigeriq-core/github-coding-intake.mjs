@@ -561,7 +561,13 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     if(!n||!id||seenIssues.has(n))continue;
     seenIssues.add(n);
     const objective=(status.objectives||[]).find(x=>x.id===id);
-    if(await hasCompletedCodingResult(pool,n))continue;
+    const completedResultReported=await hasCompletedCodingResult(pool,n);
+    // A previously reported completion is terminal only for the exact source
+    // revision that produced it. Keep historical/missing objectives quiet, but
+    // let a still-visible completed objective reach source reconciliation so a
+    // later canonical body/Owner revision can use the existing stale-result
+    // reject/rearm path instead of being masked forever.
+    if(completedResultReported&&String(objective?.status||'').toLowerCase()!=='completed')continue;
     if(!objective){
       // Historical terminal Coding objectives may already be garbage-collected from lane status.
       // Only fetch GitHub for an unsynced blocked-final event; normal historical dispatch rows stay request-free.
@@ -715,7 +721,7 @@ Continue only after the canonical source materially changed. Execute zero-cost r
         results++;
         continue;
       }
-      if(!(await hasCompletedCodingResult(pool,n))){
+      if(!completedResultReported){
         // A merged PR and a completed Coding objective are not full Work Order
         // acceptance. Verify the source's Lifecycle V2 receipts BEFORE closure.
         // A missing receipt must never be manufactured by the reconciler.
