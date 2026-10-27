@@ -97,7 +97,11 @@ public final class V44UiBridge {
     }
 
     public static void onSlotClick(int slot) {
-        openSlot(slot);
+        if (!isSlotAssigned(slot)) {
+            pickSlot(slot);
+        } else {
+            openSlot(slot);
+        }
     }
 
     public static void onSlotLongClick(int slot) {
@@ -203,7 +207,7 @@ public final class V44UiBridge {
             quickBar.setLayoutParams(lp);
             quickBar.setVisibility(View.GONE);
 
-            overlay.addView(quickBar);
+            // overlay.addView(quickBar); // Replaced by native Compose QuickBarRow
 
             for (int i = 0; i < 5; i++) {
                 slotIds[i] = prefs().getString("slot_" + i, "");

@@ -1,19 +1,19 @@
-# LIVE STATE OVERRIDE — 2026-10-27 — ULTRACAR V58 RELEASE & QUICKBAR RESTORE
+# LIVE STATE OVERRIDE — 2026-10-27 — ULTRACAR V59 RELEASE & NATIVE COMPOSE QUICKROW RESTORE
 Authority: GitHub main + Issue #5129 (Work Order V1) + Issue #504 + live PC01 receipts.
 
-1. **UltraCar v1.0.58 TEST (code 299) đã ký và phát hành Google Drive:**
-   - File Drive: UltraCar_v1.0.58_TEST.apk, size 35,170,717 bytes.
+1. **UltraCar v1.0.59 TEST (code 300) đã ký và phát hành Google Drive:**
+   - File Drive: UltraCar_v1.0.59_TEST.apk, size 35,170,717 bytes.
    - Parent Folder ID: 1QTOWvtgrdGIml15J55LttcyKa7rLkdva (Folder TigerIQ UltraCar).
-   - SHA-256: 97046120235DF5B155B986B25A410E3B8FBE3565C930F5E1930F9B005207402E.
-   - Chứng chỉ SHA-256 71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558, v2/v3 PASS. Package com.tigeriq.dexsplit, versionCode 299, versionName TigerIQ_HCM_v1.0.58.
+   - SHA-256: D6B4492BFC5D42F3E57BBF01A600E93557B088244D5ACEEB051F4A48A8B37EB4.
+   - Chứng chỉ SHA-256 71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558, v2/v3 PASS. Package com.tigeriq.dexsplit, versionCode 300, versionName TigerIQ_HCM_v1.0.59.
    - Biên nhận đồng bộ SYNC_PASS tại C:\Users\wdragons12x\AppData\Local\Temp\tigeriq-drive-sync-result.txt.
-2. **Khôi phục hoàn toàn nút KHỞI ĐỘNG và 5 nút phím tắt bố cục:**
-   - Hoàn nguyên xo5.smali về sạch 100%, gỡ bỏ toàn bộ code Compose chèn nhầm bên trong Row nút Khởi động làm co kích thước về 0. Khôi phục hoàn toàn nút KHỞI ĐỘNG (uu2.a) và nút Refresh (uu2.e).
-   - Kích hoạt lại quickBar trong V44UiBridge.java gắn vào overlay FrameLayout với nền trong suốt (Color.TRANSPARENT), căn giữa chuẩn xác giữa nút KHỞI ĐỘNG (startBtnRect.bottom) và hàng 3 nút (ottomBarRect.top), căn lề đối xứng, không dải đen, không che nút Khởi động, không tràn sang cửa sổ media Samsung DeX.
-   - Chạm mở bố cục theo Session ID (openSlot), nhấn giữ chọn lại bố cục (pickSlot), lưu SharedPreferences 	igeriq_v44_quick_slots.
+2. **Khôi phục hoàn toàn nút KHỞI ĐỘNG và 5 nút phím tắt bố cục NATIVE COMPOSE:**
+   - Nút KHỞI ĐỘNG (uu2.a) và nút Nạp lại (uu2.e) trong Row 1 giữ nguyên vẹn 100%, kết thúc bằng sl.y.
+   - Lớp Compose 5 nút phím tắt (com.tigeriq.v44.QuickBarRow & QuickBarContent) được inject độc lập vào Column nằm chính giữa Row 1 (uu2.a/uu2.e) và Row 2 (uu2.i 3 nút Bố cục/Camera). Sử dụng card bo tròn 12dp da4.b, row SpaceEvenly ga4.a, phân bổ đều 5 nút bằng ha4.a (weight(1.0f)) và gọi composable nguyên tử uu2.h.
+   - Xóa bỏ hoàn toàn lớp overlay FrameLayout cũ trong V44UiBridge.java, giao diện hiển thị 100% native trong cây Compose card UltraCar cockpit, không bị co giật, không vỡ layout khi xoay hoặc resize Samsung DeX.
 3. **Quy chuẩn Ký & Xuất bản APK duy nhất trên PC01:**
    - **Runner chính thức:** D:\TigerIQ\Tools\sign_latest.cmd (gọi sign_latest.ps1).
-   - Tự động nhận chính xác candidate *_aligned_TEST.apk, ký bằng debug.keystore, kiểm tra chữ ký/gói và kích hoạt task interactive TigerIQ_UltraCar_Sync_Drive. Fail-closed dừng nếu signed đã tồn tại, không Remove-Item và không overwrite.
+   - Tự động nhận chính xác candidate UltraCar_v1.0.59_300_aligned_TEST.apk, ký bằng debug.keystore, kiểm tra chữ ký/gói và kích hoạt task interactive TigerIQ_UltraCar_Sync_Drive. Fail-closed dừng nếu signed đã tồn tại, không Remove-Item và không overwrite.
 
 ---
 # LIVE STATE OVERRIDE — 2026-10-15 — CHỐNG CHẶN SAI
