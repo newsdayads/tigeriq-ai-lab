@@ -32,6 +32,17 @@ describe('GH-5169 real signed GitHub main push delivery',()=>{
     expect(result).toEqual(['apps/shared/renamed.mjs','apps/shared/legacy.mjs']);
   });
 
+  it('delivers a verified zero-net-diff main push without inventing changed paths',async()=>{
+    const fetchImpl=respond([]);
+    const enriched=await enrichGithubPushPayload(payload(),{token:'test-token',fetchImpl});
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(enriched.changedPaths).toEqual([]);
+    expect(githubContinuousVerifyTrigger({eventName:'push',deliveryId:'run-zero',
+      payload:enriched})).toEqual({
+      trigger:false,kind:'GITHUB_CHANGE_SCOPE_UNKNOWN',changedPaths:[],
+    });
+  });
+
   it('denies unverified main identity, malformed before/after and missing token before network',async()=>{
     const fetchImpl=vi.fn();
     for(const bad of [

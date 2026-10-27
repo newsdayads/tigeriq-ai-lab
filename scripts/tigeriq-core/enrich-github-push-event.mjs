@@ -40,7 +40,10 @@ export async function enrichGithubPushPayload(payload, {
   });
   if(!response?.ok)throw Error('GITHUB_PUSH_COMPARE_UNAVAILABLE');
   const changedPaths=compareChangedPaths(await response.json());
-  if(!changedPaths.length)throw Error('GITHUB_PUSH_COMPARE_EMPTY');
+  // A valid compare can legitimately contain zero files when a PR's commits
+  // cancel each other out (for example a deterministic fail->repair canary).
+  // Preserve the verified push identity and let Core classify the empty scope
+  // as a no-op instead of failing the signed event-dispatch workflow.
   return {...payload,changedPaths};
 }
 
