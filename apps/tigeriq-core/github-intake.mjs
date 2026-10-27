@@ -67,16 +67,30 @@ export function bodyValue(body,key){return policyBodyValue(body,key);}
 // authorization, resource scope, acceptance text and task content must still
 // change the revision and invalidate stale live-acceptance evidence.
 export function normalizeWorkOrderChecklistReceiptProgress(body=''){
-  return String(body||'').replace(
+  const source=String(body||'');
+  const normalized=source.replace(
     /^([ \t]*-[ \t]*)\[[ xX]\]([ \t]+)([^\r\n]*)(\r?)$/gm,
     (_line,leader,spacing,content,cr)=>{
       const instruction=content.replace(
-        /[ \t]+\[(?:Bằng chứng|Biên nhận|Evidence|Receipt)\]\(https:\/\/github\.com\/[^)\s]+\)[ \t]*$/iu,
+        /[ \t]+(?:—[ \t]+)?\[(?:Bằng chứng|Biên nhận|Biên nhận nghiệm thu|Bằng chứng nghiệm thu|Evidence|Receipt)\]\(https:\/\/github\.com\/[^)\s]+\)[ \t]*$/iu,
         '',
       );
       return `${leader}[ ]${spacing}${instruction}${cr}`;
     },
   );
+  // A validated checklist receipt and its counter are one acceptance state,
+  // not a new work instruction. Never normalize a drifting counter.
+  if(/^CHECKLIST_RECEIPT_STABLE_REVISION=V2$/m.test(source)
+    && /^PROGRESS_SOURCE=STRUCTURED_PROGRESS_CHECKLIST$/m.test(source)){
+    const steps=workOrderChecklistSteps(source);
+    const completed=[...source.matchAll(/^PROGRESS_COMPLETED=(\d+)$/gm)];
+    const total=[...source.matchAll(/^PROGRESS_TOTAL=(\d+)$/gm)];
+    if(steps.found && steps.steps.length>0 && completed.length===1 && total.length===1
+      && Number(completed[0][1])===steps.steps.filter(step=>step.checked).length
+      && Number(total[0][1])===steps.steps.length)
+      return normalized.replace(/^PROGRESS_COMPLETED=\d+$/m,'PROGRESS_COMPLETED=CHECKLIST_ACCEPTED_COUNT');
+  }
+  return normalized;
 }
 
 export function githubIssueSourceRevision(issue={}){
