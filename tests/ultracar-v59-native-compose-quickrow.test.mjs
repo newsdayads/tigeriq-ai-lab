@@ -51,9 +51,9 @@ test('signing and sync target current candidate TEST APK', () => {
   const signScript = readFileSync('D:\\TigerIQ\\Tools\\sign_latest.ps1', 'utf8');
   const syncScript = readFileSync('D:\\TigerIQ\\Tools\\sync_latest_ultracar_to_drive.ps1', 'utf8');
 
-  assert.match(signScript, /UltraCar_v1\.0\.(60_301|61_302)_aligned_TEST\.apk/);
-  assert.match(signScript, /UltraCar_v1\.0\.(60_301|61_302)_signed_TEST\.apk/);
+  assert.match(signScript, /UltraCar_v1\.0\.(60_301|61_302|62_303)_aligned_TEST\.apk/);
+  assert.match(signScript, /UltraCar_v1\.0\.(60_301|61_302|62_303)_signed_TEST\.apk/);
 
-  assert.match(syncScript, /UltraCar_v1\.0\.(60_301|61_302)_signed_TEST\.apk/);
-  assert.match(syncScript, /UltraCar_v1\.0\.(60|61)_TEST\.apk/);
+  assert.match(syncScript, /UltraCar_v1\.0\.(60_301|61_302|62_303)_signed_TEST\.apk/);
+  assert.match(syncScript, /UltraCar_v1\.0\.(60|61|62)_TEST\.apk/);
 });

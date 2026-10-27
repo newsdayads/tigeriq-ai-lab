@@ -1,21 +1,23 @@
-﻿# LIVE STATE OVERRIDE — 2026-10-27 — ULTRACAR V61 COCKPIT THREE ROWS INTEGRATION
+﻿# LIVE STATE OVERRIDE — 2026-10-27 — ULTRACAR V62 COCKPIT VERIFIED ON HARDWARE
 Authority: GitHub main + Issue #5129 (Work Order V1) + Issue #504 + live PC01 receipts.
 
-1. **UltraCar v1.0.61 TEST (code 302) đã ký và phát hành Google Drive:**
-   - File Drive: UltraCar_v1.0.61_TEST.apk, size 35,170,717 bytes.
+1. **UltraCar v1.0.62 TEST (code 303) đã ký và phát hành Google Drive:**
+   - File Drive: UltraCar_v1.0.62_TEST.apk, size 35,170,717 bytes.
    - Parent Folder ID: 1QTOWvtgrdGIml15J55LttcyKa7rLkdva (Folder TigerIQ UltraCar).
-   - SHA-256: 11F93C06A8848AF3488A3B2245BD31C4BAC180BC1C3D5DCA5DC16A85B412013F.
-   - Chứng chỉ SHA-256 71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558, v2/v3 PASS. Package com.tigeriq.dexsplit, versionCode 302, versionName TigerIQ_HCM_v1.0.61.
+   - SHA-256: 90D0847769C0538316CC1C53F15ABDDF74E6E67C9399FC1E3F0CEF5736E32F02.
+   - Chứng chỉ SHA-256 71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558, v2/v3 PASS. Package com.tigeriq.dexsplit, versionCode 303, versionName TigerIQ_HCM_v1.0.62.
    - Biên nhận đồng bộ SYNC_PASS tại C:\Users\wdragons12x\AppData\Local\Temp\tigeriq-drive-sync-result.txt.
-2. **Tích hợp trọn vẹn 3 hàng nút trong thẻ tác vụ UltraCar (RCA & Khắc phục):**
-   - **Root Cause v60:** Thẻ điều khiển UltraCar bên trái có chiều cao giới hạn (~170dp trên Samsung DeX). Trong xo5.smali, Column gốc sử dụng spacing v3 = 56dp. Khi chèn thêm hàng 5 nút phím tắt bố cục (56dp) vào giữa mà không co hẹp khoảng đệm, tổng chiều cao vượt quá 268dp khiến Compose đẩy tràn toàn bộ hàng nút thứ 3 (Bố cục đã lưu, Bố cục mới, Camera - uu2.i) ra khỏi khung nhìn.
-   - **Đã khắc phục hoàn hảo trong v61 (code 302):** Co giãn khoảng đệm Column v3 còn 6.0f (0x40c00000) và chuẩn hóa chiều cao hàng 2 và hàng 3 v14 về 40.0f (0x42200000). Tổng chiều cao 3 hàng là 132dp, vừa vặn hoàn hảo trong khung thẻ tác vụ. Hiển thị đầy đủ cả 3 hàng nút:
+2. **Kiểm chứng thực tế trên thiết bị phần cứng PC01 (R3CM400AKRX):**
+   - Đã cài đặt thực tế qua ADB (pm install -r UltraCar_v1.0.62_303_signed_TEST.apk) -> Success.
+   - Khởi chạy trực tiếp MainActivity -> Tiến trình PID 3010 chạy ổn định, logcat 0 lỗi VerifyError / AndroidRuntime Crash.
+   - Root Cause v61 được xử lý dứt điểm: Trong xo5.smali khi rút gọn chiều cao đã thiếu khởi tạo thanh ghi v8 khiến ART verifier báo egister v8 has type Undefined but expected Float. v62 đã bổ sung chuẩn xác const/high16 v8, 0x42200000 (40.0f).
+   - Thẻ tác vụ UltraCar tích hợp trọn vẹn 3 hàng nút trong khung ~170dp (spacing 6dp, mỗi hàng 40dp):
      + Hàng 1: Nút KHỞI ĐỘNG (uu2.a) + Reload (uu2.e).
-     + Hàng 2: Dàn 5 nút phím tắt bố cục (QuickBarRow.render).
+     + Hàng 2: Dàn 5 nút phím tắt bố cục ở giữa (QuickBarRow.render).
      + Hàng 3: Dàn 3 nút Bố cục đã lưu, Bố cục mới, Camera (uu2.i).
 3. **Quy chuẩn Ký & Xuất bản APK duy nhất trên PC01:**
    - **Runner chính thức:** D:\TigerIQ\Tools\sign_latest.cmd (gọi sign_latest.ps1).
-   - Tự động nhận chính xác candidate UltraCar_v1.0.61_302_aligned_TEST.apk, ký bằng debug.keystore, kiểm tra chữ ký/gói và kích hoạt task interactive TigerIQ_UltraCar_Sync_Drive.
+   - Tự động nhận chính xác candidate UltraCar_v1.0.62_303_aligned_TEST.apk, ký bằng debug.keystore, kiểm tra chữ ký/gói và kích hoạt task interactive TigerIQ_UltraCar_Sync_Drive.
 ---
 # LIVE STATE OVERRIDE — 2026-10-15 — CHỐNG CHẶN SAI
 Authority: GitHub `main` + Issue #504 (quyền/cổng) + Issue #280 (điều phối) + đúng Work Order/PR + biên nhận PC01 mới nhất. Những đoạn 26/09 và 01/10 phía dưới chỉ là **lịch sử tại thời điểm ghi**, không ghi đè trạng thái hiện hành.
