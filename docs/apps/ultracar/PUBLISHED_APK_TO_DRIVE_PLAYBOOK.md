@@ -209,3 +209,21 @@ D:\TigerIQ\Tools\sign_latest.cmd
   - Download Link: [UltraCar v1.0.57 TEST on Google Drive](https://drive.google.com/file/d/1NhaeZdHfTQaYYRwiD33a5mBzVRwd_wzp/view?usp=drivesdk)
 - **Sync Receipt:** Recorded at `C:\Users\wdragons12x\AppData\Local\Temp\tigeriq-drive-sync-result.txt` with `SYNC_PASS`.
 - **Pending Owner QA:** Samsung DeX physical test on parked vehicle (quick layout slots opening sessions, long press reassignment, 6 draggable handles on Saved Layouts, Camera reverse display).
+
+
+<!-- ULTRACAR_V58_RELEASE_20261027 -->
+## 2026-10-27 — VERIFIED: UltraCar v1.0.58 TEST (299) Start Button & QuickBar Restored
+
+**Executed & Verified:**
+- **Full Restoration of Start Button:** Reverted xo5.smali to 100% clean baseline, removing the misplaced inline Compose injection that collapsed the Start button (uu2.a) to zero width. Both KHỞI ĐỘNG (uu2.a) and Refresh (uu2.e) buttons are fully restored.
+- **Centered Transparent QuickBar:** Re-enabled quickBar in V44UiBridge.java on the overlay FrameLayout. Automatically anchored vertically between startBtnRect.bottom and ottomBarRect.top, with transparent background (Color.TRANSPARENT), equal horizontal margins aligned to the UltraCar cockpit card, without dark strip or DeX spillover.
+- **Integrity Preservation:** Camera, USB, 6 draggable handles (☰), Profile screen, and Production baseline v1.0.17 remain 100% unchanged.
+- **Version Updates:** pktool.yml versionCode 299, versionName TigerIQ_HCM_v1.0.58. Profile screen subtitle updated to TIGERIQ HCM v1.0.58 (BUILD 299).
+- **Signed Artifact on PC01:** D:\TigerIQ\Apps\DeXCamPersonal\build\UltraCar_v1.0.58_299_signed_TEST.apk, size 35,170,717 bytes, SHA-256 97046120235DF5B155B986B25A410E3B8FBE3565C930F5E1930F9B005207402E.
+- **Signer Verification:** Signature scheme v2=true, v3=true. Certificate SHA-256 71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558.
+- **Google Drive Cloud Release:**
+  - File: UltraCar_v1.0.58_TEST.apk
+  - Parent Folder: TigerIQ UltraCar (1QTOWvtgrdGIml15J55LttcyKa7rLkdva)
+  - Size: 35,170,717 bytes
+  - SHA-256: 97046120235DF5B155B986B25A410E3B8FBE3565C930F5E1930F9B005207402E
+- **Sync Receipt:** Recorded at C:\Users\wdragons12x\AppData\Local\Temp\tigeriq-drive-sync-result.txt with SYNC_PASS.

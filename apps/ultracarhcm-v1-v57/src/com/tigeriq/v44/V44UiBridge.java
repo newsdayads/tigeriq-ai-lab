@@ -203,7 +203,7 @@ public final class V44UiBridge {
             quickBar.setLayoutParams(lp);
             quickBar.setVisibility(View.GONE);
 
-            // overlay.addView(quickBar); // QuickBar overlay removed: 5 quick layout buttons now render inline in Compose (xo5.smali)
+            overlay.addView(quickBar);
 
             for (int i = 0; i < 5; i++) {
                 slotIds[i] = prefs().getString("slot_" + i, "");
