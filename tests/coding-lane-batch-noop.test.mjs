@@ -1,7 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {compactPromptForChanges,expandCompactChanges,matchesExpectedSchema} from '../apps/tigeriq-coding-lane/ai-json-transport.mjs';
-import {validateAggregatedGenerationChanges,requireActualMutationPrompt} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
+import {assertActualSourceMutation,validateAggregatedGenerationChanges,requireActualMutationPrompt} from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import {isRetryableAiError,validateChanges} from '../apps/tigeriq-coding-lane/policy.mjs';
 
 const generationPrompt=(path,content)=>`TASK: update only when needed
@@ -68,6 +68,24 @@ describe('Coding Lane bounded batch no-op',()=>{
     }
   });
 
+  it('rejects byte-identical full-file replacements before write or PR creation',()=>{
+    const canonical=[{path:'tests/a.test.mjs',content:'const value=1;\n',sha:'a'.repeat(40)}];
+    const unchanged=[{path:'tests/a.test.mjs',content:'const value=1;\n'}];
+    expect(()=>assertActualSourceMutation(unchanged,canonical)).toThrow('CODING_COMPACT_EDIT_NO_SOURCE_CHANGE');
+
+    const error=Object.assign(new Error('CODING_COMPACT_EDIT_NO_SOURCE_CHANGE:tests/a.test.mjs'),{code:'CODING_COMPACT_EDIT_NO_SOURCE_CHANGE'});
+    expect(isRetryableAiError(error)).toBe(true);
+
+    expect(assertActualSourceMutation(
+      [{path:'tests/a.test.mjs',content:'const value=2;\n'}],
+      canonical,
+    )).toBe(true);
+    expect(assertActualSourceMutation(
+      [{path:'tests/new-empty.test.mjs',content:''}],
+      [{path:'tests/new-empty.test.mjs',content:'',sha:null}],
+    )).toBe(true);
+  });
+
   it('preserves normal non-noop behavior',()=>{
     expect(validateAggregatedGenerationChanges([
       {path:'apps/a.mjs',content:'const a=2;'},
@@ -80,6 +98,8 @@ describe('Coding Lane bounded batch no-op',()=>{
     expect((src.match(/BATCH_NOOP_ALLOWED=true/g)||[]).length).toBeGreaterThanOrEqual(2);
     expect((src.match(/validateAggregatedGenerationChanges\(changes,j\.paths,batches\.length\);/g)||[]).length).toBe(2);
     expect(src).toContain("throw new Error('CODING_BATCH_NOOP_INVALID')");
+    expect(src).toContain('assertActualSourceMutation(expanded.changes,canonicalFiles)');
+    expect(src).toContain('CODING_COMPACT_EDIT_NO_SOURCE_CHANGE');
   });
 
   it('does not classify the terminal all-noop outcome as retryable AI failure',()=>{
