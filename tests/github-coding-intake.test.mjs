@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {DEFAULT_CODING_URL,classifyCodingBlocker,codingScopesOverlap,codingSourceRevision,codingSourceTruthRevision,codingRetryEpochState,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,parseCodingTargetRepository,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {DEFAULT_CODING_URL,classifyCodingBlocker,codingScopesOverlap,codingSourceReconcileGate,codingSourceRevision,codingSourceTruthRevision,codingRetryEpochState,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,parseCodingTargetRepository,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {TERMINAL_BLOCKED_LABEL,addTerminalBlockedLabel,clearTerminalBlockedLabel,hasTerminalBlockedLabel} from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 import {parseOpenWorkIssue,parseQueueIssue,rankQueueRows} from '../api/live-status.mjs';
 
@@ -113,6 +113,37 @@ describe('GitHub coding scope concurrency',()=>{
 describe('GitHub coding intake transport',()=>{
   it('defaults to the canonical loopback-only Coding Lane listener',()=>{
     expect(DEFAULT_CODING_URL).toBe('http://127.0.0.1:8797');
+  });
+});
+
+describe('GitHub coding closed-source reconcile guard',()=>{
+  it('allows only an open canonical source and fails closed on closed or unknown state',()=>{
+    expect(codingSourceReconcileGate({state:'open'})).toEqual({allow:true,state:'open',reason:'SOURCE_WORK_ORDER_OPEN'});
+    expect(codingSourceReconcileGate({state:'closed',state_reason:'not_planned'})).toEqual({allow:false,state:'closed',reason:'SOURCE_WORK_ORDER_CLOSED'});
+    expect(codingSourceReconcileGate({})).toEqual({allow:false,state:'unknown',reason:'SOURCE_WORK_ORDER_STATE_UNVERIFIED'});
+  });
+
+  it('quiets a closed canonical Work Order before progress, rearm or result publication',async()=>{
+    const pool=fakePool();
+    pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:5358,codingObjectiveId:'obj-closed-5358',sourceRevision:'old-revision'}});
+    let commentPosts=0,objectivePosts=0;
+    const closed=issue(SAFE,{number:5358,state:'closed',state_reason:'not_planned',title:'Closed R12 canary'});
+    const fetchImpl=async(url,init={})=>{
+      const method=String(init.method||'GET').toUpperCase();
+      if(url.includes('/api/status'))return response({objectives:[{id:'obj-closed-5358',status:'active',summary:'still running'}],jobs:[{id:'job-closed-5358',objective_id:'obj-closed-5358',status:'running',employee_id:'NV09'}]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'main-closed-5358'}});
+      if(url.endsWith('/issues/5358')&&method==='GET')return response(closed);
+      if(url.includes('/issues/5358/comments')&&method==='POST'){commentPosts++;return response({id:1});}
+      if(url.includes('/api/objectives')&&method==='POST'){objectivePosts++;return response({id:'unexpected'});}
+      return response([]);
+    };
+    await expect(syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'})).resolves.toEqual({progress:0,results:0});
+    expect(commentPosts).toBe(0);
+    expect(objectivePosts).toBe(0);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_PROGRESS_REPORTED')).toHaveLength(0);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_SOURCE_QUIETED')).toEqual([
+      {type:'GITHUB_CODING_SOURCE_QUIETED',data:{issueNumber:5358,codingObjectiveId:'obj-closed-5358',reason:'SOURCE_WORK_ORDER_CLOSED',state:'closed',stateReason:'not_planned',historical:false}},
+    ]);
   });
 });
 
@@ -1304,6 +1335,36 @@ describe('GitHub coding source revision completion guard',()=>{
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REJECTED')).toHaveLength(1);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REARMED')).toHaveLength(1);
     expect(pool.events.filter(e=>e.type==='GITHUB_CODING_RESULT_REPORTED')).toHaveLength(0);
+  });
+
+  it('rearms a reported completed result when the canonical source changes later',async()=>{
+    const pool=fakePool(); let closed=false,posted=0;
+    const prior=issue(SAFE+'\nRESOURCE_SCOPE=REV_POST_RESULT\nALLOW_PATH_PREFIX=tests/github-coding-intake.test.mjs',{number:1605,title:'Post-result source revision',comments:0});
+    const current={...prior,body:prior.body+'\nCURRENT_STATE=OWNER_CHANGED_AFTER_REPORTED_RESULT'};
+    const oldRevision=codingSourceTruthRevision({...prior,repository_owner:'newsdayads'},[]);
+    pool.events.push(
+      {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:1605,codingObjectiveId:'obj-1605',sourceRevision:oldRevision,scopeLease:{resourceScope:'REV_POST_RESULT',paths:['tests/github-coding-intake.test.mjs'],ambiguous:false}}},
+      {type:'GITHUB_CODING_RESULT_REPORTED',data:{issueNumber:1605,codingObjectiveId:'obj-1605',status:'completed'}}
+    );
+    const fetchImpl=async(url,init={})=>{
+      if(url.includes('/api/status'))return response({objectives:[{id:'obj-1605',status:'completed',summary:'Previously reported result'}],jobs:[]});
+      if(url.includes('/git/ref/heads/main'))return response({object:{sha:'same-main'}});
+      if(url.includes('/issues/1605/comments'))return response([]);
+      if(url.includes('/issues/1605')){
+        if(init.method==='PATCH'){closed=true;return response({...current,state:'closed'});}
+        return response(current);
+      }
+      if(url.includes('/api/objectives')){posted++;return response({id:'obj-1605-current'});}
+      if(url.includes('/comments'))return response({});
+      return response({});
+    };
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(closed).toBe(false);
+    expect(posted).toBe(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REJECTED')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REARMED')).toHaveLength(1);
+    expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED'&&e.data.issueNumber===1605)).toHaveLength(2);
   });
 
   it('treats an authoritative Owner directive change as a source revision change',async()=>{

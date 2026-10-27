@@ -26,6 +26,12 @@ async function load(){
   }
   const data=await getJson('/api/control?operation=owner-decision&issue='+encodeURIComponent(issue));
   if(!data.ok){message('Không thể xác minh yêu cầu: '+String(data.error||data.httpStatus));return}
+  // Only a verified executable backend can ever advertise DUYỆT THỰC HIỆN.
+  // This endpoint records a decision only; fail closed if its contract drifts.
+  if(data.actionCapability!=='SCOPED_DECISION_ONLY'||data.executionAccepted!==false){
+    message('Chưa xác minh được hành động thật. Không hiển thị nút duyệt.');return;
+  }
+  byId('approve').textContent='GỬI QUYẾT ĐỊNH DUYỆT';
   if(!data.pending){
     message('Yêu cầu này đã có quyết định được ghi nhận. Không cho gửi trùng.');
     return;
@@ -45,15 +51,15 @@ async function choose(decision){
     headers:{'content-type':'application/json'},
     body:JSON.stringify({...current,decision,operation:'owner-decision'})
   }).catch(()=>({ok:false,error:'KHÔNG KẾT NỐI ĐƯỢC'}));
-  if(!data.ok){
-    message('CHƯA GHI NHẬN: '+String(data.error||data.httpStatus)+'. Tải lại hồ sơ để đối chiếu.');
+  if(!data.ok||data.decisionRecorded!==true||data.actionCapability!=='SCOPED_DECISION_ONLY'||data.executionAccepted!==false){
+    message('CHƯA XÁC MINH: '+String(data.error||data.httpStatus||'BIÊN NHẬN KHÔNG HỢP LỆ')+'. Tải lại hồ sơ để đối chiếu.');
     // Do not blindly retry after an ambiguous network error; request could have committed.
     return;
   }
   byId('card').hidden=true;
   byId('result').hidden=false;
   byId('outcome').textContent=decision==='APPROVE'?'ĐÃ GỬI QUYẾT ĐỊNH DUYỆT':'ĐÃ GỬI QUYẾT ĐỊNH TỪ CHỐI';
-  byId('details').textContent='Đã ghi biên nhận yêu cầu. Chưa có xác nhận cấp quyền hoặc hoàn thành công việc từ hệ thống đích.';
+  byId('details').textContent='Đã ghi biên nhận quyết định. CHƯA giao Core, CHƯA xuất bản, CHƯA hoàn tất. Kiểm tra trạng thái công việc và cổng đích trước khi thực thi.';
   byId('receipt').href=data.evidenceUrl;
   message('Quyết định đã được ghi vào hồ sơ GitHub, không tự thực thi cổng hệ thống đích.');
 }

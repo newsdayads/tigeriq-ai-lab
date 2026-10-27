@@ -222,7 +222,7 @@ export function classifyAiFailure(error){
   if(isProviderRequestRejected(error))return 'provider_request_rejected';
   if(status===429||/HTTP_429\b|RATE_LIMIT|RESOURCE_EXHAUSTED/i.test(msg))return 'rate_limit';
   if(error?.name==='AbortError'||/ETIMEDOUT|timeout|aborted|ECONNRESET|socket/i.test(msg))return 'timeout';
-  if(/MANAGER_(?:SOFT_BLOCK|SCOPE_MISMATCH|PATHS_INVALID|TITLE_NOT_VI)|JSON_OBJECT_(?:INVALID|MISSING)|CODING_CHANGES_COUNT_INVALID|schema|unterminated|truncat|COMPACT_EDIT/i.test(msg))return 'output_contract';
+  if(/MANAGER_(?:SOFT_BLOCK|SCOPE_MISMATCH|PATHS_INVALID|TITLE_NOT_VI)|JSON_OBJECT_(?:INVALID|MISSING)|CODING_CHANGES_COUNT_INVALID|CODING_COMPACT_EDIT_NO_SOURCE_CHANGE|schema|unterminated|truncat|COMPACT_EDIT/i.test(msg))return 'output_contract';
   if(/EMPTY_RESPONSE|invalid_response/i.test(msg))return 'invalid_response';
   if([408,409,413,500,502,503,504].includes(status)||/fetch failed|HTTP_(?:408|409|413|500|502|503|504)\b/i.test(msg))return 'provider_unavailable';
   return isRetryableAiError(error)?'other_retryable':'other';
@@ -279,6 +279,51 @@ export function managerResourceFailurePlan(error,objective={},nowMs=Date.now()){
 
 export function shouldResumeExistingPr(job){
   return Boolean(String(job?.branch||'').trim()&&Number(job?.pr_number)>0);
+}
+export function supervisorManagedCiRepair(objective=''){
+  const contract=currentSourceWorkOrderContract(objective);
+  return /^\s*RETRY_RESUME_TRIGGER\s*=\s*CI_GATES_FAILED_ON_FIRST_PR_HEAD\s*$/im.test(contract);
+}
+export function autonomousRepairCycle(instruction=''){
+  const match=String(instruction||'').match(/(?:^|\n)AUTONOMOUS_REPAIR_CYCLE=(\d+)(?:\n|$)/);
+  const cycle=Number(match?.[1]||0);
+  return Number.isInteger(cycle)&&cycle>0?cycle:0;
+}
+export function codingCiRepairMode(objective='',instruction=''){
+  const managed=supervisorManagedCiRepair(objective);
+  const repairCycle=managed?autonomousRepairCycle(instruction):0;
+  return {managed,repairCycle,failFirst:managed&&repairCycle===0,repairBeforeGates:managed&&repairCycle>0};
+}
+const R12_SELF_HEAL_CANARY_PATH='tests/r12-ci-self-heal-canary.test.mjs';
+function selfHealCanaryPaths(contract=''){
+  return String(String(contract||'').match(/^\s*ALLOW_PATH_PREFIX\s*=\s*(.+)$/im)?.[1]||'')
+    .split(',').map(x=>x.trim()).filter(Boolean);
+}
+export function r12SelfHealCanaryApplies(objective=''){
+  const contract=currentSourceWorkOrderContract(objective);
+  return supervisorManagedCiRepair(contract)
+    && /^\s*WORKSTREAM_ID\s*=\s*gh5144-r12-ci-self-heal-canary\s*$/im.test(contract)
+    && selfHealCanaryPaths(contract).includes(R12_SELF_HEAL_CANARY_PATH);
+}
+export function r13OneTapCanaryApplies(objective=''){
+  const contract=currentSourceWorkOrderContract(objective);
+  return supervisorManagedCiRepair(contract)
+    && /^\s*WORKSTREAM_ID\s*=\s*gh5144-r13-one-tap-e2e-canary\s*$/im.test(contract)
+    && selfHealCanaryPaths(contract).includes(R12_SELF_HEAL_CANARY_PATH);
+}
+export function enforceR12SelfHealCanaryChanges({objective='',instruction='',changes=[]}={}){
+  const r12=r12SelfHealCanaryApplies(objective);
+  const r13=r13OneTapCanaryApplies(objective);
+  if(!r12&&!r13)return Array.isArray(changes)?changes:[];
+  const mode=codingCiRepairMode(objective,instruction);
+  const content=r13
+    ? mode.repairBeforeGates
+      ? "import { describe, it, expect } from 'vitest';\n\ndescribe('R12 CI Self-Heal Canary', () => {\n  it('passes after the R13 bounded autonomous repair cycle', () => {\n    // TIGERIQ_R13_AUTONOMOUS_REPAIR_PASS\n    // R13_REPAIR_COMPLETE\n    expect(true).toBe(true);\n  });\n});\n"
+      : "import { describe, it, expect } from 'vitest';\n\ndescribe('R12 CI Self-Heal Canary', () => {\n  it('fails intentionally on the R13 initial autonomous generation', () => {\n    // TIGERIQ_R13_EXPECTED_INITIAL_CI_FAILURE\n    // R13_REPAIR_PENDING\n    expect(true).toBe(false);\n  });\n});\n"
+    : mode.repairBeforeGates
+      ? "import { describe, it, expect } from 'vitest';\n\ndescribe('R12 CI Self-Heal Canary', () => {\n  it('passes after the bounded autonomous repair cycle', () => {\n    // TIGERIQ_R12_AUTONOMOUS_REPAIR_PASS\n    // R12_REPAIR_COMPLETE\n    expect(true).toBe(true);\n  });\n});\n"
+      : "import { describe, it, expect } from 'vitest';\n\ndescribe('R12 CI Self-Heal Canary', () => {\n  it('fails intentionally on the initial autonomous generation', () => {\n    // TIGERIQ_R12_EXPECTED_INITIAL_CI_FAILURE\n    // R12_REPAIR_PENDING\n    expect(true).toBe(false);\n  });\n});\n";
+  return [{path:R12_SELF_HEAL_CANARY_PATH,content}];
 }
 
 export function validateObjectiveRoutingInput({targetEmployee=null,currentPr=null,targetHead=null}={}){
@@ -470,7 +515,7 @@ const MANAGER_OLLAMA_TIMEOUT_MS=normalizeManagerOllamaTimeout(process.env.TIGERI
 
 const R=(id,provider,model,ready)=>({id,provider,model,ready});
 const resources=[
-  R('NV09','ollama',process.env.TIGERIQ_NV09_MODEL||'qwen3.5:9b',()=>true),
+  R('NV09','ollama',process.env.TIGERIQ_NV09_MODEL||'qwen3.6:27b-coding',()=>true),
   R('NV11','groq',process.env.TIGERIQ_GROQ_MODEL||'openai/gpt-oss-120b',()=>process.env.GROQ_API_KEY&&process.env.TIGERIQ_GROQ_FREE_TIER_VERIFIED==='true'),
   R('NV12','gemini',process.env.TIGERIQ_GEMINI_MODEL||'gemini-3.5-flash-lite',()=>process.env.GEMINI_API_KEY&&process.env.TIGERIQ_GEMINI_FREE_TIER_VERIFIED==='true'),
   R('NV13','openrouter','openrouter/free',()=>process.env.OPENROUTER_API_KEY),
@@ -1136,7 +1181,7 @@ async function createBranch(name,sha,repository=SOURCE_REPOSITORY){
     throw error;
   }
 }
-async function writeFile(branch,change,mutationAuth={},repository=SOURCE_REPOSITORY){assertExecutionPlaneMutationPaths([change.path],mutationAuth);const old=await readRepoFile(change.path,branch,repository);assertSafeFileChange({path:change.path,before:old.sha?old.content:null,after:change.content,isNew:!old.sha});const body={message:`TigerIQ ${change.path}`,content:Buffer.from(change.content,'utf8').toString('base64'),branch};if(old.sha)body.sha=old.sha;return ghRepo(repository,`/contents/${change.path.split('/').map(encodeURIComponent).join('/')}`,{method:'PUT',body:JSON.stringify(body)})}
+async function writeFile(branch,change,mutationAuth={},repository=SOURCE_REPOSITORY){assertExecutionPlaneMutationPaths([change.path],mutationAuth);const old=await readRepoFile(change.path,branch,repository);if(old.sha&&old.content===String(change.content??'')){const e=new Error(`CODING_COMPACT_EDIT_NO_SOURCE_CHANGE:${change.path}`);e.code='CODING_COMPACT_EDIT_NO_SOURCE_CHANGE';throw e}assertSafeFileChange({path:change.path,before:old.sha?old.content:null,after:change.content,isNew:!old.sha});const body={message:`TigerIQ ${change.path}`,content:Buffer.from(change.content,'utf8').toString('base64'),branch};if(old.sha)body.sha=old.sha;return ghRepo(repository,`/contents/${change.path.split('/').map(encodeURIComponent).join('/')}`,{method:'PUT',body:JSON.stringify(body)})}
 async function openPr(branch,title,body,repository=SOURCE_REPOSITORY,{canary=false}={}){return ghRepo(repository,'/pulls',{method:'POST',body:JSON.stringify({title,head:branch,base:'main',body,draft:canary,maintainer_can_modify:true})})}
 async function headSha(branch,repository=SOURCE_REPOSITORY){return (await ghRepo(repository,`/git/ref/heads/${encodeURIComponent(branch)}`)).object.sha}
 async function waitGates(branch,prNumber,repository=SOURCE_REPOSITORY,timeoutMs=20*60*1000){const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){assertPrOpenState(await ghRepo(repository,`/pulls/${prNumber}`));const sha=await headSha(branch,repository);const x=await ghRepo(repository,`/commits/${sha}/check-runs?per_page=100`);const g=checkRepositoryGateState(x.check_runs||[],repository);if(g.state==='passed')return {sha,...g};if(g.state==='failed'){const e=Object.assign(new Error('CI_GATES_FAILED'),{code:'CI_GATES_FAILED',detail:g});throw e}await sleep(15000)}const e=new Error('CI_GATES_TIMEOUT');e.code='CI_GATES_TIMEOUT';throw e}
@@ -1741,7 +1786,7 @@ export function codingMicroContext(files=[],request='',budgetChars=9000){
     return {context:before,telemetry:{fallbackReason:'SLICE_ERROR',charsBefore:before.length,charsAfter:before.length,symbolsSelected:[],dependencyEdges:[]}};
   }
 }
-async function filesFor(paths,ref='main',repository=SOURCE_REPOSITORY){const files=[];for(const p of paths){const f=await readRepoFile(p,ref,repository);files.push({path:p,content:f.content})}return files}
+async function filesFor(paths,ref='main',repository=SOURCE_REPOSITORY){const files=[];for(const p of paths){const f=await readRepoFile(p,ref,repository);files.push({path:p,content:f.content,sha:f.sha||null})}return files}
 async function contextFor(paths,ref='main',repository=SOURCE_REPOSITORY){return buildLocalFileContext(await filesFor(paths,ref,repository))}
 export function partitionGenerationFiles(files=[],maxBatchChars=9000){
   const batches=[];let current=[],size=0;
@@ -1769,7 +1814,7 @@ async function generationContextsFor(paths,ref='main',maxBatchChars=9000,reposit
     const micro=codingMicroContext(files,request,maxBatchChars);
     return {paths:files.map(x=>x.path),context:micro.context,contextTelemetry:micro.telemetry,
       // Keep the exact full repository contents outside the model prompt.
-      canonicalFiles:files.map(x=>({path:x.path,content:String(x.content??'')}))};
+      canonicalFiles:files.map(x=>({path:x.path,content:String(x.content??''),sha:x.sha||null}))};
   });
 }
 export function validateCompactEdits(edits,allowedPaths=[]){
@@ -1831,6 +1876,21 @@ export function assertGenerationContextPaths(prompt,allowedPaths=[]){
   if(missing.length){const e=new Error(`CODING_GENERATION_CONTEXT_PATH_MISSING:${missing.join(',')}`);e.code='CODING_GENERATION_CONTEXT_PATH_MISSING';throw e}
   return true;
 }
+export function assertActualSourceMutation(changes,canonicalFiles=[]){
+  const existing=new Map((Array.isArray(canonicalFiles)?canonicalFiles:[])
+    .filter(file=>String(file?.sha||'').trim())
+    .map(file=>[String(file.path||''),String(file.content??'')]));
+  const unchanged=(Array.isArray(changes)?changes:[])
+    .filter(change=>existing.has(String(change?.path||''))&&existing.get(String(change.path))===String(change?.content??''))
+    .map(change=>String(change.path));
+  if(unchanged.length){
+    const error=new Error('CODING_COMPACT_EDIT_NO_SOURCE_CHANGE:'+unchanged.join(','));
+    error.code='CODING_COMPACT_EDIT_NO_SOURCE_CHANGE';
+    error.detail={unchanged};
+    throw error;
+  }
+  return true;
+}
 async function invokeCompactGeneration(worker,prompt,allowedPaths,exclude=[],leaseContext=null,canonicalFiles=null){
   assertGenerationContextPaths(prompt,allowedPaths);
   const modelPrompt=compactPromptForChanges(prompt,{maxContextChars:6000,maxOutputChars:3200});
@@ -1839,7 +1899,8 @@ async function invokeCompactGeneration(worker,prompt,allowedPaths,exclude=[],lea
       ?{summary:d.summary,edits:d.__tigeriqCompactEdits}:d;
     return expandCompactChanges(prompt,JSON.stringify(raw),canonicalFiles);
   };
-  const validateData=d=>{const expanded=expand(d);if(expanded.changes.length){validateChanges(expanded.changes,allowedPaths);validateJobScope(allowedPaths,expanded.changes)}else if(!(expanded.noop===true&&/^BATCH_NOOP_ALLOWED=true$/m.test(prompt)))throw new Error('CODING_BATCH_NOOP_INVALID')};
+  const deterministicSelfHeal=r12SelfHealCanaryApplies(leaseContext?.objective)||r13OneTapCanaryApplies(leaseContext?.objective);
+  const validateData=d=>{const expanded=expand(d);if(expanded.changes.length){validateChanges(expanded.changes,allowedPaths);validateJobScope(allowedPaths,expanded.changes);if(!deterministicSelfHeal)assertActualSourceMutation(expanded.changes,canonicalFiles)}else if(!(expanded.noop===true&&/^BATCH_NOOP_ALLOWED=true$/m.test(prompt)))throw new Error('CODING_BATCH_NOOP_INVALID')};
   const invoked=await invokeJsonWithFailover(worker,modelPrompt,{exclude,validateData,parseData:parseCompactEditJson,shrinkPrompt:preserveGenerationPrompt,maxSameResourceAttempts:codingP0CanaryApplies(leaseContext?.objective)?1:2,leaseContext});
   return {payload:expand(invoked.data),resource:invoked.resource};
 }
@@ -1869,8 +1930,9 @@ async function generateRepairChanges(worker,j,ref='main',issues=[],exclude=[],ca
     summaries.push(String(invoked.payload.summary||'').slice(0,300));
     changes.push(...invoked.payload.changes);
   }
-  validateAggregatedGenerationChanges(changes,j.paths,batches.length);
-  return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged repair',changes},resource:selected};
+  const contracted=enforceR12SelfHealCanaryChanges({objective:canonicalObjective,instruction:j.instruction,changes});
+  validateAggregatedGenerationChanges(contracted,j.paths,batches.length);
+  return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged repair',changes:contracted},resource:selected};
 }
 async function writeRepairChanges(branch,changes,mutationAuth={},repository=SOURCE_REPOSITORY){
   for(const change of changes)await writeFile(branch,change,mutationAuth,repository);
@@ -1908,8 +1970,9 @@ async function generateChanges(worker,j,ref='main',reviewIssues=[],exclude=[],ca
     summaries.push(String(invoked.payload.summary||'').slice(0,300));
     changes.push(...invoked.payload.changes);
   }
-  validateAggregatedGenerationChanges(changes,j.paths,batches.length);
-  return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged implementation',changes},resource:selected};
+  const contracted=enforceR12SelfHealCanaryChanges({objective:canonicalObjective,instruction:j.instruction,changes});
+  validateAggregatedGenerationChanges(contracted,j.paths,batches.length);
+  return {payload:{summary:summaries.filter(Boolean).join('; ').slice(0,1000)||'staged implementation',changes:contracted},resource:selected};
 }
 async function reviewPr(reviewer,j,diff,implementerId,extraExclude=[],canonicalObjective='',liveGithubContext=null){let prompt=`You are ${reviewer.id}, independent TigerIQ code reviewer. Review against the canonical Work Order, manager instruction, and safety boundaries.\n${canonicalWorkContext(j,canonicalObjective,liveGithubContext)}\nDIFF:\n${diff.slice(0,180000)}\nReturn ONLY JSON {"decision":"approve|changes_requested","summary":"short","issues":["specific issue"]}. The canonical Work Order is authoritative if the manager instruction omits or conflicts with acceptance. Reject unsafe, untested, incomplete, out-of-scope, credential/security/production changes.`;if(codingP0CanaryApplies(canonicalObjective)){const packet=codingStepPacketFromInstruction(j.instruction);if(!packet)throw Error('CODING_REVIEW_STEP_PACKET_MISSING');const reviewSkills=loadRequiredCodingSkills(canonicalObjective,{requiredIds:requiredCodingSkillIdsForDeliverable(packet.deliverable_type)});assertCodingSkillProof(packet.skill_refs,reviewSkills);prompt+='\n'+codingRolePrompt({role:'reviewer',packet,skillContext:reviewSkills.contextBlock,context:canonicalObjective,diff});}const invoked=await invokeJsonWithFailover(reviewer,prompt,{exclude:[implementerId,...extraExclude],leaseContext:{workId:`CODING-REVIEW:${j.id}`,role:'reviewer'}});const d=invoked.data;if(!['approve','changes_requested'].includes(d.decision)){const e=new Error('REVIEW_DECISION_INVALID');e.code='REVIEW_SCHEMA_INVALID';throw e}d.issues=Array.isArray(d.issues)?d.issues.slice(0,8):[];return {review:d,resource:invoked.resource}}
 
@@ -1944,6 +2007,7 @@ async function runJob(j){
   j.paths=Array.isArray(j.paths)?j.paths:j.paths||[];
   const objectiveRow=(await pool.query('select objective from tigeriq_coding_objectives where id=$1',[j.objective_id])).rows[0];
   const canonicalObjective=String(objectiveRow?.objective||j.instruction||'').slice(0,24000);
+  const ciRepairMode=codingCiRepairMode(canonicalObjective,j.instruction);
   const canary=codingP0CanaryApplies(canonicalObjective);
   // A stored canary packet must never silently fall back into legacy auto-merge
   // after config is disabled, target Issue is changed, or objective is missing.
@@ -1993,6 +2057,22 @@ async function runJob(j){
     if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
     }
     await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci',next_attempt_at=null,completed_at=null where id=$1",[j.id,worker.id,reviewer?.id||null]);
+    if(ciRepairMode.repairBeforeGates){
+      const repairGithubContext=await loadAuthoritativeGithubContext(canonicalObjective);
+      if(storedGithubContext)assertLiveGithubContextFresh(storedGithubContext,repairGithubContext);
+      j.liveGithubContext=repairGithubContext;
+      await assertCanonicalSourceWorkOrderExecutable(canonicalObjective);
+      const repaired=await generateAndWriteRepair(worker,j,branch,[
+        `AUTONOMOUS_REPAIR_CYCLE=${ciRepairMode.repairCycle}`,
+        `CI gate failure on same PR #${pr.number}`,
+      ],cooldownExcludes,mutationAuth,canonicalObjective,repairGithubContext,targetRepository);
+      worker=repaired.worker;gen=repaired.payload;
+      if(reviewer?.id===worker.id){
+        reviewer=pickResource([worker.id,...cooldownExcludes]);
+        if(!reviewer)throw new Error('NO_INDEPENDENT_REVIEWER_AVAILABLE');
+      }
+      await pool.query("update tigeriq_coding_jobs set employee_id=$2,reviewer_employee_id=$3,status='waiting_ci' where id=$1",[j.id,worker.id,reviewer?.id||null]);
+    }
   }else{
     // generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext)
     generated=await generateChanges(worker,j,'main',[],cooldownExcludes,canonicalObjective,generatedGithubContext,targetRepository);worker=generated.resource;gen=generated.payload;
@@ -2017,7 +2097,9 @@ async function runJob(j){
     await pool.query("update tigeriq_coding_jobs set pr_number=$2,status='waiting_ci' where id=$1",[j.id,pr.number]);
   }
   let review=null,gates=null,approvedHead='',approvedReviewer='',approvedImplementer='';
-  const waitGatesFn=async()=>runGateWithRepair({
+  const waitGatesFn=async()=>{
+    if(ciRepairMode.managed)return waitGates(branch,pr.number,targetRepository);
+    return runGateWithRepair({
 
       // waitGates(branch,pr.number)
       waitFn:()=>waitGates(branch,pr.number,targetRepository),
@@ -2034,6 +2116,7 @@ async function runJob(j){
       maxRepairCycles:canary?2:3,
       timeoutRetries:1,
     });
+  };
   const onGatesPassed=async({gates:cycleGates})=>{
     await pool.query("update tigeriq_coding_jobs set status=$3,head_sha=$2 where id=$1",[j.id,cycleGates.sha,ownerWaiver?'waiting_ci':'review']);
   };

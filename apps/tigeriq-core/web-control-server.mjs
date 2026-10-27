@@ -1,9 +1,7 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-// Bundled PC01 runtime may not yet have the shared parser; fail closed, never fake DONE.
-const completionModule=await import('../shared/work-center-history.mjs').catch(()=>import('../../apps/shared/work-center-history.mjs').catch(()=>null));
-const completionProof=completionModule?.completionProof||(()=>({verified:false,timing:null}));
+import { completionProof } from './web-control-completion-proof.mjs';
 function sourceCompletionDiagnostic(issue={}){
   const closed=String(issue?.state||'').toLowerCase()==='closed';
   const proof=completionProof(issue);
@@ -28,7 +26,8 @@ const projectApproval=approvalModule?.projectOwnerApprovalIssue||(()=>({ok:false
 import { normalizeRuntimeResources, refreshRegistryWorkforce, workforceSnapshot, aggregateWorkforceHealth } from './workforce-registry.mjs';
 import { ownerStatusIcon, ownerStatusVectorIcon, ownerStatusLabel } from './owner-facing-vietnamese.mjs';
 import { workOrderChecklistSteps } from './work-order-checklist-hard-gate.mjs';
-// PC01 Web Control is an isolated atomic bundle: no new static shared import.
+import { OWNER_BACKLOG_ISSUE, parseWebControlOwnerOrder, sortWebControlWorkOrders } from './web-control-owner-order.mjs';
+// PC01 Web Control is an isolated atomic bundle: runtime dependencies are copied atomically by run-web-control-bundle.ps1.
 
 const HOST = process.env.TIGERIQ_WEB_CONTROL_HOST?.trim() || '0.0.0.0';
 const PORT = Number(process.env.TIGERIQ_WEB_CONTROL_PORT || 8796);
@@ -166,7 +165,7 @@ export function projectWorkOrder(issue, source = {}) {
     state,statusIcon:ownerStatusIcon(state),statusIconName:ownerStatusVectorIcon(state),
     bucket,bucketIcon:ownerStatusIcon(bucket),bucketIconName:ownerStatusVectorIcon(bucket),
     owner,assignee:owner,closed,ownerApproval:approvalProjection.ok?approvalProjection.card:null,
-    completionVerified:proof.verified,lifecycleTiming:proof.timing,workKind:isSystem?'SYSTEM':'WORK',
+    executable,completionVerified:proof.verified,lifecycleTiming:proof.timing,workKind:isSystem?'SYSTEM':'WORK',
     completionSyncState:completionSync.state,completionMissing:closed?completionSync.missing:[],sourceDoneDeclared:completionSync.sourceDoneDeclared,
     projectName:machineValue(body,'PROJECT_NAME')||machineValue(body,'PROJECT_ID')||'TigerIQ',
     workstreamName:machineValue(body,'WORKSTREAM_NAME')||machineValue(body,'WORKSTREAM_ID')||'Công việc',
@@ -192,17 +191,21 @@ async function githubWorkOrders() {
   try {
     const headers={Accept:'application/vnd.github+json','User-Agent':'TigerIQ-Web-Control/1'};
     if(GITHUB_TOKEN) headers.Authorization='Bearer '+GITHUB_TOKEN;
+    const ownerOrderPromise=fetch(`${GITHUB_API_BASE}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/issues/${OWNER_BACKLOG_ISSUE}`,{headers,signal:controller.signal,cache:'no-store'})
+      .then(async response=>response.ok?parseWebControlOwnerOrder((await response.json())?.body||''):[])
+      .catch(()=>[]);
     const response=await fetch(`${GITHUB_API_BASE}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/issues?state=all&per_page=100&sort=updated&direction=desc`,{headers,signal:controller.signal,cache:'no-store'});
     if(!response.ok) throw new Error('GITHUB_HTTP_'+response.status);
     const rows=await response.json();
+    const ownerOrder=await ownerOrderPromise;
     const candidates=(Array.isArray(rows)?rows:[])
       .filter(webControlWorkOrderCandidate)
       .map(issue=>projectWorkOrder(issue,{verified:true,fresh:true}));
-    const rank={P0:0,P1:1,P2:2,P3:3,P4:4,P5:5};
-    const workOrders=candidates.filter(x=>!x.closed)
-      .sort((a,b)=>(rank[a.priority]??9)-(rank[b.priority]??9)||String(b.updated_at).localeCompare(String(a.updated_at)));
+    const workOrders=sortWebControlWorkOrders(candidates.filter(x=>!x.closed),ownerOrder);
     const workOrdersRecent=candidates.filter(x=>x.closed).sort((a,b)=>String(b.updated_at).localeCompare(String(a.updated_at))).slice(0,30);
-    workOrderCache={at:now,workOrders,workOrdersRecent,meta:{ok:true,source:'github',stale:false,refreshed_at:new Date(now).toISOString()}};
+    workOrderCache={at:now,workOrders,workOrdersRecent,meta:{ok:true,source:'github',stale:false,
+      ownerBacklogIssue:OWNER_BACKLOG_ISSUE,ownerBacklogOrder:ownerOrder,ownerBacklogOrderVerified:ownerOrder.length>0,
+      refreshed_at:new Date(now).toISOString()}};
   } catch(error) {
     workOrderCache={...workOrderCache,at:now,meta:{ok:false,source:'github',stale:true,error:String(error?.name==='AbortError'?'GITHUB_TIMEOUT':error?.message||error),refreshed_at:new Date(now).toISOString()}};
   } finally { clearTimeout(timer); }

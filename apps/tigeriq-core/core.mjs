@@ -22,7 +22,7 @@ import { parseOwnerBacklogOrder, objectiveBacklogRank } from './owner-backlog-or
 import { managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, NV09_ENDPOINT, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 // NV09_CANARY_MARKER
-import { appendSkillContextToPrompt, matchAndLoadSkills } from './skill-loader.mjs';
+import { appendSkillContextToPrompt, focusedSkillRoutingText, matchAndLoadSkills } from './skill-loader.mjs';
 import { summarizeCoreJobEvidence } from './job-outcome-summary.mjs';
 import { compileTaskPrompt, executionPacketFromPrompt, executionResultGate, assertExecutionResultAccepted, strictExecutionRetryPrompt } from './task-prompt-compiler.mjs';
 import { invokeNativeStructuredExecution } from './ollama-native-structured.mjs';
@@ -36,7 +36,7 @@ import { planContinuousVerifyRecovery, CONTINUOUS_VERIFY_RECOVERY_EVENT_LIMIT } 
 import { assessMainCiGate } from './main-ci-health.mjs';
 import { autonomousRcaCanonicalAction, autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
 import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt } from './campaign-runner.mjs';
-import { normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
+import { buildAutonomousCodingHandoffWorkOrder, normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, functionalReprobeCandidates, functionalRoutingReadiness, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
@@ -47,9 +47,9 @@ import { withPc01LocalInferenceSlot,localInferenceBusy } from './pc01-local-infe
 import { MANAGER_STALL_CYCLE_LIMIT, managerAcceptancePausePlan, managerCycleGuard, managerIdleStepStopPlan, managerTerminalProgressPlan } from './manager-cycle-policy.mjs';
 import { evaluateCoreVNextShadowCycle } from './core-vnext-shadow.mjs';
 import { isStabilityV2ResourceScope, stabilityV2BatchIdentityFromJobId, stabilityV2EmployeeAllowlist, stabilityV2OutputContract, stabilityV2Plan } from './stability-v2.mjs';
-import { API_DOCTOR_CAPABILITY, apiDoctorAutoworkPriority, apiDoctorScannableEmployeeId, apiDoctorScanSignature, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorVerifiedNormalWorkRecovery, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorOwnerProxyReviewStatus, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
+import { API_DOCTOR_CAPABILITY, apiDoctorGlobalAnalysisAdmission, apiDoctorAutoworkPriority, apiDoctorScannableEmployeeId, apiDoctorScanSignature, apiDoctorAction, apiDoctorCurrentFailure, apiDoctorExistingHandoffAction, apiDoctorVerifiedNormalWorkRecovery, apiDoctorFreshRecurrence, apiDoctorHandoffMatchesFailureClass, apiDoctorHealthEvidenceEvents, apiDoctorLocalRefreshHealth, apiDoctorRepairDeploymentGate, apiDoctorRepairLifecycleRelevant, apiDoctorRepairSignature, apiDoctorRepairWorkOrderGate, apiDoctorOwnerProxyReviewStatus, apiDoctorResourceEligibleForCapability, buildApiDoctorPrompt, buildApiDoctorRepairWorkOrder, classifyApiDoctorFailure, parseApiDoctorDecision } from './api-doctor.mjs';
 import { buildCoreUiAssignmentSnapshot, completeCoreUiAssignment } from './core-ui-assignment.mjs';
-import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord } from './public-evidence.mjs';
+import { appendPublicEvidenceToSummary, buildPublicJobEvidenceRecord, buildR04IndependentReviewPrompt, r04IndependentReviewIdentity, verifiedR04IndependentFactualReview } from './public-evidence.mjs';
 import { verifyGithubActionsOidc } from './github-actions-oidc.mjs';
 import { workOrderChecklistSteps } from './work-order-checklist-hard-gate.mjs';
 import { collectGithubWorkOrderIssues, closedWorkOrderBucket } from './github-work-orders-pages.mjs';
@@ -103,8 +103,10 @@ const CORE_AUTOWORK_EMPLOYEES = Object.freeze([OLLAMA_EMPLOYEE_ID,'NV11','NV12']
 const NV09_TIMEOUT_MS = Math.max(30000, Number(process.env.TIGERIQ_NV09_TIMEOUT_MS || 240000));
 const OPENCLAW_GATEWAY_HEALTH_URL = process.env.TIGERIQ_OPENCLAW_GATEWAY_HEALTH_URL?.trim() || 'http://127.0.0.1:18789/health';
 const OPENCLAW_ACTIVATION_FILE = process.env.TIGERIQ_OPENCLAW_ACTIVATION_FILE?.trim() || 'D:\\TigerIQ\\State\\openclaw-core-resource-enabled.json';
-const API_DOCTOR_INTERVAL_MS = Math.max(60000, Number(process.env.TIGERIQ_API_DOCTOR_INTERVAL_MS || 120000));
+// Limit optional diagnostic scans; real work and resource-health probes keep their own cadence.
+const API_DOCTOR_INTERVAL_MS = Math.max(600000, Number(process.env.TIGERIQ_API_DOCTOR_INTERVAL_MS || 900000));
 const API_DOCTOR_ANALYSIS_DEDUPE_MS = Math.max(60000, Number(process.env.TIGERIQ_API_DOCTOR_ANALYSIS_DEDUPE_MS || 600000));
+const API_DOCTOR_GLOBAL_ANALYSIS_BUDGET_MS = Math.max(1800000, Number(process.env.TIGERIQ_API_DOCTOR_GLOBAL_ANALYSIS_BUDGET_MS || 1800000));
 const API_DOCTOR_VALIDATION_POLICY_VERSION = 'nonempty-v2';
 const CODING_LANE_HOST = process.env.TIGERIQ_CODING_HOST?.trim() || '127.0.0.1';
 const CODING_LANE_PORT = Number(process.env.TIGERIQ_CODING_PORT || 8797);
@@ -1340,12 +1342,18 @@ async function apiDoctorRepairLifecycleEvidence(existingHandoff){
   if(String(repairPr?.base?.ref||'')!=='main')return {ready:false,reason:'repair_pr_not_main',issueNumber,repairPrNumber};
   const repairRevision=apiDoctorSha(repairPr?.merge_commit_sha);
   if(!repairRevision)return {ready:false,reason:'repair_merge_revision_missing',issueNumber,repairPrNumber};
+  const declaredInstalledRevision=apiDoctorSha((issueBody.match(/^R04_INSTALLED_SHA=([a-f0-9]{40})$/m)||[])[1]);
   const verifiedOpenSourceRelease=openSourceCandidate
     &&apiDoctorSha((issueBody.match(/^SOURCE_MERGE_MAIN_SHA=([a-f0-9]{40})$/m)||[])[1])===repairRevision
-    &&apiDoctorSha((issueBody.match(/^R04_INSTALLED_SHA=([a-f0-9]{40})$/m)||[])[1])===repairRevision
+    &&Boolean(declaredInstalledRevision)
     &&Number.isFinite(Date.parse(String(repairPr?.merged_at||'')));
   if(openSourceCandidate&&!verifiedOpenSourceRelease)
     return {ready:false,reason:'open_source_release_provenance_mismatch',issueNumber,repairPrNumber};
+  if(verifiedOpenSourceRelease&&declaredInstalledRevision!==repairRevision){
+    const declaredCompare=await fetchJson(`${base}/compare/${repairRevision}...${declaredInstalledRevision}`,{headers},10000);
+    if(!['ahead','identical'].includes(String(declaredCompare?.status||'').toLowerCase()))
+      return {ready:false,reason:'open_source_release_declared_runtime_missing_repair',issueNumber,repairPrNumber,repairRevision,declaredInstalledRevision};
+  }
 
   const runtimeSourceState=readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE);
   const updaterState=readSelfAuditJsonState(CORE_RUNTIME_UPDATER_STATE);
@@ -1399,6 +1407,9 @@ async function apiDoctorOpenRepairIssueBySignature(signature){
   }
 }
 async function githubCreateApiDoctorRepairIssue(spec){
+  if(globalThis.process?.env?.TIGERIQ_DISABLE_AUTO_ISSUE_CREATION === 'true'){
+    return {number:null,html_url:null,skipped:true};
+  }
   if(!GITHUB_TOKEN)throw Object.assign(new Error('GITHUB_TOKEN_MISSING'),{kind:'credential'});
   const url=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues`;
   return fetchJson(url,{
@@ -1462,6 +1473,17 @@ async function runApiDoctorAnalysisJobInSlot(items,scanSignature){
   `)).rows[0]?.pending;
   const priority=apiDoctorAutoworkPriority(localBacklog);
   if(priority.defer) return {skipped:'deferred_for_real_github_work',pending:localBacklog};
+  // A changing provider state can change scanSignature every cycle, bypassing
+  // signature dedupe and filling Core with internal jobs. Check a *global*
+  // accepted-or-failed local analysis window before any model claim or job.
+  const recentAnalysis=(await pool.query(
+    "select max(ts) as last_attempt_at from tigeriq_events where type in ('API_DOCTOR_ANALYSIS_DONE','API_DOCTOR_ANALYSIS_FAILED')"
+  )).rows[0];
+  const budget=apiDoctorGlobalAnalysisAdmission({
+    lastAttemptAt:recentAnalysis?.last_attempt_at,
+    minIntervalMs:API_DOCTOR_GLOBAL_ANALYSIS_BUDGET_MS,
+  });
+  if(!budget.allowed) return {skipped:'global_analysis_budget',reason:budget.reason};
   const id=`API-DOC-${randomUUID()}`;
   const prompt=buildApiDoctorPrompt(items);
   await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,started_at,lease_until,attempts,max_attempts) values($1,null,$2,$3,$4,'api_doctor','running',now(),now()+interval '2 minutes',0,1)",[id,'NV10 API Doctor analysis',prompt,API_DOCTOR_CAPABILITY]);
@@ -2007,7 +2029,7 @@ async function runJob(j) {
     const skillObjectiveText=[j.title,j.prompt].filter(Boolean).join('\n');
     let skillRegistryError=null;
     try{
-      jobSkillContext=matchAndLoadSkills(skillObjectiveText);
+      jobSkillContext=matchAndLoadSkills(focusedSkillRoutingText(skillObjectiveText));
     }catch(error){
       skillRegistryError=String(error?.message||error).slice(0,240);
       await event('SKILL_ROUTING_REGISTRY_REJECTED',{objectiveId:j.objective_id,jobId:j.id,reason:skillRegistryError});
@@ -2229,6 +2251,63 @@ async function callManagerDecision(prompt,objectiveId){
     onFailure:async(r,error)=>localInferenceBusy(error)||isRetryableManagerOutputError(error)?releaseManagerOutputContractFailure(r,jobId,error):markResourceFailure(r,jobId,error,'RESOURCE_FAILURE',true,{taskKind:'manager',profile:r.provider==='ollama'?'LOCAL':'AUTO'}),
   });
 }
+async function githubFindAutonomousCodingHandoffIssue(spec){
+  if(!spec?.marker||!GITHUB_TOKEN)throw new Error(!GITHUB_TOKEN?'GITHUB_TOKEN_MISSING':'CODING_HANDOFF_MARKER_MISSING');
+  const q=`repo:${GITHUB_OWNER}/${GITHUB_REPO} is:issue in:body "${spec.marker}"`;
+  const found=await fetchJson('https://api.github.com/search/issues?q='+encodeURIComponent(q)+'&per_page=20',{
+    headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'User-Agent':'TigerIQ-Core-Coding-Handoff'},
+  },10000);
+  if(!found||found.incomplete_results===true||!Array.isArray(found.items)||Number(found.total_count||0)>20)throw new Error('CODING_HANDOFF_DEDUPE_UNVERIFIED');
+  const matches=found.items.filter(issue=>!issue?.pull_request&&String(issue?.body||'').replace(/\r\n/g,'\n').split('\n').some(line=>line.trim()===spec.marker));
+  if(matches.length>1)throw new Error('CODING_HANDOFF_MULTIPLE_CANONICAL_MATCHES');
+  return matches[0]||null;
+}
+async function githubCreateAutonomousCodingHandoffIssue(spec){
+  if(!GITHUB_TOKEN)throw new Error('GITHUB_TOKEN_MISSING');
+  const url=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues`;
+  return fetchJson(url,{
+    method:'POST',
+    headers:{Accept:'application/vnd.github+json',Authorization:`Bearer ${GITHUB_TOKEN}`,'Content-Type':'application/json','User-Agent':'TigerIQ-Core-Coding-Handoff'},
+    body:JSON.stringify({title:spec.title,body:spec.body}),
+  },10000);
+}
+async function materializeManagerCodingHandoff(o,decision,currentPhase){
+  const items=normalizeTerminalWorkItems(o.id,decision?.jobs||[]).filter(isCodingHandoff);
+  if(!items.length)return {handled:false,issues:[]};
+  const parentIssueNumber=Number(o?.metadata?.issueNumber||0);
+  if(!Number.isInteger(parentIssueNumber)||parentIssueNumber<=0||o?.metadata?.source!=='github'){
+    await event('AUTONOMOUS_CODING_GITHUB_CHILD_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase,reason:'GITHUB_PARENT_REQUIRED'});
+    return {handled:true,blocked:true,issues:[]};
+  }
+  const issues=[];
+  for(const item of items){
+    const spec=buildAutonomousCodingHandoffWorkOrder({
+      parentIssueNumber,parentObjectiveId:o.id,parentPriority:o.priority,item,
+    });
+    if(!spec){
+      await pool.query("update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1 and status='active'",[o.id,'Coding handoff blocked: invalid or ambiguous repository path scope']);
+      await event('AUTONOMOUS_CODING_GITHUB_CHILD_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase,idempotencyKey:item.idempotencyKey,reason:'INVALID_REPOSITORY_PATH_SCOPE'});
+      return {handled:true,blocked:true,issues};
+    }
+    let issue=await githubFindAutonomousCodingHandoffIssue(spec);
+    const created=!issue;
+    if(!issue)issue=await githubCreateAutonomousCodingHandoffIssue(spec);
+    const issueNumber=Number(issue?.number||0);
+    if(!issueNumber)throw new Error('CODING_HANDOFF_GITHUB_ISSUE_MISSING');
+    issues.push({number:issueNumber,url:String(issue?.html_url||''),created,protectedScope:spec.protectedScope,idempotencyKey:item.idempotencyKey});
+    await event(created?'AUTONOMOUS_CODING_GITHUB_CHILD_CREATED':'AUTONOMOUS_CODING_GITHUB_CHILD_REUSED',{
+      objectiveId:o.id,phaseIndex:currentPhase,parentIssueNumber,issueNumber,issueUrl:String(issue?.html_url||''),
+      idempotencyKey:item.idempotencyKey,scopeResourceKey:item.scopeResourceKey,protectedScope:spec.protectedScope,
+    });
+  }
+  const revision=String(o?.metadata?.sourceRevision||'');
+  await pool.query(
+    "update tigeriq_objectives set manager_cycles=0,summary=$2,next_check_at='infinity'::timestamptz,metadata=jsonb_set(coalesce(metadata,'{}'::jsonb),'{managerAwaitingAcceptanceRevision}',$3::jsonb,true),updated_at=now() where id=$1 and status='active'",
+    [o.id,`coding GitHub child materialized: ${issues.map(x=>'#'+x.number).join(', ')}`,JSON.stringify(revision)],
+  );
+  return {handled:true,blocked:false,issues};
+}
+
 async function reconcileAutonomousHandoff(o){
   const handoff=o?.metadata?.handoff;
   if(handoff?.state!=='waiting_children')return false;
@@ -2796,7 +2875,7 @@ async function managerTick() {
   await event('CONTEXT_GATEWAY_BUILT',{objectiveId:o.id,phaseIndex:currentPhase,...historyContext.metrics});
   let skillContext={skills:[],totalChars:0,contextBlock:'',evidence:[],skipped:[]};
   try {
-    skillContext=matchAndLoadSkills(goal);
+    skillContext=matchAndLoadSkills(focusedSkillRoutingText(goal));
     if(skillContext.evidence.length){
       await event('SKILL_CONTEXT_LOADED',{objectiveId:o.id,skillIds:skillContext.evidence.map(x=>x.id),bytes:skillContext.totalChars});
     }
@@ -2810,7 +2889,7 @@ async function managerTick() {
   const handoffContext=o.metadata?.handoff?.state==='children_completed'?`Completed autonomous child work: ${JSON.stringify(o.metadata.handoff.childResults||[]).slice(0,6000)}`:'';
   const isFinalCampaignPhase=phases.length>0&&currentPhase===phases.length-1;
   const terminalHandoffInstruction=isFinalCampaignPhase?'FINAL CAMPAIGN PHASE: when status=complete, jobs must contain ONLY additional NEXT work still required to satisfy the overall goal. Use [CODING] prefix in the title only for repository/source mutation; other next work is API/research/review/general. Every next-work prompt must include SCOPE: <resource-or-domain> and ACCEPTANCE: <observable completion>. If no further work is required, return jobs: [].':'';
-  const basePrompt=`You are TigerIQ AI Manager. Goal: ${goal}\nRecent work for this phase: ${historyContext.text}\n${handoffContext}\n${terminalHandoffInstruction}\nDecide the next useful work. Return ONLY JSON: {"status":"continue|complete|blocked","summary":"short","jobs":[{"title":"short","prompt":"standalone task instruction","capability":"general|reasoning|review|pc_operator","acceptance":["observable criterion"],"evidence_required":["required proof"],"scope":["authorized resource/domain"]}]}. On the CPU-local Manager, plan at most ONE job per decision; use compact JSON with short fields, then plan more only after real terminal evidence. The safety and independent-review requirements are unchanged. Return at most one job. Every non-pc_operator job MUST include at least one concrete acceptance criterion and one evidence_required item. Prefer independent useful work. Read-only constraints such as NO_CODE_CHANGE, NO_PC01_SHELL, NO_DIRECT_MAIN, and NO_PRODUCTION_RELEASE do not forbid normal Core general/reasoning/review jobs; they only forbid the named mutation or execution surface. When the Goal explicitly requests live Core AI validation, create bounded read-only AI jobs when eligible healthy resources exist. Use status=blocked only for a real unsatisfied dependency, resource, or safety gate. Repository implementation/coding is GitHub-only; never create coding jobs for PC01 Core. Never request paid services, Production/Main release, credential/security changes, destructive actions or reboot. For a campaign, status=complete means the CURRENT PHASE acceptance is achieved; Core will automatically advance to the next phase. Do not wait for Owner/chat between phases.`;
+  const basePrompt=`You are TigerIQ AI Manager. Goal: ${goal}\nRecent work for this phase: ${historyContext.text}\n${handoffContext}\n${terminalHandoffInstruction}\nDecide the next useful work. Return ONLY JSON: {"status":"continue|complete|blocked","summary":"short","jobs":[{"title":"short","prompt":"standalone task instruction","capability":"general|reasoning|review|pc_operator","acceptance":["observable criterion"],"evidence_required":["required proof"],"scope":["authorized resource/domain"]}]}. On the CPU-local Manager, plan at most ONE job per decision; use compact JSON with short fields, then plan more only after real terminal evidence. The safety and independent-review requirements are unchanged. Return at most one job. Every non-pc_operator job MUST include at least one concrete acceptance criterion and one evidence_required item. Prefer independent useful work. Read-only constraints such as NO_CODE_CHANGE, NO_PC01_SHELL, NO_DIRECT_MAIN, and NO_PRODUCTION_RELEASE do not forbid normal Core general/reasoning/review jobs; they only forbid the named mutation or execution surface. When the Goal explicitly requests live Core AI validation, create bounded read-only AI jobs when eligible healthy resources exist. Use status=blocked only for a real unsatisfied dependency, resource, or safety gate. Repository implementation/coding is GitHub-only; never create coding jobs for PC01 Core. If the next useful work requires repository/source mutation, return that job with a title beginning exactly [CODING], put SCOPE: <comma-separated repository path prefixes> and ACCEPTANCE: <observable result> in its prompt; Core will materialize a GitHub child instead of running it as compiled AI. Never request paid services, Production/Main release, credential/security changes, destructive actions or reboot. For a campaign, status=complete means the CURRENT PHASE acceptance is achieved; Core will automatically advance to the next phase. Do not wait for Owner/chat between phases.`;
   const prompt=appendSkillContextToPrompt(basePrompt,skillContext.contextBlock);
   // Read before the async Manager call. A GitHub evidence/revision update
   // during inference must invalidate any later terminal decision or evidence park.
@@ -2851,6 +2930,10 @@ async function managerTick() {
       [o.id,String(decision.summary||'').slice(0,2000),o.metadata?.sourceRevision??null],
     );
     if(decisionCommitted.rowCount!==1)return;
+    if(!phases.length){
+      const codingHandoff=await materializeManagerCodingHandoff(o,decision,currentPhase);
+      if(codingHandoff.handled)return;
+    }
     const doneJobs=history.filter(x=>x.status==='done').length;
     if(campaignNeedsEvidence({status:decision.status,phases,doneJobs})){
       const phase=phases[currentPhase]; const id=campaignEvidenceJobId(o.id,currentPhase);
@@ -3021,7 +3104,7 @@ function publicStatus(r){
   return 'READY';
 }
 async function publicJobEvidence(jobId){
-  const row=(await pool.query(`select j.id,j.objective_id,j.kind,j.status,j.result,j.employee_id,j.resource_id,j.completed_at,o.metadata as objective_metadata
+  const row=(await pool.query(`select j.id,j.objective_id,j.kind,j.status,j.prompt,j.result,j.employee_id,j.resource_id,j.completed_at,o.metadata as objective_metadata
     from tigeriq_jobs j
     left join tigeriq_objectives o on o.id=j.objective_id
     where j.id=$1
@@ -3031,10 +3114,73 @@ async function publicJobEvidence(jobId){
     const provenance=(await pool.query(`select type,job_id,employee_id,resource_id,data from tigeriq_events
       where job_id=$1 and type in ('HOTPATH_STAGE','RESOURCE_SUCCESS','JOB_DONE') order by seq asc limit 100`,[jobId])).rows;
     row.nativeAuditEvents=provenance;
+    const identity=r04IndependentReviewIdentity(row);
+    if(identity){
+      row.r04FactualReview=(await pool.query(`select id,status,capability,kind,employee_id,resource_id,completed_at,result
+        from tigeriq_jobs where id=$1 limit 1`,[identity.reviewJobId])).rows[0]||null;
+    }
   }
   return buildPublicJobEvidenceRecord(row);
 }
 
+async function reconcileNativeR04IndependentReview(){
+  const source=(await pool.query(`select j.id,j.objective_id,j.kind,j.status,j.prompt,j.result,j.employee_id,j.resource_id,j.completed_at,o.metadata as objective_metadata
+    from tigeriq_jobs j
+    left join tigeriq_objectives o on o.id=j.objective_id
+    where j.kind='github_api_autowork'
+      and j.status='done'
+      and j.result->'autoworkAcceptance'->>'code'='GITHUB_AUTOWORK_SOURCE_OUTPUT_ACCEPTED'
+      and j.result->'autoworkAcceptance'->>'resourceScope' like 'TIGERIQ_CORE_NATIVE_R04_Q01_Q14_5144%'
+    order by j.completed_at desc nulls last
+    limit 1`)).rows[0]||null;
+  const identity=r04IndependentReviewIdentity(source);
+  if(!source||!identity)return {state:'NO_ACCEPTED_R04_SOURCE'};
+  const reviewPrompt=buildR04IndependentReviewPrompt(source);
+  if(!reviewPrompt)return {state:'R04_REVIEW_CONTEXT_UNAVAILABLE',sourceJobId:source.id};
+  const metadata={
+    source:'internal_r04_independent_factual_review',
+    sourceJobId:source.id,
+    sourceOutputSha256:identity.sourceOutputSha256,
+    resourceScope:'TIGERIQ_CORE_NATIVE_R04_Q01_Q14_5144_INDEPENDENT_FACTUAL_REVIEW',
+    finalReviewImplementerEmployeeIds:[String(source.employee_id||'').trim().toUpperCase()].filter(Boolean),
+    finalReviewImplementerResourceIds:[String(source.resource_id||'').trim()].filter(Boolean),
+  };
+  await pool.query(`insert into tigeriq_objectives(id,objective,priority,status,summary,metadata)
+    values($1,$2,'P1','active',$3,$4::jsonb)
+    on conflict(id) do nothing`,[
+      identity.reviewObjectiveId,
+      'Independently fact-check native R04 Q01-Q14 source output against its exact authoritative source context.',
+      'R04 independent factual review pending',
+      JSON.stringify(metadata),
+    ]);
+  await pool.query(`insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts)
+    values($1,$2,$3,$4,'review','github_review','queued',2)
+    on conflict(id) do nothing`,[
+      identity.reviewJobId,identity.reviewObjectiveId,
+      'Independent factual review for native R04 Q01-Q14',reviewPrompt,
+    ]);
+  const review=(await pool.query(`select id,status,capability,kind,employee_id,resource_id,completed_at,result,attempts,max_attempts
+    from tigeriq_jobs where id=$1 limit 1`,[identity.reviewJobId])).rows[0]||null;
+  if(!review)return {state:'R04_REVIEW_JOB_MISSING',sourceJobId:source.id};
+  if(review.status==='failed'&&Number(review.attempts||0)<Number(review.max_attempts||2)){
+    await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,result=null,failure=null,lease_until=null,started_at=null,completed_at=null,next_attempt_at=null where id=$1 and status='failed'",[identity.reviewJobId]);
+    return {state:'R04_REVIEW_REQUEUED',sourceJobId:source.id,reviewJobId:identity.reviewJobId};
+  }
+  if(review.status!=='done')return {state:'R04_REVIEW_PENDING',sourceJobId:source.id,reviewJobId:identity.reviewJobId};
+  const accepted=verifiedR04IndependentFactualReview(source,review);
+  const terminalState=accepted?'completed':'blocked';
+  const terminalSummary=accepted
+    ? 'Independent factual review PASS for canonical R04 source output'
+    : 'Independent factual review did not PASS; source output remains unaccepted';
+  const closed=await pool.query("update tigeriq_objectives set status=$2,summary=$3,updated_at=now() where id=$1 and status='active'",[identity.reviewObjectiveId,terminalState,terminalSummary]);
+  if(closed.rowCount===1){
+    await event(accepted?'R04_INDEPENDENT_FACTUAL_REVIEW_ACCEPTED':'R04_INDEPENDENT_FACTUAL_REVIEW_REJECTED',{
+      objectiveId:identity.reviewObjectiveId,jobId:identity.reviewJobId,sourceJobId:source.id,
+      sourceOutputSha256:identity.sourceOutputSha256,reviewerEmployeeId:review.employee_id||null,
+    });
+  }
+  return {state:accepted?'R04_REVIEW_ACCEPTED':'R04_REVIEW_REJECTED',sourceJobId:source.id,reviewJobId:identity.reviewJobId};
+}
 async function liveStatusSnapshot(){
   const sharedLeases=await activeSharedResourceLeases(pool);
   const leaseByResource=indexSharedResourceLeases(sharedLeases);
@@ -3619,6 +3765,7 @@ function getDynamicMaxParallel() {
   const healthyCount = Array.isArray(resList) ? resList.filter(r => r && (r.status === 'ready' || r.status === 'healthy' || r.healthy || r.health_state === 'READY' || r.health_state === 'ONLINE' || r.credential_state === 'LOCAL')).length : 0;
   return Math.max(3, Math.min(20, healthyCount));
 }
+let lastR04IndependentReview=0;
 let lastLightAudit = 0, lastDeepAudit = 0, activeDeepAudit = false;
 const continuousVerifyPending = createContinuousVerifyPendingQueue();
 let continuousVerifyRunning = false, continuousVerifyRunningKey = '', continuousVerifyLastRunKey = '', continuousVerifyRuntimeSha = '';
@@ -3928,6 +4075,9 @@ async function persistSelfAuditResult(result,store=pool,{nowMs=Date.now(),cooldo
 }
 
 async function githubCreateAutonomousRcaIssue(spec){
+  if(globalThis.process?.env?.TIGERIQ_DISABLE_AUTO_ISSUE_CREATION === 'true'){
+    return {number:null,html_url:null,skipped:true};
+  }
   if(!GITHUB_TOKEN)throw Object.assign(new Error('GITHUB_TOKEN_MISSING'),{kind:'credential'});
   const url=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues`;
   return fetchJson(url,{
@@ -4034,6 +4184,9 @@ async function materializeAutonomousRca({store=pool}={}){
     {candidates:0,workOrders:0,ownerExceptions:0,observeOnly:0,deduped:0,blocked:0,skipped:'ANOTHER_CORE_OWNS_RCA_LOCK'};
 }
 async function materializeAutonomousRcaUnlocked({store=pool}={}){
+  if(globalThis.process?.env?.TIGERIQ_DISABLE_AUTO_ISSUE_CREATION === 'true'){
+    return {candidates:0,workOrders:0,ownerExceptions:0,observeOnly:0,deduped:0,blocked:0,skipped:'AUTO_ISSUE_CREATION_DISABLED'};
+  }
   const rows=(await store.query(`select signature,contract_id,severity,status,count,evidence
     from tigeriq_self_audit_anomalies
     where status='OPEN' and count>=2
@@ -4257,6 +4410,7 @@ async function loop(){
       }
       if(t-lastRefresh>5000){await refreshResources();lastRefresh=t;}
       if(t-lastRecover>10000){await recoverStale();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;}
+      if(t-lastR04IndependentReview>5000){lastR04IndependentReview=t;await reconcileNativeR04IndependentReview();}
       if(t-lastOpenClawObjectiveReconcile>3000){await reconcileCoreDirectPcOperatorObjectives();await reconcileCoreOpenClawBoundedObjectives();lastOpenClawObjectiveReconcile=t;}
       if(!managerTickRunning&&t-lastManager>MANAGER_IDLE_MS){lastManager=t;managerTickRunning=true;void managerTick().catch(error=>console.error(JSON.stringify({event:'MANAGER_TICK_ERROR',error:String(error?.message||error)}))).finally(()=>{managerTickRunning=false;});}
       if(t-lastProbe>60000){await probeReadyResources();lastProbe=t;}

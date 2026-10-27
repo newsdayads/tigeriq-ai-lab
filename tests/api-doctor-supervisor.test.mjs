@@ -91,6 +91,15 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(nv17WorkOrder.body).toContain('MUTATION_OWNER=CORE_DYNAMIC_LEASE');
   });
 
+  it('handles NV11 groq provider source-contract execution blocking and validation',()=>{
+    const resourceId='res:groq:openai-gpt-oss-120b:default:core';
+    const nv11WorkOrder=buildApiDoctorRepairWorkOrder({employeeId:'NV11',provider:'groq',resourceId,failureClass:'source_contract'});
+    expect(nv11WorkOrder.resourceScope).toBe('API_DOCTOR_SOURCE_REPAIR_NV11_GROQ');
+    expect(nv11WorkOrder.body).toContain(`API_DOCTOR_RESOURCE_ID=${resourceId}`);
+    expect(nv11WorkOrder.signature).toContain('NV11|groq|source_contract');
+    expect(nv11WorkOrder.body).toContain('MUTATION_OWNER=CORE_DYNAMIC_LEASE');
+  });
+
   it('adopts an idempotent, PC01-scoped one-time real NV09 JSON canary without a shell',()=>{
     const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     const start=source.indexOf('async function owner4595CanaryOnce(){');
@@ -483,6 +492,10 @@ describe('#1255 NV10 API Doctor policy',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     expect(core).toContain('const openSourceCandidate=');
     expect(core).toContain('const verifiedOpenSourceRelease=openSourceCandidate');
+    expect(core).toContain('const declaredInstalledRevision=apiDoctorSha(');
+    expect(core).not.toContain("apiDoctorSha((issueBody.match(/^R04_INSTALLED_SHA=([a-f0-9]{40})$/m)||[])[1])===repairRevision");
+    expect(core).toContain("${base}/compare/${repairRevision}...${declaredInstalledRevision}");
+    expect(core).toContain("open_source_release_declared_runtime_missing_repair");
     expect(core).toContain('repairPr?.merge_commit_sha');
     expect(core).toContain('repairPr.merged_at');
     expect(core).toContain('apiDoctorOwnerProxyRepairPrEvidence(');
@@ -558,7 +571,7 @@ describe('#1255 NV10 API Doctor policy',()=>{
     expect(spec.body).toContain('OWNER_PROXY=NV02');
     expect(spec.body).toContain('AUTO_CONTROL_REPAIR=true');
     expect(spec.body).toContain('INDEPENDENT_REPAIR_REQUIRED=true');
-    expect(spec.body).toContain('ACTIVE_EXECUTION=true');
+    expect(spec.body).toContain('ACTIVE_EXECUTION=false');
     expect(spec.body).toContain('CANONICAL_SPEC=#1255');
     expect(spec.body).toContain('MUTATION_OWNER=CORE_DYNAMIC_LEASE');
     expect(spec.body).toContain('ALLOW_PATH_PREFIX=apps/tigeriq-core/core.mjs,tests/api-doctor-supervisor.test.mjs');

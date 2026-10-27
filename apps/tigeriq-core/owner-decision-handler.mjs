@@ -95,6 +95,7 @@ export default async function handler(req,res,payload=null){
       const {issue,card}=await issueAndCard(issueNumber);
       const previous=await existingDecision(issueNumber,card.requestId);
       return reply(res,200,{ok:true,pending:!previous,card,updatedAt:issue.updated_at,
+        actionCapability:'SCOPED_DECISION_ONLY',executionAccepted:false,
         previousDecision:previous?String(previous.body||'').match(/^DECISION=(APPROVE|REJECT)$/m)?.[1]||'RECORDED':null});
     }
     if(!ownerDecisionOriginAllowed(req.headers)||
@@ -112,7 +113,7 @@ export default async function handler(req,res,payload=null){
       body:JSON.stringify({body:ownerDecisionReceipt(input,card)})
     });
     return reply(res,201,{ok:true,decisionRecorded:true,targetPermissionGranted:false,
-      executionAccepted:false,evidenceUrl:comment.html_url,requestId:input.requestId,
+      actionCapability:'SCOPED_DECISION_ONLY',executionAccepted:false,evidenceUrl:comment.html_url,requestId:input.requestId,
       next:'TARGET_GATE_REQUIRES_INDEPENDENT_VERIFICATION'});
   }catch(error){
     return reply(res,error?.status||400,{ok:false,error:String(error?.message||error).slice(0,120)});

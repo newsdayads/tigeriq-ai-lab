@@ -222,6 +222,13 @@ export function ownerCodingComment(value=''){
   for(const [pattern,label] of markers){if(pattern.test(text)){text=text.replace(pattern,label);break}}
   return text;
 }
+export function codingSourceReconcileGate(issue={}){
+  const state=String(issue?.state||'').trim().toLowerCase();
+  if(state==='open')return {allow:true,state,reason:'SOURCE_WORK_ORDER_OPEN'};
+  if(state==='closed')return {allow:false,state,reason:'SOURCE_WORK_ORDER_CLOSED'};
+  return {allow:false,state:state||'unknown',reason:'SOURCE_WORK_ORDER_STATE_UNVERIFIED'};
+}
+
 async function comment(fetchImpl,owner,repo,n,token,body){if(token)await gh(fetchImpl,owner,repo,`/issues/${n}/comments`,token,{method:'POST',body:JSON.stringify({body:ownerCodingComment(body)})})}
 async function close(fetchImpl,owner,repo,n,token){if(token)await gh(fetchImpl,owner,repo,`/issues/${n}`,token,{method:'PATCH',body:JSON.stringify({state:'closed',state_reason:'completed'})})}
 async function markerExists(pool,type,n){const q=await pool.query("select 1 from tigeriq_events where type=$1 and data->>'issueNumber'=$2 limit 1",[type,String(n)]);return q.rowCount>0}
@@ -554,7 +561,13 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
     if(!n||!id||seenIssues.has(n))continue;
     seenIssues.add(n);
     const objective=(status.objectives||[]).find(x=>x.id===id);
-    if(await hasCompletedCodingResult(pool,n))continue;
+    const completedResultReported=await hasCompletedCodingResult(pool,n);
+    // A previously reported completion is terminal only for the exact source
+    // revision that produced it. Keep historical/missing objectives quiet, but
+    // let a still-visible completed objective reach source reconciliation so a
+    // later canonical body/Owner revision can use the existing stale-result
+    // reject/rearm path instead of being masked forever.
+    if(completedResultReported&&String(objective?.status||'').toLowerCase()!=='completed')continue;
     if(!objective){
       // Historical terminal Coding objectives may already be garbage-collected from lane status.
       // Only fetch GitHub for an unsynced blocked-final event; normal historical dispatch rows stay request-free.
@@ -567,6 +580,13 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       catch(error){
         if(githubRateLimitCooldownMs(error)>0)throw error;
         console.warn(JSON.stringify({event:'GITHUB_CODING_HISTORICAL_LABEL_SYNC_WAIT',issueNumber:n,codingObjectiveId:historicalObjectiveId,error:String(error?.message||error)}));
+        continue;
+      }
+      const historicalSourceGate=codingSourceReconcileGate(historicalIssue);
+      if(!historicalSourceGate.allow){
+        if(!(await objectiveMarkerExists(pool,'GITHUB_CODING_SOURCE_QUIETED',n,historicalObjectiveId))){
+          await mark(pool,'GITHUB_CODING_SOURCE_QUIETED',{issueNumber:n,codingObjectiveId:historicalObjectiveId,reason:historicalSourceGate.reason,state:historicalSourceGate.state,stateReason:String(historicalIssue?.state_reason||''),historical:true});
+        }
         continue;
       }
       const historicalSourceRevision=await codingSourceRevision(fetchImpl,owner,repo,token,historicalIssue);
@@ -632,6 +652,13 @@ Continue only after the canonical source materially changed. Execute zero-cost r
       console.warn(JSON.stringify({event:'GITHUB_CODING_SOURCE_RECONCILE_WAIT',issueNumber:n,codingObjectiveId:id,error:String(error?.message||error)}));
       continue;
     }
+    const sourceGate=codingSourceReconcileGate(currentIssue);
+    if(!sourceGate.allow){
+      if(!(await objectiveMarkerExists(pool,'GITHUB_CODING_SOURCE_QUIETED',n,id))){
+        await mark(pool,'GITHUB_CODING_SOURCE_QUIETED',{issueNumber:n,codingObjectiveId:id,reason:sourceGate.reason,state:sourceGate.state,stateReason:String(currentIssue?.state_reason||''),historical:false});
+      }
+      continue;
+    }
     const currentSourceRevision=await codingSourceRevision(fetchImpl,owner,repo,token,currentIssue);
     const recoverySpec=parseCodingIssue(currentIssue);
     const recoveryFinal=(await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n))[0]||null;
@@ -694,7 +721,7 @@ Continue only after the canonical source materially changed. Execute zero-cost r
         results++;
         continue;
       }
-      if(!(await hasCompletedCodingResult(pool,n))){
+      if(!completedResultReported){
         // A merged PR and a completed Coding objective are not full Work Order
         // acceptance. Verify the source's Lifecycle V2 receipts BEFORE closure.
         // A missing receipt must never be manufactured by the reconciler.
@@ -846,6 +873,11 @@ Continue only after the canonical source materially changed. Execute zero-cost r
   return {progress,results};
 }
 
+export function githubCodingEventIssue(payload){
+  const issue=githubEventIssue(payload);
+  return issue&&parseCodingIssue(issue)?issue:null;
+}
+
 export function startGithubCodingIntake({databaseUrl=process.env.DATABASE_URL,fetchImpl=fetch,owner=process.env.TIGERIQ_GITHUB_OWNER||DEFAULT_OWNER,repo=process.env.TIGERIQ_GITHUB_REPO||DEFAULT_REPO,token=process.env.TIGERIQ_GITHUB_TOKEN||process.env.GITHUB_TOKEN||'',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,intervalMs=Number(process.env.TIGERIQ_GITHUB_CODING_RECONCILE_MS||process.env.TIGERIQ_GITHUB_RECONCILE_MS||DEFAULT_INTERVAL_MS),initialDelayMs=20000}={}){
   if(!databaseUrl)return {enabled:false,stop(){}};
   const pool=new Pool({connectionString:databaseUrl,max:1});
@@ -866,9 +898,9 @@ export function startGithubCodingIntake({databaseUrl=process.env.DATABASE_URL,fe
 
   const processEvent=async(event)=>{
     if(stopped)return;
-    if(busy||githubCooldownUntil>Date.now()){pendingEvents.push(event);return}
-    const issue=githubEventIssue(event?.payload);
+    const issue=githubCodingEventIssue(event?.payload);
     if(!issue)return;
+    if(busy||githubCooldownUntil>Date.now()){pendingEvents.push(event);return}
     busy=true;
     try{
       const a=await materializeGithubCodingIssues({pool,fetchImpl,owner,repo,token,codingLaneUrl,openIssues:[issue]});
@@ -883,7 +915,7 @@ export function startGithubCodingIntake({databaseUrl=process.env.DATABASE_URL,fe
   const unsubscribe=subscribeGithubEvents(event=>{
     const fullName=String(event?.payload?.repository?.full_name||'');
     if(fullName&&fullName!==owner+'/'+repo)return;
-    if(githubEventIssue(event?.payload))void processEvent(event);
+    if(githubCodingEventIssue(event?.payload))void processEvent(event);
   });
 
   const tick=async()=>{

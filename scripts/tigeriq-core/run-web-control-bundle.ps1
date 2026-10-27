@@ -17,8 +17,11 @@ $assets=@(Get-ChildItem -LiteralPath $sourceRoot -File | Where-Object {
   $_.Name -eq 'web-control-server.mjs' -or
   $_.Name -eq 'web-control.html' -or
   $_.Name -eq 'work-order-checklist-hard-gate.mjs' -or
+  $_.Name -eq 'work-order-lifecycle-v2.mjs' -or
   $_.Name -eq 'workforce-registry.mjs' -or
   $_.Name -eq 'github-shared-client.mjs' -or
+  $_.Name -eq 'owner-backlog-order.mjs' -or
+  $_.Name -like 'web-control-*.mjs' -or
   $_.Name -like 'web-control-*.js' -or
   $_.Name -like 'web-control-*.css'
 })

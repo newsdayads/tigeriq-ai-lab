@@ -70,3 +70,18 @@ test('Owner decisions use one existing Vercel function instead of a 13th Hobby f
   const ui=readFileSync(new URL('../public/owner-approval.js',import.meta.url),'utf8');
   assert.match(ui,/JSON\.stringify\(\{\.\.\.current,decision,operation:'owner-decision'\}\)/);
 });
+
+
+test('P0 approval UI never mislabels a recorded decision as FULL AUTO execution',()=>{
+  const server=readFileSync(new URL('../apps/tigeriq-core/owner-decision-handler.mjs',import.meta.url),'utf8');
+  const page=readFileSync(new URL('../public/owner-approval.html',import.meta.url),'utf8');
+  const ui=readFileSync(new URL('../public/owner-approval.js',import.meta.url),'utf8');
+  assert.match(server,/actionCapability:'SCOPED_DECISION_ONLY',executionAccepted:false/);
+  assert.match(server,/decisionRecorded:true,targetPermissionGranted:false/);
+  assert.match(page,/GỬI QUYẾT ĐỊNH DUYỆT<\/button>/);
+  assert.doesNotMatch(page,/<button[^>]*>DUYỆT THỰC HIỆN<\/button>/);
+  assert.match(ui,/data\.actionCapability!=='SCOPED_DECISION_ONLY'/);
+  assert.match(ui,/data\.executionAccepted!==false/);
+  assert.match(ui,/data\.decisionRecorded!==true/);
+  assert.match(ui,/CHƯA giao Core, CHƯA xuất bản, CHƯA hoàn tất/);
+});

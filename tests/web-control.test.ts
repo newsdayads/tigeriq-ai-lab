@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+// @ts-expect-error Canonical runtime module is JavaScript and intentionally ships without a .d.ts.
+// Vitest executes the real module; this suppresses only TypeScript's declaration-file warning.
+import { completionProof as sharedCompletionProof } from '../apps/shared/work-center-history.mjs';
+// @ts-expect-error Bundled runtime module is JavaScript and intentionally ships without a .d.ts.
+import { completionProof as bundledCompletionProof } from '../apps/tigeriq-core/web-control-completion-proof.mjs';
 
 const web = readFileSync(resolve('apps/tigeriq-core/web-control.html'), 'utf8');
 const server = readFileSync(resolve('apps/tigeriq-core/web-control-server.mjs'), 'utf8');
@@ -10,6 +15,7 @@ const unified = readFileSync(resolve('apps/tigeriq-core/web-control-unified.js')
 const unifiedCss = readFileSync(resolve('apps/tigeriq-core/web-control-unified.css'), 'utf8');
 const mobileCss = readFileSync(resolve('apps/tigeriq-core/web-control-mobile.css'), 'utf8');
 const launcher = readFileSync(resolve('scripts/tigeriq-core/run-web-control.ps1'), 'utf8');
+const bundleLauncher = readFileSync(resolve('scripts/tigeriq-core/run-web-control-bundle.ps1'), 'utf8');
 const apiHealth = readFileSync(resolve('apps/tigeriq-core/dashboard.html'), 'utf8');
 const workforceCss = readFileSync(resolve('public/work-ui.css'), 'utf8');
 const visualCss = readFileSync(resolve('public/work-center-visual.css'), 'utf8');
@@ -96,6 +102,11 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(server).toContain('/web-control-health-model.js');
     expect(server).toContain('githubWorkOrders');
     expect(server).toContain('workOrdersMeta');
+    expect(server).toContain('parseWebControlOwnerOrder');
+    expect(server).toContain('sortWebControlWorkOrders');
+    expect(server).toContain('ownerBacklogOrderVerified');
+    expect(bundleLauncher).toContain("'owner-backlog-order.mjs'");
+    expect(bundleLauncher).toContain("'web-control-*.mjs'");
     expect(truth).toContain('d?.workOrders');
     expect(truth).toContain("s === 'working' && status === 'BUSY'");
     expect(unified).toContain('__tigerIqApplyOwnerHealth');
@@ -162,6 +173,42 @@ describe('TigerIQ Web Control owner dashboard', () => {
     expect(mobileCss).toContain('overflow-x:hidden');
     expect(mobileCss).toContain('.workers{grid-template-columns:1fr!important}');
     expect(mobileCss).toContain('.board-controls{width:100%!important');
+  });
+
+  it('keeps bundled Lifecycle V2 completion verification in exact parity with the shared source verifier', () => {
+    const receipt='https://github.com/newsdayads/tigeriq-ai-lab/issues/5338#issuecomment-6412441362';
+    const baseBody=[
+      'TIGERIQ_JOB_V1','WORK_ORDER_LIFECYCLE=V2','PROJECT_ID=tigeriq-platform',
+      'WORKSTREAM_ID=web-control-v2-parity','PRIORITY=P1','TIGERIQ_EXECUTABLE=true',
+      'CURRENT_STATE=DONE_ACCEPTED','CURRENT_STEP=S09','NEXT_ACTION=NONE',
+      'LAST_COMPLETED_STEP=S09','BLOCKER=NONE',
+      'RESOURCE_SCOPE=TIGERIQ_DASHBOARD_OWNER_PRIORITY_ORDER_CROSS_LEVEL',
+      'MUTATION_OWNER=GITHUB_AUTHORIZED_USER_ACTIONS_ONLY','ETA_STATUS=NOT_APPLICABLE',
+      'STARTED_AT=2026-10-26T08:44:09Z','FINISHED_AT=2026-10-26T15:10:00Z',
+      'START_RECEIPT_URL='+receipt,'FINISH_RECEIPT_URL='+receipt,
+      'SAME_FAILURE_RETRY_COUNT=0','SAME_FAILURE_RETRY_MAX=2',
+      'VERIFICATION_COUNT_CURRENT_HEAD=1','VERIFICATION_MAX_PER_HEAD=2',
+      'LAST_FAILURE_SIGNATURE=NONE','RETRY_RESUME_TRIGGER=NEW_SOURCE_HEAD',
+      'PROGRESS_SOURCE=STRUCTURED_PROGRESS_CHECKLIST','PROGRESS_COMPLETED=2','PROGRESS_TOTAL=2',
+      'DONE=true','## ACCEPTANCE','V2 accepted.','## STOP_CONDITIONS','DONE_WITH_EVIDENCE',
+      '## STRUCTURED_PROGRESS_CHECKLIST',
+      '- [x] S08 — runtime ['+receipt+']('+receipt+')',
+      '- [x] S09 — completion ['+receipt+']('+receipt+')'
+    ].join('\n');
+    const fixtures=[
+      {number:5338,title:'[P1][CORE][NV02] parity',created_at:'2026-10-26T08:44:09Z',state:'closed',state_reason:'completed',body:baseBody},
+      {number:5338,title:'[P1][CORE][NV02] parity',created_at:'2026-10-26T08:44:09Z',state:'open',state_reason:null,body:baseBody.replace('FINISHED_AT=2026-10-26T15:10:00Z','FINISHED_AT=NOT_FINISHED')},
+      {number:5338,title:'[P1][CORE][NV02] parity',created_at:'2026-10-26T08:44:09Z',state:'closed',state_reason:'completed',body:baseBody.replace('PROGRESS_COMPLETED=2','PROGRESS_COMPLETED=1')},
+      {number:5338,title:'[P1][CORE][NV02] parity',created_at:'2026-10-26T08:44:09Z',state:'closed',state_reason:'completed',body:baseBody.replace('FINISH_RECEIPT_URL='+receipt,'FINISH_RECEIPT_URL=NOT_FINISHED')},
+    ];
+    for(const fixture of fixtures) expect(bundledCompletionProof(fixture)).toEqual(sharedCompletionProof(fixture));
+    expect(bundledCompletionProof(fixtures[0]).verified).toBe(true);
+    expect(bundledCompletionProof(fixtures[1]).verified).toBe(false);
+    expect(bundledCompletionProof(fixtures[2]).verified).toBe(false);
+    expect(bundledCompletionProof(fixtures[3]).verified).toBe(false);
+    expect(server).toContain("from './web-control-completion-proof.mjs'");
+    expect(server).not.toContain("import('../shared/work-center-history.mjs')");
+    expect(bundleLauncher).toContain("'work-order-lifecycle-v2.mjs'");
   });
 
   it('runs as the read-only Web Control service', () => {

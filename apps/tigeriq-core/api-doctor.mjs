@@ -3,6 +3,22 @@ import {isRetryableManagerOutputError} from './manager-json.mjs';
 
 export const API_DOCTOR_CAPABILITY='api_doctor';
 
+// Diagnosis is optional internal work: one local model analysis across *all*
+// changing scan signatures per budget window. Provider health/cooldown probes,
+// real Core jobs, and owner-scoped repair intake remain independent.
+export function apiDoctorGlobalAnalysisAdmission({
+  lastAttemptAt=null, nowMs=Date.now(), minIntervalMs=30*60*1000,
+}={}){
+  const previous=lastAttemptAt==null?NaN:Date.parse(String(lastAttemptAt));
+  if(!Number.isFinite(Number(nowMs)) || !Number.isFinite(Number(minIntervalMs))
+    || Number(minIntervalMs)<60_000) return {allowed:false,reason:'INVALID_BUDGET_INPUT'};
+  if(!Number.isFinite(previous))return {allowed:true,reason:'NO_PREVIOUS_ANALYSIS'};
+  if(Number(nowMs)<previous) return {allowed:false,reason:'CLOCK_OR_SOURCE_TIME_INVALID'};
+  if(Number(nowMs)-previous<Number(minIntervalMs))
+    return {allowed:false,reason:'GLOBAL_API_DOCTOR_ANALYSIS_BUDGET'};
+  return {allowed:true,reason:'BUDGET_WINDOW_ELAPSED'};
+}
+
 // API Doctor owns provider diagnosis for cloud NV11–NV20 only. Local NV06,
 // NV08 and NV09 use their own health/manager/coding lifecycles.
 export function apiDoctorScannableEmployeeId(employeeId=''){
@@ -308,13 +324,30 @@ export function buildApiDoctorRepairWorkOrder({
   const title=`[P1][API DOCTOR][SOURCE REPAIR][${employee}] ${providerName} source-contract repair`;
   const body=[
     'TIGERIQ_JOB_V1',
+    'WORK_ORDER_LIFECYCLE=V2',
+    'PROJECT_ID=tigeriq-platform',
+    'WORKSTREAM_ID=core-provider-source-repair',
     'SOURCE=API_DOCTOR',
     'PARENT=#2890 - Sửa vòng repair provider đúng policy + không bị control-plane deny',
     'RELATED=#1255 - API Doctor — tự audit/phục hồi NV API khác + handoff source repair',
     'EXECUTION_POLICY=#1456',
-    'ACTIVE_EXECUTION=true',
+    'ACTIVE_EXECUTION=false',
     'CANONICAL_SPEC=#1255',
     'CURRENT_STATE=READY_AUTO_EXECUTION',
+    'CURRENT_STEP=S01 — reproduce exact provider source-contract failure',
+    'NEXT_ACTION=Route bounded source repair to Coding Lane under Core dynamic lease and exact-head checks',
+    'LAST_COMPLETED_STEP=NOT_STARTED',
+    'BLOCKER=NONE',
+    'STARTED_AT=NOT_STARTED',
+    'FINISHED_AT=NOT_FINISHED',
+    'ETA_STATUS=UNVERIFIED',
+    'SAME_FAILURE_RETRY_COUNT=0',
+    'SAME_FAILURE_RETRY_MAX=2',
+    'VERIFICATION_COUNT_CURRENT_HEAD=0',
+    'VERIFICATION_MAX_PER_HEAD=2',
+    'LAST_FAILURE_SIGNATURE=NONE',
+    'RETRY_RESUME_TRIGGER=NEW_SOURCE_FIX_OR_VERIFIED_NORMAL_WORK_RECEIPT',
+    'DONE=false',
     'TIGERIQ_EXECUTABLE=true',
     'AUTO_QUEUE=INCLUDED',
     'OWNER_POLICY=AUTO',
@@ -373,6 +406,12 @@ export function buildApiDoctorRepairWorkOrder({
     '3. Run focused regression and required exact-head gates.',
     '4. Obtain independent review and runtime/live validation.',
     '',
+    '## STRUCTURED_PROGRESS_CHECKLIST',
+    '- [ ] S01 — Reproduce exact provider source-contract failure with a real receipt',
+    '- [ ] S02 — Apply smallest scoped repair with protected PR and exact-head CI',
+    '- [ ] S03 — Verify deployed Core runtime and independent review within approved scope',
+    '- [ ] S04 — Verify later ordinary resource success and close source Work Order with receipts',
+    '',
     '## ACCEPTANCE',
     '- Protected Core mutation is admitted only through delegated owner-proxy repair intent.',
     '- Real normal Core work succeeds after the repair before RECOVERED is emitted.',
@@ -386,8 +425,6 @@ export function buildApiDoctorRepairWorkOrder({
     '',
     '## EVIDENCE_FORMAT',
     'PR/head/checks/review/merge/runtime SHA + normal-work job/resource success evidence.',
-    '',
-    'DONE=false',
   ].join('\n');
   return {title,body,priority:'P1',resourceScope,signature:repairSignature};
 }

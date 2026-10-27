@@ -422,6 +422,79 @@ export function githubSpecBlockedByActive(spec,activeMetadata=[]){
   });
 }
 
+export function githubObjectiveEncodedSourceRevision(objectiveId='',issueNumber=''){
+  const id=String(objectiveId||'').trim();
+  const number=String(issueNumber||'').trim();
+  if(!/^\d+$/.test(number))return '';
+  const rearm=id.match(new RegExp('^OBJ-GH-'+number+'-R([0-9a-f]{12})(?:-|$)','i'));
+  if(rearm)return String(rearm[1]||'').toLowerCase();
+  const fallback=id.match(new RegExp('^OBJ-GH-'+number+'-F\\d+-([0-9a-f]{12})(?:-|$)','i'));
+  return String(fallback?.[1]||'').toLowerCase();
+}
+
+export function githubActiveObjectiveSourceIsSuperseded(row={},spec={}){
+  const metadata=row?.metadata||{};
+  const issueNumber=String(spec?.number||'').trim();
+  const currentRevision=String(spec?.sourceRevision||'').trim().toLowerCase();
+  if(!issueNumber||!currentRevision||String(metadata?.issueNumber||'')!==issueNumber)return false;
+  const metadataRevision=String(metadata?.sourceRevision||'').trim().toLowerCase();
+  const parkedRevision=String(metadata?.managerAwaitingAcceptanceRevision||'').trim().toLowerCase();
+  const encodedRevision=githubObjectiveEncodedSourceRevision(row?.id,issueNumber);
+  return Boolean(
+    (metadataRevision&&metadataRevision!==currentRevision)
+    ||(parkedRevision&&parkedRevision!==currentRevision)
+    ||(encodedRevision&&encodedRevision!==currentRevision)
+  );
+}
+
+export async function reconcileSupersededActiveGithubObjective({pool,spec,activeRows=[]}={}){
+  if(!pool||!spec)return {released:false,reason:'INVALID_INPUT'};
+  const issueNumber=String(spec?.number||'').trim();
+  const sourceRevision=String(spec?.sourceRevision||'').trim();
+  if(!issueNumber||!sourceRevision)return {released:false,reason:'SOURCE_IDENTITY_REQUIRED'};
+  const candidate=(Array.isArray(activeRows)?activeRows:[]).find((row)=>{
+    // Same canonical GitHub issue is itself a durable identity boundary.
+    // Legacy objectives may predate resourceScope/workOrderDedupeKey metadata;
+    // requiring those fields would leave an orphan ACTIVE row permanently
+    // blocking a newer source revision. The SQL fence below still requires
+    // zero nonterminal jobs, zero resource bindings and zero live shared leases.
+    return githubActiveObjectiveSourceIsSuperseded(row,spec);
+  });
+  if(!candidate?.id)return {released:false,reason:'NO_SUPERSEDED_ACTIVE_OBJECTIVE'};
+  const supersedeMeta={
+    supersededBySourceRevision:sourceRevision,
+    supersededReason:'NEW_GITHUB_SOURCE_REVISION_NO_LIVE_WORK',
+  };
+  const q=await pool.query(`update tigeriq_objectives o
+    set status='blocked',
+        summary='SUPERSEDED_BY_NEW_GITHUB_SOURCE_REVISION',
+        metadata=o.metadata||$3::jsonb,
+        updated_at=now()
+    where o.id=$1 and o.status='active'
+      and coalesce(o.metadata->>'sourceRevision','')<>$2
+      and not exists (
+        select 1 from tigeriq_jobs j
+        where j.objective_id=o.id and j.status not in ('done','failed','cancelled')
+      )
+      and not exists (
+        select 1 from tigeriq_ai_resources r
+        where r.current_job_id=o.id
+           or r.current_job_id in (select j.id from tigeriq_jobs j where j.objective_id=o.id)
+      )
+      and not exists (
+        select 1 from tigeriq_ai_resource_leases l
+        where l.lease_until>now()
+          and (l.work_id=o.id or l.work_id in (select j.id from tigeriq_jobs j where j.objective_id=o.id))
+      )
+    returning o.id`,[candidate.id,sourceRevision,JSON.stringify(supersedeMeta)]);
+  if(q.rowCount!==1)return {released:false,reason:'ACTIVE_WORK_OR_RACE'};
+  await pool.query(
+    "insert into tigeriq_events(type,objective_id,data) values('GITHUB_STALE_ACTIVE_OBJECTIVE_SUPERSEDED',$1,$2)",
+    [candidate.id,JSON.stringify({issueNumber:Number(spec.number),fromSourceRevision:String(candidate.metadata?.sourceRevision||''),toSourceRevision:sourceRevision})],
+  );
+  return {released:true,reason:'SUPERSEDED_ACTIVE_WITHOUT_LIVE_WORK',objectiveId:candidate.id};
+}
+
 export function normalizeWorkOrderScopeFamily(value=''){
   return String(value||'').trim().toUpperCase()
     .replace(/(?:_V\d+|_RETRY(?:_\d+)?|_REARM(?:_\d+)?)(?=_|$)/g,'')
@@ -1340,8 +1413,7 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
   const rows=await reconcileStaleTerminalBlockedRearms({pool,fetchImpl,owner,repo,token,issues:dependencyReconciled.issues});
   const specs=sortBacklogSpecs(dedupeBacklogWorkOrders(rows.map(parseExecutableIssue).filter(Boolean)));
   const openIssueIndex=indexOpenGithubIssues(rows);
-  const activeRows=(await pool.query("select metadata from tigeriq_objectives where metadata->>'source'='github' and status='active'")).rows||[];
-  const activeMetadata=activeRows.map((row)=>row?.metadata||{});
+  let activeRows=(await pool.query("select id,metadata from tigeriq_objectives where metadata->>'source'='github' and status='active'")).rows||[];
   const hasPcOperator=specs.some((spec)=>spec.capability==='pc_operator');
   const openClawTerminalState=hasPcOperator?await loadOpenClawTerminalState(pool):null;
   let skipped=0,externalClaims=0;
@@ -1364,6 +1436,9 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
         openClawTerminalState.clearedByRevision.add(revisionKey);
       }
     }
+    const staleActive=await reconcileSupersededActiveGithubObjective({pool,spec,activeRows});
+    if(staleActive.released)activeRows=activeRows.filter((row)=>row?.id!==staleActive.objectiveId);
+    const activeMetadata=activeRows.map((row)=>row?.metadata||{});
     if(githubSpecBlockedByActive(spec,activeMetadata)){skipped++;skipReasons.activeScope++;continue;}
     const prior=(await pool.query("select id,status,metadata from tigeriq_objectives where metadata->>'source'='github' and metadata->>'issueNumber'=$1 order by created_at desc limit 1",[String(spec.number)])).rows[0]||null;
     const roleClaimLabeled=hasExternalRoleClaimLabel(spec);
@@ -1563,11 +1638,11 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
   try{idleWorkers=Number((await pool.query("select count(*)::int as count from tigeriq_ai_resources where enabled=true and current_job_id is null and credential_state in ('LOCAL','READY') and health_state in ('ONLINE','READY')")).rows[0]?.count||0);}catch{}
   const created=createdItems.length;
   const actionableBacklogCount=Math.max(0,specs.length-skipped-created);
-  const activeWorkCount=activeMetadata.length+externalClaims+created;
+  const activeWorkCount=activeRows.length+externalClaims+created;
   const fault=routingFault({eligibleBacklogCount:actionableBacklogCount,activeWorkCount,eligibleIdleWorkers:idleWorkers});
   if(fault.fault)await recordRoutingFault(pool,{...fault,source:'github-intake',considered:specs.length,skipped,created,skipReasons});
   const first=createdItems[0]||{};
-  return {created,createdItems,skipped,externalClaims,active:activeMetadata.length,considered:specs.length,actionableBacklogCount,skipReasons,cleanedOrphans:cleanup.cleaned,routingFault:fault.fault,...(created===1?first:{})};
+  return {created,createdItems,skipped,externalClaims,active:activeRows.length,considered:specs.length,actionableBacklogCount,skipReasons,cleanedOrphans:cleanup.cleaned,routingFault:fault.fault,...(created===1?first:{})};
 }
 
 

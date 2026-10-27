@@ -699,12 +699,16 @@ export function parseRecentClosedIssue(issue, now = Date.now()) {
   if (!issue || issue.pull_request || issue.state !== 'closed') return null;
   const reason = String(issue.state_reason || '').toLowerCase();
   const body = String(issue.body || '');
-  // Closed is authoritative for dispatch, not proof that a blocked DONE=false
-  // canonical item was accepted. Surface the mismatch; never reopen it here.
+  // GitHub closure ends dispatch, not proof of completion. Flag unfinished
+  // canonical records as discrepancies; never reopen them here.
   const phase = bodyValue(body, 'CURRENT_STATE').toUpperCase();
-  const closureConflict = /^BLOCKED(?:_|$)/.test(phase)
-    && bodyValue(body, 'DONE').toLowerCase() === 'false'
-    && (reason === 'not_planned' || reason === 'completed');
+  // GitHub closure terminates dispatch, but "completed" with DONE=false is an
+  // explicit acceptance conflict in ANY lifecycle phase (READY/WAIT/BLOCKED).
+  // Preserve historic not_planned filtering except proven blocked conflicts.
+  const declaredIncomplete = bodyValue(body, 'DONE').toLowerCase() === 'false';
+  const blockedPhase = /(?:^|_)BLOCKED(?:_|$)/.test(phase);
+  const closureConflict = declaredIncomplete && (reason === 'completed' ||
+    (reason === 'not_planned' && blockedPhase));
   if (reason === 'duplicate' || (reason === 'not_planned' && !closureConflict)) return null;
   if (['CANCELLED','CANCELED','SUPERSEDED','NOT_PLANNED'].includes(bodyValue(body,'STATE').toUpperCase()) ||
       /^SUPERSEDED(?:_BY)?=/mi.test(body)) return null;
@@ -721,11 +725,13 @@ export function parseRecentClosedIssue(issue, now = Date.now()) {
     status: 'CLOSED_UNVERIFIED', workKind: 'WORK',
     ...workflowRelationsForIssue(issue),
     closureConflict, closureReason: reason,
-    closureConflictReason: closureConflict ? 'GitHub đã đóng nhưng CURRENT_STATE vẫn BLOCKED và DONE=false' : null,
-    blocker: closureConflict ? bodyValue(body, 'BLOCKER').slice(0, 320) || phase : null,
+    closureConflictReason: closureConflict
+      ? (reason === 'completed' ? 'GitHub đã đóng với lý do hoàn tất nhưng DONE=false; chưa nghiệm thu' : 'GitHub đã đóng nhưng CURRENT_STATE vẫn BLOCKED và DONE=false')
+      : null,
+    blocker: closureConflict ? bodyValue(body, 'BLOCKER').slice(0, 320) || (blockedPhase ? phase : 'DONE=false') : null,
     nextStep: closureConflict ? 'Đối chiếu quyết định đóng và cổng thiết bị với Owner; không tự mở lại hoặc giao việc' : null,
     progressPercent: null, progressSource: 'closed_unverified',
-    progressDetail: closureConflict ? 'LỆCH TRẠNG THÁI: đã đóng nhưng còn blocker, chưa nghiệm thu' : 'Đã đóng trên GitHub; chưa xác minh nghiệm thu',
+    progressDetail: closureConflict ? 'LỆCH TRẠNG THÁI: GitHub đã đóng nhưng DONE=false, chưa nghiệm thu' : 'Đã đóng trên GitHub; chưa xác minh nghiệm thu',
     completionVerified: false,
     lifecycleTiming: validateWorkOrderLifecycleV2(issue).timestamps,
     closedAt, updatedAt: closedAt, url: issue.html_url || null,
@@ -924,9 +930,9 @@ export function rankQueueRows(rows = [], ownerOrder = []) {
     return normalized;
   }).sort((left, right) => {
     const fallback=compareQueueRows(left,right);
-    // A priority declaration never bypasses P0, pause or dependency gates.
+    // Explicit Owner order is authoritative across eligible P1-P5 rows, but it
+    // never bypasses P0, pause, blocked or dependency gates.
     if (!queueRowEligibleNow(left)||!queueRowEligibleNow(right))return fallback;
-    if (queuePriority(left)!==queuePriority(right))return fallback;
     if (!Array.isArray(ownerOrder)||ownerOrder.length===0)return fallback;
     const l=ownerOrder.indexOf(Number(left.number)),r=ownerOrder.indexOf(Number(right.number));
     if(l<0&&r<0)return fallback;

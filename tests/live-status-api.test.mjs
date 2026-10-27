@@ -369,7 +369,7 @@ describe('TigerIQ Live Work Order projection', () => {
       state:'AWAITING_NATIVE_CHILD_ACCEPTANCE'}],true)).toEqual(entries);
   });
 
-  it('honors only eligible and same-priority Owner queue ordering', () => {
+  it('honors eligible Owner queue ordering across P1-P5 while preserving gates', () => {
     const entries=[
       {number:5144,priority:'P1',status:'QUEUED',ownerDirect:true},
       {number:5290,priority:'P1',status:'QUEUED',ownerDirect:true},
@@ -377,10 +377,12 @@ describe('TigerIQ Live Work Order projection', () => {
       {number:5189,priority:'P1',status:'WAITING',ownerDirect:true,waitReason:'dependency'},
       {number:5999,priority:'P0',status:'QUEUED',ownerDirect:true},
       {number:6300,priority:'P2',status:'QUEUED',ownerDirect:true},
+      {number:6400,priority:'P1',status:'QUEUED',ownerDirect:true},
     ];
-    const rows=rankQueueRows(entries,[5290,5144,5235,5189,5999]);
-    expect(rows.map(row=>row.number)).toEqual([5290,5144,5235,6300,5189,5999]);
-    expect(rows.filter(row=>row.eligibleNow).map(row=>row.dispatchRank)).toEqual([1,2,3,4]);
+    const rows=rankQueueRows(entries,[6300,5290,5144,5235,5189,5999]);
+    expect(rows.map(row=>row.number)).toEqual([6300,5290,5144,5235,6400,5189,5999]);
+    expect(rows.filter(row=>row.eligibleNow).map(row=>row.dispatchRank)).toEqual([1,2,3,4,5]);
+    expect(rows.find(row=>row.number===6300)).toMatchObject({priority:'P2',eligibleNow:true,dispatchRank:1});
     expect(rows.find(row=>row.number===5189).eligibleNow).toBe(false);
     expect(rows.find(row=>row.number===5999).eligibleNow).toBe(false);
   });
@@ -524,6 +526,25 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(closureAuditWatchNumbers([root])).toEqual([2949]);
     expect(closureAuditWatchNumbers([{...root,state:'closed'}])).toEqual([]);
     expect(closureAuditWatchNumbers([{...root,body:'- [x] R10 — checked NV102 #2949'}])).toEqual([]);
+  });
+
+  it('flags closed/completed DONE=false in READY or WAIT phases without fabricating acceptance', () => {
+    const now=Date.parse('2026-10-27T03:00:00Z');
+    const base={
+      number:5243,title:'[P1][API DOCTOR] NV17 source repair',state:'closed',
+      state_reason:'completed',closed_at:'2026-10-24T00:23:04Z',
+      html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/5243',
+      body:'CURRENT_STATE=READY_AUTO_EXECUTION\nDONE=false\nPRIORITY=P1',
+    };
+    expect(parseRecentCompletedIssue(base,now)).toBeNull();
+    expect(parseRecentClosedIssue(base,now)).toMatchObject({
+      number:5243,status:'CLOSED_UNVERIFIED',closureConflict:true,completionVerified:false,
+      blocker:'DONE=false',progressPercent:null,
+    });
+    expect(parseRecentClosedIssue({...base,body:'CURRENT_STATE=WAIT_REAL_JOB\nDONE=false\nPRIORITY=P1'},now)?.closureConflict).toBe(true);
+    expect(parseRecentClosedIssue({...base,body:'CURRENT_STATE=READY_AUTO_EXECUTION\nDONE=true\nPRIORITY=P1'},now)?.closureConflict).toBe(false);
+    expect(parseRecentClosedIssue({...base,state_reason:'not_planned'},now)).toBeNull();
+    expect(parseRecentClosedIssue({...base,state_reason:'duplicate'},now)).toBeNull();
   });
 
   it('does not treat historical closed issues as verified completions without V2 receipts', () => {
