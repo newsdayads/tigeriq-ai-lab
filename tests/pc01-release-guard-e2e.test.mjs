@@ -804,6 +804,16 @@ describe('Owner project authority — real Git + executable PowerShell guard',()
     expect((await runAsync({...args,paths:['not-present.mjs']})).reason).toBe('OWNER_PROJECT_SOURCE_PROVENANCE_INVALID');
     expect((await runAsync({...args,installedSha:args.targetSha,targetSha:args.installedSha,gateSha:args.installedSha}))).toMatchObject({approved:false,reason:'OWNER_PROJECT_ANCESTRY_INVALID'});
   }),30000);
+  it.skipIf(!pwshPresent)('accepts an exact-main same-tree descendant with empty changed paths and rejects empty evidence for a real tree change',()=>fixture(async args=>{
+    expect((await runAsync({...args,paths:[]})).reason).toBe('RELEASE_CHANGED_PATHS_MISSING');
+    const installedSha=args.targetSha;
+    execFileSync('git',['commit','--allow-empty','-m','metadata-only descendant'],{cwd:args.controlRepo,encoding:'utf8'});
+    const targetSha=git(args.controlRepo,'rev-parse','HEAD');
+    const result=await runAsync({...args,installedSha,targetSha,gateSha:targetSha,paths:[]});
+    expect(result).toMatchObject({approved:true,reason:'OWNER_PROJECT_METADATA_ONLY_AUTHORIZED'});
+    expect(result.requestId).toBe('OWNER-PROJECT-'+targetSha);
+  }),30000);
+
   it.skipIf(!pwshPresent)('does not silently expire a valid Owner grant or invent a release quota',()=>fixture(async args=>{
     expect((await runAsync({...args,projectPolicy:{...args.projectPolicy,issuedAtUtc:'2020-01-01T00:00:00.000Z'}})).approved).toBe(true);
   }),30000);
