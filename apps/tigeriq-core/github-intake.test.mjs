@@ -690,7 +690,7 @@ describe('GitHub Core intake guardrails',()=>{
     // V2 acceptance auto-sync updates the checkbox, its appended receipt and
     // the structured counter in ONE write, without rearming a new objective.
     const countedBody=body.replace('CHECKLIST_RECEIPT_STABLE_REVISION=V2',
-      'CHECKLIST_RECEIPT_STABLE_REVISION=V2\\nPROGRESS_SOURCE=STRUCTURED_PROGRESS_CHECKLIST\\nPROGRESS_COMPLETED=0\\nPROGRESS_TOTAL=1');
+      'CHECKLIST_RECEIPT_STABLE_REVISION=V2\nPROGRESS_SOURCE=STRUCTURED_PROGRESS_CHECKLIST\nPROGRESS_COMPLETED=0\nPROGRESS_TOTAL=1');
     const countedAccepted=countedBody.replace('PROGRESS_COMPLETED=0','PROGRESS_COMPLETED=1')
       .replace('- [ ] R02 — Verify package source and license.',
         '- [x] R02 — Verify package source and license. — [Biên nhận nghiệm thu](https://github.com/newsdayads/tigeriq-ai-lab/issues/4780#issuecomment-1)');
