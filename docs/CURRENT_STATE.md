@@ -1,23 +1,25 @@
-﻿# LIVE STATE OVERRIDE — 2026-10-27 — ULTRACAR V62 COCKPIT VERIFIED ON HARDWARE
+﻿# LIVE STATE OVERRIDE — 2026-10-27 — ULTRACAR V63 COCKPIT VERIFIED & PUBLISHED
 Authority: GitHub main + Issue #5129 (Work Order V1) + Issue #504 + live PC01 receipts.
 
-1. **UltraCar v1.0.62 TEST (code 303) đã ký và phát hành Google Drive:**
-   - File Drive: UltraCar_v1.0.62_TEST.apk, size 35,170,717 bytes.
+1. **UltraCar v1.0.63 TEST (code 304) đã ký và phát hành Google Drive:**
+   - File Drive: UltraCar_v1.0.63_TEST.apk, size 35,170,717 bytes.
    - Parent Folder ID: 1QTOWvtgrdGIml15J55LttcyKa7rLkdva (Folder TigerIQ UltraCar).
-   - SHA-256: 90D0847769C0538316CC1C53F15ABDDF74E6E67C9399FC1E3F0CEF5736E32F02.
-   - Chứng chỉ SHA-256 71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558, v2/v3 PASS. Package com.tigeriq.dexsplit, versionCode 303, versionName TigerIQ_HCM_v1.0.62.
+   - SHA-256: D08B591897F244911DC0DBF9368D12EAFD4620D64724485F9FC23CA7D7BB8AA1.
+   - Chứng chỉ SHA-256 71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558, v2/v3 PASS. Package com.tigeriq.dexsplit, versionCode 304, versionName TigerIQ_HCM_v1.0.63.
    - Biên nhận đồng bộ SYNC_PASS tại C:\Users\wdragons12x\AppData\Local\Temp\tigeriq-drive-sync-result.txt.
-2. **Kiểm chứng thực tế trên thiết bị phần cứng PC01 (R3CM400AKRX):**
-   - Đã cài đặt thực tế qua ADB (pm install -r UltraCar_v1.0.62_303_signed_TEST.apk) -> Success.
-   - Khởi chạy trực tiếp MainActivity -> Tiến trình PID 3010 chạy ổn định, logcat 0 lỗi VerifyError / AndroidRuntime Crash.
-   - Root Cause v61 được xử lý dứt điểm: Trong xo5.smali khi rút gọn chiều cao đã thiếu khởi tạo thanh ghi v8 khiến ART verifier báo egister v8 has type Undefined but expected Float. v62 đã bổ sung chuẩn xác const/high16 v8, 0x42200000 (40.0f).
-   - Thẻ tác vụ UltraCar tích hợp trọn vẹn 3 hàng nút trong khung ~170dp (spacing 6dp, mỗi hàng 40dp):
-     + Hàng 1: Nút KHỞI ĐỘNG (uu2.a) + Reload (uu2.e).
-     + Hàng 2: Dàn 5 nút phím tắt bố cục ở giữa (QuickBarRow.render).
-     + Hàng 3: Dàn 3 nút Bố cục đã lưu, Bố cục mới, Camera (uu2.i).
+2. **Cải tiến & Sửa lỗi theo phản hồi thực tế trên xe:**
+   - **Icon nhận diện động:** Bổ sung `V44UiBridge.getSlotIconType` và ánh xạ icon Compose tương ứng:
+     + YouTube / Nhạc / Zing / Spotify -> `Filled.PlayArrow` (`rx2.E`).
+     + Grab / Be Partner / GreenSM / Taxi -> `Filled.DirectionsCar` (`tf2.u`).
+     + Bản đồ / Map / Vietmap / Navitel -> `Filled.Route` (`k13.q`).
+     + Camera / Dashcam -> `Filled.Videocam` (`hz2.y`).
+     + Chưa gán -> Dấu cộng `Filled.Add` (`fm0.D`).
+     + Mặc định khác -> `Filled.Apps` (`f02.u`).
+   - **Bấm giữ sửa / xóa phím tắt:** Tích hợp `androidx.compose.foundation.a.g` (`combinedClickable`). Khi bấm giữ (long-press >= 0.5s), tự động gọi `onSlotLongClick(slot)` mở hộp thoại gán ô có sẵn tùy chọn **"— Bỏ gán ô này —"**.
+   - **Nâng cụm nút lên sát đuôi xe:** Bổ sung `Modifier.padding(bottom = 50.dp)` trong `xo5.smali` (`a.m`), kéo cụm 3 hàng nút lên cao sát đuôi xe render 3D đỏ, giải phóng không gian bên dưới giúp các thẻ thông tin xe dễ đọc và dễ bấm hơn.
 3. **Quy chuẩn Ký & Xuất bản APK duy nhất trên PC01:**
    - **Runner chính thức:** D:\TigerIQ\Tools\sign_latest.cmd (gọi sign_latest.ps1).
-   - Tự động nhận chính xác candidate UltraCar_v1.0.62_303_aligned_TEST.apk, ký bằng debug.keystore, kiểm tra chữ ký/gói và kích hoạt task interactive TigerIQ_UltraCar_Sync_Drive.
+   - Tự động nhận chính xác candidate UltraCar_v1.0.63_304_aligned_TEST.apk, ký bằng debug.keystore, kiểm tra chữ ký/gói và kích hoạt task interactive TigerIQ_UltraCar_Sync_Drive.
 ---
 # LIVE STATE OVERRIDE — 2026-10-15 — CHỐNG CHẶN SAI
 Authority: GitHub `main` + Issue #504 (quyền/cổng) + Issue #280 (điều phối) + đúng Work Order/PR + biên nhận PC01 mới nhất. Những đoạn 26/09 và 01/10 phía dưới chỉ là **lịch sử tại thời điểm ghi**, không ghi đè trạng thái hiện hành.

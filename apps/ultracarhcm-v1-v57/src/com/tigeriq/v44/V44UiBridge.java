@@ -96,6 +96,26 @@ public final class V44UiBridge {
         return sid != null && !sid.trim().isEmpty();
     }
 
+        public static int getSlotIconType(int slot) {
+        if (!isSlotAssigned(slot)) return 0;
+        String label = getSlotLabel(slot);
+        if (label == null) label = "";
+        label = label.toLowerCase(Locale.ROOT);
+        if (label.contains("youtube") || label.contains("nhạc") || label.contains("music") || label.contains("zing") || label.contains("spotify")) {
+            return 1;
+        }
+        if (label.contains("grab") || label.contains("be") || label.contains("gsm") || label.contains("green") || label.contains("xanh") || label.contains("taxi") || label.contains("partner") || label.contains("driver")) {
+            return 2;
+        }
+        if (label.contains("map") || label.contains("bản đồ") || label.contains("nav") || label.contains("vietmap")) {
+            return 3;
+        }
+        if (label.contains("cam") || label.contains("quay")) {
+            return 4;
+        }
+        return 5;
+    }
+
     public static void onSlotClick(int slot) {
         if (!isSlotAssigned(slot)) {
             pickSlot(slot);
