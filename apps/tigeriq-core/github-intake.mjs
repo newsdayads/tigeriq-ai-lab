@@ -7,7 +7,7 @@ import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
 import {validateWorkOrderLifecycleV2} from './work-order-lifecycle-v2.mjs';
-import {codingIssueCompletionGate} from '../shared/work-order-acceptance-sync.mjs';
+import {codingIssueCompletionGate,sourceTerminalDependencyAccepted} from '../shared/work-order-acceptance-sync.mjs';
 import {workOrderChecklistGate,workOrderChecklistSteps} from './work-order-checklist-hard-gate.mjs';
 import { SUPPORTED_PUBLIC_EVIDENCE_KEYS, appendPublicEvidenceToSummary, validatePublicEvidenceKeys } from './public-evidence.mjs';
 import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
@@ -311,9 +311,9 @@ export async function githubTerminalDependencyGate(fetchImpl,owner,repo,token,so
     }
     const state=String(issue?.state||'unknown').toLowerCase();
     const stateReason=String(issue?.state_reason||'').toLowerCase();
-    const accepted=state==='closed'&&stateReason==='completed';
+    const accepted=sourceTerminalDependencyAccepted(issue);
     states.push({dependency,state,stateReason,accepted});
-    if(!accepted)return {allow:false,reason:'dependency_not_terminal_accepted',dependency,state,stateReason,...spec,states};
+    if(!accepted)return {allow:false,reason:state==='closed'&&stateReason==='completed'?'dependency_lifecycle_v2_unaccepted':'dependency_not_terminal_accepted',dependency,state,stateReason,...spec,states};
   }
   return {allow:true,reason:'dependencies_terminal_accepted',...spec,states};
 }
@@ -357,7 +357,7 @@ export async function reconcileSatisfiedDeclaredBlockers({fetchImpl=fetch,owner=
         const dep=await resolveGithubSourceIssue(fetchImpl,owner,repo,token,dependency,index);
         const state=String(dep?.state||'unknown').toLowerCase();
         const stateReason=String(dep?.state_reason||'').toLowerCase();
-        if(!(state==='closed'&&stateReason==='completed')){allAccepted=false;break;}
+        if(!sourceTerminalDependencyAccepted(dep)){allAccepted=false;break;}
       }catch(error){
         if(githubRateLimitCooldownMs(error)>0)throw error;
         allAccepted=false;break;
