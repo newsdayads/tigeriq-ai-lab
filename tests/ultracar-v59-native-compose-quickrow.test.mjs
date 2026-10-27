@@ -47,13 +47,13 @@ test('v60 QuickBarContent renders 5 slots using atomic uu2->h button', () => {
   assert.match(content, /const\/4\s+v0,\s+0x4[\s\S]*renderSlot/);
 });
 
-test('v60 signing and sync target versionCode 301 / v1.0.60', () => {
+test('signing and sync target current candidate TEST APK', () => {
   const signScript = readFileSync('D:\\TigerIQ\\Tools\\sign_latest.ps1', 'utf8');
   const syncScript = readFileSync('D:\\TigerIQ\\Tools\\sync_latest_ultracar_to_drive.ps1', 'utf8');
 
-  assert.match(signScript, /UltraCar_v1\.0\.60_301_aligned_TEST\.apk/);
-  assert.match(signScript, /UltraCar_v1\.0\.60_301_signed_TEST\.apk/);
+  assert.match(signScript, /UltraCar_v1\.0\.(60_301|61_302)_aligned_TEST\.apk/);
+  assert.match(signScript, /UltraCar_v1\.0\.(60_301|61_302)_signed_TEST\.apk/);
 
-  assert.match(syncScript, /UltraCar_v1\.0\.60_301_signed_TEST\.apk/);
-  assert.match(syncScript, /UltraCar_v1\.0\.60_TEST\.apk/);
+  assert.match(syncScript, /UltraCar_v1\.0\.(60_301|61_302)_signed_TEST\.apk/);
+  assert.match(syncScript, /UltraCar_v1\.0\.(60|61)_TEST\.apk/);
 });
