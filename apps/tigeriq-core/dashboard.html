@@ -1159,7 +1159,6 @@ function renderWork(){
  [...workList.querySelectorAll('.work-row')].forEach((card,index)=>{
    const cardNum = Number(card.getAttribute('data-work-number'));
    const row = (Number.isInteger(cardNum) && rows.find(r => Number(r.number) === cardNum)) || rows[index];
-   const row = rows[index];
    if (!row) return;
 
    const prjName = String(row.projectName || '').toLowerCase();
