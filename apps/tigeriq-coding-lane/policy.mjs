@@ -14,7 +14,7 @@ const PROTECTED=[
 
 export function safeRepoPath(path){
   const p=String(path||'').trim();
-  if(!p||p.length>220||!SAFE_PATH_RE.test(p)||p.startsWith('/')||p.includes('..')||p.includes('\\')) return false;
+  if(!p||p.length>220||!SAFE_PATH_RE.test(p)||p.startsWith('/')||p.endsWith('/')||p.includes('..')||p.includes('\\')) return false;
   return !PROTECTED.some(re=>re.test(p));
 }
 
