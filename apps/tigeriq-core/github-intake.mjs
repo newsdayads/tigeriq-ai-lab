@@ -739,6 +739,14 @@ export function androidProductAutoExecutionExclusion(issue){
         'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN'
     ].every((key)=>bodyValue(currentBody,key).toLowerCase()==='true')
     && bodyValue(currentBody,'APP_CHROME_MUTATION').toUpperCase()==='FORBIDDEN';
+  const ownerApprovedAutonomousAndroid=bodyValue(currentBody,'OWNER_APPROVED_AUTONOMOUS_ANDROID').toLowerCase()==='true'||
+    (bodyValue(currentBody,'AUTONOMOUS_CODE').toLowerCase()==='true'&&
+     bodyValue(currentBody,'OWNER_POLICY').toUpperCase()==='AUTO'&&
+     bodyValue(currentBody,'AUTO_QUEUE').toUpperCase()==='INCLUDED'&&
+     bodyValue(currentBody,'TIGERIQ_EXECUTABLE').toLowerCase()==='true'&&
+     ['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE','NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN'
+     ].every((key)=>bodyValue(currentBody,key).toLowerCase()==='true'));
+  if(ownerApprovedAutonomousAndroid)return '';
   if(ownerApprovedNv102P2)return '';
   if(/\[ANDROID\]/i.test(title)||resourceScope.startsWith('ANDROID_'))return 'ANDROID_PRODUCT_OWNER_DIRECT';
   if(!/\[MOBILE-WORKER\]/i.test(title))return '';
