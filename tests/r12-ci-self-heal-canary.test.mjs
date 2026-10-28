@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 
 describe('R12 CI Self-Heal Canary', () => {
-  it('passes autonomously for R13H canary self-heal repair', () => {
-    // TIGERIQ_R13_AUTONOMOUS_REPAIR_PASS
-    // R13_REPAIR_COMPLETE
-    expect(true).toBe(true);
+  it('fails initially for R13H canary self-heal check', () => {
+    // TIGERIQ_R13_EXPECTED_INITIAL_CI_FAILURE
+    // R13_REPAIR_PENDING
+    expect(true).toBe(false);
   });
 });
