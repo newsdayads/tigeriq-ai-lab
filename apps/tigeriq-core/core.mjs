@@ -3391,31 +3391,30 @@ function workUiCss(){return readFileSync(new URL('../../public/work-ui.css', imp
 function workCenterVisualCss(){return readFileSync(new URL('../../public/work-center-visual.css', import.meta.url),'utf8');}
 function workCenterJs(){return readFileSync(new URL('../../public/work-center.js', import.meta.url),'utf8');}
 async function workCenterEntire(number){
-  const {execFile} = await import('node:child_process');
-  const {promisify} = await import('node:util');
-  const execFileAsync = promisify(execFile);
-  const repoDir = process.env.TIGERIQ_REPO_ROOT || 'D:/TigerIQ/Workspace/tigeriq-ai-lab';
   const remote = 'entire://aws-ap-southeast-1.entire.io/et/tigeriqai/tigeriq-ai-lab';
   const ref = 'main';
-  let commits = [];
+  const headers={'accept':'application/vnd.github+json','user-agent':'TigerIQ-Core-WorkCenter-Readonly',...(GITHUB_TOKEN?{authorization:'Bearer '+GITHUB_TOKEN}:{})};
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),5000);
+  const base='https://api.github.com/repos/'+encodeURIComponent(GITHUB_OWNER)+'/'+encodeURIComponent(GITHUB_REPO);
   try{
-    const numStr = String(number||'').trim();
-    if(numStr){
-      const {stdout} = await execFileAsync('git', ['log', '-n', '20', '--grep=' + numStr, '--format=%H|%an|%aI|%s'], {cwd: repoDir, timeout: 5000});
-      commits = stdout.trim().split(/\r?\n/).filter(Boolean).map(l=>{
-        const parts = l.split('|');
-        return {sha: parts[0], author: parts[1], at: parts[2], subject: parts.slice(3).join('|')};
-      });
-    }
-    if(!commits.length){
-      const {stdout} = await execFileAsync('git', ['log', '-n', '12', '--format=%H|%an|%aI|%s'], {cwd: repoDir, timeout: 5000});
-      commits = stdout.trim().split(/\r?\n/).filter(Boolean).map(l=>{
-        const parts = l.split('|');
-        return {sha: parts[0], author: parts[1], at: parts[2], subject: parts.slice(3).join('|')};
-      });
-    }
-  }catch{}
-  return {ok: true, cluster: 'aws-ap-southeast-1.entire.io', remote, ref, issueNumber: Number(number)||null, commits};
+    const response=await fetch(base+'/commits?sha='+encodeURIComponent(ref)+'&per_page=100',{
+      headers,cache:'no-store',signal:controller.signal,
+    });
+    if(!response.ok)throw Error('GITHUB_HTTP_'+response.status);
+    const rows=await response.json();
+    const all=Array.isArray(rows)?rows:[];
+    const numStr=String(number||'').trim();
+    const issuePattern=numStr?new RegExp('(?:^|\\s)#'+numStr+'(?:\\D|$)'):null;
+    const matched=issuePattern?all.filter(row=>issuePattern.test(String(row?.commit?.message||''))):[];
+    const selected=(matched.length?matched:all).slice(0,matched.length?20:12);
+    const commits=selected.map(row=>({
+      sha:String(row?.sha||''),
+      author:String(row?.commit?.author?.name||row?.author?.login||''),
+      at:row?.commit?.author?.date||row?.commit?.committer?.date||null,
+      subject:String(row?.commit?.message||'').split(/\r?\n/,1)[0],
+    })).filter(row=>row.sha);
+    return {ok:true,cluster:'aws-ap-southeast-1.entire.io',remote,ref,issueNumber:Number(number)||null,commits};
+  }finally{clearTimeout(timer)}
 }
 async function workCenterHistory(number){
   const headers={'accept':'application/vnd.github+json','user-agent':'TigerIQ-Core-WorkCenter-Readonly',...(GITHUB_TOKEN?{authorization:'Bearer '+GITHUB_TOKEN}:{})};
