@@ -5,7 +5,7 @@ import { inspectPaperclipBackupProvenance } from '../openclaw-tigeriq-runtime/pa
 import {installedLabVersion} from './installed-lab-version.mjs';
 import { createServer } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import {buildWorkHistory,recentCommentPages,latestComments} from '../shared/work-center-history.mjs';
 import {sourceCompletionDiagnostic} from '../shared/work-order-acceptance-sync.mjs';
 import { Pool } from 'pg';
@@ -272,6 +272,17 @@ async function surfSenseHealth() {
   const started=Date.now();
   try { const r=await fetch(SURFSENSE_APP_URL,{signal:AbortSignal.timeout(2500)}); return {ok:r.ok,status:r.status,latencyMs:Date.now()-started,url:SURFSENSE_APP_URL}; }
   catch(e){ return {ok:false,error:String(e?.message||e),latencyMs:Date.now()-started,url:SURFSENSE_APP_URL}; }
+}
+let entireHealthCache={at:0,data:null};
+async function entireHealth() {
+  if(Date.now()-entireHealthCache.at<30000&&entireHealthCache.data)return entireHealthCache.data;
+  const started=Date.now();
+  try {
+    const isInstalled=existsSync('C:\\Users\\wdragons12x\\.local\\bin\\entire.exe');
+    const data={ok:true,cluster:'aws-ap-southeast-1.entire.io',repo:'/et/tigeriqai/tigeriq-ai-lab',jurisdiction:'sg',dualPush:true,cliInstalled:isInstalled,latencyMs:Date.now()-started};
+    entireHealthCache={at:Date.now(),data};
+    return data;
+  }catch(e){return {ok:false,error:String(e?.message||e),latencyMs:Date.now()-started};}
 }
 async function surfSenseSearch(query, limit=6) {
   const u=new URL(SURFSENSE_SEARCH_URL); u.searchParams.set('q',query); u.searchParams.set('format','json');
@@ -3248,7 +3259,7 @@ async function snapshot(){
   const telemetry=(await pool.query(`select ts,employee_id,resource_id,task_kind,type,(data->>'latencyMs')::int as latency_ms from tigeriq_events where ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK') and data ? 'latencyMs' order by ts asc limit 500`)).rows;
   const performanceByTask=(await pool.query(`select resource_id,coalesce(task_kind,'general') as task_kind,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as success,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as failure,count(*) filter(where type='ROUTING_RETRY')::int as retries,count(*) filter(where type='ROUTING_FAILOVER')::int as failovers,round(avg((data->>'latencyMs')::numeric) filter(where data ? 'latencyMs'))::int as avg_latency_ms from tigeriq_events where resource_id is not null and ts>=now()-interval '7 days' group by resource_id,coalesce(task_kind,'general') order by resource_id,task_kind`)).rows;
   const routingDecisions=(await pool.query("select seq,ts,job_id,employee_id,resource_id,task_kind,data from tigeriq_events where type='ROUTING_DECISION' order by seq desc limit 20")).rows;
-  return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},integrations:{surfsense:await surfSenseHealth(),openclaw:{...(await probeOpenClawGateway()),workerActivated:openClawResourceActivated()},github:githubTransportSnapshot()},resources:rr,mobileWorkers,workforce,workforceMeta,objectives,jobs,jobOutcomeSummary:summarizeCoreJobEvidence(jobs),events,telemetry,sharedLeases:projectPublicSharedLeases(sharedLeases),apiDoctor:await apiDoctorTelemetry(),routing:{profiles:ROUTING_PROFILE_LABELS,routingDecisions,performanceByTask}};
+  return {ok:true,core:{host:HOST,port:PORT,pid:process.pid,uptimeSec:Math.floor(process.uptime()),time:nowIso()},integrations:{surfsense:await surfSenseHealth(),openclaw:{...(await probeOpenClawGateway()),workerActivated:openClawResourceActivated()},github:githubTransportSnapshot(),entire:await entireHealth()},resources:rr,mobileWorkers,workforce,workforceMeta,objectives,jobs,jobOutcomeSummary:summarizeCoreJobEvidence(jobs),events,telemetry,sharedLeases:projectPublicSharedLeases(sharedLeases),apiDoctor:await apiDoctorTelemetry(),routing:{profiles:ROUTING_PROFILE_LABELS,routingDecisions,performanceByTask}};
 }
 
 let workOrdersCache={at:0,value:{ok:false,updatedAt:null,items:[]}};

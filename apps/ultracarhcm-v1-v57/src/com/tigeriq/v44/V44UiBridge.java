@@ -62,11 +62,10 @@ public final class V44UiBridge {
     }
 
     public static void notifyComposeStateChanged() {
-        if (composeSlotState != null && activity != null) {
+        if (activity != null) {
             activity.runOnUiThread(() -> {
                 try {
-                    Method m = composeSlotState.getClass().getMethod("setValue", Object.class);
-                    m.invoke(composeSlotState, System.currentTimeMillis());
+                    activity.recreate();
                 } catch(Exception ignored){}
             });
         }
@@ -90,30 +89,65 @@ public final class V44UiBridge {
         return String.format(java.util.Locale.US, "+%02d", slot + 1);
     }
 
+    public static Activity getActivity() {
+        return activity;
+    }
+
+    public static Drawable getSlotDrawable(int slot) {
+        if (slot < 0 || slot >= 5 || activity == null) return null;
+        String sid = prefs().getString("slot_" + slot, "");
+        if (sid == null || sid.trim().isEmpty()) return null;
+        for (Object s : sessions()) {
+            if (sid.equals(id(s))) {
+                Drawable d = icon(s);
+                if (d != null) return d;
+                break;
+            }
+        }
+        return null;
+    }
+
+    public static Bitmap getSlotBitmap(int slot) {
+        if (slot < 0 || slot >= 5 || activity == null) return null;
+        String sid = prefs().getString("slot_" + slot, "");
+        if (sid == null || sid.trim().isEmpty()) return null;
+        for (Object s : sessions()) {
+            if (sid.equals(id(s))) {
+                Drawable d = icon(s);
+                if (d != null) {
+                    return drawableToBitmap(d);
+                }
+                break;
+            }
+        }
+        return null;
+    }
+
+    public static Bitmap drawableToBitmap(Drawable drawable) {
+        if (drawable == null) return null;
+        try {
+            if (drawable instanceof BitmapDrawable) {
+                Bitmap b = ((BitmapDrawable) drawable).getBitmap();
+                if (b != null) return b;
+            }
+            int w = drawable.getIntrinsicWidth();
+            int h = drawable.getIntrinsicHeight();
+            if (w <= 0) w = 96;
+            if (h <= 0) h = 96;
+            Bitmap bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(bitmap);
+            drawable.setBounds(0, 0, w, h);
+            drawable.draw(canvas);
+            return bitmap;
+        } catch(Exception ignored){
+            return null;
+        }
+    }
+
     public static boolean isSlotAssigned(int slot) {
         if (slot < 0 || slot >= 5 || activity == null) return false;
         String sid = prefs().getString("slot_" + slot, "");
         return sid != null && !sid.trim().isEmpty();
-    }
-
-        public static int getSlotIconType(int slot) {
-        if (!isSlotAssigned(slot)) return 0;
-        String label = getSlotLabel(slot);
-        if (label == null) label = "";
-        label = label.toLowerCase(Locale.ROOT);
-        if (label.contains("youtube") || label.contains("nhạc") || label.contains("music") || label.contains("zing") || label.contains("spotify")) {
-            return 1;
-        }
-        if (label.contains("grab") || label.contains("be") || label.contains("gsm") || label.contains("green") || label.contains("xanh") || label.contains("taxi") || label.contains("partner") || label.contains("driver")) {
-            return 2;
-        }
-        if (label.contains("map") || label.contains("bản đồ") || label.contains("nav") || label.contains("vietmap")) {
-            return 3;
-        }
-        if (label.contains("cam") || label.contains("quay")) {
-            return 4;
-        }
-        return 5;
     }
 
     public static void onSlotClick(int slot) {
@@ -672,6 +706,7 @@ public final class V44UiBridge {
             () -> {
                 prefs().edit().putString("slot_" + slot, "").apply();
                 slotIds[slot] = "";
+                notifyComposeStateChanged();
                 renderBar();
                 dialog.dismiss();
                 Toast.makeText(activity, "\u0110\u00e3 b\u1ecf g\u00e1n \u00f4 " + (slot + 1), Toast.LENGTH_SHORT).show();
@@ -777,6 +812,22 @@ public final class V44UiBridge {
             Drawable d = (Drawable) m.invoke(null, o);
             if (d != null) return d;
         } catch(Exception ignored){}
+        try {
+            Method mp = Class.forName("com.tigeriq.layout.Manager").getDeclaredMethod("iconPackage", Object.class);
+            mp.setAccessible(true);
+            String pkg = (String) mp.invoke(null, o);
+            if (pkg != null && !pkg.isEmpty() && activity != null) {
+                return activity.getPackageManager().getApplicationIcon(pkg);
+            }
+        } catch(Exception ignored){}
+        try {
+            Method mp = Class.forName("com.tigeriq.layout.Manager").getDeclaredMethod("firstAppPackage", Object.class);
+            mp.setAccessible(true);
+            String pkg = (String) mp.invoke(null, o);
+            if (pkg != null && !pkg.isEmpty() && activity != null) {
+                return activity.getPackageManager().getApplicationIcon(pkg);
+            }
+        } catch(Exception ignored){}
         if (activity != null) {
             try {
                 return activity.getApplicationInfo().loadIcon(activity.getPackageManager());
@@ -793,22 +844,7 @@ public final class V44UiBridge {
             if (sid.length() > 0) items.put(sid, o);
         }
 
-        // Populate the approved five-icon bar from existing saved layouts only once.
-        // Later long-press reassignment is never overwritten by automatic defaults.
-        SharedPreferences saved = prefs();
-        if (!saved.getBoolean("defaults_seeded", false) && !items.isEmpty()) {
-            SharedPreferences.Editor editor = saved.edit();
-            List<Object> ordered = sessions();
-            int n = Math.min(5, ordered.size());
-            for (int i = 0; i < n; i++) {
-                String sid = id(ordered.get(i));
-                if (sid.length() > 0 && (slotIds[i] == null || slotIds[i].isEmpty())) {
-                    slotIds[i] = sid;
-                    editor.putString("slot_" + i, sid);
-                }
-            }
-            editor.putBoolean("defaults_seeded", true).apply();
-        }
+        // Auto-seed removed: slots remain unassigned by default
         quickBar.removeAllViews();
         for (int i = 0; i < 5; i++) {
             final int slot = i;
