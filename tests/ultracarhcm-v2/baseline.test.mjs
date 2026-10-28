@@ -7,4 +7,6 @@ const buildGradle = fs.readFileSync(path.resolve('apps/ultracarhcm-v2/build.grad
 assert(buildGradle.includes('com.dexcam.ultracar'), 'Namespace must be configured');
 const manifest = fs.readFileSync(path.resolve('apps/ultracarhcm-v2/src/main/AndroidManifest.xml'), 'utf8');
 assert(manifest.includes('MainActivity'), 'Manifest must declare MainActivity');
+const mainActivity = fs.readFileSync(path.resolve('apps/ultracarhcm-v2/src/main/java/com/dexcam/ultracar/MainActivity.kt'), 'utf8');
+assert(mainActivity.includes('UltraCarHCM V2 Baseline Running'), 'MainActivity must display correct baseline string');
 console.log('All baseline assertions passed successfully.');
