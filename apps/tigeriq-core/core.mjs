@@ -3390,6 +3390,33 @@ function dashboard(){return readFileSync(new URL('./dashboard.html', import.meta
 function workUiCss(){return readFileSync(new URL('../../public/work-ui.css', import.meta.url),'utf8');}
 function workCenterVisualCss(){return readFileSync(new URL('../../public/work-center-visual.css', import.meta.url),'utf8');}
 function workCenterJs(){return readFileSync(new URL('../../public/work-center.js', import.meta.url),'utf8');}
+async function workCenterEntire(number){
+  const {execFile} = await import('node:child_process');
+  const {promisify} = await import('node:util');
+  const execFileAsync = promisify(execFile);
+  const repoDir = process.env.TIGERIQ_REPO_ROOT || 'D:/TigerIQ/Workspace/tigeriq-ai-lab';
+  const remote = 'entire://aws-ap-southeast-1.entire.io/et/tigeriqai/tigeriq-ai-lab';
+  const ref = 'main';
+  let commits = [];
+  try{
+    const numStr = String(number||'').trim();
+    if(numStr){
+      const {stdout} = await execFileAsync('git', ['log', '-n', '20', '--grep=' + numStr, '--format=%H|%an|%aI|%s'], {cwd: repoDir, timeout: 5000});
+      commits = stdout.trim().split(/\r?\n/).filter(Boolean).map(l=>{
+        const parts = l.split('|');
+        return {sha: parts[0], author: parts[1], at: parts[2], subject: parts.slice(3).join('|')};
+      });
+    }
+    if(!commits.length){
+      const {stdout} = await execFileAsync('git', ['log', '-n', '12', '--format=%H|%an|%aI|%s'], {cwd: repoDir, timeout: 5000});
+      commits = stdout.trim().split(/\r?\n/).filter(Boolean).map(l=>{
+        const parts = l.split('|');
+        return {sha: parts[0], author: parts[1], at: parts[2], subject: parts.slice(3).join('|')};
+      });
+    }
+  }catch{}
+  return {ok: true, cluster: 'aws-ap-southeast-1.entire.io', remote, ref, issueNumber: Number(number)||null, commits};
+}
 async function workCenterHistory(number){
   const headers={'accept':'application/vnd.github+json','user-agent':'TigerIQ-Core-WorkCenter-Readonly',...(GITHUB_TOKEN?{authorization:'Bearer '+GITHUB_TOKEN}:{})};
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),6500);
@@ -3414,7 +3441,15 @@ const server=createServer(async(req,res)=>{
     if(req.method==='GET'&&url.pathname==='/work-ui.css'){res.writeHead(200,{'content-type':'text/css; charset=utf-8','cache-control':'no-store'});return res.end(workUiCss());}
     if(req.method==='GET'&&url.pathname==='/work-center.js'){res.writeHead(200,{'content-type':'text/javascript; charset=utf-8','cache-control':'no-store'});return res.end(workCenterJs());}
     if(req.method==='GET'&&url.pathname==='/work-center-visual.css'){res.writeHead(200,{'content-type':'text/css; charset=utf-8','cache-control':'no-store'});return res.end(workCenterVisualCss());}
-    if(req.method==='GET'&&url.pathname==='/api/work-history'){
+    if(req.method==='GET'&&url.pathname==='/api/work-entire'){
+        const number=url.searchParams.get('number')||'';
+        res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');
+        try{
+          const value=await workCenterEntire(Number(number));
+          res.writeHead(200);return res.end(JSON.stringify(value));
+        }catch{res.writeHead(500);return res.end(JSON.stringify({ok:false,error:'WORK_ENTIRE_UNAVAILABLE'}))}
+      }
+      if(req.method==='GET'&&url.pathname==='/api/work-history'){
       const number=url.searchParams.get('number')||'';
       res.setHeader('content-type','application/json; charset=utf-8');res.setHeader('cache-control','no-store');
       if(!/^[1-9]\d{0,7}$/.test(number)){res.writeHead(400);return res.end(JSON.stringify({ok:false,error:'INVALID_NUMBER'}))}
