@@ -6,7 +6,6 @@ plugins {
 android {
     namespace 'com.dexcam.ultracar'
     compileSdk 34
-    compileSdk 34
 
     defaultConfig {
         applicationId "com.dexcam.ultracar"
