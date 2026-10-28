@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "ultracarhcm-v2"
 include ":app"
+rootProject.name = "UltraCarHCMV2"
