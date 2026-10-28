@@ -14,3 +14,5 @@ dependencyResolutionManagement {
 }
 rootProject.name = "ultracarhcm-v2"
 include ":app"
+include ":app:src:main"
+include ":app:src:test"
