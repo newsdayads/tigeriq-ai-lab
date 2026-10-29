@@ -178,7 +178,12 @@ class ObdActivity : ComponentActivity() {
 
         worker.execute {
             try {
-                if (!hasConnectPermission()) throw SecurityException("BLUETOOTH_CONNECT missing")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) !=
+                    PackageManager.PERMISSION_GRANTED
+                ) {
+                    throw SecurityException("BLUETOOTH_CONNECT missing")
+                }
                 val candidate = device.createRfcommSocketToServiceRecord(SPP_UUID)
                 candidate.connect()
                 socket = candidate
