@@ -12,7 +12,7 @@ export const RIGHTS_SCOPE = 'PRIVATE_V2_REUSE';
 export const media = Object.freeze([
   { from: 'drawable/road_city_day.jpg', to: 'drawable-nodpi/v2_road_city_day.jpg', observedBytes: 504703 },
   { from: 'drawable/road_city_night.jpg', to: 'drawable-nodpi/v2_road_city_night.jpg', observedBytes: 371840 },
-  { from: 'drawable/logo_ultracar.png', to: 'drawable-nodpi/v2_logo_ultracar.png', observedBytes: 420199 },
+  { from: 'drawable/logo_ultracar.png', to: 'drawable-nodpi/v2_logo_ultracar.png', observedBytes: 283212 },
   { from: 'drawable/car_limo_do_parked.webp', to: 'drawable-nodpi/v2_car_limo_do_parked.webp', observedBytes: 82770 },
   { from: 'drawable/car_lambogini_trang_parked.webp', to: 'drawable-nodpi/v2_car_lambogini_trang_parked.webp', observedBytes: 113866 },
   { from: 'raw/ultrabot_glow_packed.mp4', to: 'raw/ultrabot_glow_packed.mp4', observedBytes: 138079 }
