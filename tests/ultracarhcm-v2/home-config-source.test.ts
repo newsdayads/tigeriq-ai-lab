@@ -15,7 +15,10 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(home).toContain('HomeConfigRules.canSave(current.length())');
     expect(home).toContain('HomeConfigRules.normalizeName(input.text.toString())');
     expect(home).toContain('.put("night", prefs.getBoolean("night", false))');
-    expect(home).toContain('.put("limo", prefs.getBoolean("limo", false))');
+    expect(home).toContain('val selectedModel = VehicleRules.currentModel(');
+    expect(home).toContain('.put("limo", selectedModel == VehicleRules.MODEL_LIMO_RED)');
+    expect(home).toContain('.put("vehicleModel", selectedModel)');
+    expect(home).toContain('.put("licensePlate", licensePlate)');
     expect(home).toContain('.put("driver", prefs.getString("driver_name", "Driver")');
     expect(home).toContain('.put("schemaVersion", HomeConfigRules.CURRENT_SCHEMA_VERSION)');
     expect(home).toContain('.put("quickSlots", normalizedQuickSlotsForStorage(quickSlots()))');
@@ -30,6 +33,8 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(home).toContain('private fun applyHomeConfiguration(item: JSONObject, renderAfter: Boolean)');
     expect(home).toContain('.putBoolean("night", safe.optBoolean("night", false))');
     expect(home).toContain('.putBoolean("limo", safe.optBoolean("limo", false))');
+    expect(home).toContain('.putString(VehicleRules.PREF_MODEL, safe.optString("vehicleModel"))');
+    expect(home).toContain('.putString(VehicleRules.PREF_LICENSE_PLATE, safe.optString("licensePlate"))');
     expect(home).toContain('.putString("driver_name", safe.optString("driver", "Driver"))');
     expect(home).toContain('editor.putString("v2_quick_slots", normalizedQuickSlotsForStorage(slots).toString())');
     expect(home).toContain('if (i != index) remaining.put(entries.get(i))');
@@ -43,6 +48,9 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(home).toContain('private fun normalizeHomeConfiguration(item: JSONObject): JSONObject?');
     expect(home).toContain('item.optInt("schemaVersion", 0)');
     expect(home).toContain('HomeConfigRules.canReadSchema(schema)');
+    expect(home).toContain('val vehicleModel = VehicleRules.currentModel(');
+    expect(home).toContain('item.optString("vehicleModel", "")');
+    expect(home).toContain('VehicleRules.normalizeLicensePlate(');
     expect(home).toContain('.put("schemaVersion", HomeConfigRules.CURRENT_SCHEMA_VERSION)');
     expect(home).toContain('val limit = minOf(raw.length(), HomeConfigRules.MAX_SAVED)');
     expect(home).toContain('normalizeHomeConfiguration(item)?.let(normalized::put)');
