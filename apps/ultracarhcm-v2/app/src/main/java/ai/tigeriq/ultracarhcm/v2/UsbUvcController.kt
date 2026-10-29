@@ -28,6 +28,24 @@ class UsbUvcController(
         private set
     val logTag = "UltraCarV2UVC"
 
+    private fun isUvcDevice(device: UsbDevice): Boolean =
+        device.deviceClass == 14 || (0 until device.interfaceCount)
+            .any { device.getInterface(it).interfaceClass == 14 }
+
+    private fun selectTarget(device: UsbDevice) {
+        if (!requested || target != null || !isUvcDevice(device)) return
+        try {
+            target = device
+            report("Đã tìm Camera UVC. Đang yêu cầu quyền USB…", false)
+            helper?.selectDevice(device)
+        } catch (t: Throwable) {
+            Log.e(logTag, "UVC select failed", t)
+            target = null
+            stop()
+            report("Không chọn được Camera UVC: ${t.javaClass.simpleName}", false)
+        }
+    }
+
     fun start() {
         if (requested) return
         requested = true
@@ -37,19 +55,12 @@ class UsbUvcController(
             val h = CameraHelper()
             helper = h
             h.setStateCallback(this)
-            val devices = h.deviceList.orEmpty()
-            val device = devices.firstOrNull { usb ->
-                usb.deviceClass == 14 || (0 until usb.interfaceCount)
-                    .any { usb.getInterface(it).interfaceClass == 14 }
-            }
+            val device = h.deviceList.orEmpty().firstOrNull(::isUvcDevice)
             if (device == null) {
-                stop()
-                report("Không thấy thiết bị Camera UVC qua USB Host", false)
+                report("Đang chờ Camera UVC qua USB Host — có thể cắm camera khi cửa sổ đang mở", false)
                 return
             }
-            target = device
-            report("Đã tìm Camera UVC. Đang yêu cầu quyền USB…", false)
-            h.selectDevice(device)
+            selectTarget(device)
         } catch (t: Throwable) {
             Log.e(logTag, "UVC init/select failed", t)
             stop()
@@ -81,6 +92,11 @@ class UsbUvcController(
 
     override fun onAttach(device: UsbDevice) {
         Log.i(logTag, "USB device attached: ${device.vendorId}:${device.productId}")
+        if (requested && target == null && isUvcDevice(device)) {
+            main.post {
+                if (requested && target == null) selectTarget(device)
+            }
+        }
     }
     override fun onDeviceOpen(device: UsbDevice, isFirstOpen: Boolean) {
         if (requested && device == target) {
@@ -104,8 +120,8 @@ class UsbUvcController(
         main.post {
             if (device == target && requested) {
                 releasePreview()
-                stop()
-                report("Camera UVC đã đóng — có thể thử lại", false)
+                target = null
+                report("Camera UVC đã đóng — đang chờ kết nối lại", false)
             }
         }
     }
@@ -113,16 +129,19 @@ class UsbUvcController(
         main.post {
             if (device == target && requested) {
                 releasePreview()
-                stop()
-                report("USB camera mất kết nối — có thể thử lại", false)
+                target = null
+                report("USB camera mất kết nối — đang chờ kết nối lại", false)
             }
         }
     }
     override fun onDetach(device: UsbDevice) {
         main.post {
             if (device == target) {
-                stop()
-                report("Đã rút Camera USB", false)
+                releasePreview()
+                target = null
+                if (requested) {
+                    report("Đã rút Camera USB — đang chờ cắm lại", false)
+                }
             }
         }
     }
@@ -140,8 +159,8 @@ class UsbUvcController(
         main.post {
             if (device == target && requested) {
                 releasePreview()
-                stop()
-                report("Lỗi UVC: ${e.message}", false)
+                target = null
+                report("Lỗi UVC: ${e.message} — đang chờ kết nối lại", false)
             }
         }
     }
