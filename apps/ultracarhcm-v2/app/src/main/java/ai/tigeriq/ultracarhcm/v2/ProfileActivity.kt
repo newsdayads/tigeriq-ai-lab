@@ -1,6 +1,6 @@
 package ai.tigeriq.ultracarhcm.v2
 
-import android.content.Context
+import android.content.Context\nimport android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
@@ -75,6 +75,12 @@ class ProfileActivity : ComponentActivity() {
                     input.setSelection(name.length)
                     toast("Đã lưu hồ sơ V2 trên thiết bị")
                 }
+            }
+        })
+        body.addView(Button(this).apply {
+            text = "CẬP NHẬT"
+            setOnClickListener {
+                startActivity(Intent(this@ProfileActivity, UpdateActivity::class.java))
             }
         })
 
