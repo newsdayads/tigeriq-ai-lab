@@ -75,10 +75,10 @@ open class GuideTrackView @JvmOverloads constructor(
         strokeCap = Paint.Cap.ROUND
     }
 
-    var curveState: GuideCurveState = GuideCurveState()
+    internal var curveState: GuideCurveState = GuideCurveState()
         private set
 
-    fun updateGuide(state: GuideCurveState) {
+    internal fun updateGuide(state: GuideCurveState) {
         val next = GuideTrackModel.normalize(state)
         if (next == curveState) return
         curveState = next
