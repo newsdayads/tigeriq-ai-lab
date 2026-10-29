@@ -1,7 +1,9 @@
 import test from 'node:test';
 import {request as nodeRequest} from 'node:http';
+import {readFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import {normalizeCoreSnapshot, fetchCoreSnapshot, CORE_URL} from '../apps/agents-city-tigeriq/core-readonly.mjs';
+import {normalizeLiveCoreSnapshot, fetchLiveCoreSnapshot, CORE_STATUS_URL} from '../apps/agents-city-tigeriq/core-live-readonly.mjs';
 import {createAnimalCityServer} from '../apps/agents-city-tigeriq/server.mjs';
 
 const NOW = Date.parse('2026-10-29T03:00:00.000Z');
@@ -28,6 +30,51 @@ function source(now = NOW) {
   };
 }
 
+function liveSource(now = NOW) {
+  const gemini='res:gemini:gemini-3.5-flash-lite:default:core';
+  const ollama='res:ollama:gemma3-4b:default:core';
+  return {
+    ok:true,
+    core:{time:new Date(now).toISOString()},
+    resources:[
+      {employee_id:'NV12',resource_id:gemini,current_job_id:'JOB-1',status:'BUSY',
+        name:'Gemini',provider:'gemini',model:'gemini-3.5-flash-lite'},
+      {employee_id:'NV10',resource_id:ollama,current_job_id:'JOB-2',status:'BUSY',
+        name:'API Doctor',provider:'ollama',model:'gemma3:4b'},
+      {employee_id:'NV11',resource_id:'res:groq:test',current_job_id:'JOB-DONE',status:'BUSY',
+        name:'Groq',provider:'groq',model:'test'}
+    ],
+    jobs:[
+      {id:'JOB-1',status:'running',employee_id:'NV12',resource_id:gemini,
+        title:'Coordinate Work Order',capability:'reasoning',kind:'compiled_ai',
+        provider:'gemini',started_at:new Date(now-5000).toISOString()},
+      {id:'JOB-2',status:'running',employee_id:'NV10',resource_id:ollama,
+        title:'Independent review',capability:'review',kind:'compiled_ai',
+        provider:'ollama',started_at:new Date(now-3000).toISOString()},
+      {id:'JOB-DONE',status:'done',employee_id:'NV11',resource_id:'res:groq:test',
+        title:'Old job',capability:'general',kind:'compiled_ai',provider:'groq'}
+    ],
+    sharedLeases:[
+      {work_id:'JOB-1',resource_id:gemini,employee_id:'NV12',
+        role:'implementer',lane:'core',lease_until:new Date(now+60000).toISOString()}
+    ]
+  };
+}
+
+function fetchBoth({now = Date.now(), invalidWork = false, invalidLive = false} = {}) {
+  return async (url) => {
+    if (url === CORE_URL) {
+      return new Response(JSON.stringify(invalidWork ? {ok:false,items:[]} : source(now)),
+        {status:200,headers:{'content-type':'application/json'}});
+    }
+    if (url === CORE_STATUS_URL) {
+      return new Response(JSON.stringify(invalidLive ? {ok:false} : liveSource(now)),
+        {status:200,headers:{'content-type':'application/json'}});
+    }
+    throw new Error('UNEXPECTED_URL');
+  };
+}
+
 test('maps real Core cards but never invents worker, delegated job or done',()=>{
   const p=normalizeCoreSnapshot(source(),{now:NOW});
   assert.equal(p.ok,true);
@@ -46,7 +93,7 @@ test('maps real Core cards but never invents worker, delegated job or done',()=>
   assert.equal(closed.state,'closed_unverified');
 });
 
-test('fails closed on incomplete, cached-error, stale and future sources',()=>{
+test('fails closed on incomplete, cached-error, stale and future work-order sources',()=>{
   const invalid=[
     {...source(),ok:false},
     {...source(),sourceScope:{openComplete:false,closedHistoryComplete:true}},
@@ -69,7 +116,7 @@ test('rejects duplicate issue identities, unverifiable progress and false comple
   assert.equal(p.rooms.find(r=>r.id==='quality').items[0].state,'closed_unverified');
 });
 
-test('Core request allows exactly one loopback URL, GET, and fails bad HTTP/JSON',async()=>{
+test('Core work-order request allows exactly one loopback URL, GET, and fails bad HTTP/JSON',async()=>{
   await assert.rejects(fetchCoreSnapshot({url:'https://example.com',fetchImpl:async()=>{throw Error('called')}}),/CORE_ORIGIN_NOT_ALLOWED/);
   const calls=[];
   const valid=await fetchCoreSnapshot({
@@ -84,8 +131,42 @@ test('Core request allows exactly one loopback URL, GET, and fails bad HTTP/JSON
   await assert.rejects(fetchCoreSnapshot({fetchImpl:async()=>new Response('not-json',{status:200})}),/CORE_JSON_INVALID/);
 });
 
-test('HTTP preview serves only loopback read-only endpoints and never false statuses',async()=>{
-  const server=createAnimalCityServer({fetchImpl:async()=>new Response(JSON.stringify(source(Date.now())),{status:200})});
+test('live projection shows only BUSY resources with an exact running job identity',()=>{
+  const live=normalizeLiveCoreSnapshot(liveSource(),{now:NOW});
+  assert.equal(live.ok,true);
+  assert.equal(live.liveWorkerBindingsVerified,true);
+  assert.equal(live.totalActiveWorkers,2);
+  const nv12=live.workers.find(x=>x.employeeId==='NV12');
+  assert.equal(nv12.currentJobId,'JOB-1');
+  assert.equal(nv12.activeWorkerVerified,true);
+  assert.equal(nv12.leaseVerified,true);
+  assert.equal(nv12.leaseRole,'implementer');
+  assert.equal(nv12.room,'coordination');
+  const nv10=live.workers.find(x=>x.employeeId==='NV10');
+  assert.equal(nv10.leaseVerified,false);
+  assert.equal(nv10.room,'quality');
+  assert.equal(live.workers.some(x=>x.employeeId==='NV11'),false);
+});
+
+test('live projection fails closed on stale data and rejects arbitrary origins',async()=>{
+  assert.throws(()=>normalizeLiveCoreSnapshot(liveSource(NOW-30001),{now:NOW}),/CORE_LIVE_STALE/);
+  assert.throws(()=>normalizeLiveCoreSnapshot({...liveSource(),resources:'bad'},{now:NOW}),/CORE_LIVE_UNVERIFIED/);
+  await assert.rejects(fetchLiveCoreSnapshot({
+    url:'https://example.com/status',fetchImpl:async()=>{throw Error('called')}
+  }),/CORE_LIVE_ORIGIN_NOT_ALLOWED/);
+  const calls=[];
+  const valid=await fetchLiveCoreSnapshot({
+    now:NOW,fetchImpl:async(url,options)=>{
+      calls.push({url,method:options.method,redirect:options.redirect});
+      return new Response(JSON.stringify(liveSource()),{status:200});
+    }
+  });
+  assert.equal(valid.totalActiveWorkers,2);
+  assert.deepEqual(calls,[{url:CORE_STATUS_URL,method:'GET',redirect:'error'}]);
+});
+
+test('HTTP operational server exposes work orders, live workers, liveness and readiness only on loopback',async()=>{
+  const server=createAnimalCityServer({fetchImpl:fetchBoth({now:Date.now()})});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const {port}=server.address();
   const root='http://127.0.0.1:'+port;
@@ -98,6 +179,19 @@ test('HTTP preview serves only loopback read-only endpoints and never false stat
     const snapshot=await (await fetch(root+'/api/rooms')).json();
     assert.equal(snapshot.ok,true);
     assert.equal(snapshot.dispatchEnabled,false);
+    const live=await (await fetch(root+'/api/live')).json();
+    assert.equal(live.ok,true);
+    assert.equal(live.totalActiveWorkers,2);
+    const health=await (await fetch(root+'/health')).json();
+    assert.equal(health.ok,true);
+    assert.equal(health.mode,'OPERATIONAL_LOCAL');
+    assert.equal(health.loopbackOnly,true);
+    const readyResponse=await fetch(root+'/ready');
+    assert.equal(readyResponse.status,200);
+    const ready=await readyResponse.json();
+    assert.equal(ready.ok,true);
+    assert.equal(ready.workOrders.total,3);
+    assert.equal(ready.live.totalActiveWorkers,2);
     const post=await fetch(root+'/api/rooms',{method:'POST'});
     assert.equal(post.status,405);
     const foreignStatus=await new Promise((resolve,reject)=>{
@@ -113,8 +207,23 @@ test('HTTP preview serves only loopback read-only endpoints and never false stat
   }finally{await new Promise(resolve=>server.close(resolve))}
 });
 
+test('readiness fails closed if either canonical source is unverified',async()=>{
+  const server=createAnimalCityServer({fetchImpl:fetchBoth({now:Date.now(),invalidLive:true})});
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  try{
+    const ready=await fetch('http://127.0.0.1:'+server.address().port+'/ready');
+    assert.equal(ready.status,503);
+    assert.equal((await ready.json()).ok,false);
+    const work=await fetch('http://127.0.0.1:'+server.address().port+'/api/rooms');
+    assert.equal(work.status,200);
+    const live=await fetch('http://127.0.0.1:'+server.address().port+'/api/live');
+    assert.equal(live.status,503);
+    assert.deepEqual((await live.json()).workers,[]);
+  }finally{await new Promise(resolve=>server.close(resolve))}
+});
+
 test('source failure is not replaced by cached cards',async()=>{
-  const server=createAnimalCityServer({fetchImpl:async()=>new Response(JSON.stringify({ok:false,items:[{number:1}]}),{status:200})});
+  const server=createAnimalCityServer({fetchImpl:fetchBoth({now:Date.now(),invalidWork:true})});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   try{
     const res=await fetch('http://127.0.0.1:'+server.address().port+'/api/rooms');
@@ -123,4 +232,15 @@ test('source failure is not replaced by cached cards',async()=>{
     assert.equal(data.ok,false);
     assert.deepEqual(data.rooms,[]);
   }finally{await new Promise(resolve=>server.close(resolve))}
+});
+
+test('PC01 operational task is limited, reversible and does not bypass execution policy',async()=>{
+  const script=await readFile(new URL('../apps/agents-city-tigeriq/pc01-operational.ps1',import.meta.url),'utf8');
+  assert.match(script,/TigerIQ-Animal-City/);
+  assert.match(script,/RunLevel Limited/);
+  assert.match(script,/LogonType Interactive/);
+  assert.match(script,/127\.0\.0\.1/);
+  assert.match(script,/uninstall/);
+  assert.doesNotMatch(script,/RunLevel Highest/);
+  assert.doesNotMatch(script,/ExecutionPolicy\s+Bypass/i);
 });
