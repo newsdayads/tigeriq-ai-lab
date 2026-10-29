@@ -50,7 +50,8 @@ function liveSource(now = NOW) {
         provider:'gemini',started_at:new Date(now-5000).toISOString()},
       {id:'JOB-2',status:'running',employee_id:'NV10',resource_id:ollama,
         title:'Independent review',capability:'review',kind:'compiled_ai',
-        provider:'ollama',started_at:new Date(now-3000).toISOString()},
+        provider:'ollama',started_at:new Date(now-3000).toISOString(),
+        lease_until:new Date(now+90000).toISOString()},
       {id:'JOB-DONE',status:'done',employee_id:'NV11',resource_id:'res:groq:test',
         title:'Old job',capability:'general',kind:'compiled_ai',provider:'groq'}
     ],
@@ -164,10 +165,13 @@ test('live projection shows only BUSY resources with an exact running job identi
   assert.equal(nv12.currentJobId,'JOB-1');
   assert.equal(nv12.activeWorkerVerified,true);
   assert.equal(nv12.leaseVerified,true);
+  assert.equal(nv12.leaseSource,'shared');
   assert.equal(nv12.leaseRole,'implementer');
   assert.equal(nv12.room,'coordination');
   const nv10=live.workers.find(x=>x.employeeId==='NV10');
-  assert.equal(nv10.leaseVerified,false);
+  assert.equal(nv10.leaseVerified,true);
+  assert.equal(nv10.leaseSource,'job');
+  assert.equal(nv10.leaseRole,'core-job');
   assert.equal(nv10.room,'quality');
   assert.equal(live.workers.some(x=>x.employeeId==='NV11'),false);
 });
