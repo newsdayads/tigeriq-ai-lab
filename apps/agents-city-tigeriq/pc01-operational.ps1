@@ -54,7 +54,7 @@ function Stop-AnimalProcess {
 
 function Invoke-Probe([string]$Url) {
   try {
-    $response = Invoke-RestMethod -Uri $Url -TimeoutSec 5
+    $response = Invoke-RestMethod -Uri $Url -TimeoutSec 12
     return [ordered]@{ ok = [bool]$response.ok; response = $response }
   } catch {
     return [ordered]@{ ok = $false; error = $_.Exception.Message }
