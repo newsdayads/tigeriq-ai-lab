@@ -1,15 +1,32 @@
 package ai.tigeriq.ultracarhcm.v2
 
-/** Safe local backup envelope for V2-owned HOME state only. */
+/** Safe local backup envelope for V2-owned state only. */
 internal object HomeBackupRules {
-    const val CURRENT_BACKUP_SCHEMA_VERSION = 1
+    const val LEGACY_BACKUP_SCHEMA_VERSION = 1
+    const val CURRENT_BACKUP_SCHEMA_VERSION = 2
     const val MAX_BACKUP_BYTES = 256 * 1024
+    const val MAX_OVERLAY_DISPLAYS = 16
+    const val MAX_OVERLAY_COORDINATE = 32768
 
     fun canReadBackupSchema(version: Int): Boolean =
-        version == CURRENT_BACKUP_SCHEMA_VERSION
+        version in LEGACY_BACKUP_SCHEMA_VERSION..CURRENT_BACKUP_SCHEMA_VERSION
+
+    fun requiresOverlayPositions(version: Int): Boolean =
+        version >= CURRENT_BACKUP_SCHEMA_VERSION
 
     fun withinSize(byteCount: Int): Boolean =
         byteCount in 1..MAX_BACKUP_BYTES
+
+    fun validOverlayDisplayId(displayId: Int): Boolean =
+        displayId in 0..1024
+
+    fun validOverlayCoordinate(value: Int): Boolean =
+        value in 0..MAX_OVERLAY_COORDINATE
+
+    fun displayIdFromOverlayKey(key: String): Int? {
+        val match = Regex("^display_(\\d+)_[xy]$").matchEntire(key) ?: return null
+        return match.groupValues[1].toIntOrNull()?.takeIf(::validOverlayDisplayId)
+    }
 
     fun exportFileName(): String = "ultracarhcm-v2-home-backup.json"
 }
