@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -49,6 +50,12 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { grants ->
         if (grants.values.any { it }) startTrip()
+    }
+
+    private val exportReportLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv"),
+    ) { uri ->
+        if (uri != null) writeTripReport(uri)
     }
 
     private val tick = object : Runnable {
@@ -116,6 +123,13 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
 
         historyStatus = text(15f, Color.LTGRAY)
         body.addView(historyStatus)
+
+        body.addView(Button(this).apply {
+            text = "Xuất báo cáo chuyến CSV"
+            setOnClickListener {
+                exportReportLauncher.launch("UltraCarHCM_V2_Trips.csv")
+            }
+        })
 
         body.addView(Button(this).apply {
             text = "Xóa lịch sử Taxi Meter V2"
@@ -291,6 +305,34 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
             old.optJSONObject(index)?.let(next::put)
         }
         prefs.edit().putString(KEY_HISTORY, next.toString()).apply()
+    }
+
+    private fun writeTripReport(uri: Uri) {
+        try {
+            val entries = history()
+            val out = StringBuilder()
+            out.append('\uFEFF')
+            out.append(ReportRules.header()).append('\n')
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+            for (index in 0 until entries.length()) {
+                val item = entries.optJSONObject(index) ?: continue
+                val cells = listOf(
+                    dateFormat.format(Date(item.optLong("startedAt", 0L))),
+                    item.optLong("durationSeconds", 0L).toString(),
+                    item.optDouble("distanceMeters", 0.0).toString(),
+                    item.optDouble("rateVndPerKm", 0.0).toString(),
+                    item.optLong("fareVnd", 0L).toString(),
+                )
+                out.append(cells.joinToString(",") { ReportRules.csvCell(it) }).append('\n')
+            }
+            val stream = contentResolver.openOutputStream(uri, "wt")
+                ?: throw IllegalStateException("Không mở được tệp báo cáo")
+            stream.bufferedWriter(Charsets.UTF_8).use { it.write(out.toString()) }
+            toast("Đã xuất báo cáo chuyến V2")
+        } catch (error: Exception) {
+            android.util.Log.e("UltraCarV2", "Trip report export failed", error)
+            toast("Không thể xuất báo cáo chuyến")
+        }
     }
 
     private fun renderHistory() {
