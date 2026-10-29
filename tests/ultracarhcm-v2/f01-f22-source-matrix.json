@@ -167,14 +167,18 @@
       "expected": "Road/city/theme/day/night/video/custom image Home backgrounds",
       "status": "PARTIAL_SOURCE",
       "sourceEvidence": [
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/AppearanceActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/AppearanceRules.kt"
       ],
-      "gap": "Day/night governed backgrounds are referenced; custom image/video background parity is absent and original media are not staged.",
-      "actual": "HomeActivity supports day/night governed background resource references; no custom image/video background selector exists.",
+      "gap": "Verified day/night backgrounds plus user-selected image/video backgrounds are implemented without broad storage permission; exact V1 theme catalog/media parity and real-device video/background acceptance remain open.",
+      "actual": "AppearanceActivity uses Android Storage Access Framework to persist a user-selected image or video URI. HomeActivity renders that URI as the Home background with muted looping video and falls back to governed day/night media if the grant is invalid. No original V1 media rights are inferred.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
-        "HomeActivity.render",
-        "HomeActivity.showSettings"
+        "HomeActivity.renderBackground",
+        "AppearanceActivity.persistCustomBackground",
+        "AppearanceActivity.clearCustomBackground",
+        "AppearanceRules.kindForMime"
       ],
       "permissions": []
     },
@@ -342,14 +346,18 @@
       "expected": "Language/theme/appearance/color palettes",
       "status": "PARTIAL_SOURCE",
       "sourceEvidence": [
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/AppearanceActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/AppearanceRules.kt"
       ],
-      "gap": "Day/night Home toggle exists; language and full appearance/palette parity are absent.",
-      "actual": "HomeActivity has a day/night toggle only; language and full appearance/palette surfaces are absent.",
+      "gap": "Appearance now has a dedicated surface for the verified day/night mode and custom user media; V1 language mapping and color-palette semantics are still unverified and intentionally not invented.",
+      "actual": "Home settings opens AppearanceActivity. It changes the existing day/night preference and manages user-selected custom image/video backgrounds while explicitly leaving language and V1 palette parity open.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.showSettings",
-        "HomeActivity.render"
+        "AppearanceActivity.onCreate",
+        "AppearanceActivity.refreshStatus",
+        "AppearanceRules.modeLabel"
       ],
       "permissions": []
     },
