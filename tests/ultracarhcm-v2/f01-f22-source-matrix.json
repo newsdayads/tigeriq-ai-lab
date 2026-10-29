@@ -130,10 +130,12 @@
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexUtils.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayPositionRules.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayPositionRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexDockReceiver.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexDockRules.kt"
       ],
-      "gap": "Per-display position persistence and geometry-change recovery are implemented in source; full DeX zone/freeform orchestration and real-device acceptance remain open.",
-      "actual": "DexUtils detects desktop/external displays; OverlayService follows display add/change/remove, persists the draggable camera shortcut per display, migrates legacy x/y, clamps to active bounds, and forces re-attach when the current display geometry changes.",
+      "gap": "Samsung DeX enter/exit broadcast source now requests V2 Home on a resolved external display and cleans the V2 overlay on exit; OEM background-launch delivery, full zone orchestration and real-device acceptance remain open.",
+      "actual": "DexUtils detects desktop/external displays; OverlayService follows display add/change/remove with per-display position persistence; DexDockReceiver handles Samsung's documented ENTER/EXIT_KNOX_DESKTOP_MODE broadcasts, fail-closes unless an external display is resolved, requests V2 Home on that display, and removes the V2 overlay on exit.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "DexUtils.isDesktop",
@@ -142,7 +144,9 @@
         "OverlayService.onDisplayAdded",
         "OverlayService.onDisplayChanged",
         "OverlayService.onDisplayRemoved",
-        "OverlayPositionRules.clamp"
+        "OverlayPositionRules.clamp",
+        "DexDockReceiver.onReceive",
+        "DexDockRules.shouldLaunchHome"
       ],
       "permissions": [
         "android.permission.SYSTEM_ALERT_WINDOW"
