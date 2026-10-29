@@ -110,7 +110,7 @@ export function createOAuthResourceServer({
       const aud = audienceList(payload.aud);
       if (payload.iss !== issuerUrl || !aud.includes(resourceUrl)
         || typeof payload.sub !== 'string' || !payload.sub
-        || !Number.isFinite(payload.exp) || payload.exp <= nowSeconds - clockSkewSec
+        || !Number.isFinite(payload.exp) || payload.exp <= nowSeconds
         || (payload.nbf !== undefined && (!Number.isFinite(payload.nbf) || payload.nbf > nowSeconds + clockSkewSec))) {
         throw new Error('OAUTH_CLAIMS_INVALID');
       }
