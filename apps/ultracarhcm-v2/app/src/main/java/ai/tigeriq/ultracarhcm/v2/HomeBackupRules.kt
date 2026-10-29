@@ -3,7 +3,7 @@ package ai.tigeriq.ultracarhcm.v2
 /** Safe local backup envelope for V2-owned state only. */
 internal object HomeBackupRules {
     const val LEGACY_BACKUP_SCHEMA_VERSION = 1
-    const val CURRENT_BACKUP_SCHEMA_VERSION = 2
+    const val CURRENT_BACKUP_SCHEMA_VERSION = 3
     const val MAX_BACKUP_BYTES = 256 * 1024
     const val MAX_OVERLAY_DISPLAYS = 16
     const val MAX_OVERLAY_COORDINATE = 32768
@@ -12,7 +12,10 @@ internal object HomeBackupRules {
         version in LEGACY_BACKUP_SCHEMA_VERSION..CURRENT_BACKUP_SCHEMA_VERSION
 
     fun requiresOverlayPositions(version: Int): Boolean =
-        version >= CURRENT_BACKUP_SCHEMA_VERSION
+        version >= 2
+
+    fun requiresVehicleState(version: Int): Boolean =
+        version >= 3
 
     fun withinSize(byteCount: Int): Boolean =
         byteCount in 1..MAX_BACKUP_BYTES
