@@ -4,7 +4,7 @@ package ai.tigeriq.ultracarhcm.v2
 internal object HomeConfigRules {
     const val MAX_SAVED = 20
     const val MAX_NAME_LENGTH = 48
-    const val CURRENT_SCHEMA_VERSION = 2
+    const val CURRENT_SCHEMA_VERSION = 3
 
     fun normalizeName(value: String): String = value.trim().take(MAX_NAME_LENGTH)
     fun canSave(existingCount: Int): Boolean = existingCount in 0 until MAX_SAVED
