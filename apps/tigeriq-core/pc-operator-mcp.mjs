@@ -116,7 +116,7 @@ function nativeOk(action, receipt) {
       // R01 accepts a digest-only container reference; immutable digest
       // identity is verified by R02 health against release.json.
       && (data?.container?.imagePinMatch === true
-        || /^ghcr\\.io\\/paperclipai\\/paperclip@sha256:[a-f0-9]{64}$/.test(String(data?.container?.imageRef || '')))
+        || /^ghcr\.io\/paperclipai\/paperclip@sha256:[a-f0-9]{64}$/.test(String(data?.container?.imageRef || '')))
       && data?.container?.port3210LoopbackBinding === true
       && data?.port3210?.reachable === true
       && data?.pinned?.release === 'v2026.916.1'
