@@ -145,6 +145,8 @@ async function refresh() {
     refreshing = false;
     $('refresh').disabled = false;
     render();
+    // The WebGL world lights up only from a verified Core worker/job binding.
+    window.dispatchEvent(new CustomEvent('tigeriq:live',{detail:liveSnapshot}));
   }
 }
 
