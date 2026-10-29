@@ -53,6 +53,7 @@ class HomeActivity : ComponentActivity() {
         window.setFlags(1024, 1024)
         root = FrameLayout(this)
         setContentView(root)
+        applyDefaultHomeConfiguration()
         // onResume owns UI playback/ticks; queued draws must not start while stopped.
         root.post { if (homeVisible && homeVideo == null) render() }
     }
@@ -204,7 +205,7 @@ class HomeActivity : ComponentActivity() {
             index,
             JSONObject()
                 .put("label", QuickSlotRules.normalizeLabel(label))
-                .put("target", target.trim()),
+                .put("target", QuickSlotRules.normalizeTarget(target)),
         )
         prefs.edit().putString("v2_quick_slots", slots.toString()).apply()
         render()
@@ -384,6 +385,46 @@ class HomeActivity : ComponentActivity() {
         JSONArray()
     }
 
+    private fun normalizedQuickSlotsForStorage(source: JSONArray?): JSONArray {
+        val normalized = JSONArray()
+        for (index in 0 until QuickSlotRules.SLOT_COUNT) {
+            val item = source?.optJSONObject(index)
+            normalized.put(
+                JSONObject()
+                    .put("label", QuickSlotRules.normalizeLabel(item?.optString("label", "") ?: ""))
+                    .put("target", QuickSlotRules.normalizeTarget(item?.optString("target", "") ?: "")),
+            )
+        }
+        return normalized
+    }
+
+    private fun applyHomeConfiguration(item: JSONObject, renderAfter: Boolean) {
+        val editor = prefs.edit()
+            .putBoolean("night", item.optBoolean("night", false))
+            .putBoolean("limo", item.optBoolean("limo", false))
+            .putString("driver_name", item.optString("driver", "Driver"))
+        item.optJSONArray("quickSlots")?.let { slots ->
+            editor.putString("v2_quick_slots", normalizedQuickSlotsForStorage(slots).toString())
+        }
+        editor.apply()
+        if (renderAfter) render()
+    }
+
+    private fun applyDefaultHomeConfiguration() {
+        val raw = prefs.getString("v2_default_home_config", null) ?: return
+        try {
+            applyHomeConfiguration(JSONObject(raw), false)
+        } catch (e: Exception) {
+            android.util.Log.w("UltraCarV2", "Corrupt default HOME configuration", e)
+            prefs.edit().remove("v2_default_home_config").apply()
+        }
+    }
+
+    private fun setDefaultHomeConfiguration(item: JSONObject) {
+        prefs.edit().putString("v2_default_home_config", item.toString()).apply()
+        toast("Đã đặt cấu hình Home mặc định")
+    }
+
     private fun saveHomeConfiguration() {
         val current = savedConfigurations()
         if (!HomeConfigRules.canSave(current.length())) {
@@ -408,7 +449,8 @@ class HomeActivity : ComponentActivity() {
                         .put("name", name)
                         .put("night", prefs.getBoolean("night", false))
                         .put("limo", prefs.getBoolean("limo", false))
-                        .put("driver", prefs.getString("driver_name", "Driver") ?: "Driver"))
+                        .put("driver", prefs.getString("driver_name", "Driver") ?: "Driver")
+                        .put("quickSlots", normalizedQuickSlotsForStorage(quickSlots())))
                     prefs.edit().putString("v2_home_configs", current.toString()).apply()
                     toast("Đã lưu cấu hình Home trên thiết bị")
                 }
@@ -433,21 +475,25 @@ class HomeActivity : ComponentActivity() {
                 val item = entries.optJSONObject(index) ?: return@setItems
                 AlertDialog.Builder(this)
                     .setTitle(item.optString("name", "Home"))
-                    .setItems(arrayOf("Áp dụng", "Xóa cấu hình")) { _, choice ->
-                        if (choice == 0) {
-                            prefs.edit()
-                                .putBoolean("night", item.optBoolean("night", false))
-                                .putBoolean("limo", item.optBoolean("limo", false))
-                                .putString("driver_name", item.optString("driver", "Driver"))
-                                .apply()
-                            render()
-                            toast("Đã áp dụng cấu hình Home")
-                        } else {
-                            val remaining = JSONArray()
-                            for (i in 0 until entries.length())
-                                if (i != index) remaining.put(entries.get(i))
-                            prefs.edit().putString("v2_home_configs", remaining.toString()).apply()
-                            toast("Đã xóa cấu hình khỏi thiết bị")
+                    .setItems(arrayOf("Áp dụng", "Đặt làm mặc định", "Xóa cấu hình")) { _, choice ->
+                        when (choice) {
+                            0 -> {
+                                applyHomeConfiguration(item, true)
+                                toast("Đã áp dụng cấu hình Home")
+                            }
+                            1 -> setDefaultHomeConfiguration(item)
+                            else -> {
+                                val remaining = JSONArray()
+                                for (i in 0 until entries.length())
+                                    if (i != index) remaining.put(entries.get(i))
+                                val editor = prefs.edit()
+                                    .putString("v2_home_configs", remaining.toString())
+                                if (prefs.getString("v2_default_home_config", null) == item.toString()) {
+                                    editor.remove("v2_default_home_config")
+                                }
+                                editor.apply()
+                                toast("Đã xóa cấu hình khỏi thiết bị")
+                            }
                         }
                     }.setNegativeButton("Hủy", null).show()
             }.setNegativeButton("Đóng", null).show()
