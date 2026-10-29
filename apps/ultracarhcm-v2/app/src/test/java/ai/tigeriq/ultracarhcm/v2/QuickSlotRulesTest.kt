@@ -35,6 +35,12 @@ class QuickSlotRulesTest {
     }
 
     @Test
+    fun normalizesPersistedTargetsWithoutUnboundedValues() {
+        assertEquals("com.example.app", QuickSlotRules.normalizeTarget("  com.example.app  "))
+        assertEquals("x".repeat(160), QuickSlotRules.normalizeTarget("x".repeat(200)))
+    }
+
+    @Test
     fun quickBarKeepsExactlyThreeRowsOfThreeSlots() {
         assertEquals(9, QuickSlotRules.SLOT_COUNT)
         assertTrue(QuickSlotRules.SLOT_COUNT % 3 == 0)
