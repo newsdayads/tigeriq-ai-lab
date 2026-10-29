@@ -17,6 +17,7 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(home).toContain('.put("night", prefs.getBoolean("night", false))');
     expect(home).toContain('.put("limo", prefs.getBoolean("limo", false))');
     expect(home).toContain('.put("driver", prefs.getString("driver_name", "Driver")');
+    expect(home).toContain('.put("schemaVersion", HomeConfigRules.CURRENT_SCHEMA_VERSION)');
     expect(home).toContain('.put("quickSlots", normalizedQuickSlotsForStorage(quickSlots()))');
     expect(home).toContain('putString("v2_home_configs", current.toString()).apply()');
     expect(home).not.toContain('Chưa hỗ trợ tạo bố cục V2 — không ghi dữ liệu giả');
@@ -38,13 +39,24 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(home).not.toContain('prefs.getInt("saved_count", 0)');
   });
 
+  it('migrates legacy local state and fails closed on corrupt or future schemas', () => {
+    expect(home).toContain('private fun normalizeHomeConfiguration(item: JSONObject): JSONObject?');
+    expect(home).toContain('item.optInt("schemaVersion", 0)');
+    expect(home).toContain('HomeConfigRules.canReadSchema(schema)');
+    expect(home).toContain('.put("schemaVersion", HomeConfigRules.CURRENT_SCHEMA_VERSION)');
+    expect(home).toContain('val limit = minOf(raw.length(), HomeConfigRules.MAX_SAVED)');
+    expect(home).toContain('normalizeHomeConfiguration(item)?.let(normalized::put)');
+    expect(home).toContain('prefs.edit().remove("v2_home_configs").apply()');
+    expect(home).toContain('Unsupported HOME config schema');
+  });
+
   it('supports a device-local default HOME configuration without claiming V1 parity', () => {
     expect(home).toContain('applyDefaultHomeConfiguration()');
     expect(home).toContain('private fun setDefaultHomeConfiguration(item: JSONObject)');
     expect(home).toContain('putString("v2_default_home_config", item.toString()).apply()');
     expect(home).toContain('arrayOf("Áp dụng", "Đặt làm mặc định", "Xóa cấu hình")');
     expect(home).toContain('editor.remove("v2_default_home_config")');
-    expect(home).toContain('Corrupt default HOME configuration');
+    expect(home).toContain('Corrupt or unsupported default HOME configuration');
   });
 
   it('stops retired HOME video decoders before rerender and during Activity teardown', () => {
