@@ -9,6 +9,7 @@ import {
   stageMedia,
   RIGHTS_SCHEMA,
   RIGHTS_SCOPE,
+  projectDirFromArgs,
 } from '../../apps/ultracarhcm-v2/ci/stage-v1-media.mjs';
 
 const sha256 = path => createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -32,6 +33,16 @@ function writeValidRights(root, source, overrides = {}) {
   writeFileSync(evidence, JSON.stringify(receipt, null, 2));
   return evidence;
 }
+
+test('documented --target CLI flag and legacy --project alias resolve the V2 project directory', () => {
+  assert.equal(projectDirFromArgs(['--target','D:/TigerIQ/V2']), 'D:/TigerIQ/V2');
+  assert.equal(projectDirFromArgs(['--project','D:/TigerIQ/V2']), 'D:/TigerIQ/V2');
+  assert.equal(
+    projectDirFromArgs(['--project','legacy','--target','documented']),
+    'documented'
+  );
+  assert.equal(projectDirFromArgs([]), null);
+});
 
 test('PC01-observed original filenames map to the six Kotlin V2 resource IDs', () => {
   assert.equal(media.length, 6);
