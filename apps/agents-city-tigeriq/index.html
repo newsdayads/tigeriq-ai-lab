@@ -61,6 +61,40 @@ button.action{padding:11px 15px;background:#ffb859;border:none;border-radius:10p
 .scene-reset{font-size:10px;right:8px;top:9px;padding:8px}
 .plaza{gap:5px}.room{min-height:54px;padding:7px 4px;flex-direction:column;gap:5px}
 .room-name{font-size:11px}.room-count{font-size:10px;padding:3px 6px}}
+
+/* Product console — functional actions first, 3D subordinate to actual work. */
+main{max-width:1600px;grid-template-columns:minmax(0,1fr) minmax(390px,460px);gap:16px;padding:16px}
+.city{padding:10px 12px 16px}.animal-scene{height:360px}
+.panel{padding:15px}
+.owner-console{border:1px solid #628d9e;border-radius:16px;padding:15px;
+ background:linear-gradient(145deg,#1c4858,#142a44);margin-bottom:17px}
+.owner-console h2{font-size:18px;margin:0 0 6px}.owner-console p{font-size:12px;line-height:1.5;color:#c4d8eb;margin:0 0 11px}
+.owner-console textarea{display:block;width:100%;min-height:82px;resize:vertical;
+ background:#0c2437;color:#f4f9ff;border:1px solid #56809b;border-radius:10px;
+ padding:12px;font:inherit;font-size:13px}
+.owner-console textarea:focus-visible,.search:focus-visible,select:focus-visible{outline:2px solid #ffc56b}
+.owner-submit{width:100%;margin-top:9px;font-size:14px;min-height:45px}
+.owner-status{margin:8px 0 0;font-size:12px;line-height:1.55;min-height:18px;color:#c4e7da}
+.owner-status.error{color:#ffd1ae}
+.owner-links{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0 0}
+.owner-links a,.work a{color:#ffd28a;font-size:12px}
+.recent-item{padding:9px;border:1px solid #56778d;border-radius:9px;background:#112c40;margin-top:8px;font-size:12px;line-height:1.5}
+.recent-item strong{font-size:12px;display:block}.recent-item .meta{color:#b8d2e2}
+#recentGoals{max-height:220px;overflow-y:auto}
+.worktools{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}
+.worktools input,.worktools select{background:#0d2a3e;color:#f5f9ff;
+ border:1px solid #527b98;border-radius:9px;padding:9px;font-size:12px;min-width:0}
+.worktools input{flex:2 1 135px}.worktools select{flex:1 1 108px}
+.work{border-left:3px solid #6193ba}
+.work.is-open{border-left-color:#e9aa51}.work.is-done_verified{border-left-color:#65c8ab}
+.work .statusline{color:#d3e9fa;font-size:12px;margin-bottom:5px}
+.work .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+.work .actions a{margin-top:0;border-radius:8px;border:1px solid #527c97;padding:6px 10px;background:#16364a}
+#cards{max-height:550px}
+@media(max-width:1040px){main{grid-template-columns:1fr}.animal-scene{height:340px}}
+@media(max-width:570px){.animal-scene{height:310px}.owner-console{padding:12px}
+.worktools{flex-wrap:wrap}.worktools input{flex-basis:100%}main{padding:10px}}
+
 </style>
 </head>
 <body>
@@ -83,6 +117,22 @@ button.action{padding:11px 15px;background:#ffb859;border:none;border-radius:10p
   <p class="note">Nhân vật là hình minh họa. Danh tính NVxx chỉ xuất hiện trong bảng runtime khi Core trả resource BUSY + job running trùng employee/resource. Không có bằng chứng thì hiển thị chưa xác minh.</p>
  </section>
  <aside class="panel">
+  <section class="owner-console" aria-label="Bàn điều hành của chủ công ty">
+    <h2><span aria-hidden="true">◉</span> Bàn điều hành — Giao việc thật</h2>
+    <p>Nhập mục tiêu để TigerIQ Core tiếp nhận và tự phân công AI theo chính sách. Chế độ <strong>LOCAL / P2</strong>, không chuyển sang API đám mây trả phí. Chỉ ghi việc sau khi anh bấm xác nhận.</p>
+    <form id="ownerForm">
+      <textarea id="ownerObjective" minlength="12" maxlength="2000" required
+        placeholder="VD: Phân tích 3 lỗi Core gần nhất, đề xuất bản sửa có test và xuất biên nhận nghiệm thu..."></textarea>
+      <button class="action owner-submit" type="submit" id="ownerSubmit">GIAO CHO AI — LOCAL</button>
+    </form>
+    <div id="ownerStatus" class="owner-status" role="status">Đang kiểm tra quyền giao việc...</div>
+    <div class="owner-links">
+      <a href="http://127.0.0.1:8795/" target="_blank" rel="noopener noreferrer">Mở TigerIQ Core</a>
+      <a href="https://github.com/newsdayads/tigeriq-ai-lab/issues" target="_blank" rel="noopener noreferrer">Danh sách Work Order</a>
+    </div>
+    <h3 class="section-title">Mục tiêu đã giao gần đây</h3>
+    <div id="recentGoals"><p class="empty">Đang xác minh Core...</p></div>
+  </section>
   <div class="row"><h2 id="panelTitle">Phòng điều phối</h2><button class="action" id="refresh">Tải lại</button></div>
   <div class="metrics">
     <div class="metric"><label>Work Order</label><strong id="total">—</strong></div>
@@ -94,10 +144,21 @@ button.action{padding:11px 15px;background:#ffb859;border:none;border-radius:10p
   <h2 class="section-title">Nhân sự đang làm thực tế</h2>
   <div id="workers"><p class="empty">Đang chờ dữ liệu Core.</p></div>
   <h2 class="section-title">Công việc thực tế</h2>
+  <div class="worktools">
+    <input id="workSearch" class="search" type="search" placeholder="Tìm mã, tên, nội dung việc…" aria-label="Tìm Work Order">
+    <select id="workFilter" aria-label="Lọc trạng thái">
+      <option value="all">Tất cả</option>
+      <option value="open">Còn mở</option>
+      <option value="done_verified">Đã nghiệm thu</option>
+      <option value="closed_unverified">Đóng chưa xác minh</option>
+    </select>
+  </div>
+  <div id="visibleCount" class="note" aria-live="polite"></div>
   <div id="cards"><p class="empty">Đang chờ dữ liệu Work Order.</p></div>
  </aside>
 </main>
 <script src="/app.js" defer></script>
+<script src="/owner-console.js" defer></script>
 <script src="/scene3d.js" defer></script>
 </body>
 </html>

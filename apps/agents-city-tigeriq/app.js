@@ -56,6 +56,7 @@ function render() {
     $('total').textContent = '—';
     $('done').textContent = '—';
     for (const id of Object.keys(NAMES)) $('count-' + id).textContent = 'Chưa xác minh';
+    $('visibleCount').textContent='Không có Work Order được xác minh.';
     cards.append(el('p','Không có dữ liệu Work Order đã xác minh. Không hiển thị trạng thái suy đoán.','empty'));
     renderWorkers();
     return;
@@ -65,12 +66,18 @@ function render() {
   $('total').textContent = String(snapshot.total);
   $('done').textContent = String(snapshot.rooms.reduce((sum,r) =>
     sum + r.items.filter(x => x.state === 'done_verified').length,0));
-  const entries = room?.items || [];
+  const query=String($('workSearch').value||'').trim().toLocaleLowerCase('vi');
+  const state=$('workFilter').value;
+  const entries=(room?.items||[]).filter(item=>
+    (state==='all'||item.state===state) &&
+    (!query||['#'+item.id,item.title,item.currentStep,item.nextAction].some(
+      value=>String(value||'').toLocaleLowerCase('vi').includes(query))));
+  $('visibleCount').textContent=entries.length+' / '+(room?.items?.length||0)+' Work Order trong phòng.';
   if (!entries.length) {
     cards.append(el('p','Chưa có Work Order thuộc nhóm hiển thị này.','empty'));
   } else {
     for (const item of entries.slice(0,24)) {
-      const div = el('article',undefined,'work');
+      const div = el('article',undefined,'work is-'+item.state);
       div.append(el('h3','#' + item.id + ' · ' + item.title));
       const status = item.state === 'done_verified' ? 'DONE được xác minh' :
         item.state === 'open' ? 'Thẻ mở — KHÔNG đồng nghĩa đang chạy' : 'Đóng — chưa xác minh DONE';
@@ -154,6 +161,9 @@ rooms.forEach(button => button.addEventListener('click', () => {
   selected = button.dataset.room;
   render();
 }));
+$('workSearch').addEventListener('input',render);
+$('workFilter').addEventListener('change',render);
+window.addEventListener('tigeriq:refresh',refresh);
 $('refresh').addEventListener('click', refresh);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') refresh();
