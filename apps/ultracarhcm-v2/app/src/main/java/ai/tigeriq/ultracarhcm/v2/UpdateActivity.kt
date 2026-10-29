@@ -1,5 +1,6 @@
 package ai.tigeriq.ultracarhcm.v2
 
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -168,6 +169,7 @@ class UpdateActivity : ComponentActivity() {
             return
         }
 
+        recordUpdateNotice(metadata)
         verifiedDownloadUrl = metadata.apkUrl
         status.text = buildString {
             append("Có bản mới: ")
@@ -184,6 +186,26 @@ class UpdateActivity : ComponentActivity() {
             if (metadata.mandatory) append("\nBản cập nhật được đánh dấu bắt buộc bởi metadata.")
         }
         downloadButton.visibility = View.VISIBLE
+    }
+
+    private fun recordUpdateNotice(metadata: UpdateMetadata) {
+        val prefs = getSharedPreferences(NotificationRules.PREFS_NAME, Context.MODE_PRIVATE)
+        val previousVersionCode = prefs.getLong(NotificationRules.KEY_VERSION_CODE, 0L)
+        if (!NotificationRules.shouldReplaceNotice(previousVersionCode, metadata.latestVersionCode)) return
+
+        prefs.edit()
+            .putLong(NotificationRules.KEY_VERSION_CODE, metadata.latestVersionCode)
+            .putString(
+                NotificationRules.KEY_VERSION_NAME,
+                NotificationRules.normalizeVersionName(metadata.latestVersionName),
+            )
+            .putString(
+                NotificationRules.KEY_RELEASE_NOTES,
+                NotificationRules.normalizeReleaseNotes(metadata.releaseNotes),
+            )
+            .putLong(NotificationRules.KEY_CREATED_AT, System.currentTimeMillis())
+            .putBoolean(NotificationRules.KEY_READ, false)
+            .apply()
     }
 
     private fun currentVersionCode(): Long {

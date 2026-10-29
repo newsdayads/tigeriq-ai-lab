@@ -132,8 +132,19 @@ class ProfileActivity : ComponentActivity() {
                 startActivity(Intent(this@ProfileActivity, UpdateActivity::class.java))
             }
         })
+        versionCard.addView(Button(this).apply {
+            text = "THÔNG BÁO"
+            setOnClickListener {
+                startActivity(Intent(this@ProfileActivity, NotificationActivity::class.java))
+            }
+        })
         versionCard.addView(text(
-            "Kiểm tra cập nhật độc lập với thông báo; endpoint V2 vẫn fail-closed nếu chưa được xác minh.",
+            "Thông báo hiện chỉ lưu cảnh báo cập nhật V2 đã xác minh trên thiết bị; chưa có push/backend và không suy diễn parity V1.",
+            13f,
+            Color.LTGRAY,
+        ))
+        versionCard.addView(text(
+            "Kiểm tra cập nhật dùng endpoint V2 riêng và vẫn fail-closed nếu chưa được xác minh.",
             13f,
             Color.LTGRAY,
         ))

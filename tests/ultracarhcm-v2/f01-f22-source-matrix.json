@@ -310,17 +310,23 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UpdateActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UpdateRules.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt",
-        "apps/ultracarhcm-v2/app/src/main/res/values/strings.xml"
+        "apps/ultracarhcm-v2/app/src/main/res/values/strings.xml",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/NotificationActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/NotificationRules.kt"
       ],
-      "gap": "Independent update-check source follows verified V1 metadata fields and HTTPS-only download behavior, but the V2 update endpoint is intentionally unconfigured to prevent cross-package use of the V1 channel; notification-tab parity is still absent.",
-      "actual": "ProfileActivity exposes a separate CẬP NHẬT action. UpdateActivity can fetch bounded JSON metadata only from a verified HTTPS V2 endpoint, validate latestVersionCode/latestVersionName/apkUrl/sha256/releaseNotes/mandatory, compare installed build code, and only then expose an HTTPS download action. With no verified V2 endpoint it fails closed instead of using V1 version.json.",
+      "gap": "Independent update-check source remains fail-closed until a verified V2 endpoint exists. A bounded device-local notification tab now records only newer V2 update metadata; remote push/backend delivery and exact V1 notification parity remain unverified.",
+      "actual": "ProfileActivity exposes separate CẬP NHẬT and THÔNG BÁO actions. UpdateActivity validates bounded HTTPS V2 metadata and records a newer-version notice into device-local V2 preferences without credentials or background push. NotificationActivity shows one bounded update notice, marks it read or clears it. No V1 channel or push backend is inferred.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "ProfileActivity.buildContent",
         "UpdateActivity.checkForUpdate",
         "UpdateActivity.fetchMetadata",
         "UpdateRules.validateMetadata",
-        "UpdateRules.hasNewerVersion"
+        "UpdateRules.hasNewerVersion",
+        "UpdateActivity.recordUpdateNotice",
+        "NotificationActivity.onResume",
+        "NotificationActivity.refresh",
+        "NotificationRules.shouldReplaceNotice"
       ],
       "permissions": [
         "android.permission.INTERNET"
