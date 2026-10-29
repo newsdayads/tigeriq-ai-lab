@@ -10,10 +10,15 @@ class HomeBackupRulesTest {
     @Test fun migratesLegacyBackupAndAcceptsCurrentSchema() {
         assertTrue(HomeBackupRules.canReadBackupSchema(1))
         assertTrue(HomeBackupRules.canReadBackupSchema(2))
+        assertTrue(HomeBackupRules.canReadBackupSchema(3))
         assertFalse(HomeBackupRules.canReadBackupSchema(0))
-        assertFalse(HomeBackupRules.canReadBackupSchema(3))
+        assertFalse(HomeBackupRules.canReadBackupSchema(4))
         assertFalse(HomeBackupRules.requiresOverlayPositions(1))
         assertTrue(HomeBackupRules.requiresOverlayPositions(2))
+        assertTrue(HomeBackupRules.requiresOverlayPositions(3))
+        assertFalse(HomeBackupRules.requiresVehicleState(1))
+        assertFalse(HomeBackupRules.requiresVehicleState(2))
+        assertTrue(HomeBackupRules.requiresVehicleState(3))
     }
 
     @Test fun boundsImportedBackupSize() {
