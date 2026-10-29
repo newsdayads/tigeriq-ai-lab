@@ -367,12 +367,19 @@
     {
       "id": "F19",
       "expected": "Data export/reporting sheets where supported by V1",
-      "status": "NOT_IMPLEMENTED",
-      "sourceEvidence": [],
-      "gap": "No corresponding V2 export/reporting implementation found.",
-      "actual": "No scoped V2 report/sheet export implementation is present.",
-      "testStatus": "NOT_TESTED_NO_IMPLEMENTATION",
-      "entryPoints": [],
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TaxiMeterActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ReportRules.kt"
+      ],
+      "gap": "V2-owned Taxi Meter trip data can be exported through Storage Access Framework as explicit CSV; exact V1 XLS/report templates, dashboards and other feature-domain exports remain unverified and are not claimed.",
+      "actual": "TaxiMeterActivity exports only its bounded local V2 trip history through the user-selected SAF destination, with stable CSV columns and escaping. It requests no broad storage permission and does not export credentials or V1 data.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "TaxiMeterActivity.writeTripReport",
+        "ReportRules.csvCell",
+        "ReportRules.header"
+      ],
       "permissions": []
     },
     {
