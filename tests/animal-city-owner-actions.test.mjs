@@ -15,14 +15,18 @@ function coreMock(counter){
   return async (url,opts)=>{
     if(url==='http://127.0.0.1:8795/api/objectives'){
       counter.count++;counter.last=JSON.parse(opts.body);
-      return new Response(JSON.stringify({ok:true,id:objectiveId}),{status:201});
+      return new Response(JSON.stringify({ok:true,id:objectiveId,campaign:true,phaseCount:3,currentPhase:0}),{status:201});
     }
     if(url==='http://127.0.0.1:8795/api/status'){
       return new Response(JSON.stringify({
         ok:true,core:{time:new Date().toISOString()},
         objectives:[{id:objectiveId,objective:body.objective,priority:'P2',
-          status:'active',summary:'',metadata:{source:'animal-city-local'},updated_at:new Date().toISOString()}],
-        jobs:[{id:'JOB-1',objective_id:objectiveId,status:'running',employee_id:'NV08',capability:'reasoning'}],
+          status:'active',summary:'',metadata:{source:'animal-city-local',campaign:{
+            currentPhase:0,phases:[{title:'P1'},{title:'P2'},{title:'P3'}],checkpoints:[]}},
+          updated_at:new Date().toISOString()}],
+        jobs:[{id:'JOB-1',objective_id:objectiveId,status:'running',employee_id:'NV08',
+          resource_id:'res:ollama:qwen3-8b:nv08-manager:core',provider:'ollama',capability:'reasoning',
+          lease_until:new Date(Date.now()+60000).toISOString(),result:null,failure:null}],
       }),{status:200});
     }
     throw Error('UNEXPECTED_FETCH:'+url);
@@ -42,7 +46,14 @@ test('local browser action creates one actual Core LOCAL/P2 objective and return
     assert.equal(data.receiptVerified,true);
     assert.equal(data.routingProfile,'LOCAL');
     assert.equal(counter.count,1);
-    assert.deepEqual(counter.last,{objective:body.objective,priority:'P2',routingProfile:'LOCAL',source:'animal-city-local'});
+    assert.equal(counter.last.objective,body.objective);
+    assert.equal(counter.last.priority,'P2');
+    assert.equal(counter.last.routingProfile,'LOCAL');
+    assert.equal(counter.last.source,'animal-city-local');
+    assert.equal(counter.last.phases.length,3);
+    assert.match(counter.last.phases[0].title,/Thực thi/);
+    assert.match(counter.last.phases[1].title,/QA độc lập/);
+    assert.match(counter.last.phases[2].title,/Nghiệm thu/);
     const second=await send();
     assert.equal(second.status,201);
     assert.equal(counter.count,1,'idempotency key must never enqueue duplicate Core objective');
@@ -50,6 +61,9 @@ test('local browser action creates one actual Core LOCAL/P2 objective and return
     assert.equal(recent.ok,true);
     assert.equal(recent.objectives[0].jobs[0].employeeId,'NV08');
     assert.equal(recent.objectives[0].jobs[0].status,'running');
+    assert.equal(recent.objectives[0].jobs[0].leaseActive,true);
+    assert.equal(recent.objectives[0].campaign.phaseCount,3);
+    assert.equal(recent.objectives[0].campaign.currentPhase,0);
   }finally{await app.close()}
 });
 test('invalid origin, missing token, paid AUTO and P0 are rejected before Core',async()=>{
