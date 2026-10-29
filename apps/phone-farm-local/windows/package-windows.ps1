@@ -29,10 +29,21 @@ function Assert-AuthenticodePublisher([string]$Path,[string]$PublisherPattern,[s
 }
 if(Test-Path $OutputPath){Remove-Item $OutputPath -Recurse -Force}
 New-Item -ItemType Directory -Path $OutputPath | Out-Null
-$dotnetSdk=((& dotnet --version).Trim())
-if($dotnetSdk -notmatch $dotnetSdkPattern){throw "Expected .NET SDK matching $dotnetSdkPattern, found $dotnetSdk"}
-dotnet publish $project -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o $OutputPath
-if($LASTEXITCODE -ne 0){throw "dotnet publish failed: $LASTEXITCODE"}
+$dotnetSdk=(& dotnet --list-sdks | ForEach-Object { ($_ -split '\s+')[0] } | Where-Object { $_ -match $dotnetSdkPattern } | Sort-Object {[version]$_} -Descending | Select-Object -First 1)
+if([string]::IsNullOrWhiteSpace($dotnetSdk)){throw "No installed .NET SDK matches $dotnetSdkPattern"}
+$sdkProbeRoot=Join-Path ([IO.Path]::GetTempPath()) ("tigeriq-phonefarm-sdk-"+[Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $sdkProbeRoot | Out-Null
+@{sdk=@{version=$dotnetSdk;rollForward='disable'}}|ConvertTo-Json -Depth 3|Set-Content (Join-Path $sdkProbeRoot 'global.json') -Encoding utf8
+Push-Location $sdkProbeRoot
+try{
+  $selectedSdk=((& dotnet --version).Trim())
+  if($selectedSdk -ne $dotnetSdk){throw "Expected selected .NET SDK $dotnetSdk, found $selectedSdk"}
+  dotnet publish $project -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o $OutputPath
+  if($LASTEXITCODE -ne 0){throw "dotnet publish failed: $LASTEXITCODE"}
+}finally{
+  Pop-Location
+  Remove-Item $sdkProbeRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
 $runtime=@('app.mjs','farm-ops.mjs','index.html','macro-engine.mjs','recording.mjs','recording.test.mjs','schedule-engine.mjs','test.mjs','ui.js','README.md','INSTALL_WINDOWS.md','RELEASE_NOTES_WINDOWS_RC.md','SUPPLY_CHAIN_RC_20261026.md')
 foreach($name in $runtime){Copy-Item (Join-Path $appRoot $name) (Join-Path $OutputPath $name) -Force}
 $sourceDir=Join-Path $OutputPath 'windows'
