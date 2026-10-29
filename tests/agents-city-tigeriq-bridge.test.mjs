@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {request as nodeRequest} from 'node:http';
 import assert from 'node:assert/strict';
 import {normalizeCoreSnapshot, fetchCoreSnapshot, CORE_URL} from '../apps/agents-city-tigeriq/core-readonly.mjs';
 import {createAnimalCityServer} from '../apps/agents-city-tigeriq/server.mjs';
@@ -99,8 +100,14 @@ test('HTTP preview serves only loopback read-only endpoints and never false stat
     assert.equal(snapshot.dispatchEnabled,false);
     const post=await fetch(root+'/api/rooms',{method:'POST'});
     assert.equal(post.status,405);
-    const foreign=await fetch(root+'/api/rooms',{headers:{host:'attacker.example'}});
-    assert.equal(foreign.status,403);
+    const foreignStatus=await new Promise((resolve,reject)=>{
+      const req=nodeRequest({hostname:'127.0.0.1',port,path:'/api/rooms',method:'GET',
+        headers:{Host:'attacker.example'}},res=>{
+        res.resume();res.on('end',()=>resolve(res.statusCode));
+      });
+      req.on('error',reject);req.end();
+    });
+    assert.equal(foreignStatus,403);
     const missing=await fetch(root+'/missing');
     assert.equal(missing.status,404);
   }finally{await new Promise(resolve=>server.close(resolve))}
