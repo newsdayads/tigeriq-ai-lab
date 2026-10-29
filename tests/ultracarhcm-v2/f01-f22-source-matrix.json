@@ -406,19 +406,19 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TelemetryActivity.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ObdActivity.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ObdActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/PrivacyActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/PrivacyRules.kt"
       ],
-      "gap": "USB/overlay/location/Bluetooth runtime permission and reconnect/error-recovery paths are covered in source; update/privacy permission parity and real-device validation remain incomplete.",
-      "actual": "Manifest/runtime source cover camera, USB-host, overlay, foreground location and Bluetooth-connect permissions; TelemetryActivity requests location only when used, ObdActivity requests Bluetooth connect only before bonded-device access, and UVC recovery remains bounded. Update/privacy parity remains incomplete.",
+      "gap": "Runtime source now includes a user-visible status surface for camera, location, Bluetooth-connect and overlay permissions plus direct OS settings links; update-install/privacy-policy parity and real-device validation remain incomplete.",
+      "actual": "PrivacyActivity reads current runtime permission state without auto-granting anything, links to Android app/overlay settings, documents per-device USB permission behavior and the V2 manual SAF backup boundary. Existing camera/USB/location/Bluetooth recovery paths remain source-covered.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "AndroidManifest.xml",
+        "PrivacyActivity.onResume",
+        "PrivacyActivity.refreshStatus",
+        "PrivacyRules.statusLabel",
         "UsbUvcController.start",
-        "OverlayService.update",
-        "HomeActivity.showSettings",
-        "UsbUvcController.onAttach",
-        "UsbUvcController.onDetach",
-        "UsbUvcController.onError",
         "TelemetryActivity.refreshLocation",
         "ObdActivity.requestDeviceSelection"
       ],
