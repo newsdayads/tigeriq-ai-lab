@@ -92,6 +92,6 @@ describe('GH-5135 R02 F01-F22 source matrix', () => {
     const absent = matrix.features
       .filter(feature => feature.status === 'NOT_IMPLEMENTED')
       .map(feature => feature.id);
-    expect(absent).toEqual(['F15', 'F18', 'F19']);
+    expect(absent).toEqual(['F18', 'F19']);
   });
 });
