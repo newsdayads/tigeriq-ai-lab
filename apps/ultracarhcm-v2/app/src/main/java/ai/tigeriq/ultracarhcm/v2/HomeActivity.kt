@@ -1,6 +1,5 @@
 package ai.tigeriq.ultracarhcm.v2
 
-import android.app.Activity
 import android.app.AlertDialog
 import android.net.Uri
 import android.content.Context
@@ -20,6 +19,7 @@ import android.widget.ImageView
 import android.widget.VideoView
 import android.widget.TextView
 import android.widget.EditText
+import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.platform.ComposeView
 import org.json.JSONArray
@@ -32,7 +32,7 @@ import java.util.Locale
  * Faithful-image HOME reconstruction prototype using the actual source APK assets.
  * Original APP is the UI authority. V2 feature parity is NOT implied by this screen.
  */
-class HomeActivity : Activity() {
+class HomeActivity : ComponentActivity() {
     private lateinit var root: FrameLayout
     private val prefs by lazy { getSharedPreferences("ultracar_v2_home", Context.MODE_PRIVATE) }
     private val tickHandler = Handler(Looper.getMainLooper())
