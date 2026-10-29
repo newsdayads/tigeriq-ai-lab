@@ -69,7 +69,7 @@ export function createOwnerActions({fetchImpl=fetch, now=Date.now}={}) {
     try{
       const r=await fetchImpl(CORE_STATUS,{method:'GET',redirect:'error',cache:'no-store',
         headers:{accept:'application/json'},signal:AbortSignal.timeout(6500)});
-      if(r.status!==200)return {status:503,body:{ok:false,reason:'CORE_STATUS_UNAVAILABLE'}};
+      if(r.status!==200)return {status:503,body:{ok:false,reason:'CORE_STATUS_UNAVAILABLE',objectives:[]}};
       const raw=await r.text();
       if(Buffer.byteLength(raw,'utf8')>4_000_000)throw Error('OVERSIZED');
       const data=JSON.parse(raw);
