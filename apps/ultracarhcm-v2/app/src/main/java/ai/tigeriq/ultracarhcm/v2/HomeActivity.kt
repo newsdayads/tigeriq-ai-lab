@@ -653,10 +653,24 @@ class HomeActivity : ComponentActivity() {
                 return
             }
             render()
+            refreshOverlayAfterRestore()
             toast("Đã khôi phục cấu hình V2")
         } catch (e: Exception) {
             android.util.Log.e("UltraCarV2", "HOME backup import failed", e)
             toast("Không thể khôi phục cấu hình V2")
+        }
+    }
+
+    private fun refreshOverlayAfterRestore() {
+        if (!DexUtils.isDesktop(this) || !Settings.canDrawOverlays(this)) return
+        try {
+            startService(
+                Intent(this, OverlayService::class.java)
+                    .putExtra("displayId", requestedCameraDisplayId())
+                    .putExtra(OverlayService.EXTRA_FORCE_REATTACH, true),
+            )
+        } catch (t: Throwable) {
+            android.util.Log.w("UltraCarV2", "Overlay refresh after restore failed", t)
         }
     }
 
