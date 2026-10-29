@@ -16,6 +16,7 @@
   <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
   <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
   <application android:label="@string/app_name" android:allowBackup="false" android:extractNativeLibs="true" android:supportsRtl="true"
+       android:resizeableActivity="true"
        android:icon="@android:drawable/ic_menu_camera" android:theme="@android:style/Theme.Material.NoActionBar">
     <activity android:name=".HomeActivity" android:exported="true" android:resizeableActivity="true"
               android:configChanges="density|screenSize|smallestScreenSize|orientation|uiMode"
@@ -34,5 +35,11 @@
     <activity android:name=".RecoveryActivity" android:exported="false" android:resizeableActivity="true"/>
     <activity android:name=".UpdateActivity" android:exported="false" android:resizeableActivity="true"/>
     <service android:name=".OverlayService" android:exported="false"/>
+    <receiver android:name=".DexDockReceiver" android:exported="false">
+      <intent-filter>
+        <action android:name="android.app.action.ENTER_KNOX_DESKTOP_MODE"/>
+        <action android:name="android.app.action.EXIT_KNOX_DESKTOP_MODE"/>
+      </intent-filter>
+    </receiver>
   </application>
 </manifest>
