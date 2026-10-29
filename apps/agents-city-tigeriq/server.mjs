@@ -10,6 +10,7 @@ import {createOwnerActions} from './owner-actions.mjs';
 const htmlPath = fileURLToPath(new URL('./index.html', import.meta.url));
 const scriptPath = fileURLToPath(new URL('./app.js', import.meta.url));
 const scenePath = fileURLToPath(new URL('./scene3d.js', import.meta.url));
+const ownerConsolePath = fileURLToPath(new URL('./owner-console.js', import.meta.url));
 
 function send(res, status, body, type) {
   res.writeHead(status, {
@@ -108,9 +109,9 @@ export function createAnimalCityServer({fetchImpl = fetch, startedAt = new Date(
     }
 
     if (route === '/favicon.ico') return send(res,204,'','text/plain');
-    if (route === '/' || route === '/app.js' || route === '/scene3d.js') {
+    if (route === '/' || route === '/app.js' || route === '/scene3d.js' || route === '/owner-console.js') {
       try {
-        const path = route === '/' ? htmlPath : route === '/app.js' ? scriptPath : scenePath;
+        const path = route === '/' ? htmlPath : route === '/app.js' ? scriptPath : route === '/scene3d.js' ? scenePath : ownerConsolePath;
         const content = await readFile(path);
         return send(res,200,content,route === '/' ? 'text/html; charset=utf-8' :
           'text/javascript; charset=utf-8');
