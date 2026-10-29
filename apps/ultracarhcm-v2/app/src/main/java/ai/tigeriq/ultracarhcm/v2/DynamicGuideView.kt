@@ -18,12 +18,27 @@ internal data class GuidePoint(
     val y: Float,
 )
 
+internal data class GuideDistanceMarker(
+    val progress: Float,
+    val label: String,
+)
+
 /**
  * Pure geometry model for V1.0.64-style reverse guide reconstruction.
  * Values are normalized to [0,1]; no claim of calibrated vehicle distance.
  */
 internal object GuideTrackModel {
     const val MAX_STEERING_DEGREES = 35f
+
+    /**
+     * Visual labels observed in the Owner's V1 reverse-camera reference video.
+     * These are parity labels only; they are not a vehicle-distance calibration claim.
+     */
+    val distanceMarkers = listOf(
+        GuideDistanceMarker(progress = 0.72f, label = "1.5m"),
+        GuideDistanceMarker(progress = 0.48f, label = "1.0m"),
+        GuideDistanceMarker(progress = 0.22f, label = "0.5m"),
+    )
 
     fun normalize(state: GuideCurveState): GuideCurveState =
         state.copy(
@@ -74,6 +89,13 @@ open class GuideTrackView @JvmOverloads constructor(
         strokeWidth = 5f
         strokeCap = Paint.Cap.ROUND
     }
+    private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.WHITE
+        textAlign = Paint.Align.CENTER
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+        setShadowLayer(4f, 0f, 1f, Color.BLACK)
+    }
 
     internal var curveState: GuideCurveState = GuideCurveState()
         private set
@@ -91,9 +113,10 @@ open class GuideTrackView @JvmOverloads constructor(
 
         drawBoundary(canvas, -1)
         drawBoundary(canvas, 1)
-        drawCrossbar(canvas, 0.22f, Color.RED)
-        drawCrossbar(canvas, 0.48f, Color.YELLOW)
-        drawCrossbar(canvas, 0.72f, Color.GREEN)
+        labelPaint.textSize = (height * 0.028f).coerceIn(20f, 42f)
+        drawCrossbar(canvas, GuideTrackModel.distanceMarkers[2], Color.RED)
+        drawCrossbar(canvas, GuideTrackModel.distanceMarkers[1], Color.YELLOW)
+        drawCrossbar(canvas, GuideTrackModel.distanceMarkers[0], Color.GREEN)
     }
 
     private fun drawBoundary(canvas: Canvas, side: Int) {
@@ -110,17 +133,19 @@ open class GuideTrackView @JvmOverloads constructor(
         canvas.drawPath(path, trackPaint)
     }
 
-    private fun drawCrossbar(canvas: Canvas, progress: Float, color: Int) {
-        val (left, right) = GuideTrackModel.crossbar(progress, curveState)
+    private fun drawCrossbar(canvas: Canvas, marker: GuideDistanceMarker, color: Int) {
+        val (left, right) = GuideTrackModel.crossbar(marker.progress, curveState)
         crossbarPaint.color = color
         crossbarPaint.alpha = 235
-        canvas.drawLine(
-            left.x * width,
-            left.y * height,
-            right.x * width,
-            right.y * height,
-            crossbarPaint,
-        )
+        val leftX = left.x * width
+        val rightX = right.x * width
+        val y = left.y * height
+        canvas.drawLine(leftX, y, rightX, right.y * height, crossbarPaint)
+
+        // Match the V1 visual reference while keeping calibration explicitly out of scope.
+        val centerX = (leftX + rightX) / 2f
+        val labelY = y - labelPaint.textSize * 0.28f
+        canvas.drawText(marker.label, centerX, labelY, labelPaint)
     }
 }
 
