@@ -78,3 +78,29 @@ C08 requires a managed PC01 runtime that can be installed, started, stopped, res
 C09 requires real live worker/job evidence in the UI; false or stale bindings must disappear rather than remain cached.
 
 C10 requires a post-restart acceptance receipt proving `/health`, `/ready`, Work Orders, live worker source and rendered browser UI on the actual installed PC01 source before `DONE=true` may be restored.
+
+
+## Interactive Animal Office 3D — visual extension
+
+The office scene uses browser-native WebGL 1.0 with low-poly geometric
+animal avatars (tiger, fox, panda), office rooms, desks, chairs, wall
+windows, computers and plants. It requires **no CDN, API key, game engine
+or new npm dependency**. Drag to orbit, wheel to zoom, click an office in
+the model or its accessible text tab to view that department's Core data.
+Use **Góc chuẩn** to reset the camera.
+
+The floorplan is a visualization, not a second job orchestrator.
+All mascots are decorative and remain visually idle unless the existing
+Core live binding declares both `liveWorkerBindingsVerified=true` and a
+worker with `activeWorkerVerified=true`. Only then may that department
+show the working LED and subtle breathing motion.
+
+This extension is **not** native Agents City Committee dispatch, and does
+not claim that TigerIQ can autonomously finish a full task. Work Order
+data and evidence continue to come exclusively from TigerIQ Core.
+
+To verify an operational update on PC01: confirm the installed exact
+source SHA; GET http://127.0.0.1:8866/health, GET /ready and /scene3d.js,
+then open the local UI in Chrome and validate WebGL rendering,
+orbit/zoom/selection, verified-worker-only lighting and Core work cards.
+Do not claim UI accepted from a CI test alone.
