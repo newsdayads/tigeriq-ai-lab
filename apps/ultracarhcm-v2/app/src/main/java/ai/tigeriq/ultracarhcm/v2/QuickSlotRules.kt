@@ -41,7 +41,8 @@ internal object QuickSlotRules {
         return when {
             containsAny(key, "youtube", "nhạc", "nhac", "zing", "spotify", "media") ->
                 QuickSlotIcon.PLAY
-            containsAny(key, "grab", "be partner", "greensm", "xanh sm", "taxi") ->
+            containsAny(key, "grab", "be partner", "greensm", "xanh sm", "taxi") ||
+                containsWord(key, "be") ->
                 QuickSlotIcon.CAR
             containsAny(key, "bản đồ", "ban do", "map", "vietmap", "navitel", "route") ->
                 QuickSlotIcon.ROUTE
@@ -63,4 +64,8 @@ internal object QuickSlotRules {
 
     private fun containsAny(value: String, vararg needles: String): Boolean =
         needles.any(value::contains)
+
+    private fun containsWord(value: String, word: String): Boolean =
+        Regex("(^|[^a-z0-9])" + Regex.escape(word) + "([^a-z0-9]|$)")
+            .containsMatchIn(value)
 }
