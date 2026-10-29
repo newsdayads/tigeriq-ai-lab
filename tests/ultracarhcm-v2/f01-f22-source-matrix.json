@@ -32,14 +32,19 @@
       "expected": "Vehicle card/model/color selection, parked/moving images and license plate",
       "status": "PARTIAL_SOURCE",
       "sourceEvidence": [
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleRules.kt"
       ],
-      "gap": "Two vehicle image choices exist; full vehicle card, moving states and license plate parity are absent.",
-      "actual": "HomeActivity switches between two parked vehicle resource IDs; full card/moving/license-plate state is absent.",
+      "gap": "Two verified source vehicle choices, local model/color selection and license-plate display are implemented; full V1 branded card styling, moving-state behavior and real-media parity remain open.",
+      "actual": "VehicleActivity lets the user choose between the two existing source vehicle choices (Limo đỏ and Lamborghini trắng) and store a bounded local license plate. It writes the legacy limo boolean for migration compatibility, and Home renders the selected parked vehicle plus the saved plate.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.render",
-        "HomeActivity.showSettings"
+        "HomeActivity.showSettings",
+        "VehicleActivity.selectModel",
+        "VehicleRules.currentModel",
+        "VehicleRules.normalizeLicensePlate"
       ],
       "permissions": []
     },
