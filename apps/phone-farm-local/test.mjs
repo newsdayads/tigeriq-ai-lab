@@ -51,6 +51,20 @@ test('browser controller parses under strict CSP external-script policy', () => 
   assert.match(ui,/navigator\.clipboard\.readText\(\)/);
 });
 
+test('control screen uses CSS-pixel click threshold and prioritizes real device interaction', () => {
+  const dir=path.dirname(fileURLToPath(import.meta.url));
+  const ui=fs.readFileSync(path.join(dir,'ui.js'),'utf8');
+  assert.match(ui,/Math\.hypot\(e\.clientX-startX,e\.clientY-startY\)>8/);
+  assert.doesNotMatch(ui,/Math\.hypot\(\(a\[0\]-b\[0\]\)\*size\.width/);
+  assert.match(ui,/function settleScreen\(img,ok\)/);
+  assert.match(ui,/img\.dataset\.forceAfterBusy='1'/);
+  assert.match(ui,/refreshOne\(img,true\)/);
+  assert.match(ui,/make\('▣','Điều khiển video thời gian thực \(scrcpy\)',\(\)=>openMirror\(d\.serial\)\)/);
+  assert.match(ui,/\$\('mirrorSelected'\)\.onclick=.*openMirror\(ss\[0\]\)/);
+  const html=fs.readFileSync(path.join(dir,'index.html'),'utf8');
+  assert.match(html,/id="openScrcpy"/);
+});
+
 test('Windows package fails closed on pinned runtime provenance and records license hashes', () => {
   const dir=path.dirname(fileURLToPath(import.meta.url));
   const source=fs.readFileSync(path.join(dir,'windows','package-windows.ps1'),'utf8');
