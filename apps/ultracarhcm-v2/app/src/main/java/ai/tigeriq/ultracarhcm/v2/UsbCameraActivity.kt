@@ -23,20 +23,38 @@ class UsbCameraActivity : Activity() {
         const val EXTRA_STEERING_DEGREES = "ai.tigeriq.ultracarhcm.v2.extra.STEERING_DEGREES"
         private var visible = WeakReference<UsbCameraActivity>(null)
         fun toggleFromShortcut(context: Context, displayId: Int) {
-            val existing = visible.get()
-            if (existing != null && !existing.isFinishing) {
-                existing.runOnUiThread { existing.toggle() }
+            val existing = visible.get()?.takeUnless { it.isFinishing }
+            val existingDisplayId = existing?.window?.decorView?.display?.displayId
+
+            if (CameraDisplayRules.shouldToggleExisting(existingDisplayId, displayId)) {
+                existing?.runOnUiThread { existing.toggle() }
                 return
             }
+
             val intent = Intent(context, UsbCameraActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .addFlags(
+                    if (CameraDisplayRules.needsDedicatedTask(existingDisplayId, displayId)) {
+                        Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+                    } else {
+                        Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    },
+                )
             try {
                 val opts = ActivityOptions.makeBasic()
                 if (displayId >= 0) opts.launchDisplayId = displayId
                 context.startActivity(intent, opts.toBundle())
+                if (existing != null && existingDisplayId != displayId) {
+                    existing.runOnUiThread { existing.finish() }
+                }
             } catch (t: Throwable) {
                 Log.w("UltraCarV2UVC", "Display launch failure", t)
-                try { context.startActivity(intent) } catch (fail: Throwable) {
+                if (!CameraDisplayRules.allowUnspecifiedFallback(displayId)) {
+                    Log.w("UltraCarV2UVC", "Refusing unspecified fallback for explicit display=$displayId")
+                    return
+                }
+                try {
+                    context.startActivity(intent)
+                } catch (fail: Throwable) {
                     Log.e("UltraCarV2UVC", "Camera launch failed", fail)
                 }
             }

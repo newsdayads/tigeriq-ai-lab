@@ -75,10 +75,11 @@
       "status": "SOURCE_IMPLEMENTED_DEVICE_REQUIRED",
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbCameraActivity.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/CameraDisplayRules.kt"
       ],
-      "gap": "Separate window and toggle path exist; real video/device behavior remains unaccepted.",
-      "actual": "UsbCameraActivity is a separate resizeable window with open/close controls and the same UVC controller used by the floating shortcut.",
+      "gap": "Separate window, manual toggle and display-affinity source exist; real USB video/device behavior and cross-display runtime acceptance remain unaccepted.",
+      "actual": "UsbCameraActivity keeps same-display shortcut taps as a toggle, but when a camera window exists on another display it requests a dedicated camera task on the requested display and closes the stale window only after the display-specific launch succeeds.",
       "testStatus": "DEVICE_QA_NOT_TESTED",
       "entryPoints": [
         "UsbCameraActivity.toggleFromShortcut",
@@ -110,14 +111,18 @@
       "status": "SOURCE_IMPLEMENTED_DEVICE_REQUIRED",
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexUtils.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexUtils.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/CameraDisplayRules.kt"
       ],
-      "gap": "Single transparent draggable shortcut source exists; DeX display behavior requires real-device QA.",
-      "actual": "OverlayService creates one transparent draggable camera ImageButton on the resolved external display and taps into UsbCameraActivity.toggleFromShortcut.",
+      "gap": "Single transparent draggable shortcut plus explicit camera display-affinity source exist; DeX display routing still requires real-device QA.",
+      "actual": "OverlayService creates one transparent draggable camera ImageButton on the resolved external display. UsbCameraActivity only reuses a camera already on that display, relaunches to the requested display when needed, and refuses an unspecified-display fallback if explicit display launch fails.",
       "testStatus": "DEVICE_QA_NOT_TESTED",
       "entryPoints": [
         "OverlayService.update",
-        "UsbCameraActivity.toggleFromShortcut"
+        "UsbCameraActivity.toggleFromShortcut",
+        "CameraDisplayRules.shouldToggleExisting",
+        "CameraDisplayRules.needsDedicatedTask",
+        "CameraDisplayRules.allowUnspecifiedFallback"
       ],
       "permissions": [
         "android.permission.SYSTEM_ALERT_WINDOW"
