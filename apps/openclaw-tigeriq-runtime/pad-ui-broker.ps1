@@ -78,7 +78,7 @@ function Match-WindowTarget($Window, $Request) {
     if ($Request.processId -and $pidVal -ne [int]$Request.processId) { return $false }
     if ($Request.pid -and $pidVal -ne [int]$Request.pid) { return $false }
     if ($Request.processName -and $proc -notlike "*$($Request.processName)*") { return $false }
-    if ($Request.automationId -and $autoId -ne [string]$Request.automationId) { return $false }
+    if ($Request.windowAutomationId -and $autoId -ne [string]$Request.windowAutomationId) { return $false }
 
     $targetName = if ($Request.windowName) { [string]$Request.windowName } elseif ($Request.windowTitle) { [string]$Request.windowTitle } else { $null }
     if ($targetName) {
@@ -118,7 +118,7 @@ function Get-PadWindows {
 function Find-PadWindow($Request) {
   $targetName = if ($Request.windowName) { [string]$Request.windowName } elseif ($Request.windowTitle) { [string]$Request.windowTitle } else { $null }
   $windows = @(Get-PadWindows)
-  if ($targetName -or $Request.processId -or $Request.pid -or $Request.processName -or $Request.automationId) {
+  if ($targetName -or $Request.processId -or $Request.pid -or $Request.processName -or $Request.windowAutomationId) {
     $filtered = @()
     foreach ($w in $windows) {
       $targetObj = [pscustomobject]@{ Current = [pscustomobject]@{ Name=$w.Name; ProcessId=$w.ProcessId; AutomationId=$w.AutomationId } }
@@ -170,7 +170,7 @@ function Get-TopWindowElement($Request) {
   $targetName = if ($Request.windowName) { [string]$Request.windowName } elseif ($Request.windowTitle) { [string]$Request.windowTitle } else { $null }
   foreach ($w in $all) {
     if (-not (Test-PadWindow $w)) { continue }
-    if ($targetName -or $Request.processId -or $Request.pid -or $Request.processName -or $Request.automationId) {
+    if ($targetName -or $Request.processId -or $Request.pid -or $Request.processName -or $Request.windowAutomationId) {
       if (-not (Match-WindowTarget $w $Request)) { continue }
     }
     $matches += $w
