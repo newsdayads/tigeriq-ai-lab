@@ -90,6 +90,7 @@ export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = 
   };
   async function handle(req, res, url) {
     const path = url.pathname;
+    let stage = 'route';
     if (!path.startsWith('/oauth/') && !path.startsWith('/.well-known/oauth-')) return false;
     res.setHeader('Cache-Control','no-store'); res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Referrer-Policy','same-origin'); res.setHeader('X-Frame-Options','DENY');
@@ -103,10 +104,10 @@ export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = 
       if (req.method === 'GET' && path === '/oauth/jwks') { json(res,200,{keys:[{...publicJwk,kid,alg:'RS256',use:'sig'}]}); return true; }
       if (req.method === 'GET' && path === '/oauth/authorize') {
         const grant = requestParams(url.searchParams); await client(); limited(pending);
-        const id = random(), csrf = random();
+        const id = random(), csrf = random(), nonce = random();
         pending.set(id,{...grant,csrfHash:hash(csrf),expires:now()+600000});
         res.setHeader('Set-Cookie','__Host-tigeriq_oauth_csrf='+csrf+'; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=600');
-        res.setHeader('Content-Security-Policy',"default-src 'none';style-src 'unsafe-inline';form-action 'self';base-uri 'none';frame-ancestors 'none'");
+        res.setHeader('Content-Security-Policy',"default-src 'none';style-src 'unsafe-inline';form-action 'self';script-src 'nonce-"+nonce+"';base-uri 'none';frame-ancestors 'none'");
         res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'}).end(
           '<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
           '<title>TigerIQ — cấp quyền PC01</title><style>body{font:16px system-ui;background:#101827;color:#fff;max-width:620px;margin:8vh auto;padding:24px}input,button{display:block;padding:14px;margin:16px 0;width:100%;box-sizing:border-box}code{word-break:break-all}</style>'+
@@ -114,34 +115,51 @@ export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = 
           '<p>Quyền Windows, cổng quản trị từng tác vụ và nhật ký vẫn được áp dụng.</p>'+
           '<form action="/oauth/approve" method="post"><input type="hidden" name="request_id" value="'+id+'">'+
           '<label>Mã Owner riêng trên PC01<input name="owner_code" type="password" autocomplete="off" required minlength="32" maxlength="192"></label>'+
-          '<button type="submit">ĐĂNG NHẬP VÀ CẤP QUYỀN</button></form></html>');
+          '<button type="submit">ĐĂNG NHẬP VÀ CẤP QUYỀN</button></form>'+
+          '<script nonce="'+nonce+'">document.querySelector("form").addEventListener("submit",function(event){'+
+          'if(this.dataset.submitted){event.preventDefault();return;}this.dataset.submitted="true";'+
+          'const button=this.querySelector("button");button.disabled=true;button.textContent="ĐANG KẾT NỐI";});</script></html>');
         events('OAUTH_CONSENT_REQUESTED',{clientId:grant.clientId,scopes:grant.scopes}); return true;
       }
       if (req.method === 'POST' && path === '/oauth/approve') {
+        stage = 'origin';
         if (req.headers.origin !== origin || String(req.headers['sec-fetch-site'] || '') === 'cross-site') throw Error('access_denied');
+        stage = 'body';
         const params = await body(req), id = params.get('request_id') || '';
+        stage = 'csrf';
         const grant = pending.get(id);
         const cookie = String(req.headers.cookie || '').split(';').map(v => v.trim()).find(v => v.startsWith('__Host-tigeriq_oauth_csrf='));
         const csrf = cookie ? cookie.slice('__Host-tigeriq_oauth_csrf='.length) : '';
         if (!grant || grant.expires <= now() || !same(hash(csrf),grant.csrfHash)) throw Error('access_denied');
+        // A double click must not mint a second code or disturb the first exchange.
+        // Retain only the CSRF-bound consumed marker until the original expiry.
+        if (grant.approved) {
+          events('OAUTH_APPROVAL_DUPLICATE',{method:req.method,path,status:409});
+          json(res,409,{error:'approval_already_processed'}); return true;
+        }
+        stage = 'owner_login';
         if (now()-loginWindow >= 60000) { loginWindow=now(); loginCount=0; }
         if (++loginCount > 10) throw Error('temporarily_unavailable');
         const ownerCode = params.get('owner_code') || '';
         if (ownerCode.length < 32 || ownerCode.length > 192 || !same(ownerCodeDigest(ownerCode,config.ownerCodeSalt),config.ownerCodeHash)) {
           events('OAUTH_OWNER_LOGIN_DENIED'); throw Error('access_denied');
         }
-        limited(codes); pending.delete(id);
+        stage = 'code_issue';
+        limited(codes);
+        pending.set(id,{csrfHash:grant.csrfHash,expires:grant.expires,approved:true});
         const code = random(); codes.set(hash(code),{...grant,expires:now()+60000});
         const redirect = new URL(grant.redirectUri);
         redirect.searchParams.set('code',code);redirect.searchParams.set('state',grant.state);redirect.searchParams.set('iss',issuer);
         res.setHeader('Set-Cookie','__Host-tigeriq_oauth_csrf=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0');
-        res.writeHead(302,{location:redirect.href}).end();events('OAUTH_OWNER_CONSENT_GRANTED',{clientId:grant.clientId,scopes:grant.scopes}); return true;
+        res.writeHead(303,{location:redirect.href}).end();events('OAUTH_OWNER_CONSENT_GRANTED',{clientId:grant.clientId,scopes:grant.scopes}); return true;
       }
       if (req.method === 'POST' && path === '/oauth/token') {
+        stage = 'token_client';
         const params = await body(req);
         if (req.headers.authorization || params.get('client_id') !== CHATGPT_CLIENT) throw Error('invalid_client');
         let grant;
         if (params.get('grant_type') === 'authorization_code') {
+          stage = 'code_exchange';
           const codeHash = hash(params.get('code') || ''); grant = codes.get(codeHash);
           const verifier = params.get('code_verifier') || '';
           if (!grant || grant.expires <= now() || params.get('redirect_uri') !== grant.redirectUri ||
@@ -151,6 +169,7 @@ export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = 
           json(res,200,tokens(grant));return true;
         }
         if (params.get('grant_type') === 'refresh_token') {
+          stage = 'refresh_exchange';
           const renewalHash = hash(params.get('refresh_token') || ''); grant = refresh.get(renewalHash);
           if (!grant || grant.expires <= now() || grant.clientId !== params.get('client_id') ||
               (params.has('resource') && params.get('resource') !== grant.resource) ||
@@ -164,7 +183,7 @@ export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = 
     } catch (error) {
       const allowed = ['invalid_request','invalid_client','invalid_scope','access_denied','invalid_grant','unsupported_grant_type','temporarily_unavailable'];
       const reason = allowed.includes(error?.message) ? error.message : 'temporarily_unavailable';
-      events('OAUTH_REQUEST_DENIED',{reason});
+      events('OAUTH_REQUEST_DENIED',{reason,method:req.method,path,stage});
       json(res,reason === 'access_denied' ? 403 : reason === 'temporarily_unavailable' ? 503 : 400,{error:reason});
       return true;
     }
