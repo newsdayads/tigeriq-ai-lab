@@ -8,6 +8,13 @@ namespace TigerIQPhoneFarm;
 internal static class Program {
   [STAThread]
   private static void Main() {
+    // WinForms/WebView2 must never run in Windows Session 0. A Session-0 host can
+    // keep processes alive without any user-visible window, which makes the
+    // controller look healthy while physical UI acceptance is impossible.
+    if (Process.GetCurrentProcess().SessionId == 0 || !Environment.UserInteractive) {
+      Environment.ExitCode = 12;
+      return;
+    }
     ApplicationConfiguration.Initialize();
     Application.Run(new FarmWindow());
   }
