@@ -1874,3 +1874,19 @@ it('event reconcile immediately rearms completed-awaiting-acceptance after a sou
   expect(posted).toBe(1);
   expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REARMED')).toHaveLength(1);
 });
+
+
+it('fallback outcome sync yields before issue reconciliation when an Owner event is pending',async()=>{
+  const pool=fakePool();
+  pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:1711,codingObjectiveId:'obj-yield'}});
+  const urls=[];
+  const fetchImpl=async(url)=>{
+    urls.push(String(url));
+    if(String(url).includes('/api/status'))return response({objectives:[{id:'obj-yield',status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED'}],jobs:[]});
+    if(String(url).includes('/git/ref/heads/main'))return response({object:{sha:'a'.repeat(40)}});
+    throw new Error('unexpected fetch after cooperative yield: '+url);
+  };
+  const out=await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',yieldIf:()=>true});
+  expect(out).toEqual({progress:0,results:0});
+  expect(urls.some(url=>url.includes('/issues/1711'))).toBe(false);
+});
