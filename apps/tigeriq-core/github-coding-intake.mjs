@@ -547,9 +547,10 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
   return {created,recovered,active:active.length,considered:specs.length,...counters,skipReason:counters.freeSlots===0?'CAPACITY_FULL':null};
 }
 
-export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,now=()=>Date.now()}){
+export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,now=()=>Date.now(),issueNumbers=null}){
   const rows=(await pool.query("select distinct on ((data->>'issueNumber')::int) data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' and data ? 'issueNumber' order by ((data->>'issueNumber')::int), seq desc")).rows;
   if(!rows.length)return {progress:0,results:0};
+  const issueFilter=new Set((Array.isArray(issueNumbers)?issueNumbers:[]).map(Number).filter(n=>Number.isInteger(n)&&n>0));
   const status=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/status`);
   let currentMainSha='';
   try{currentMainSha=String((await gh(fetchImpl,owner,repo,'/git/ref/heads/main',token))?.object?.sha||'').trim()}catch(error){if(githubRateLimitCooldownMs(error)>0)throw error}
@@ -560,6 +561,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
   for(const row of rows){
     const n=Number(row.data?.issueNumber),id=String(row.data?.codingObjectiveId||'');
     if(!n||!id||seenIssues.has(n))continue;
+    if(issueFilter.size&&!issueFilter.has(n))continue;
     seenIssues.add(n);
     const objective=(status.objectives||[]).find(x=>x.id===id);
     const completedResultReported=await hasCompletedCodingResult(pool,n);
@@ -874,6 +876,19 @@ Continue only after the canonical source materially changed. Execute zero-cost r
   return {progress,results};
 }
 
+export async function reconcileGithubCodingEvent({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,issue}){
+  if(!pool)throw new Error('GITHUB_CODING_EVENT_POOL_REQUIRED');
+  const issueNumber=Number(issue?.number);
+  if(!Number.isInteger(issueNumber)||issueNumber<=0)throw new Error('GITHUB_CODING_EVENT_ISSUE_REQUIRED');
+  // Event-driven Owner/source changes must reconcile the current dispatched
+  // objective before materialization. Otherwise a completed source result that
+  // is still awaiting product/Lifecycle acceptance is hidden behind the durable
+  // dispatch marker until the five-minute fallback tick.
+  const b=await syncGithubCodingOutcomes({pool,fetchImpl,owner,repo,token,codingLaneUrl,issueNumbers:[issueNumber]});
+  const a=await materializeGithubCodingIssues({pool,fetchImpl,owner,repo,token,codingLaneUrl,openIssues:[issue]});
+  return {...a,progress:b.progress,results:b.results};
+}
+
 export function githubCodingEventIssue(payload){
   const issue=githubEventIssue(payload);
   return issue&&parseCodingIssue(issue)?issue:null;
@@ -904,8 +919,8 @@ export function startGithubCodingIntake({databaseUrl=process.env.DATABASE_URL,fe
     if(busy||githubCooldownUntil>Date.now()){pendingEvents.push(event);return}
     busy=true;
     try{
-      const a=await materializeGithubCodingIssues({pool,fetchImpl,owner,repo,token,codingLaneUrl,openIssues:[issue]});
-      console.log(JSON.stringify({event:'GITHUB_CODING_EVENT_INTAKE_SYNC',deliveryId:event.deliveryId,eventName:event.eventName,issueNumber:Number(issue.number),created:a.created,recovered:a.recovered||0,dependencyBlocked:a.dependencyBlocked||0,scopeBlocked:a.scopeBlocked||0,skipReason:a.skipReason||null}));
+      const a=await reconcileGithubCodingEvent({pool,fetchImpl,owner,repo,token,codingLaneUrl,issue});
+      console.log(JSON.stringify({event:'GITHUB_CODING_EVENT_INTAKE_SYNC',deliveryId:event.deliveryId,eventName:event.eventName,issueNumber:Number(issue.number),created:a.created,recovered:a.recovered||0,progress:a.progress||0,results:a.results||0,dependencyBlocked:a.dependencyBlocked||0,scopeBlocked:a.scopeBlocked||0,skipReason:a.skipReason||null}));
     }catch(e){applyError(e,'event')}
     finally{
       busy=false;
