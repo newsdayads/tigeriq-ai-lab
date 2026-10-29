@@ -259,10 +259,11 @@
       "status": "PARTIAL_SOURCE",
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeBackupRules.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeBackupRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayPositionRules.kt"
       ],
-      "gap": "V2-owned Home preferences, quick slots and saved/default Home configurations can be exported/imported through Storage Access Framework with bounded schema validation; V1 images/sound/other unimplemented feature data and device acceptance remain open.",
-      "actual": "HomeActivity exports and restores validated V2-owned Home state as bounded JSON via Android document pickers without broad storage permission or V1 data access.",
+      "gap": "V2-owned Home preferences, quick slots, saved/default Home configurations and per-display DeX camera overlay positions can be exported/imported through Storage Access Framework with bounded schema validation and v1→v2 backup migration; V1 images/sound/other unimplemented feature data and device acceptance remain open.",
+      "actual": "HomeActivity exports and restores validated V2-owned Home state plus bounded DeX camera overlay positions as schema-v2 JSON via Android document pickers; legacy schema-v1 backups remain readable without deleting overlay state. No broad storage permission or V1 data access is used.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.exportHomeBackupJson",
