@@ -19,4 +19,13 @@ class HomeConfigRulesTest {
         assertFalse(HomeConfigRules.canSave(21))
         assertFalse(HomeConfigRules.canSave(-1))
     }
+
+    @Test fun acceptsLegacyAndCurrentSchemasButRejectsFutureSchema() {
+        assertEquals(2, HomeConfigRules.CURRENT_SCHEMA_VERSION)
+        assertTrue(HomeConfigRules.canReadSchema(0))
+        assertTrue(HomeConfigRules.canReadSchema(1))
+        assertTrue(HomeConfigRules.canReadSchema(2))
+        assertFalse(HomeConfigRules.canReadSchema(3))
+        assertFalse(HomeConfigRules.canReadSchema(-1))
+    }
 }
