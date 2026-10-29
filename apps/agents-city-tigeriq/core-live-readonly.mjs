@@ -49,6 +49,7 @@ export function normalizeLiveCoreSnapshot(source, {now = Date.now()} = {}) {
     const employeeId = clean(raw.employee_id, 32).toUpperCase();
     const resourceId = clean(raw.resource_id, 220);
     if (!id || !/^NV\d{2}$/.test(employeeId) || !resourceId) continue;
+    const jobLeaseMs = Date.parse(raw.lease_until);
     runningJobs.set(id, {
       id,
       employeeId,
@@ -58,6 +59,7 @@ export function normalizeLiveCoreSnapshot(source, {now = Date.now()} = {}) {
       kind: clean(raw.kind, 80),
       provider: clean(raw.provider, 80),
       startedAt: clean(raw.started_at, 64),
+      jobLeaseUntil:Number.isFinite(jobLeaseMs)&&jobLeaseMs>now?new Date(jobLeaseMs).toISOString():null,
     });
   }
 
@@ -91,7 +93,11 @@ export function normalizeLiveCoreSnapshot(source, {now = Date.now()} = {}) {
     const key = employeeId + '|' + resourceId + '|' + currentJobId;
     if (seen.has(key)) continue;
     seen.add(key);
-    const lease = leases.get(resourceId + '|' + currentJobId) || null;
+    const sharedLease = leases.get(resourceId + '|' + currentJobId) || null;
+    const jobLease = !sharedLease && job.jobLeaseUntil ? {
+      role:'core-job',lane:'core',leaseUntil:job.jobLeaseUntil
+    } : null;
+    const lease = sharedLease || jobLease;
     workers.push({
       employeeId,
       resourceId,
@@ -106,6 +112,7 @@ export function normalizeLiveCoreSnapshot(source, {now = Date.now()} = {}) {
       room: roomForJob(job, raw),
       activeWorkerVerified: true,
       leaseVerified: Boolean(lease),
+      leaseSource: sharedLease ? 'shared' : jobLease ? 'job' : null,
       leaseRole: lease?.role || null,
       leaseLane: lease?.lane || null,
       leaseUntil: lease?.leaseUntil || null,
@@ -117,7 +124,7 @@ export function normalizeLiveCoreSnapshot(source, {now = Date.now()} = {}) {
 
   return {
     ok: true,
-    schema: 'tigeriq/agents-city-live@1',
+    schema: 'tigeriq/agents-city-live@2',
     source: 'TigerIQ Core /api/status',
     verifiedAt: new Date(coreTimeMs).toISOString(),
     liveWorkerBindingsVerified: true,
