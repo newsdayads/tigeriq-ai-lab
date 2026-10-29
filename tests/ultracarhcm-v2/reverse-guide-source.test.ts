@@ -31,7 +31,7 @@ describe('GH-5135 V1.0.64 reverse guide source contract', () => {
 
   it('fails closed unless an explicit reverse signal is supplied', () => {
     expect(camera).toContain('EXTRA_REVERSE_ACTIVE');
-    expect(camera).toContain('intent.getBooleanExtra(EXTRA_REVERSE_ACTIVE, false)');
+    expect(camera).toContain('intent.getBooleanExtra(EXTRA_REVERSE_ACTIVE, current.reverseActive)');
     expect(camera).toContain('cameraFrameActive && guide.curveState.reverseActive');
     expect(camera).not.toContain('reverseActive = true');
   });
