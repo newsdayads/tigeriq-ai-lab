@@ -53,6 +53,23 @@ export function codingSourceTruthRevision(issue,comments=[]){
   return ownerDirective?.id?`body-${digest}:owner-${ownerDirective.id}`:`body-${digest}`;
 }
 
+// The execution contract must not change when an operator updates progress,
+// receipts or a checklist. Only substantive coding requirements can rearm a
+// completed objective that is waiting for product acceptance.
+export function codingMaterialSourceSignature(issue={}){
+  const volatile=/^(?:CURRENT_STATE|CURRENT_STEP|NEXT_ACTION|LAST_COMPLETED_STEP|BLOCKER|BLOCKED_BY|STARTED_AT|FINISHED_AT|ETA_STATUS|TARGET_FINISH_AT|CHECKPOINT_DUE_AT|DONE|ACTIVE_EXECUTION|PROGRESS_(?:SOURCE|TOTAL|COMPLETED|VERIFIED)|SAME_FAILURE_RETRY_(?:COUNT|MAX)|VERIFICATION_(?:COUNT_CURRENT_HEAD|MAX_PER_HEAD)|LAST_FAILURE_SIGNATURE|RETRY_RESUME_TRIGGER|SOURCE_BRANCH|SOURCE_WRITER_SCOPE|OWNER_APPROVAL|AUTO_QUEUE|MUTATION_OWNER|ASSIGNED_EXECUTOR|TARGET_EMPLOYEE|START_RECEIPT_URL|FINISH_RECEIPT_URL)=/;
+  let inChecklist=false;
+  const relevant=[];
+  for(const line of String(issue?.body||'').replace(/\r/g,'').split('\n')){
+    const heading=line.match(/^##\s+([^\r\n]+)/);
+    if(heading)inChecklist=/^STRUCTURED_PROGRESS_CHECKLIST\b/i.test(heading[1].trim());
+    if(inChecklist||volatile.test(line.trim()))continue;
+    relevant.push(line);
+  }
+  const normalized=relevant.join('\n').trim().replace(/\n{3,}/g,'\n\n');
+  return createHash('sha256').update(String(issue?.title||'')).update('\n').update(normalized).digest('hex').slice(0,24);
+}
+
 export async function codingSourceRevision(fetchImpl,owner,repo,token,issue){
   let comments=[];
   const issueNumber=Number(issue?.number);
@@ -537,7 +554,7 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
       const priorDispatchObjectiveId=String((await eventData(pool,'GITHUB_CODING_DISPATCHED',spec.number))[0]?.codingObjectiveId||'');
       await mark(pool,'GITHUB_CODING_COMPLETED_REARMED',{issueNumber:spec.number,priorObjectiveId:priorResultObjectiveId||priorDispatchObjectiveId,codingObjectiveId:out.id,reopenKey:completedReopenKey,dispatchKey});
     }
-    await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:spec.number,issueUrl:spec.url,codingObjectiveId:out.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,scopeLease:spec.scopeLease,dispatchKey,sourceRevision,recoveredExisting,reopenKey:completedReopenKey||null,routing:spec.routing||null});
+    await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:spec.number,issueUrl:spec.url,codingObjectiveId:out.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,scopeLease:spec.scopeLease,dispatchKey,sourceRevision,materialSignature:codingMaterialSourceSignature({title:spec.title,body:spec.body}),recoveredExisting,reopenKey:completedReopenKey||null,routing:spec.routing||null});
     await comment(fetchImpl,owner,repo,spec.number,token,completedReopenKey?`[REOPEN_REARMED] TigerIQ Coding Lane rearmed this reopened Work Order as ${out.id}. Dispatch: ${dispatchReason}.`:recoveredExisting?`[CLAIM_RECOVERED] TigerIQ Coding Lane already had this issue as ${out.id}; durable dispatch state was restored. Dispatch: ${dispatchReason}.`:`[CLAIM] TigerIQ Coding Lane accepted this issue as ${out.id}. Automatic coding pipeline is active. Dispatch: ${dispatchReason}.`);
     activeScopes.push(spec.scopeLease);
     if(recoveredExisting)recovered++;else created++;
@@ -687,7 +704,13 @@ Continue only after the canonical source materially changed. Execute zero-cost r
     if(!objectiveTerminal(objective))continue;
     if(String(objective.status).toLowerCase()==='completed'){
       const dispatchSourceRevision=String(row.data?.sourceRevision||'').trim();
-      if(!dispatchSourceRevision||dispatchSourceRevision!==currentSourceRevision){
+      const awaiting=(await eventData(pool,'GITHUB_CODING_AWAITING_ACCEPTANCE',n))
+        .find(e=>String(e.codingObjectiveId||'')===id);
+      const priorMaterial=String(row.data?.materialSignature||awaiting?.materialSignature||'').trim();
+      const materialStable=Boolean(awaiting)&&(!priorMaterial||priorMaterial===codingMaterialSourceSignature(currentIssue));
+      // An operational Issue update is not authorization to repeat completed
+      // coding. Continue to the product acceptance gate instead of rearming.
+      if((!dispatchSourceRevision||dispatchSourceRevision!==currentSourceRevision)&&!materialStable){
         const staleKey=`GITHUB-ISSUE-${n}-STALE-${createHash('sha256').update(currentSourceRevision||'unknown').digest('hex').slice(0,12)}`;
         const rejected=(await eventData(pool,'GITHUB_CODING_STALE_RESULT_REJECTED',n)).some(x=>
           String(x.codingObjectiveId||'')===id&&String(x.currentSourceRevision||'')===currentSourceRevision
@@ -719,7 +742,7 @@ Continue only after the canonical source materially changed. Execute zero-cost r
         await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
         await mark(pool,'GITHUB_CODING_STALE_RESULT_REARMED',{issueNumber:n,priorObjectiveId:id,codingObjectiveId:rearmObjective.id,dispatchSourceRevision:dispatchSourceRevision||null,sourceRevision:currentSourceRevision||null,staleKey});
         const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
-        await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:rearmObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,sourceRevision:currentSourceRevision||null,staleKey,priorObjectiveId:id,scopeLease:spec.scopeLease});
+        await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:rearmObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,sourceRevision:currentSourceRevision||null,materialSignature:codingMaterialSourceSignature(currentIssue),staleKey,priorObjectiveId:id,scopeLease:spec.scopeLease});
         await comment(fetchImpl,owner,repo,n,token,`[STALE_RESULT_REARMED] ${rearmObjective.id} currentSourceRevision=${currentSourceRevision||'unknown'} prior=${id}`);
         retryCreatedThisTick=true;
         results++;
@@ -733,7 +756,7 @@ Continue only after the canonical source materially changed. Execute zero-cost r
         if(!gate.canClose){
           if(!(await objectiveMarkerExists(pool,'GITHUB_CODING_AWAITING_ACCEPTANCE',n,id))){
             await comment(fetchImpl,owner,repo,n,token,`[CODE_COMPLETED_AWAITING_ACCEPTANCE] objective=${id} issue=#${n} coding_source_done=true product_done=false reason=${gate.missing.join(',').slice(0,900)}. Keep GitHub open; complete the canonical issue with real Lifecycle V2 start/finish/checklist receipts and downstream acceptance before closing.`);
-            await mark(pool,'GITHUB_CODING_AWAITING_ACCEPTANCE',{issueNumber:n,codingObjectiveId:id,sourceRevision:currentSourceRevision||null,missing:gate.missing});
+            await mark(pool,'GITHUB_CODING_AWAITING_ACCEPTANCE',{issueNumber:n,codingObjectiveId:id,sourceRevision:currentSourceRevision||null,materialSignature:codingMaterialSourceSignature(currentIssue),missing:gate.missing});
             results++;
           }
           continue;
