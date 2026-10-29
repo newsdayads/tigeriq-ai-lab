@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {DEFAULT_CODING_URL,classifyCodingBlocker,codingScopesOverlap,codingSourceReconcileGate,codingSourceRevision,codingSourceTruthRevision,codingRetryEpochState,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,parseCodingTargetRepository,reconcileGithubCodingEvent,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {DEFAULT_CODING_URL,classifyCodingBlocker,codingScopesOverlap,codingSourceReconcileGate,codingSourceRevision,codingSourceTruthRevision,codingMaterialSourceSignature,codingWorkOrderFailureBudget,codingRetryEpochState,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,parseCodingTargetRepository,reconcileGithubCodingEvent,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {TERMINAL_BLOCKED_LABEL,addTerminalBlockedLabel,clearTerminalBlockedLabel,hasTerminalBlockedLabel} from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 import {parseOpenWorkIssue,parseQueueIssue,rankQueueRows} from '../api/live-status.mjs';
 
@@ -1731,7 +1731,12 @@ describe('Owner-authorized anti-loop: bounded Manager no-child stop',()=>{
     expect(finals).toHaveLength(1);
     expect(finals[0].data.reason).toBe('NO_PROGRESS_WAIT_MATERIAL_CHANGE');
     expect(shouldRearmRecoverableFinal(finals[0].data,'main-manager-v1',[],oldRevision,false)).toBe(false);
-    current={...current,body:body+'\nCURRENT_STEP=NEW_MATERIAL_SOURCE_REPAIR'};
+    // Progress-only edits must not revive an exhausted work-order cycle.
+    current={...current,body:body+'\nCURRENT_STEP=COLLECT_VERIFICATION_RECEIPT'};
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(posted).toBe(0);
+    // Only a genuinely changed task specification may rearm the source repair.
+    current={...current,body:body+'\n\n## GOAL\nImplement newly approved source-repair behavior.'};
     const newRevision=codingSourceTruthRevision({...current,repository_owner:'newsdayads'},[]);
     expect(newRevision).not.toBe(oldRevision);
     await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
@@ -1829,7 +1834,7 @@ describe('P0: pause Coding Lane for external evidence',()=>{
 });
 
 
-it('event reconcile immediately rearms completed-awaiting-acceptance after a source change exactly once',async()=>{
+it('does not rearm completed-awaiting-acceptance for a status-only source edit',async()=>{
   const pool=fakePool();
   const prior=issue(`${SAFE}\nOWNER_DIRECT=true\nRESOURCE_SCOPE=EVENT_ACCEPTANCE_REARM\nALLOW_PATH_PREFIX=tests/github-coding-intake.test.mjs`,{
     number:1701,title:'Event acceptance rearm',comments:0
@@ -1863,16 +1868,15 @@ it('event reconcile immediately rearms completed-awaiting-acceptance after a sou
   };
 
   const first=await reconcileGithubCodingEvent({pool,fetchImpl,token:'fake',issue:current});
-  expect(first.results).toBeGreaterThanOrEqual(1);
-  expect(posted).toBe(1);
-  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REJECTED')).toHaveLength(1);
-  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REARMED')).toHaveLength(1);
-  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED'&&e.data.issueNumber===1701).at(-1)?.data.codingObjectiveId).toBe('obj-1701-current');
+  expect(first.results).toBe(0);
+  expect(posted).toBe(0);
+  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REJECTED')).toHaveLength(0);
+  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REARMED')).toHaveLength(0);
+  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED'&&e.data.issueNumber===1701).at(-1)?.data.codingObjectiveId).toBe('obj-1701-old');
 
   const second=await reconcileGithubCodingEvent({pool,fetchImpl,token:'fake',issue:current});
   expect(second.results).toBe(0);
-  expect(posted).toBe(1);
-  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REARMED')).toHaveLength(1);
+  expect(posted).toBe(0);
 });
 
 
@@ -1889,4 +1893,43 @@ it('fallback outcome sync yields before issue reconciliation when an Owner event
   const out=await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',yieldIf:()=>true});
   expect(out).toEqual({progress:0,results:0});
   expect(urls.some(url=>url.includes('/issues/1711'))).toBe(false);
+});
+
+
+describe('GH-5417 work-order terminal and global retry invariants',()=>{
+  it('ignores operational receipts/checklist edits but detects a material coding contract change',()=>{
+    const prior=issue(`${SAFE}
+RESOURCE_SCOPE=GH5417_EXECUTION
+CURRENT_STATE=WORKING
+NEXT_ACTION=Wait for QA
+DONE=false
+
+## GOAL
+Repair the exact regression.
+
+## STRUCTURED_PROGRESS_CHECKLIST
+- [ ] S01 — Merge code
+- [ ] S02 — Verify runtime
+`,{title:'GH5417 regression'});
+    const operational={...prior,body:prior.body
+      .replace('CURRENT_STATE=WORKING','CURRENT_STATE=VERIFY')
+      .replace('NEXT_ACTION=Wait for QA','NEXT_ACTION=Collect receipt')
+      .replace('- [ ] S01 — Merge code','- [x] S01 — Merge code [proof](https://github.com/newsdayads/tigeriq-ai-lab/pull/5416)')};
+    expect(codingMaterialSourceSignature(prior)).toBe(codingMaterialSourceSignature(operational));
+    const newGoal={...operational,body:operational.body.replace('Repair the exact regression.','Repair the exact regression and add a new approved behavior.')};
+    expect(codingMaterialSourceSignature(prior)).not.toBe(codingMaterialSourceSignature(newGoal));
+  });
+
+  it('does not reset same-failure work-order budget on a new objective ID',()=>{
+    const spec='same-material-contract';
+    const prior=[
+      {codingObjectiveId:'attempt-A',reason:'OUTPUT_CONTRACT_EXHAUSTED',materialSignature:spec},
+      {codingObjectiveId:'attempt-B',reason:' OUTPUT_CONTRACT_EXHAUSTED ',materialSignature:spec},
+      {codingObjectiveId:'attempt-C',reason:'OUTPUT_CONTRACT_EXHAUSTED',materialSignature:'changed-material-contract'},
+    ];
+    expect(codingWorkOrderFailureBudget(prior,'OUTPUT_CONTRACT_EXHAUSTED',spec)).toBe(2);
+    expect(codingWorkOrderFailureBudget(prior,'OUTPUT_CONTRACT_EXHAUSTED','changed-material-contract')).toBe(1);
+    expect(codingWorkOrderFailureBudget(prior,'NEW_DISTINCT_FAILURE',spec)).toBe(0);
+    expect(codingWorkOrderFailureBudget(prior,'OUTPUT_CONTRACT_EXHAUSTED','')).toBe(0);
+  });
 });
