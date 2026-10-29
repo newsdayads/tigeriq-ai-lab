@@ -177,4 +177,13 @@ describe('PC01 Owner-authenticated self-hosted OAuth',()=>{
     expect(()=>createPc01AuthorizationServer({config:{...base,ownerCodeHash:''}})).toThrow('OWNER_LOGIN_NOT_CONFIGURED');
     expect(()=>createPc01AuthorizationServer({config:{...base,ownerSubject:'caller-supplied'}})).toThrow('OWNER_LOGIN_NOT_CONFIGURED');
   });
+  it('persists refresh sessions across restart and supports explicit revocation',async()=>{
+    const stored=[]; const store={load:()=>stored.slice(),save:items=>{stored.splice(0,stored.length,...items)},revoke:hash=>{const i=stored.findIndex(x=>x.hash===hash);if(i>=0)stored.splice(i,1)}};
+    const first=fixture(); const tokens=JSON.parse((await first.exchange(await first.code())).body);
+    stored.push({hash:createHash('sha256').update(tokens.refresh_token).digest('hex'),clientId:CHATGPT_CLIENT,redirectUri:CHATGPT_REDIRECT,resource,scopes:['mcp:read','pc01:execute','pc01:admin'],expires:null,familyId:'family'});
+    const restarted=createPc01AuthorizationServer({config:base,now:()=>1800000000000+365*86400000,sessionStore:store,fetchImpl:async()=>new Response(JSON.stringify({client_id:CHATGPT_CLIENT,redirect_uris:[CHATGPT_REDIRECT],token_endpoint_auth_methods_supported:['none']}))});
+    const call=(token,grant_type='refresh_token')=>{const req=Readable.from([Buffer.from(new URLSearchParams({grant_type,client_id:CHATGPT_CLIENT,...(grant_type==='revoke'?{token}:{refresh_token:token})}).toString())]);req.method='POST';req.headers={'content-type':'application/x-www-form-urlencoded'};const res={status:0,headers:{},body:'',setHeader(k,v){this.headers[k.toLowerCase()]=v},writeHead(status,v={}){this.status=status;Object.assign(this.headers,v);return this},end(v=''){this.body+=v;return this}};return restarted.handle(req,res,new URL('/oauth/token',origin)).then(()=>res)};
+    const renewed=await call(tokens.refresh_token); expect(renewed.status).toBe(200); const rotated=JSON.parse(renewed.body).refresh_token;
+    const revoked=await call(rotated,'revoke'); expect(revoked.status).toBe(204); expect(stored).toHaveLength(0);
+  });
 });
