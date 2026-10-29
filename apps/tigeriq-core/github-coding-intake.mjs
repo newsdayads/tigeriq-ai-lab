@@ -277,7 +277,7 @@ async function reopenedCompletionKey(fetchImpl,owner,repo,token,issue){
   const reopenIdentity=String(latest?.id||latest?.created_at||'reopened').replace(/[^0-9A-Za-z]/g,'').slice(-32)||'reopened';
   return `${sourceRevision}:reopen-${reopenIdentity}`;
 }
-async function hasEffectiveBlockedFinal(pool,n,fallbackSummary='',currentObjectiveId=null,currentMainSha='',currentSourceRevision='',relevantMainChanged=false){
+async function hasEffectiveBlockedFinal(pool,n,fallbackSummary='',currentObjectiveId=null,currentMainSha='',currentSourceRevision='',relevantMainChanged=false,currentMaterialSignature=''){
   const finals=await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n);
   if(!finals.length)return false;
   const latest=finals[0]||{};
@@ -291,7 +291,7 @@ async function hasEffectiveBlockedFinal(pool,n,fallbackSummary='',currentObjecti
     return false;
   }
   const rearms=await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n);
-  if(shouldRearmRecoverableFinal({...latest,terminalReason:terminalSummary},currentMainSha,rearms,currentSourceRevision,relevantMainChanged))return false;
+  if(shouldRearmRecoverableFinal({...latest,terminalReason:terminalSummary},currentMainSha,rearms,currentSourceRevision,relevantMainChanged,currentMaterialSignature))return false;
   return true;
 }
 export function classifyCodingBlocker(summary){
@@ -304,7 +304,7 @@ export function classifyCodingBlocker(summary){
   if(recoverable)return {kind:'RECOVERABLE',transient,reason:raw||'RECOVERABLE_BLOCK'};
   return {kind:'RECOVERABLE',transient:false,reason:raw||'UNCLASSIFIED_RECOVERABLE'};
 }
-export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[],currentSourceRevision='',relevantMainChanged=false){
+export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[],currentSourceRevision='',relevantMainChanged=false,currentMaterialSignature=''){
   const mainSha=String(currentMainSha||'').trim();
   const sourceRevision=String(currentSourceRevision||'').trim();
   const finalReason=String(final?.reason||'').toUpperCase();
@@ -313,6 +313,7 @@ export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[],curre
   if(classifyCodingBlocker(terminalReason).kind!=='RECOVERABLE')return false;
   const sourceChanged=Boolean(sourceRevision)&&String(final?.sourceRevision||'').trim()!==sourceRevision;
   if(!sourceChanged&&!relevantMainChanged)return false;
+  if(final?.materialSignature&&currentMaterialSignature&&String(final.materialSignature)===String(currentMaterialSignature)&&!relevantMainChanged)return false;
   const priorObjectiveId=String(final?.codingObjectiveId||'');
   return !(rearms||[]).some(x=>
     String(x?.mainSha||'').trim()===mainSha&&
@@ -324,6 +325,17 @@ export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[],curre
 // The retry budget belongs to the CURRENT dispatched objective's recovery epoch.
 // Counting every retry ever dispatched for an issue makes a newly rearmed objective
 // immediately exhaust its inherited historical budget (even without a new retry).
+export function codingWorkOrderFailureBudget(retries=[],failure='',materialSignature=''){
+  const signature=String(failure||'').trim().replace(/\s+/g,' ').toUpperCase();
+  const material=String(materialSignature||'').trim();
+  if(!signature||!material)return 0;
+  return (Array.isArray(retries)?retries:[]).filter(row=>
+    String(row?.materialSignature||'')===material&&
+    String(row?.failureSignature||row?.reason||'').trim().replace(/\s+/g,' ').toUpperCase()===signature
+  ).length;
+}
+
+// Global work-order failure budget cannot reset merely by changing objective.
 export function codingRetryEpochState(retryEvents=[],recoveryEvents=[],objectiveId=''){
   const id=String(objectiveId||'');
   const byId=new Map();
@@ -623,7 +635,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       // used for a still-visible terminal objective.
       const historicalRearms=await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n);
       if(historicalSpec&&!issueSuperseded(historicalIssue)&&
-         shouldRearmRecoverableFinal(historicalFinal,currentMainSha,historicalRearms,historicalSourceRevision,historicalEvidence.relevantMainChanged)){
+         shouldRearmRecoverableFinal(historicalFinal,currentMainSha,historicalRearms,historicalSourceRevision,historicalEvidence.relevantMainChanged,codingMaterialSourceSignature(historicalIssue))){
         if(retryCreatedThisTick)continue;
         const dependency=await dependencyGate(fetchImpl,owner,repo,token,historicalSpec.dependsOn);
         if(!dependency.ok){
@@ -654,13 +666,13 @@ Continue only after the canonical source materially changed. Execute zero-cost r
         // then keep a single explicit recovery receipt per material revision.
         await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
         await mark(pool,'GITHUB_CODING_RECOVERY_REARMED',{issueNumber:n,priorObjectiveId:id,codingObjectiveId:recovered.id,mainSha:currentMainSha,sourceRevision:historicalSourceRevision||null,sourceChanged:String(historicalFinal.sourceRevision||'')!==String(historicalSourceRevision||''),recoveryKey,historical:true});
-        await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:historicalSpec.url,codingObjectiveId:recovered.id,ownerDirect:historicalSpec.ownerDirect,sourcePriority:historicalSpec.sourcePriority,dispatchPriority:historicalSpec.priority,dispatchReason:'ARCHIVED_MATERIAL_RECOVERY',recoveryKey,sourceRevision:historicalSourceRevision||null,priorObjectiveId:id,scopeLease:historicalSpec.scopeLease});
+        await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:historicalSpec.url,codingObjectiveId:recovered.id,ownerDirect:historicalSpec.ownerDirect,sourcePriority:historicalSpec.sourcePriority,dispatchPriority:historicalSpec.priority,dispatchReason:'ARCHIVED_MATERIAL_RECOVERY',recoveryKey,sourceRevision:historicalSourceRevision||null,materialSignature:codingMaterialSourceSignature(historicalIssue),priorObjectiveId:id,scopeLease:historicalSpec.scopeLease});
         await comment(fetchImpl,owner,repo,n,token,`[ARCHIVED_RECOVERY_REARMED] ${recovered.id} prior=${id} revision=${historicalSourceRevision||'unknown'}`);
         retryCreatedThisTick=true;
         results++;
         continue;
       }
-      if(!terminalLabelSynced&&await hasEffectiveBlockedFinal(pool,n,'',historicalObjectiveId,currentMainSha,historicalSourceRevision,historicalEvidence.relevantMainChanged)){
+      if(!terminalLabelSynced&&await hasEffectiveBlockedFinal(pool,n,'',historicalObjectiveId,currentMainSha,historicalSourceRevision,historicalEvidence.relevantMainChanged,codingMaterialSourceSignature(historicalIssue))){
         await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
         await mark(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',{issueNumber:n,codingObjectiveId:historicalObjectiveId,historical:true});
       }
@@ -687,7 +699,7 @@ Continue only after the canonical source materially changed. Execute zero-cost r
       ?await relevantRecoveryMainChangeEvidence(fetchImpl,owner,repo,token,recoveryFinal.mainSha,currentMainSha,recoverySpec.scopeLease,recoveryCompareCache)
       :{relevantMainChanged:false,relevantChangedPaths:[],compareAvailable:false};
     const relevantMainChanged=recoveryEvidence.relevantMainChanged;
-    if(await hasEffectiveBlockedFinal(pool,n,objective?.summary,id,currentMainSha,currentSourceRevision,relevantMainChanged)){
+    if(await hasEffectiveBlockedFinal(pool,n,objective?.summary,id,currentMainSha,currentSourceRevision,relevantMainChanged,codingMaterialSourceSignature(currentIssue))){
       if(!(await objectiveMarkerExists(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',n,id))){
         await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
         await mark(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',{issueNumber:n,codingObjectiveId:id});
@@ -771,8 +783,8 @@ Continue only after the canonical source materially changed. Execute zero-cost r
     }
 
     const finalize=async(reason,evidence={})=>{
-      if(await hasEffectiveBlockedFinal(pool,n,objective.summary,id,currentMainSha,currentSourceRevision,relevantMainChanged))return false;
-      await mark(pool,'GITHUB_CODING_BLOCKED_FINAL',{issueNumber:n,codingObjectiveId:id,status:'blocked',reason,mainSha:currentMainSha||null,sourceRevision:currentSourceRevision||null,...evidence});
+      if(await hasEffectiveBlockedFinal(pool,n,objective.summary,id,currentMainSha,currentSourceRevision,relevantMainChanged,codingMaterialSourceSignature(currentIssue)))return false;
+      await mark(pool,'GITHUB_CODING_BLOCKED_FINAL',{issueNumber:n,codingObjectiveId:id,status:'blocked',reason,mainSha:currentMainSha||null,sourceRevision:currentSourceRevision||null,materialSignature:codingMaterialSourceSignature(currentIssue),...evidence});
       await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
       await mark(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',{issueNumber:n,codingObjectiveId:id});
       await comment(fetchImpl,owner,repo,n,token,`[BLOCKED_FINAL] ${id} reason=${reason}. ${String(objective.summary||'').slice(0,2000)}`);
@@ -817,16 +829,18 @@ Continue only after the canonical source materially changed. Execute zero-cost r
       continue;
     }
     const retryCount=retryEpoch.retryCount;
+    const materialSignature=codingMaterialSourceSignature(currentIssue);
+    const effectiveRetryCount=Math.max(retryCount,codingWorkOrderFailureBudget(retryDispatched,classification.reason,materialSignature));
     // A Manager that twice failed to produce any accepted child has no useful
     // same-revision retry. Stop immediately; rearm only after a material
     // canonical source change, without burning F1/F2 or blocking other scopes.
     const noProgressStop=/manager attempt stopped:\s*two decisions without accepted child progress/i.test(String(objective.summary||''));
     const terminalReason=noProgressStop?'NO_PROGRESS_WAIT_MATERIAL_CHANGE':'RETRY_BUDGET_EXHAUSTED';
-    if(noProgressStop||retryCount>=MAX_AUTO_RETRIES){
+    if(noProgressStop||effectiveRetryCount>=MAX_AUTO_RETRIES){
       const finals=await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n);
       const latestFinal=finals[0]||{issueNumber:n,codingObjectiveId:id,reason:terminalReason,terminalReason:classification.reason,mainSha:currentMainSha,sourceRevision:currentSourceRevision};
       const rearms=await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n);
-      if(shouldRearmRecoverableFinal(latestFinal,currentMainSha,rearms,currentSourceRevision,relevantMainChanged)){
+      if(shouldRearmRecoverableFinal(latestFinal,currentMainSha,rearms,currentSourceRevision,relevantMainChanged,materialSignature)){
         if(retryCreatedThisTick)continue;
         const blockedByActiveOwner=await activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,token,excludeObjectiveIds:[id],targetScope:spec.scopeLease});
         if(blockedByActiveOwner)continue;
@@ -843,17 +857,17 @@ Continue only after the canonical source materially changed. Execute zero-cost r
         const sourceChanged=Boolean(currentSourceRevision)&&String(latestFinal?.sourceRevision||'').trim()!==String(currentSourceRevision||'').trim();
         await mark(pool,'GITHUB_CODING_RECOVERY_REARMED',{issueNumber:n,priorObjectiveId:id,codingObjectiveId:recoveryObjective.id,mainSha:currentMainSha,priorMainSha:String(latestFinal?.mainSha||'').trim()||null,currentMainSha:currentMainSha||null,sourceRevision:currentSourceRevision||null,sourceChanged,relevantChangedPaths:recoveryEvidence.relevantChangedPaths.slice(0,32),recoveryKey,reason:classification.reason});
         const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
-        await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:recoveryObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,recoveryKey,sourceRevision:currentSourceRevision||null,priorObjectiveId:id,scopeLease:spec.scopeLease});
+        await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:recoveryObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,recoveryKey,sourceRevision:currentSourceRevision||null,materialSignature:codingMaterialSourceSignature(currentIssue),priorObjectiveId:id,scopeLease:spec.scopeLease});
         await comment(fetchImpl,owner,repo,n,token,`[RECOVERY_REARMED] ${recoveryObjective.id} source=${currentMainSha.slice(0,12)} prior=${id} reason=${classification.reason.slice(0,500)}`);
         retryCreatedThisTick=true;
         results++;
         continue;
       }
-      await finalize(terminalReason,{terminalReason:classification.reason,retries:retryCount});
+      await finalize(terminalReason,{terminalReason:classification.reason,retries:effectiveRetryCount,materialSignature});
       continue;
     }
 
-    const retryAttempt=retryCount+1;
+    const retryAttempt=effectiveRetryCount+1;
     const recoveryTag=retryEpoch.recovered
       ?`-RECOVERY-${createHash('sha256').update(retryEpoch.epochRootId).digest('hex').slice(0,12)}`:'';
     const retryKey=`GITHUB-ISSUE-${n}${recoveryTag}-RETRY-${retryAttempt}`;
@@ -891,8 +905,8 @@ Continue only after the canonical source materially changed. Execute zero-cost r
     if(!alreadyDispatched){
       await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
       const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
-      await mark(pool,'GITHUB_CODING_RETRY_DISPATCHED',{issueNumber:n,codingObjectiveId:retryObjective.id,priorObjectiveId:id,retryAttempt,retryKey,reason:classification.reason,sourceRevision:currentSourceRevision||null});
-      await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:retryObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,retryAttempt,retryKey,sourceRevision:currentSourceRevision||null,priorObjectiveId:id,scopeLease:spec.scopeLease});
+      await mark(pool,'GITHUB_CODING_RETRY_DISPATCHED',{issueNumber:n,codingObjectiveId:retryObjective.id,priorObjectiveId:id,retryAttempt,retryKey,reason:classification.reason,failureSignature:String(classification.reason||'').trim().replace(/\s+/g,' ').toUpperCase(),materialSignature,sourceRevision:currentSourceRevision||null});
+      await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:retryObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,retryAttempt,retryKey,sourceRevision:currentSourceRevision||null,materialSignature,priorObjectiveId:id,scopeLease:spec.scopeLease});
       await comment(fetchImpl,owner,repo,n,token,`[RETRY_DISPATCHED] ${retryObjective.id} prior=${id} attempt=${retryAttempt}/${MAX_AUTO_RETRIES} reason=${classification.reason.slice(0,500)}`);
       results++;
     }
