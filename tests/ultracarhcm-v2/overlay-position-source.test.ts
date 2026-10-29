@@ -18,6 +18,12 @@ describe('GH-5135 F07 DeX overlay persistence source contract', () => {
     expect(overlay).toContain('.remove("y")');
   });
 
+  it('re-attaches the current overlay when display geometry changes', () => {
+    expect(overlay).toContain('private fun update(forceReattach: Boolean = false)');
+    expect(overlay).toContain('if (!forceReattach && shortcut != null && currentId == id) return');
+    expect(overlay).toContain('update(forceReattach = displayId == currentId)');
+  });
+
   it('clamps restored positions against the active display bounds', () => {
     expect(overlay).toContain('OverlayPositionRules.clamp(');
     expect(overlay).toContain('display.mode.physicalWidth');
