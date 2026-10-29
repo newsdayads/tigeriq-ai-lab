@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {DEFAULT_CODING_URL,classifyCodingBlocker,codingScopesOverlap,codingSourceReconcileGate,codingSourceRevision,codingSourceTruthRevision,codingRetryEpochState,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,parseCodingTargetRepository,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {DEFAULT_CODING_URL,classifyCodingBlocker,codingScopesOverlap,codingSourceReconcileGate,codingSourceRevision,codingSourceTruthRevision,codingRetryEpochState,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,parseCodingTargetRepository,reconcileGithubCodingEvent,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {TERMINAL_BLOCKED_LABEL,addTerminalBlockedLabel,clearTerminalBlockedLabel,hasTerminalBlockedLabel} from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 import {parseOpenWorkIssue,parseQueueIssue,rankQueueRows} from '../api/live-status.mjs';
 
@@ -1826,4 +1826,51 @@ describe('P0: pause Coding Lane for external evidence',()=>{
     expect(parseCodingIssue(issue(base+'\nCURRENT_STATE=WORKING'))).not.toBeNull();
     expect(parseCodingIssue(issue(base+'\nCURRENT_STATE=READY_SOURCE_RECONCILIATION\n## HISTORICAL\nCURRENT_STATE=EXTERNAL_WAIT'))).not.toBeNull();
   });
+});
+
+
+it('event reconcile immediately rearms completed-awaiting-acceptance after a source change exactly once',async()=>{
+  const pool=fakePool();
+  const prior=issue(`${SAFE}\nOWNER_DIRECT=true\nRESOURCE_SCOPE=EVENT_ACCEPTANCE_REARM\nALLOW_PATH_PREFIX=tests/github-coding-intake.test.mjs`,{
+    number:1701,title:'Event acceptance rearm',comments:0
+  });
+  const current={...prior,body:prior.body+'\nCURRENT_STATE=BLOCKED_R13H_S02_NATIVE_REARM_TERMINAL_CLASSIFICATION'};
+  const oldRevision=codingSourceTruthRevision({...prior,repository_owner:'newsdayads'},[]);
+  pool.events.push(
+    {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:1701,codingObjectiveId:'obj-1701-old',sourceRevision:oldRevision,scopeLease:{resourceScope:'EVENT_ACCEPTANCE_REARM',paths:['tests/github-coding-intake.test.mjs'],ambiguous:false}}},
+    {type:'GITHUB_CODING_AWAITING_ACCEPTANCE',data:{issueNumber:1701,codingObjectiveId:'obj-1701-old',sourceRevision:oldRevision,missing:['COMPLETED_WITHOUT_VERIFIED_FINISH']}}
+  );
+  let posted=0,rearmed=null;
+  const fetchImpl=async(url,init={})=>{
+    if(url.includes('/api/status'))return response({objectives:[
+      {id:'obj-1701-old',status:'completed',summary:'Merged source result awaiting acceptance'},
+      ...(rearmed?[rearmed]:[])
+    ],jobs:[]});
+    if(url.includes('/git/ref/heads/main'))return response({object:{sha:'main-event-rearm'}});
+    if(url.includes('/issues/1701/timeline'))return response([]);
+    if(url.includes('/issues/1701/comments'))return response([]);
+    if(url.includes('/issues/1701/labels/')&&init.method==='DELETE')return new Response(null,{status:204});
+    if(url.includes('/issues/1701')&&!url.includes('/comments'))return response(current);
+    if(url.includes('/api/objectives')&&init.method==='POST'){
+      posted++;
+      const objective=JSON.parse(init.body).objective;
+      expect(objective).toContain('STALE_REARM_KEY=GITHUB-ISSUE-1701-STALE-');
+      rearmed={id:'obj-1701-current',status:'queued',objective};
+      return response({id:rearmed.id});
+    }
+    if(url.includes('/comments'))return response({});
+    return response({});
+  };
+
+  const first=await reconcileGithubCodingEvent({pool,fetchImpl,token:'fake',issue:current});
+  expect(first.results).toBeGreaterThanOrEqual(1);
+  expect(posted).toBe(1);
+  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REJECTED')).toHaveLength(1);
+  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REARMED')).toHaveLength(1);
+  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED'&&e.data.issueNumber===1701).at(-1)?.data.codingObjectiveId).toBe('obj-1701-current');
+
+  const second=await reconcileGithubCodingEvent({pool,fetchImpl,token:'fake',issue:current});
+  expect(second.results).toBe(0);
+  expect(posted).toBe(1);
+  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REARMED')).toHaveLength(1);
 });
