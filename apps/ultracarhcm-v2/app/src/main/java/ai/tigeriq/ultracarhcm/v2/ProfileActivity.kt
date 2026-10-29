@@ -4,12 +4,15 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
+import android.widget.GridLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -45,9 +48,51 @@ class ProfileActivity : ComponentActivity() {
         body.addView(text("HỒ SƠ NGƯỜI LÁI", 28f).apply {
             gravity = Gravity.START
         })
-        body.addView(text(currentVersionLabel(), 15f, Color.LTGRAY))
-        body.addView(text("Tên hiển thị", 14f))
+        body.addView(text(
+            "Bố cục tự đổi theo chiều rộng màn hình để tránh cắt nội dung trên phone/landscape/DeX.",
+            14f,
+            Color.LTGRAY,
+        ))
 
+        val widthDp = (resources.configuration.screenWidthDp.takeIf { it > 0 }
+            ?: (resources.displayMetrics.widthPixels / density).toInt())
+        val columns = ProfileLayoutRules.columnsForWidthDp(widthDp)
+        val grid = GridLayout(this).apply {
+            columnCount = columns
+            rowCount = GridLayout.UNDEFINED
+            alignmentMode = GridLayout.ALIGN_BOUNDS
+            useDefaultMargins = false
+        }
+
+        fun card(title: String): LinearLayout =
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(16), dp(16), dp(16), dp(16))
+                background = GradientDrawable().apply {
+                    setColor(Color.rgb(17, 38, 49))
+                    cornerRadius = dp(14).toFloat()
+                    setStroke(dp(1), Color.rgb(45, 96, 118))
+                }
+                addView(text(title, 18f).apply {
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                })
+            }
+
+        fun addCard(view: View, index: Int) {
+            val row = index / columns
+            val column = index % columns
+            val spec = GridLayout.spec(row, 1f)
+            val colSpec = GridLayout.spec(column, 1f)
+            val lp = GridLayout.LayoutParams(spec, colSpec).apply {
+                width = 0
+                height = ViewGroup.LayoutParams.WRAP_CONTENT
+                setMargins(dp(6), dp(6), dp(6), dp(6))
+            }
+            grid.addView(view, lp)
+        }
+
+        val localProfile = card("Hồ sơ cục bộ")
+        localProfile.addView(text("Tên hiển thị", 14f, Color.LTGRAY))
         val input = EditText(this).apply {
             setTextColor(Color.WHITE)
             setHintTextColor(Color.GRAY)
@@ -56,15 +101,14 @@ class ProfileActivity : ComponentActivity() {
             setText(homePrefs.getString("driver_name", "Driver") ?: "Driver")
             selectAll()
         }
-        body.addView(
+        localProfile.addView(
             input,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ),
         )
-
-        body.addView(Button(this).apply {
+        localProfile.addView(Button(this).apply {
             text = "LƯU HỒ SƠ"
             setOnClickListener {
                 val name = ProfileRules.normalizeDisplayName(input.text.toString())
@@ -78,23 +122,43 @@ class ProfileActivity : ComponentActivity() {
                 }
             }
         })
-        body.addView(Button(this).apply {
+        addCard(localProfile, 0)
+
+        val versionCard = card("Phiên bản")
+        versionCard.addView(text(currentVersionLabel(), 15f, Color.LTGRAY))
+        versionCard.addView(Button(this).apply {
             text = "CẬP NHẬT"
             setOnClickListener {
                 startActivity(Intent(this@ProfileActivity, UpdateActivity::class.java))
             }
         })
+        versionCard.addView(text(
+            "Kiểm tra cập nhật độc lập với thông báo; endpoint V2 vẫn fail-closed nếu chưa được xác minh.",
+            13f,
+            Color.LTGRAY,
+        ))
+        addCard(versionCard, 1)
 
-        body.addView(text(
+        val identityCard = card("Danh tính và giấy phép")
+        identityCard.addView(text(
             "Danh tính/giấy phép: chưa có nguồn dữ liệu V1 hoặc backend V2 được xác minh.",
             14f,
             Color.LTGRAY,
         ))
-        body.addView(text(
+        identityCard.addView(text(
             "Đăng ký/gia hạn: chưa triển khai để tránh giả trạng thái tài khoản hoặc license.",
             14f,
             Color.LTGRAY,
         ))
+        addCard(identityCard, 2)
+
+        body.addView(
+            grid,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
+        )
 
         return ScrollView(this).apply { addView(body) }
     }
