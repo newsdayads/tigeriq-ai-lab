@@ -31,6 +31,9 @@ internal object QuickSlotRules {
     fun normalizeLabel(value: String): String =
         value.trim().replace(Regex("\\s+"), " ").take(MAX_LABEL_LENGTH)
 
+    fun normalizeTarget(value: String): String =
+        value.trim().take(MAX_TARGET_LENGTH)
+
     fun iconFor(label: String, target: String): QuickSlotIcon {
         val normalizedLabel = normalizeLabel(label)
         val normalizedTarget = target.trim()
@@ -57,7 +60,7 @@ internal object QuickSlotRules {
         if (pieces.size != 2) return null
 
         val label = normalizeLabel(pieces[0])
-        val target = pieces[1].trim().take(MAX_TARGET_LENGTH)
+        val target = normalizeTarget(pieces[1])
         if (label.isEmpty() || !packageNamePattern.matches(target)) return null
         return QuickSlotAssignment(label, target)
     }
