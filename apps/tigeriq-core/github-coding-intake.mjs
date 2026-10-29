@@ -547,7 +547,7 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
   return {created,recovered,active:active.length,considered:specs.length,...counters,skipReason:counters.freeSlots===0?'CAPACITY_FULL':null};
 }
 
-export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,now=()=>Date.now(),issueNumbers=null}){
+export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,now=()=>Date.now(),issueNumbers=null,yieldIf=null}){
   const rows=(await pool.query("select distinct on ((data->>'issueNumber')::int) data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' and data ? 'issueNumber' order by ((data->>'issueNumber')::int), seq desc")).rows;
   if(!rows.length)return {progress:0,results:0};
   const issueFilter=new Set((Array.isArray(issueNumbers)?issueNumbers:[]).map(Number).filter(n=>Number.isInteger(n)&&n>0));
@@ -559,6 +559,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
   const recoveryCompareCache=new Map();
   let retryCreatedThisTick=false;
   for(const row of rows){
+    if(typeof yieldIf==='function'&&yieldIf())break;
     const n=Number(row.data?.issueNumber),id=String(row.data?.codingObjectiveId||'');
     if(!n||!id||seenIssues.has(n))continue;
     if(issueFilter.size&&!issueFilter.has(n))continue;
@@ -939,7 +940,11 @@ export function startGithubCodingIntake({databaseUrl=process.env.DATABASE_URL,fe
     if(githubCooldownUntil>Date.now())return;
     busy=true;
     try{
-      const b=await syncGithubCodingOutcomes({pool,fetchImpl,owner,repo,token,codingLaneUrl});
+      const b=await syncGithubCodingOutcomes({pool,fetchImpl,owner,repo,token,codingLaneUrl,yieldIf:()=>pendingEvents.length>0});
+      if(pendingEvents.length){
+        console.log(JSON.stringify({event:'GITHUB_CODING_INTAKE_YIELD_PENDING_EVENT',pendingEvents:pendingEvents.length,progress:b.progress,results:b.results}));
+        return;
+      }
       const a=await materializeGithubCodingIssues({pool,fetchImpl,owner,repo,token,codingLaneUrl});
       console.log(JSON.stringify({event:'GITHUB_CODING_INTAKE_SYNC',created:a.created,recovered:a.recovered||0,progress:b.progress,results:b.results,openIssues:a.openIssues||0,codingEligible:a.codingEligible||0,dependencyBlocked:a.dependencyBlocked||0,scopeBlocked:a.scopeBlocked||0,terminalOrDispatched:a.terminalOrDispatched||0,activeSlots:a.activeSlots||0,freeSlots:a.freeSlots||0,skipReason:a.skipReason||null,skipReasons:a.skipReasons||[]}));
     }catch(e){applyError(e,'fallback')}
