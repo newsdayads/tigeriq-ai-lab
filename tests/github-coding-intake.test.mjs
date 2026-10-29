@@ -1731,7 +1731,12 @@ describe('Owner-authorized anti-loop: bounded Manager no-child stop',()=>{
     expect(finals).toHaveLength(1);
     expect(finals[0].data.reason).toBe('NO_PROGRESS_WAIT_MATERIAL_CHANGE');
     expect(shouldRearmRecoverableFinal(finals[0].data,'main-manager-v1',[],oldRevision,false)).toBe(false);
-    current={...current,body:body+'\nCURRENT_STEP=NEW_MATERIAL_SOURCE_REPAIR'};
+    // Progress-only edits must not revive an exhausted work-order cycle.
+    current={...current,body:body+'\nCURRENT_STEP=COLLECT_VERIFICATION_RECEIPT'};
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(posted).toBe(0);
+    // Only a genuinely changed task specification may rearm the source repair.
+    current={...current,body:body+'\n\n## GOAL\nImplement newly approved source-repair behavior.'};
     const newRevision=codingSourceTruthRevision({...current,repository_owner:'newsdayads'},[]);
     expect(newRevision).not.toBe(oldRevision);
     await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
