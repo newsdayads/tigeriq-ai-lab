@@ -127,8 +127,8 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayPositionRules.kt"
       ],
-      "gap": "Per-display overlay position persistence is implemented in source; full DeX auto-launch, freeform/zone orchestration and real-device acceptance remain open.",
-      "actual": "DexUtils detects desktop/external displays; OverlayService follows display add/change/remove and now persists the draggable camera shortcut position per display with legacy x/y migration and bounds clamping.",
+      "gap": "Per-display position persistence and geometry-change recovery are implemented in source; full DeX zone/freeform orchestration and real-device acceptance remain open.",
+      "actual": "DexUtils detects desktop/external displays; OverlayService follows display add/change/remove, persists the draggable camera shortcut per display, migrates legacy x/y, clamps to active bounds, and forces re-attach when the current display geometry changes.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "DexUtils.isDesktop",
