@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.ActivityOptions
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
@@ -12,7 +13,6 @@ import android.view.TextureView
 import android.view.View
 import android.widget.Button
 import android.widget.FrameLayout
-import android.widget.LinearLayout
 import android.widget.TextView
 import java.lang.ref.WeakReference
 
@@ -22,6 +22,7 @@ class UsbCameraActivity : Activity() {
         const val EXTRA_REVERSE_ACTIVE = "ai.tigeriq.ultracarhcm.v2.extra.REVERSE_ACTIVE"
         const val EXTRA_STEERING_DEGREES = "ai.tigeriq.ultracarhcm.v2.extra.STEERING_DEGREES"
         private var visible = WeakReference<UsbCameraActivity>(null)
+
         fun toggleFromShortcut(context: Context, displayId: Int) {
             val existing = visible.get()?.takeUnless { it.isFinishing }
             val existingDisplayId = existing?.window?.decorView?.display?.displayId
@@ -60,6 +61,7 @@ class UsbCameraActivity : Activity() {
             }
         }
     }
+
     private lateinit var camera: UsbUvcController
     private lateinit var status: TextView
     private lateinit var openClose: Button
@@ -68,46 +70,81 @@ class UsbCameraActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density + 0.5f).toInt()
+
         val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         setContentView(root)
+
         val texture = TextureView(this)
         root.addView(texture, FrameLayout.LayoutParams(-1, -1))
-        guide = DynamicGuideView(this)
-        root.addView(guide, FrameLayout.LayoutParams(-1,-1))
+
+        guide = DynamicGuideView(this).apply {
+            contentDescription =
+                "Vạch lùi trực quan; Chưa hiệu chuẩn khoảng cách/góc lái và chưa nghiệm thu trên xe"
+        }
+        root.addView(guide, FrameLayout.LayoutParams(-1, -1))
         applyReverseGuideIntent(intent)
-        val controls = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(22,18,22,18)
-            setBackgroundColor(0xBB151C24.toInt())
-        }
-        val label = TextView(this).apply {
-            text="UltraCarHCM V2 — Camera USB"
-            textSize=18f; setTextColor(Color.WHITE)
-        }
-        controls.addView(label)
+
         status = TextView(this).apply {
-            text="Chưa có khung hình từ USB UVC"
-            textSize=13f;setTextColor(Color.YELLOW)
-            setPadding(0,6,0,8)
+            text = "Chưa có khung hình từ USB UVC"
+            textSize = 12f
+            setTextColor(Color.WHITE)
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+            setBackgroundColor(0x99000000.toInt())
         }
-        controls.addView(status)
-        val row = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
-        openClose = Button(this).apply { text="MỞ CAMERA USB"; setOnClickListener { toggle() } }
-        row.addView(openClose, LinearLayout.LayoutParams(0,-2,1f))
-        val back = Button(this).apply { text="ĐÓNG CỬA SỔ";setOnClickListener { finish() } }
-        row.addView(back, LinearLayout.LayoutParams(0,-2,1f))
-        controls.addView(row)
-        controls.addView(TextView(this).apply {
-            text="Guide cong chỉ hiện khi có tín hiệu lùi được truyền vào. Chưa hiệu chuẩn khoảng cách/góc lái và chưa nghiệm thu trên xe."
-            textSize=11f;setTextColor(0xFFE0E0E0.toInt())
-        })
-        root.addView(controls,FrameLayout.LayoutParams(-1,-2,Gravity.TOP))
-        camera = UsbUvcController(this,texture) { text,active ->
+        root.addView(
+            status,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM or Gravity.START,
+            ).apply {
+                leftMargin = dp(10)
+                bottomMargin = dp(10)
+            },
+        )
+
+        openClose = Button(this).apply {
+            text = "CAM"
+            textSize = 12f
+            setTextColor(Color.WHITE)
+            backgroundTintList = ColorStateList.valueOf(0xFFD84636.toInt())
+            setPadding(0, 0, 0, 0)
+            setOnClickListener { toggle() }
+        }
+        root.addView(
+            openClose,
+            FrameLayout.LayoutParams(dp(64), dp(52), Gravity.BOTTOM or Gravity.END).apply {
+                rightMargin = dp(10)
+                bottomMargin = dp(10)
+            },
+        )
+
+        val close = Button(this).apply {
+            text = "×"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            contentDescription = "ĐÓNG CỬA SỔ"
+            backgroundTintList = ColorStateList.valueOf(0x88000000.toInt())
+            setPadding(0, 0, 0, 0)
+            setOnClickListener { finish() }
+        }
+        root.addView(
+            close,
+            FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.END).apply {
+                rightMargin = dp(8)
+                topMargin = dp(8)
+            },
+        )
+
+        camera = UsbUvcController(this, texture) { text, active ->
             runOnUiThread {
                 cameraFrameActive = active
-                status.text=text
-                status.setTextColor(if(active) Color.GREEN else Color.YELLOW)
-                openClose.text=if(camera.requested) "ĐÓNG CAMERA USB" else "MỞ CAMERA USB"
+                status.text = text
+                status.setTextColor(if (active) Color.GREEN else Color.WHITE)
+                status.visibility = if (active) View.GONE else View.VISIBLE
+                updateCameraButton()
                 updateGuideVisibility()
             }
         }
@@ -115,6 +152,7 @@ class UsbCameraActivity : Activity() {
         visible = WeakReference(this)
         openCamera()
     }
+
     private fun applyReverseGuideIntent(intent: Intent) {
         val current = guide.curveState
         val reverseActive =
@@ -141,26 +179,38 @@ class UsbCameraActivity : Activity() {
             if (cameraFrameActive && guide.curveState.reverseActive) View.VISIBLE else View.GONE
     }
 
+    private fun updateCameraButton() {
+        openClose.text = "CAM"
+        openClose.contentDescription =
+            if (camera.requested) "ĐÓNG CAMERA USB" else "MỞ CAMERA USB"
+    }
+
     private fun openCamera() {
         camera.start()
-        openClose.text=if(camera.requested) "ĐÓNG CAMERA USB" else "THỬ LẠI CAMERA"
+        updateCameraButton()
     }
+
     private fun toggle() {
         if (camera.requested) {
             camera.stop()
-            status.text="Đã đóng Camera USB"
-            openClose.text="MỞ CAMERA USB"
-        } else openCamera()
+            status.text = "Đã đóng Camera USB"
+            status.visibility = View.VISIBLE
+        } else {
+            openCamera()
+        }
+        updateCameraButton()
     }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         applyReverseGuideIntent(intent)
-        if(intent.action=="ai.tigeriq.ultracarhcm.v2.TOGGLE")toggle()
+        if (intent.action == "ai.tigeriq.ultracarhcm.v2.TOGGLE") toggle()
     }
+
     override fun onDestroy() {
         camera.stop()
-        if(visible.get()===this)visible=WeakReference(null)
+        if (visible.get() === this) visible = WeakReference(null)
         super.onDestroy()
     }
 }
