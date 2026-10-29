@@ -146,15 +146,176 @@ class HomeActivity : Activity() {
         }
     }
 
-    private fun button(value: String, left: Float, top: Float, width: Float, height: Float,
-                       outline: Boolean = true, onClick: () -> Unit) {
+    private fun button(
+        value: String,
+        left: Float,
+        top: Float,
+        width: Float,
+        height: Float,
+        outline: Boolean = true,
+        onLongClick: (() -> Unit)? = null,
+        onClick: () -> Unit,
+    ) {
         val v = label(value, if (width > .30f) 18f else 13f, accent, true)
-        v.background = shape(if (outline) 0x860a141a.toInt() else 0x9a132631.toInt(),
-            if (outline) accent else Color.TRANSPARENT, 16f)
+        v.background = shape(
+            if (outline) 0x860a141a.toInt() else 0x9a132631.toInt(),
+            if (outline) accent else Color.TRANSPARENT,
+            16f,
+        )
         v.isClickable = true
         v.contentDescription = value
         v.setOnClickListener { onClick() }
+        if (onLongClick != null) {
+            // Android's long-click gesture uses the platform long-press timeout (~500 ms).
+            v.isLongClickable = true
+            v.setOnLongClickListener {
+                onLongClick()
+                true
+            }
+        }
         place(v, left, top, width, height)
+    }
+
+    private fun quickSlots(): JSONArray {
+        val stored = try {
+            JSONArray(prefs.getString("v2_quick_slots", "[]") ?: "[]")
+        } catch (e: Exception) {
+            android.util.Log.w("UltraCarV2", "Corrupt quick-slot state", e)
+            JSONArray()
+        }
+        val normalized = JSONArray()
+        for (index in 0 until QuickSlotRules.SLOT_COUNT) {
+            val item = stored.optJSONObject(index)
+            normalized.put(
+                JSONObject()
+                    .put("label", item?.optString("label", "") ?: "")
+                    .put("target", item?.optString("target", "") ?: ""),
+            )
+        }
+        return normalized
+    }
+
+    private fun saveQuickSlot(index: Int, label: String, target: String) {
+        if (index !in 0 until QuickSlotRules.SLOT_COUNT) return
+        val slots = quickSlots()
+        slots.put(
+            index,
+            JSONObject()
+                .put("label", QuickSlotRules.normalizeLabel(label))
+                .put("target", target.trim()),
+        )
+        prefs.edit().putString("v2_quick_slots", slots.toString()).apply()
+        render()
+    }
+
+    private fun clearQuickSlot(index: Int) = saveQuickSlot(index, "", "")
+
+    private fun launchQuickSlot(slot: JSONObject) {
+        val label = slot.optString("label", "Ứng dụng")
+        val target = slot.optString("target", "").trim()
+        when {
+            target.isEmpty() -> toast("Bấm giữ ô để gán ứng dụng")
+            target == QuickSlotRules.CAMERA_TARGET ->
+                startActivity(Intent(this, UsbCameraActivity::class.java))
+            else -> {
+                val launch = packageManager.getLaunchIntentForPackage(target)
+                if (launch == null) {
+                    toast("Chưa tìm thấy ứng dụng: $label")
+                } else {
+                    startActivity(launch)
+                }
+            }
+        }
+    }
+
+    private fun showCustomQuickSlotEditor(index: Int) {
+        val input = EditText(this).apply {
+            setSingleLine(true)
+            hint = "Tên ứng dụng | com.example.app"
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Gán ứng dụng cho ô ${index + 1}")
+            .setMessage("Nhập tên hiển thị và package Android, ngăn cách bằng dấu |.")
+            .setView(input)
+            .setNegativeButton("Hủy", null)
+            .setPositiveButton("Gán") { _, _ ->
+                val assignment = QuickSlotRules.parseCustomAssignment(input.text.toString())
+                if (assignment == null) {
+                    toast("Định dạng không hợp lệ")
+                } else {
+                    saveQuickSlot(index, assignment.label, assignment.target)
+                }
+            }
+            .show()
+    }
+
+    private fun showQuickSlotEditor(index: Int) {
+        val actions = arrayOf(
+            "— Bỏ gán ô này —",
+            "YouTube",
+            "Zing MP3",
+            "Spotify",
+            "Google Maps",
+            "Camera USB",
+            "Nhập ứng dụng khác…",
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Phím tắt ${index + 1}")
+            .setItems(actions) { _, which ->
+                when (which) {
+                    0 -> clearQuickSlot(index)
+                    1 -> saveQuickSlot(index, "YouTube", "com.google.android.youtube")
+                    2 -> saveQuickSlot(index, "Zing MP3", "com.zing.mp3")
+                    3 -> saveQuickSlot(index, "Spotify", "com.spotify.music")
+                    4 -> saveQuickSlot(index, "Google Maps", "com.google.android.apps.maps")
+                    5 -> saveQuickSlot(index, "Camera USB", QuickSlotRules.CAMERA_TARGET)
+                    6 -> showCustomQuickSlotEditor(index)
+                }
+            }
+            .setNegativeButton("Đóng", null)
+            .show()
+    }
+
+    private fun quickSlotGlyph(icon: QuickSlotIcon): String = when (icon) {
+        QuickSlotIcon.PLAY -> "▶"
+        QuickSlotIcon.CAR -> "CAR"
+        QuickSlotIcon.ROUTE -> "MAP"
+        QuickSlotIcon.CAMERA -> "CAM"
+        QuickSlotIcon.ADD -> "+"
+        QuickSlotIcon.APPS -> "APP"
+    }
+
+    private fun renderQuickBar() {
+        val slots = quickSlots()
+        val slotWidth = .284f
+        val slotHeight = .038f
+        val leftStart = .054f
+        val columnGap = .020f
+        val rowGap = .006f
+
+        // V1.0.64 lifted the three-row cluster by 50dp toward the vehicle tail.
+        val baselineTopPx = root.height * .69f
+        val liftedTop = ((baselineTopPx - dp(50)).coerceAtLeast(root.height * .56f)) / root.height
+
+        for (index in 0 until QuickSlotRules.SLOT_COUNT) {
+            val row = index / 3
+            val column = index % 3
+            val slot = slots.optJSONObject(index) ?: JSONObject()
+            val label = slot.optString("label", "")
+            val target = slot.optString("target", "")
+            val icon = QuickSlotRules.iconFor(label, target)
+            val title = if (label.isBlank()) "Ô ${index + 1}" else label
+            button(
+                value = "${quickSlotGlyph(icon)}  $title",
+                left = leftStart + column * (slotWidth + columnGap),
+                top = liftedTop + row * (slotHeight + rowGap),
+                width = slotWidth,
+                height = slotHeight,
+                outline = false,
+                onLongClick = { showQuickSlotEditor(index) },
+                onClick = { launchQuickSlot(slot) },
+            )
+        }
     }
 
     private fun render() {
@@ -191,6 +352,8 @@ class HomeActivity : Activity() {
 
         image(if (prefs.getBoolean("limo", false)) R.drawable.v2_car_limo_do_parked
               else R.drawable.v2_car_lambogini_trang_parked, .295f, .458f, .41f, .242f)
+
+        renderQuickBar()
 
         button("KHỞI ĐỘNG", .028f, .78f, .79f, .063f) {
             AlertDialog.Builder(this).setTitle("Chưa nghiệm thu chức năng Khởi động")
