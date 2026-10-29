@@ -276,12 +276,21 @@
     {
       "id": "F14",
       "expected": "Profile, identity/license, greeting and registration/extension",
-      "status": "NOT_IMPLEMENTED",
-      "sourceEvidence": [],
-      "gap": "No corresponding V2 profile/auth implementation found; Home driver display name is not feature parity.",
-      "actual": "No scoped V2 profile/identity/license/registration implementation is present; driver display name alone is not parity.",
-      "testStatus": "NOT_TESTED_NO_IMPLEMENTATION",
-      "entryPoints": [],
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt"
+      ],
+      "gap": "Local driver profile display name and runtime app version header are implemented from verified V1 profile evidence; identity/license backend, registration/extension and full responsive V1 profile-card parity remain unverified and are intentionally not fabricated.",
+      "actual": "ProfileActivity shows the real installed V2 version/build, edits the same device-local driver display name used by Home, and explicitly leaves license/registration unavailable until a verified backend contract exists.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "HomeActivity.showSettings",
+        "ProfileActivity.onCreate",
+        "ProfileRules.normalizeDisplayName",
+        "ProfileRules.versionLabel"
+      ],
       "permissions": []
     },
     {
