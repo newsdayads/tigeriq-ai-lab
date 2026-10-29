@@ -423,14 +423,18 @@
       "status": "PARTIAL_SOURCE",
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileLayoutRules.kt",
         "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml"
       ],
-      "gap": "Home uses proportional placement and handles configuration changes; required profile-card layouts and device-size acceptance are absent.",
-      "actual": "HomeActivity uses proportional placement and re-renders on configuration changes; required phone/landscape/DeX profile-card layouts have not been device-accepted.",
+      "gap": "Profile source now reflows one/two/three columns by width for compact phone, landscape/tablet and wide DeX, but exact V1 card styling and real-device clipping acceptance are still open.",
+      "actual": "ProfileActivity groups local profile, runtime version/update and fail-closed identity/license status into responsive cards. ProfileLayoutRules uses 1 column below 600dp, 2 columns at 600–959dp and 3 columns at 960dp+; Android recreation on configuration changes rebuilds the layout.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.onConfigurationChanged",
-        "HomeActivity.render"
+        "ProfileActivity.onCreate",
+        "ProfileActivity.buildContent",
+        "ProfileLayoutRules.columnsForWidthDp"
       ],
       "permissions": []
     },
