@@ -57,6 +57,8 @@ test('Windows package fails closed on pinned runtime provenance and records lice
   assert.ok(source.includes("nodeSha256='3602F2BB1A10F2CBAB4C36886218A33C1AB3DB87290E73B033C46C77147D0237'"));
   assert.ok(source.includes("webView2LoaderSha256='3426DCC55FDFB8B5E7AC623CF33B4CCF283FBF68A0C5A65BDDFDB4D749A8ABEE'"));
   assert.ok(source.includes("$dotnetSdkPattern='^8\\.0\\.\\d+$'"));
+  assert.ok(source.includes("dotnet --list-sdks"));
+  assert.ok(source.includes("rollForward='disable'"));
   assert.ok(source.includes("Assert-Sha256 $node $nodeSha256 'Node.js'"));
   assert.ok(source.includes("Assert-AuthenticodePublisher $node $nodePublisherPattern 'Node.js'"));
   assert.ok(source.includes("Assert-Sha256 $webView2Loader $webView2LoaderSha256 'WebView2Loader.dll'"));
