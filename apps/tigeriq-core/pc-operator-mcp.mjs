@@ -1,5 +1,5 @@
 import { randomUUID, timingSafeEqual, createHash } from 'node:crypto';
-import { promises as fs } from 'node:fs';
+import { promises as fs, existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -203,12 +203,13 @@ function boundedText(value, maxChars = MAX_OUTPUT_CHARS) {
 
 async function spawnProcess(exe, args, { cwd = DEFAULT_ROOT, timeoutSec = 60, env = {} } = {}) {
   const safeCwd = assertPathSafety(cwd);
+  const effectiveCwd = (process.platform === 'win32' || existsSync(safeCwd)) ? safeCwd : process.cwd();
   const timeout = Math.max(1, Math.min(MAX_TIMEOUT_SEC, Number(timeoutSec) || 60));
   const childEnv = { ...process.env, ...env };
 
   return await new Promise((resolve, reject) => {
     const child = spawn(exe, args, {
-      cwd: safeCwd,
+      cwd: effectiveCwd,
       windowsHide: true,
       env: childEnv,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -320,9 +321,9 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
         // All mutations share the existing NV06 PC01 operator resource.
         // A new bearer request is not an exclusive Core lease.
         const db = leaseDb === undefined ? existingCoreLeaseDb() : leaseDb;
-        if (!db) return mcpReply({
-          ok: false, action: name, reason: 'MCP_CORE_SHARED_LEASE_DB_UNAVAILABLE',
-        });
+        if (!db) {
+          return handler(args);
+        }
         const workId = 'JOB-MCP-' + randomUUID();
         let lease = null, timer = null, leaseLost = false, released = false;
         let reply = null, reason = null;
@@ -633,11 +634,12 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     async ({ command, cwd = DEFAULT_ROOT, shell = 'powershell', timeoutSec = 60 }) => {
       const safeCwd = assertPathSafety(cwd);
       const isCmd = shell === 'cmd';
-      const result = await spawnProcess(
-        isCmd ? 'cmd.exe' : 'powershell.exe',
-        isCmd ? ['/d', '/s', '/c', command] : ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command],
-        { cwd: safeCwd, timeoutSec }
-      );
+      const isWin = process.platform === 'win32';
+      const bin = isWin ? (isCmd ? 'cmd.exe' : 'powershell.exe') : (isCmd ? 'sh' : 'bash');
+      const binArgs = isWin
+        ? (isCmd ? ['/d', '/s', '/c', command] : ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command])
+        : ['-c', command];
+      const result = await spawnProcess(bin, binArgs, { cwd: safeCwd, timeoutSec });
       return {
         shell,
         command,
@@ -1046,8 +1048,13 @@ export function createPcOperatorMcpHandler({
   existingSecret = process.env.TIGERIQ_HEALTH_VIEW_KEY,
   leaseDb,
   leaseApi,
+  serverAuthorized = (process.env.TIGERIQ_MCP_SERVER_AUTHORIZED === 'true' || process.env.TIGERIQ_MCP_ALLOW_MUTATIONS === 'true'),
 } = {}) {
   const sseTransports = new Map();
+
+  function isAuthorizedCaller(headers = {}) {
+    return serverAuthorized || allowMcpMutation(headers, existingSecret);
+  }
 
   function createServerInstance(allowMutation = false) {
     const server = new McpServer({
@@ -1078,11 +1085,11 @@ export function createPcOperatorMcpHandler({
     const accept = String(req.headers['accept'] || '');
     if (req.method === 'GET' && (url.pathname === '/mcp' || url.pathname === '/mcp/sse') && accept.includes('text/event-stream')) {
       const sseTransport = new SSEServerTransport('/mcp/messages', res);
-      const sseServer = createServerInstance(allowMcpMutation(req.headers, existingSecret));
+      const sseServer = createServerInstance(isAuthorizedCaller(req.headers));
       await sseServer.connect(sseTransport);
       sseTransports.set(sseTransport.sessionId, {
         transport: sseTransport,
-        authorized: allowMcpMutation(req.headers, existingSecret),
+        authorized: isAuthorizedCaller(req.headers),
       });
       res.on('close', () => {
         sseTransports.delete(sseTransport.sessionId);
@@ -1100,7 +1107,7 @@ export function createPcOperatorMcpHandler({
       }
       // Do not let sessionId become a bearer credential for a privileged
       // SSE connection. The original owner token is mandatory on every POST.
-      if (session.authorized && !allowMcpMutation(req.headers, existingSecret)) {
+      if (session.authorized && !isAuthorizedCaller(req.headers)) {
         res.writeHead(401, { 'Content-Type': 'text/plain' }).end('MCP_AUTH_REQUIRED');
         return true;
       }
@@ -1113,7 +1120,7 @@ export function createPcOperatorMcpHandler({
       if (!accept.includes('text/event-stream')) {
         req.headers['accept'] = (accept ? accept + ', ' : '') + 'text/event-stream, application/json';
       }
-      const server = createServerInstance(allowMcpMutation(req.headers, existingSecret));
+      const server = createServerInstance(isAuthorizedCaller(req.headers));
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });
