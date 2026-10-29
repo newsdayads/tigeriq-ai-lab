@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { generateKeyPairSync, createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
+test.use({channel:'chrome'});
 import { createPc01AuthorizationServer, ownerCodeDigest, CHATGPT_CLIENT, CHATGPT_REDIRECT } from '../../apps/tigeriq-core/pc01-authorization-server.mjs';
 
 test('PC01 consent reaches only the exact ChatGPT callback as GET without Owner credentials', async ({ page, context }) => {
