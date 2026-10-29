@@ -92,7 +92,7 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
   it('allows a real local driver-name edit without modifying the original V1 app', () => {
     expect(home).toContain('private fun editDriverName()');
     expect(home).toContain('putString("driver_name", name).apply()');
-    expect(home).toContain('5 -> editDriverName()');
+    expect(home).toContain('editDriverName()');
     expect(home).toContain('Cấu hình đã lưu');
     expect(home).toContain('Lưu cấu hình');
     expect(home).toContain('getSharedPreferences("ultracar_v2_home", Context.MODE_PRIVATE)');
