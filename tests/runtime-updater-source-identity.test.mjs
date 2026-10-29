@@ -7,7 +7,7 @@ test('recovery helper is unique and does not duplicate updater code',()=>{
   expect(source.match(/function Runtime-Source-Dirty/g)).toHaveLength(1);
   expect(source.match(/function Restart-Core/g)).toHaveLength(1);
   expect(source.match(/function Gates-Pass/g)).toHaveLength(1);
-  expect(source.length).toBeLessThan(62000); // Five-session guard adds bounded fail-closed topology checks.
+  expect(source.length).toBeLessThan(65000); // Includes bounded MCP Funnel gateway lifecycle checks without duplicating updater code.
 });
 test('installed metadata must match worktree and be a valid known commit',()=>{
   const block=source.slice(source.indexOf('function Resolve-DeployedSourceSha'),source.indexOf('function Runtime-Source-Dirty'));
@@ -33,3 +33,17 @@ test('old installed baseline uses existing guarded apply, restart and rollback p
   expect(source).toContain('Invoke-RuntimeRollback $previousRuntimeSha $remote $impact');
   expect(source).toContain("if(-not $gateSha){Save-State @{result='WAIT_GATES'");
 });
+test('reconciles standalone MCP Funnel gateway only through exact supervised topology',()=>{
+  expect(source.match(/function Reconcile-McpFunnelGatewayRuntime/g)).toHaveLength(1);
+  expect(source).toContain("$mcpGatewayServerPath='D:\\TigerIQ\\Runtime\\McpFunnelGateway\\server.mjs'");
+  expect(source).toContain("$mcpGatewaySupervisorPaths=@('D:\\TigerIQ\\Runtime\\McpFunnelGateway\\run-mcp-gateway.cmd','D:\\TigerIQ\\Runtime\\McpFunnelGateway\\run-mcp-gateway.ps1')");
+  expect(source).toContain("reason='MCP_GATEWAY_TOPOLOGY_UNVERIFIED'");
+  expect(source).toContain("$supervisors.Count -ne 1 -or $children.Count -ne 1");
+  expect(source).toContain("Stop-Process -Id $oldPid -Force -ErrorAction Stop");
+  expect(source).toContain("[int]$new[0].ProcessId -ne $oldPid");
+  expect(source).toContain("Test-TcpPort '127.0.0.1' $mcpGatewayPort");
+  expect(source).toContain("$mcpGatewayReconcile=Reconcile-McpFunnelGatewayRuntime $local");
+  expect(source).toContain("$mcpGatewayReconcile=Reconcile-McpFunnelGatewayRuntime $remote");
+  expect(source).toContain("$mcpRollback=if(-not $CanaryMode){Reconcile-McpFunnelGatewayRuntime $previousRuntimeSha}");
+});
+
