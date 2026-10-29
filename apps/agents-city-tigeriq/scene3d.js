@@ -99,8 +99,11 @@
       const t=Math.PI*i/nlat,T=Math.PI*(i+1)/nlat;
       const p=2*Math.PI*j/nlon,P=2*Math.PI*(j+1)/nlon;
       const a=pt(t,p),b=pt(T,p),c=pt(T,P),d=pt(t,P);
-      const normal=[0,1,0];
-      tri(a,b,c,normal,col);tri(a,c,d,normal,col);
+      const radial=q=>{
+        const v=[(q[0]-x)/rx,(q[1]-y)/ry,(q[2]-z)/rz];
+        const length=Math.hypot(...v)||1;return v.map(w=>w/length);
+      };
+      tri(a,b,c,radial(a),col);tri(a,c,d,radial(d),col);
     }
   }
   function ear(x,y,z,col){
