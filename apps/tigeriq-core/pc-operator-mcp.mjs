@@ -777,7 +777,33 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     'Kiểm tra tình trạng Docker daemon và các container trên PC01.',
     {},
     async () => {
-      const psRes = await spawnProcess('docker.exe', ['ps', '-a', '--format', '{{json .}}'], { timeoutSec: 20 });
+      let psRes = null;
+      let source = 'windows';
+      const isWin = process.platform === 'win32';
+      const dockerBin = isWin ? 'docker.exe' : 'docker';
+      try {
+        psRes = await spawnProcess(dockerBin, ['ps', '-a', '--format', '{{json .}}'], { timeoutSec: 20 });
+      } catch (err) {
+        psRes = { exitCode: -1, stdout: '', stderr: String(err?.message || err), timedOut: false, error: err?.code || 'ENOENT' };
+      }
+
+      if ((psRes.exitCode !== 0 || !psRes.stdout) && isWin) {
+        // Fallback to WSL Ubuntu Docker Engine
+        try {
+          const wslRes = await spawnProcess('wsl.exe', ['-d', 'Ubuntu', 'docker', 'ps', '-a', '--format', '{{json .}}'], { timeoutSec: 20 });
+          if (wslRes.exitCode === 0) {
+            psRes = wslRes;
+            source = 'wsl-ubuntu';
+          } else {
+            const wslGen = await spawnProcess('wsl.exe', ['docker', 'ps', '-a', '--format', '{{json .}}'], { timeoutSec: 20 });
+            if (wslGen.exitCode === 0) {
+              psRes = wslGen;
+              source = 'wsl';
+            }
+          }
+        } catch {}
+      }
+
       let containers = [];
       if (psRes.exitCode === 0 && psRes.stdout) {
         containers = psRes.stdout.split(/\r?\n/).filter(Boolean).map((line) => {
@@ -788,7 +814,8 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
         dockerAvailable: psRes.exitCode === 0,
         containerCount: containers.length,
         containers,
-        error: psRes.exitCode !== 0 ? psRes.stderr : null,
+        source: psRes.exitCode === 0 ? source : null,
+        error: psRes.exitCode !== 0 ? (psRes.stderr || psRes.error || null) : null,
       };
     }
   );
@@ -816,15 +843,21 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     {},
     async () => {
       try {
-        return await executePcActionImpl({ action: 'pad_windows' });
-      } catch (err) {
-        const ps = `Get-Process | Where-Object { $_.MainWindowTitle } | Select-Object Id, ProcessName, MainWindowTitle | ConvertTo-Json -Compress`;
-        const res = await spawnProcess('powershell.exe', ['-NoProfile', '-Command', ps], { timeoutSec: 10 });
-        try {
-          return { fallback: true, windows: JSON.parse(res.stdout || '[]') };
-        } catch {
-          throw err;
+        const brokerRes = await executePcActionImpl({ action: 'pad_windows' });
+        const dataResult = brokerRes?.data?.result || brokerRes?.result;
+        const windows = Array.isArray(dataResult) ? dataResult : [];
+        if (windows.length > 0) {
+          return { brokerAvailable: true, count: windows.length, windows, brokerRes };
         }
+      } catch {}
+      const ps = `Get-Process | Where-Object { $_.MainWindowTitle } | Select-Object Id, ProcessName, MainWindowTitle | ConvertTo-Json -Compress`;
+      const res = await spawnProcess('powershell.exe', ['-NoProfile', '-Command', ps], { timeoutSec: 10 });
+      try {
+        const raw = JSON.parse(res.stdout || '[]');
+        const windows = Array.isArray(raw) ? raw : [raw];
+        return { brokerAvailable: false, fallback: true, count: windows.length, windows };
+      } catch {
+        return { brokerAvailable: false, fallback: true, count: 0, windows: [] };
       }
     }
   );
@@ -885,12 +918,17 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
         'pad_keys',
       ]).describe('Hành động UI cần thực hiện'),
       windowName: z.string().optional().describe('Tên tiêu đề cửa sổ'),
+      windowTitle: z.string().optional().describe('Bí danh tiêu đề cửa sổ (tương đương windowName)'),
+      processId: z.number().int().positive().optional().describe('PID của tiến trình cửa sổ mục tiêu'),
+      pid: z.number().int().positive().optional().describe('PID của tiến trình (bí danh processId)'),
+      processName: z.string().optional().describe('Tên tiến trình (notepad, calc, chrome...)'),
+      className: z.string().optional().describe('Tên lớp Win32 (Edit, Button...)'),
       name: z.string().optional().describe('Tên phần tử UI'),
       automationId: z.string().optional().describe('AutomationId của phần tử UI'),
       controlType: z.string().optional().describe('Loại phần tử UI (Button, Edit, Text...)'),
       match: z.enum(['exact', 'contains']).optional().describe('Kiểu so khớp tên (exact/contains)'),
       value: z.string().optional().describe('Giá trị cần nhập khi action = pad_set_value'),
-      key: z.string().optional().describe('Phím tắt cần bấm khi action = pad_keys (ENTER, ESC, TAB, F5...)'),
+      key: z.string().optional().describe('Phím tắt cần bấm khi action = pad_keys (ENTER, ESC, TAB, CTRL+S, F5...)'),
     },
     async (args) => {
       return await executePcActionImpl(args);

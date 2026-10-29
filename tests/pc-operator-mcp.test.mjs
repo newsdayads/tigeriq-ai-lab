@@ -700,4 +700,97 @@ describe('TigerIQ PC Operator MCP Server', () => {
       try { await fs.promises.unlink(testFile); } catch {}
     }
   });
+
+  it('handles docker_status gracefully without throwing ENOENT', async () => {
+    const handler = createPcOperatorMcpHandler({ serverAuthorized: true });
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url, 'http://localhost');
+      const handled = await handler(req, res, url);
+      if (!handled) res.writeHead(404).end();
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 60,
+          method: 'tools/call',
+          params: {
+            name: 'docker_status',
+            arguments: {},
+          },
+        }),
+      });
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).toContain('dockerAvailable');
+      expect(text).toContain('containerCount');
+    } finally {
+      server.close();
+    }
+  });
+
+  it('handles ui_window_list with structured window response', async () => {
+    const handler = createPcOperatorMcpHandler({
+      serverAuthorized: true,
+      executePcActionImpl: async () => ({
+        ok: true,
+        data: {
+          result: [
+            { Name: 'Notepad', ProcessId: 1234, Process: 'notepad', X: 10, Y: 10, Width: 400, Height: 300 }
+          ]
+        }
+      })
+    });
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url, 'http://localhost');
+      const handled = await handler(req, res, url);
+      if (!handled) res.writeHead(404).end();
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 61,
+          method: 'tools/call',
+          params: {
+            name: 'ui_window_list',
+            arguments: {},
+          },
+        }),
+      });
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).toContain('Notepad');
+      expect(text).toContain('brokerAvailable');
+    } finally {
+      server.close();
+    }
+  });
+
+  it('validates pad-ui request parameters for PID, windowTitle, className and CTRL+S', async () => {
+    const { assertPadUiRequest } = await import('../apps/openclaw-tigeriq-runtime/pad-ui.mjs');
+    expect(assertPadUiRequest({ action: 'pad_keys', key: 'CTRL+S' })).toEqual({ action: 'pad_keys', key: 'CTRL+S' });
+    expect(assertPadUiRequest({ action: 'pad_windows', windowTitle: 'Notepad', processId: 1234 })).toEqual({
+      action: 'pad_windows',
+      windowName: 'Notepad',
+      processId: 1234,
+    });
+    expect(assertPadUiRequest({ action: 'pad_set_value', className: 'Edit', value: 'Hello' })).toEqual({
+      action: 'pad_set_value',
+      className: 'Edit',
+      value: 'Hello',
+    });
+  });
 });
