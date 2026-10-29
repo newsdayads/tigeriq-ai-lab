@@ -50,6 +50,7 @@ $sourceDir=Join-Path $OutputPath 'windows'
 New-Item -ItemType Directory -Path $sourceDir -Force | Out-Null
 Copy-Item (Join-Path $PSScriptRoot 'Program.cs') (Join-Path $sourceDir 'Program.cs') -Force
 Copy-Item (Join-Path $PSScriptRoot 'TigerIQPhoneFarm.csproj') (Join-Path $sourceDir 'TigerIQPhoneFarm.csproj') -Force
+Copy-Item (Join-Path $PSScriptRoot 'package-windows.ps1') (Join-Path $sourceDir 'package-windows.ps1') -Force
 Copy-Item (Join-Path $PSScriptRoot 'install-user.ps1') (Join-Path $OutputPath 'install-user.ps1') -Force
 Copy-Item (Join-Path $PSScriptRoot 'uninstall-user.ps1') (Join-Path $OutputPath 'uninstall-user.ps1') -Force
 $node=(Get-Command node -ErrorAction Stop).Source
