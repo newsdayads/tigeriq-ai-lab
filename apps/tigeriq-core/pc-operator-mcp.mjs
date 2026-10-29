@@ -315,7 +315,8 @@ export function pcOperatorTestRunSpec(testPath, {
   const segments = normalized.split('/');
   if (!normalized.startsWith('tests/') || segments.some(p => !p || p === '.' || p === '..')
     || !segments.slice(1, -1).every(p => /^[A-Za-z0-9_.-]+$/.test(p))
-    || !/^[A-Za-z0-9_.-]+\\.test\\.(?:mjs|js|ts|tsx)$/.test(segments.at(-1)))
+    || !/^[A-Za-z0-9_.-]+$/.test(segments.at(-1))
+    || !['.test.mjs', '.test.js', '.test.ts', '.test.tsx'].some(ext => segments.at(-1).endsWith(ext)))
     throw new Error('MCP_TEST_PATH_NOT_ALLOWED');
   return {
     exe: nodeExecutable,
