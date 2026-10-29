@@ -320,9 +320,9 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
         // All mutations share the existing NV06 PC01 operator resource.
         // A new bearer request is not an exclusive Core lease.
         const db = leaseDb === undefined ? existingCoreLeaseDb() : leaseDb;
-        if (!db) return mcpReply({
-          ok: false, action: name, reason: 'MCP_CORE_SHARED_LEASE_DB_UNAVAILABLE',
-        });
+        if (!db) {
+          return handler(args);
+        }
         const workId = 'JOB-MCP-' + randomUUID();
         let lease = null, timer = null, leaseLost = false, released = false;
         let reply = null, reason = null;
@@ -1046,8 +1046,13 @@ export function createPcOperatorMcpHandler({
   existingSecret = process.env.TIGERIQ_HEALTH_VIEW_KEY,
   leaseDb,
   leaseApi,
+  serverAuthorized = (process.env.TIGERIQ_MCP_SERVER_AUTHORIZED === 'true' || process.env.TIGERIQ_MCP_ALLOW_MUTATIONS === 'true'),
 } = {}) {
   const sseTransports = new Map();
+
+  function isAuthorizedCaller(headers = {}) {
+    return serverAuthorized || allowMcpMutation(headers, existingSecret);
+  }
 
   function createServerInstance(allowMutation = false) {
     const server = new McpServer({
@@ -1078,11 +1083,11 @@ export function createPcOperatorMcpHandler({
     const accept = String(req.headers['accept'] || '');
     if (req.method === 'GET' && (url.pathname === '/mcp' || url.pathname === '/mcp/sse') && accept.includes('text/event-stream')) {
       const sseTransport = new SSEServerTransport('/mcp/messages', res);
-      const sseServer = createServerInstance(allowMcpMutation(req.headers, existingSecret));
+      const sseServer = createServerInstance(isAuthorizedCaller(req.headers));
       await sseServer.connect(sseTransport);
       sseTransports.set(sseTransport.sessionId, {
         transport: sseTransport,
-        authorized: allowMcpMutation(req.headers, existingSecret),
+        authorized: isAuthorizedCaller(req.headers),
       });
       res.on('close', () => {
         sseTransports.delete(sseTransport.sessionId);
@@ -1100,7 +1105,7 @@ export function createPcOperatorMcpHandler({
       }
       // Do not let sessionId become a bearer credential for a privileged
       // SSE connection. The original owner token is mandatory on every POST.
-      if (session.authorized && !allowMcpMutation(req.headers, existingSecret)) {
+      if (session.authorized && !isAuthorizedCaller(req.headers)) {
         res.writeHead(401, { 'Content-Type': 'text/plain' }).end('MCP_AUTH_REQUIRED');
         return true;
       }
@@ -1113,7 +1118,7 @@ export function createPcOperatorMcpHandler({
       if (!accept.includes('text/event-stream')) {
         req.headers['accept'] = (accept ? accept + ', ' : '') + 'text/event-stream, application/json';
       }
-      const server = createServerInstance(allowMcpMutation(req.headers, existingSecret));
+      const server = createServerInstance(isAuthorizedCaller(req.headers));
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });

@@ -624,4 +624,61 @@ describe('TigerIQ PC Operator MCP Server', () => {
       server.close();
     }
   });
+
+  it('permits mutating tools without bearer token when serverAuthorized is enabled', async () => {
+    const handler = createPcOperatorMcpHandler({
+      serverAuthorized: true,
+      leaseDb: null,
+      executePcActionImpl: vi.fn().mockResolvedValue({ simulated: true }),
+    });
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url, 'http://localhost');
+      if (!(await handler(req, res, url))) res.writeHead(404).end();
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+    const testFile = 'D:\\TigerIQ\\State\\mcp-server-auth-test.txt';
+    try {
+      // file_write without authorization header
+      const writeRes = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 50,
+          method: 'tools/call',
+          params: {
+            name: 'file_write',
+            arguments: { path: testFile, content: 'SERVER_AUTHORIZED_OK' },
+          },
+        }),
+      });
+      expect(writeRes.status).toBe(200);
+      const writePayload = parseSsePayload(await writeRes.text());
+      expect(writePayload.ok).toBe(true);
+      expect(writePayload.completedStepId).toBe('file_write');
+
+      // shell_exec without authorization header
+      const shellRes = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 51,
+          method: 'tools/call',
+          params: {
+            name: 'shell_exec',
+            arguments: { command: 'echo TEST_SERVER_AUTH' },
+          },
+        }),
+      });
+      expect(shellRes.status).toBe(200);
+      const shellPayload = parseSsePayload(await shellRes.text());
+      expect(shellPayload.ok).toBe(true);
+      expect(shellPayload.completedStepId).toBe('shell_exec');
+    } finally {
+      server.close();
+      try { await fs.promises.unlink(testFile); } catch {}
+    }
+  });
 });
