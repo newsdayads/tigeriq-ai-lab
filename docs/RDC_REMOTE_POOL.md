@@ -4,6 +4,12 @@ Status: CURRENT
 Updated: 2026-10-05
 Scope: Remote Desktop Commander (RDC) multi-account pool on PC01
 
+## PC01 CHANNEL ORDER — OWNER 2026-10-30
+- PC01 device actions: **authenticated TigerIQ PC01 OAuth MCP first** (read-only capability/health check, then action with real receipt), **RDC pool second** only if MCP is unavailable or lacks the capability and the exact RDC action is independently authorized.
+- Do not use RDC or another connector to circumvent MCP authentication, scope, UAC, security denial, one-writer lease, production gate or a host tool rejection. Do not retry an uncertain mutation across channels before checking its receipt.
+- GitHub/Google Drive actions use their native connectors rather than PC01 transport. Every new session must verify which MCP tools and RDC account links are actually exposed.
+- Keep all HARD ROUTING, quota selection, account tie-breaking, failover and audit rules below unchanged.
+
 ## HARD ROUTING — P0 OWNER OVERRIDE 2026-10-15
 - Applies to every **already-authorized** ChatGPT-to-RDC operation within TigerIQ, not only the `RDC CHECK` shortcut. It does not authorize a new device action by itself.
 - Before starting each independent RDC operation, inspect the currently exposed linked accounts via `who_am_i` and `list_devices` (account metadata reads only). Use fresh actual connector readings; never pin one account or rely on an earlier quota snapshot.
