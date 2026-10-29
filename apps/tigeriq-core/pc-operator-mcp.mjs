@@ -633,11 +633,12 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     async ({ command, cwd = DEFAULT_ROOT, shell = 'powershell', timeoutSec = 60 }) => {
       const safeCwd = assertPathSafety(cwd);
       const isCmd = shell === 'cmd';
-      const result = await spawnProcess(
-        isCmd ? 'cmd.exe' : 'powershell.exe',
-        isCmd ? ['/d', '/s', '/c', command] : ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command],
-        { cwd: safeCwd, timeoutSec }
-      );
+      const isWin = process.platform === 'win32';
+      const bin = isWin ? (isCmd ? 'cmd.exe' : 'powershell.exe') : (isCmd ? 'sh' : 'bash');
+      const binArgs = isWin
+        ? (isCmd ? ['/d', '/s', '/c', command] : ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command])
+        : ['-c', command];
+      const result = await spawnProcess(bin, binArgs, { cwd: safeCwd, timeoutSec });
       return {
         shell,
         command,

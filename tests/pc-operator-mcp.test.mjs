@@ -676,6 +676,25 @@ describe('TigerIQ PC Operator MCP Server', () => {
       const shellPayload = parseSsePayload(await shellRes.text());
       expect(shellPayload.ok).toBe(true);
       expect(shellPayload.completedStepId).toBe('shell_exec');
+
+      // ui_action without authorization header
+      const uiRes = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 52,
+          method: 'tools/call',
+          params: {
+            name: 'ui_action',
+            arguments: { action: 'pad_health' },
+          },
+        }),
+      });
+      expect(uiRes.status).toBe(200);
+      const uiPayload = parseSsePayload(await uiRes.text());
+      expect(uiPayload.ok).toBe(true);
+      expect(uiPayload.completedStepId).toBe('ui_action');
     } finally {
       server.close();
       try { await fs.promises.unlink(testFile); } catch {}
