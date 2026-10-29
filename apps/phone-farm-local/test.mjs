@@ -79,6 +79,21 @@ test('Windows host monitors and recovers a dead local backend', () => {
 });
 
 
+test('Windows GUI refuses Session 0 and installer maintains per-user interactive autostart', () => {
+  const dir=path.dirname(fileURLToPath(import.meta.url));
+  const program=fs.readFileSync(path.join(dir,'windows','Program.cs'),'utf8');
+  const install=fs.readFileSync(path.join(dir,'windows','install-user.ps1'),'utf8');
+  const uninstall=fs.readFileSync(path.join(dir,'windows','uninstall-user.ps1'),'utf8');
+  assert.match(program,/Process\.GetCurrentProcess\(\)\.SessionId == 0 \|\| !Environment\.UserInteractive/);
+  assert.match(program,/Environment\.ExitCode = 12;/);
+  assert.match(install,/SpecialFolders\('Startup'\)/);
+  assert.match(install,/TigerIQ Phone Farm\.lnk/);
+  assert.match(install,/interactive user-session launcher/);
+  assert.match(install,/\[switch\]\$NoAutoStart/);
+  assert.match(uninstall,/SpecialFolders\('Startup'\)/);
+  assert.match(uninstall,/if\(\$auto\.TargetPath -eq \$exe\)\{Remove-Item \$autoStartPath -Force\}/);
+});
+
 test('batch controls validate package, files, duplicate serial and actions', () => {
   assert.equal(safePackage('com.example.demo'), true);
   assert.equal(safePackage('com.example;cmd'), false);
