@@ -914,7 +914,8 @@ class HomeActivity : ComponentActivity() {
             "Sao lưu cấu hình V2",
             "Khôi phục cấu hình V2",
             "Hồ sơ người lái",
-            "Quyền & riêng tư"
+            "Quyền & riêng tư",
+            "Phục hồi / định danh bản cài"
         )
         AlertDialog.Builder(this).setTitle("UltraCarHCM V2 — Bản xây dựng")
             .setItems(options) { _, which ->
@@ -943,6 +944,7 @@ class HomeActivity : ComponentActivity() {
                     8 -> importBackupLauncher.launch(arrayOf("application/json", "text/plain"))
                     9 -> startActivity(Intent(this, ProfileActivity::class.java))
                     10 -> startActivity(Intent(this, PrivacyActivity::class.java))
+                    11 -> startActivity(Intent(this, RecoveryActivity::class.java))
                 }
             }.show()
     }

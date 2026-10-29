@@ -466,16 +466,23 @@
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/RecoveryActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/RecoveryRules.kt"
       ],
-      "gap": "Local state migration/recovery is implemented in source, but full backup/restore, release signing and real rollback acceptance are still absent.",
-      "actual": "V2 has an independent package, lifecycle/UVC cleanup, versioned local Home-state migration, bounded preset recovery and fail-closed handling for corrupt/future configuration schemas; signing/release/rollback acceptance remains open.",
+      "gap": "Local migration/recovery and backup source exist. A recovery surface now reads the installed V2 package/version and signing-certificate SHA-256 without exposing secrets, and states rollback prerequisites. Actual signed release provenance, downgrade/rollback execution and real-device recovery acceptance remain open.",
+      "actual": "V2 has an independent package, lifecycle/UVC cleanup, versioned local Home-state migration, bounded backup recovery, and a RecoveryActivity that reads real installed package/version/signing identity. It does not perform downgrade or bypass Android installer protections; rollback remains gated on a verified APK, backup and authorized device QA.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "AndroidManifest.xml",
         "HomeActivity.onStop",
         "HomeActivity.onDestroy",
-        "UsbUvcController.stop"
+        "UsbUvcController.stop",
+        "RecoveryActivity.onCreate",
+        "RecoveryActivity.installedIdentity",
+        "RecoveryActivity.signingSha256",
+        "RecoveryRules.hex",
+        "RecoveryRules.isExpectedPackageName"
       ],
       "permissions": []
     }
