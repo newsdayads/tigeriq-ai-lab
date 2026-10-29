@@ -234,13 +234,17 @@ test('source failure is not replaced by cached cards',async()=>{
   }finally{await new Promise(resolve=>server.close(resolve))}
 });
 
-test('PC01 operational task is limited, reversible and does not bypass execution policy',async()=>{
+test('PC01 operational task targets the interactive desktop user and remains limited/reversible',async()=>{
   const script=await readFile(new URL('../apps/agents-city-tigeriq/pc01-operational.ps1',import.meta.url),'utf8');
   assert.match(script,/TigerIQ-Animal-City/);
+  assert.match(script,/Get-InteractiveUser/);
+  assert.match(script,/Get-Process explorer -IncludeUserName/);
   assert.match(script,/RunLevel Limited/);
   assert.match(script,/LogonType Interactive/);
+  assert.match(script,/New-ScheduledTaskAction -Execute \$NodePath/);
   assert.match(script,/127\.0\.0\.1/);
   assert.match(script,/uninstall/);
+  assert.doesNotMatch(script,/WindowsIdentity.*GetCurrent/);
   assert.doesNotMatch(script,/RunLevel Highest/);
   assert.doesNotMatch(script,/ExecutionPolicy\s+Bypass/i);
 });
