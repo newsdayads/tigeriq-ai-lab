@@ -56,6 +56,14 @@ describe('PC01 Owner-authenticated self-hosted OAuth',()=>{
     expect(jwks.keys[0]).toMatchObject({kty:'RSA',alg:'RS256',use:'sig'});
     for(const name of ['d','p','q','dp','dq','qi'])expect(jwks.keys[0][name]).toBeUndefined();
   });
+  it('keeps browser form Origin while suppressing cross-origin referrers',async()=>{
+    const f=fixture(), request=await f.pending();
+    // Basic HTML form POST uses a null Origin under no-referrer.
+    // Keep strict Origin+CSRF validation; use a form-compatible policy.
+    expect(request.page.headers['referrer-policy']).toBe('same-origin');
+    expect((await f.call('/oauth/approve',{method:'POST',headers:{origin:'null',cookie:request.cookie},data:{request_id:request.id,owner_code:ownerCode}})).status).toBe(403);
+    expect((await f.approve(request)).status).toBe(302);
+  });
   it('requires Owner login and issues a verifiable audience/scoped RS256 token',async()=>{
     const f=fixture(), code=await f.code(), result=await f.exchange(code);
     expect(result.status).toBe(200); const tokens=JSON.parse(result.body);
