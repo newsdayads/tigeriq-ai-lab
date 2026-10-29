@@ -2,4 +2,4 @@
 <resources>
     <!-- V2-owned brand string. Original V1 visual assets remain unresolved. -->
     <string name="app_name">UltraCarHCM V2</string>
-</resources>
+    <string name="v2_update_metadata_url" translatable="false"></string>\n</resources>
