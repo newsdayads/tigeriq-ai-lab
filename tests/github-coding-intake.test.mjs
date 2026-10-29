@@ -1829,7 +1829,7 @@ describe('P0: pause Coding Lane for external evidence',()=>{
 });
 
 
-it('event reconcile immediately rearms completed-awaiting-acceptance after a source change exactly once',async()=>{
+it('does not rearm completed-awaiting-acceptance for a status-only source edit',async()=>{
   const pool=fakePool();
   const prior=issue(`${SAFE}\nOWNER_DIRECT=true\nRESOURCE_SCOPE=EVENT_ACCEPTANCE_REARM\nALLOW_PATH_PREFIX=tests/github-coding-intake.test.mjs`,{
     number:1701,title:'Event acceptance rearm',comments:0
@@ -1863,16 +1863,15 @@ it('event reconcile immediately rearms completed-awaiting-acceptance after a sou
   };
 
   const first=await reconcileGithubCodingEvent({pool,fetchImpl,token:'fake',issue:current});
-  expect(first.results).toBeGreaterThanOrEqual(1);
-  expect(posted).toBe(1);
-  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REJECTED')).toHaveLength(1);
-  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REARMED')).toHaveLength(1);
-  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED'&&e.data.issueNumber===1701).at(-1)?.data.codingObjectiveId).toBe('obj-1701-current');
+  expect(first.results).toBe(0);
+  expect(posted).toBe(0);
+  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REJECTED')).toHaveLength(0);
+  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REARMED')).toHaveLength(0);
+  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED'&&e.data.issueNumber===1701).at(-1)?.data.codingObjectiveId).toBe('obj-1701-old');
 
   const second=await reconcileGithubCodingEvent({pool,fetchImpl,token:'fake',issue:current});
   expect(second.results).toBe(0);
-  expect(posted).toBe(1);
-  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REARMED')).toHaveLength(1);
+  expect(posted).toBe(0);
 });
 
 
