@@ -45,6 +45,8 @@ class UsbCameraActivity : Activity() {
     private lateinit var camera: UsbUvcController
     private lateinit var status: TextView
     private lateinit var openClose: Button
+    private lateinit var guide: DynamicGuideView
+    private var cameraFrameActive = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,16 +54,9 @@ class UsbCameraActivity : Activity() {
         setContentView(root)
         val texture = TextureView(this)
         root.addView(texture, FrameLayout.LayoutParams(-1, -1))
-        val guide = DynamicGuideView(this)
+        guide = DynamicGuideView(this)
         root.addView(guide, FrameLayout.LayoutParams(-1,-1))
-        val reverseActive = intent.getBooleanExtra(EXTRA_REVERSE_ACTIVE, false)
-        val steeringDegrees = intent.getFloatExtra(EXTRA_STEERING_DEGREES, 0f)
-        guide.updateGuide(
-            GuideCurveState(
-                reverseActive = reverseActive,
-                steeringDegrees = steeringDegrees,
-            ),
-        )
+        applyReverseGuideIntent(intent)
         val controls = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(22,18,22,18)
@@ -91,16 +86,32 @@ class UsbCameraActivity : Activity() {
         root.addView(controls,FrameLayout.LayoutParams(-1,-2,Gravity.TOP))
         camera = UsbUvcController(this,texture) { text,active ->
             runOnUiThread {
+                cameraFrameActive = active
                 status.text=text
                 status.setTextColor(if(active) Color.GREEN else Color.YELLOW)
                 openClose.text=if(camera.requested) "ĐÓNG CAMERA USB" else "MỞ CAMERA USB"
-                guide.visibility = if (active && guide.curveState.reverseActive) View.VISIBLE else View.GONE
+                updateGuideVisibility()
             }
         }
-        if (!reverseActive) guide.visibility = View.GONE
+        updateGuideVisibility()
         visible = WeakReference(this)
         openCamera()
     }
+    private fun applyReverseGuideIntent(intent: Intent) {
+        guide.updateGuide(
+            GuideCurveState(
+                reverseActive = intent.getBooleanExtra(EXTRA_REVERSE_ACTIVE, false),
+                steeringDegrees = intent.getFloatExtra(EXTRA_STEERING_DEGREES, 0f),
+            ),
+        )
+        updateGuideVisibility()
+    }
+
+    private fun updateGuideVisibility() {
+        guide.visibility =
+            if (cameraFrameActive && guide.curveState.reverseActive) View.VISIBLE else View.GONE
+    }
+
     private fun openCamera() {
         camera.start()
         openClose.text=if(camera.requested) "ĐÓNG CAMERA USB" else "THỬ LẠI CAMERA"
@@ -114,6 +125,8 @@ class UsbCameraActivity : Activity() {
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
+        applyReverseGuideIntent(intent)
         if(intent.action=="ai.tigeriq.ultracarhcm.v2.TOGGLE")toggle()
     }
     override fun onDestroy() {
