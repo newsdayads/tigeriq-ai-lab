@@ -34,14 +34,24 @@ test('old installed baseline uses existing guarded apply, restart and rollback p
   expect(source).toContain("if(-not $gateSha){Save-State @{result='WAIT_GATES'");
 });
 test('reconciles standalone MCP Funnel gateway only through exact supervised topology',()=>{
+  expect(source.match(/function Get-McpFunnelGatewayTopology/g)).toHaveLength(1);
   expect(source.match(/function Reconcile-McpFunnelGatewayRuntime/g)).toHaveLength(1);
   expect(source).toContain("$mcpGatewayServerPath='D:\\TigerIQ\\Runtime\\McpFunnelGateway\\server.mjs'");
   expect(source).toContain("$mcpGatewaySupervisorPaths=@('D:\\TigerIQ\\Runtime\\McpFunnelGateway\\run-mcp-gateway.cmd','D:\\TigerIQ\\Runtime\\McpFunnelGateway\\run-mcp-gateway.ps1')");
   expect(source).toContain("reason='MCP_GATEWAY_TOPOLOGY_UNVERIFIED'");
-  expect(source).toContain("$supervisors.Count -ne 1 -or $children.Count -ne 1");
+  expect(source).toContain("$supervisors.Count -ne 1 -or $children.Count -gt 1");
+  expect(source).toContain("$spawnDeadline=(Get-Date).AddSeconds(12)");
+  expect(source).toContain("Start-Sleep -Milliseconds 500");
+  expect(source).toContain("reason='MCP_GATEWAY_CHILD_RESPAWN_TIMEOUT'");
   expect(source).toContain("Stop-Process -Id $oldPid -Force -ErrorAction Stop");
   expect(source).toContain("[int]$new[0].ProcessId -ne $oldPid");
   expect(source).toContain("Test-TcpPort '127.0.0.1' $mcpGatewayPort");
+  const reconcileBlock=source.slice(
+    source.indexOf('function Reconcile-McpFunnelGatewayRuntime'),
+    source.indexOf('function Get-CorePid'),
+  );
+  expect(reconcileBlock).not.toContain('Start-Process');
+  expect(reconcileBlock).not.toContain('Start-Job');
   const noChangeSync=source.indexOf('$mcpGatewaySync=Sync-McpFunnelGatewayRuntime');
   const noChangeReconcile=source.indexOf("else{Reconcile-McpFunnelGatewayRuntime $local}",noChangeSync);
   expect(noChangeSync).toBeGreaterThan(0);
