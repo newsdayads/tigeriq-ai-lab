@@ -16,8 +16,8 @@ const manifest = readFileSync(
 );
 
 describe('GH-5135 F07 Samsung DeX dock source contract', () => {
-  it('registers the verified Samsung enter/exit actions without exporting the receiver', () => {
-    expect(manifest).toContain('<receiver android:name=".DexDockReceiver" android:exported="false">');
+  it('exports only the DeX receiver so Samsung/System can deliver enter/exit actions', () => {
+    expect(manifest).toContain('<receiver android:name=".DexDockReceiver" android:exported="true">');
     expect(manifest).toContain('android.app.action.ENTER_KNOX_DESKTOP_MODE');
     expect(manifest).toContain('android.app.action.EXIT_KNOX_DESKTOP_MODE');
     expect(manifest).toContain('android:resizeableActivity="true"');
@@ -31,8 +31,11 @@ describe('GH-5135 F07 Samsung DeX dock source contract', () => {
     expect(receiver).not.toContain('com.tigeriq.dexsplit');
   });
 
-  it('fails closed for non-enter, inactive desktop and default/missing display', () => {
+  it('fails closed for invalid enter and refuses spoofed exit while external DeX is active', () => {
     expect(rules).toContain('displayId != null && displayId > 0');
-    expect(rules).toContain('isEnterAction(action) && desktopActive');
+    expect(rules).toContain('isEnterAction(action) && desktopActive && hasExternalDisplay(displayId)');
+    expect(rules).toContain('isExitAction(action) && (!desktopActive || !hasExternalDisplay(displayId))');
+    expect(receiver).toContain('DexDockRules.shouldStopOverlay(action, desktopActive, displayId)');
+    expect(receiver).toContain('DeX exit ignored: desktop=$desktopActive display=$displayId');
   });
 });
