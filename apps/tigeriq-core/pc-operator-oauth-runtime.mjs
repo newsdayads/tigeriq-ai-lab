@@ -36,6 +36,41 @@ export function oauthRuntimeConfig(env = process.env) {
   return Object.freeze(config);
 }
 
+export function oauthRuntimeReadiness(config = oauthRuntimeConfig()) {
+  const missing = [];
+  const invalid = [];
+  const required = [
+    ['issuerUrl', config.issuerUrl, false],
+    ['resourceUrl', config.resourceUrl, true],
+    ['jwksUrl', config.jwksUrl, false],
+    ['authorizationEndpoint', config.authorizationEndpoint, false],
+    ['tokenEndpoint', config.tokenEndpoint, false],
+  ];
+
+  for (const [name, value, resource] of required) {
+    if (!String(value || '').trim()) {
+      missing.push(name);
+      continue;
+    }
+    try {
+      exactHttpsUrl(value, resource ? { resource: true } : undefined);
+    } catch {
+      invalid.push(name);
+    }
+  }
+
+  if (String(config.registrationEndpoint || '').trim()) {
+    try { exactHttpsUrl(config.registrationEndpoint); }
+    catch { invalid.push('registrationEndpoint'); }
+  }
+
+  return Object.freeze({
+    configured: missing.length === 0 && invalid.length === 0,
+    missing: Object.freeze(missing),
+    invalid: Object.freeze(invalid),
+  });
+}
+
 export function createOAuthResourceServer({
   config = oauthRuntimeConfig(),
   fetchImpl = fetch,
@@ -46,8 +81,11 @@ export function createOAuthResourceServer({
   let jwksCache = null;
   let jwksFetchedAt = 0;
 
+  function readiness() {
+    return oauthRuntimeReadiness(config);
+  }
   function configured() {
-    try { requiredConfig(config); return true; } catch { return false; }
+    return readiness().configured;
   }
   function protectedMetadata() {
     const { issuerUrl, resourceUrl } = requiredConfig(config);
@@ -123,6 +161,7 @@ export function createOAuthResourceServer({
   }
   return Object.freeze({
     config,
+    readiness,
     configured,
     protectedMetadata,
     authorizationMetadata,
