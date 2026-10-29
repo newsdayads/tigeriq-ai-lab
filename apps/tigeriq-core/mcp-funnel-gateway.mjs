@@ -1,3 +1,5 @@
+import { existsSync, lstatSync, readFileSync } from 'node:fs';
+import { createPc01AuthorizationServer } from './pc01-authorization-server.mjs';
 import path from 'node:path';
 import { createServer } from 'node:http';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -36,15 +38,30 @@ function json(res, status, body, headers = {}) {
   }).end(JSON.stringify(body));
 }
 
+export function loadPc01AuthorizationConfig(env = process.env) {
+  const configPath = env.TIGERIQ_MCP_SELF_HOSTED_AUTH_CONFIG || 'C:\\ProgramData\\TigerIQMcpAuth\\config.json';
+  if (!existsSync(configPath)) return null;
+  const stat = lstatSync(configPath);
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 32768) throw Error('SELF_HOSTED_CONFIG_INVALID');
+  const config = JSON.parse(readFileSync(configPath, 'utf8'));
+  if (config.schema !== 'TIGERIQ_PC01_OAUTH_AUTHORITY_V1') throw Error('SELF_HOSTED_CONFIG_SCHEMA_INVALID');
+  return config;
+}
+
 export function createMcpFunnelGateway({
   port = Number(process.env.TIGERIQ_MCP_PORT || 8805),
   secret = process.env.TIGERIQ_HEALTH_VIEW_KEY,
   fetchImpl = fetch,
   oauthRuntime = null,
   mcpHandler = null,
+  selfHostedAuthConfig = loadPc01AuthorizationConfig(),
 } = {}) {
+  const authority = selfHostedAuthConfig ? createPc01AuthorizationServer({
+    config: selfHostedAuthConfig, fetchImpl,
+    audit: event => console.log(JSON.stringify({service:'pc01-oauth',...event})),
+  }) : null;
   const oauth = oauthRuntime || createOAuthResourceServer({
-    config: oauthRuntimeConfig(),
+    config: authority ? authority.config : oauthRuntimeConfig(),
     fetchImpl,
   });
   const oauthConfigured = oauth.configured();
@@ -61,6 +78,8 @@ export function createMcpFunnelGateway({
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Robots-Tag', 'noindex, nofollow');
     const url = new URL(req.url || '/', `http://127.0.0.1:${port}`);
+
+    if (authority && await authority.handle(req, res, url)) return;
 
     if (url.pathname === '/.well-known/oauth-protected-resource/mcp') {
       if (!oauthConfigured) {
