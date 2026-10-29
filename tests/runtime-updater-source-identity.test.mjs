@@ -42,7 +42,10 @@ test('reconciles standalone MCP Funnel gateway only through exact supervised top
   expect(source).toContain("Stop-Process -Id $oldPid -Force -ErrorAction Stop");
   expect(source).toContain("[int]$new[0].ProcessId -ne $oldPid");
   expect(source).toContain("Test-TcpPort '127.0.0.1' $mcpGatewayPort");
-  expect(source).toContain("$mcpGatewayReconcile=Reconcile-McpFunnelGatewayRuntime $local");
+  const noChangeSync=source.indexOf('$mcpGatewaySync=Sync-McpFunnelGatewayRuntime');
+  const noChangeReconcile=source.indexOf("else{Reconcile-McpFunnelGatewayRuntime $local}",noChangeSync);
+  expect(noChangeSync).toBeGreaterThan(0);
+  expect(noChangeReconcile).toBeGreaterThan(noChangeSync);
   expect(source).toContain("$mcpGatewayReconcile=Reconcile-McpFunnelGatewayRuntime $remote");
   expect(source).toContain("$mcpRollback=if(-not $CanaryMode){Reconcile-McpFunnelGatewayRuntime $previousRuntimeSha}");
   expect(source.match(/function Sync-McpFunnelGatewayRuntime/g)).toHaveLength(1);
