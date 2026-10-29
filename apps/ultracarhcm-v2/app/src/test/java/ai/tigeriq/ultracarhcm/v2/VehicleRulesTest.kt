@@ -15,6 +15,12 @@ class VehicleRulesTest {
         )
     }
 
+    @Test fun validatesSupportedVehicleModels() {
+        org.junit.Assert.assertTrue(VehicleRules.isSupportedModel(VehicleRules.MODEL_LIMO_RED))
+        org.junit.Assert.assertTrue(VehicleRules.isSupportedModel(VehicleRules.MODEL_LAMBORGHINI_WHITE))
+        org.junit.Assert.assertFalse(VehicleRules.isSupportedModel("unknown"))
+    }
+
     @Test fun explicitModelOverridesLegacyBoolean() {
         assertEquals(
             VehicleRules.MODEL_LAMBORGHINI_WHITE,
