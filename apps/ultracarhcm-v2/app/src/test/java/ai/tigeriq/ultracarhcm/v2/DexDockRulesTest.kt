@@ -1,5 +1,6 @@
 package ai.tigeriq.ultracarhcm.v2
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -39,5 +40,19 @@ class DexDockRulesTest {
         assertFalse(DexDockRules.shouldStopOverlay("other", false, null))
         assertFalse(DexDockRules.shouldStopOverlay(DexDockRules.ACTION_ENTER_DEX, false, null))
         assertFalse(DexDockRules.shouldStopOverlay(DexDockRules.ACTION_EXIT_DEX, true, 3))
+    }
+
+    @Test fun retriesEnterOnlyWhileStateIsNotReadyAndBudgetRemains() {
+        assertTrue(DexDockRules.shouldRetryEnter(DexDockRules.ACTION_ENTER_DEX, 1, false, null))
+        assertTrue(DexDockRules.shouldRetryEnter(DexDockRules.ACTION_ENTER_DEX, 2, true, null))
+        assertFalse(DexDockRules.shouldRetryEnter(DexDockRules.ACTION_ENTER_DEX, 3, false, null))
+        assertFalse(DexDockRules.shouldRetryEnter(DexDockRules.ACTION_ENTER_DEX, 1, true, 2))
+        assertFalse(DexDockRules.shouldRetryEnter(DexDockRules.ACTION_EXIT_DEX, 1, false, null))
+    }
+
+    @Test fun usesBoundedShortRetryDelays() {
+        assertEquals(3, DexDockRules.MAX_ENTER_ATTEMPTS)
+        assertEquals(350L, DexDockRules.retryDelayMs(2))
+        assertEquals(900L, DexDockRules.retryDelayMs(3))
     }
 }
