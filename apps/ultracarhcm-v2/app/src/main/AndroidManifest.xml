@@ -26,7 +26,7 @@
     <activity android:name=".TelemetryActivity" android:exported="false" android:resizeableActivity="true"/>
     <activity android:name=".ObdActivity" android:exported="false" android:resizeableActivity="true"/>
     <activity android:name=".TaxiMeterActivity" android:exported="false" android:resizeableActivity="true"/>
-    <activity android:name=".ProfileActivity" android:exported="false" android:resizeableActivity="true"/>
+    <activity android:name=".ProfileActivity" android:exported="false" android:resizeableActivity="true"/>\n    <activity android:name=".UpdateActivity" android:exported="false" android:resizeableActivity="true"/>
     <service android:name=".OverlayService" android:exported="false"/>
   </application>
 </manifest>
