@@ -24,6 +24,12 @@ describe('GH-5135 F07 DeX overlay persistence source contract', () => {
     expect(overlay).toContain('update(forceReattach = displayId == currentId)');
   });
 
+  it('supports explicit force re-attach so restored positions apply immediately', () => {
+    expect(overlay).toContain('const val EXTRA_FORCE_REATTACH');
+    expect(overlay).toContain('getBooleanExtra(EXTRA_FORCE_REATTACH, false)');
+    expect(overlay).toContain('update(forceReattach = forceReattach)');
+  });
+
   it('clamps restored positions against the active display bounds', () => {
     expect(overlay).toContain('OverlayPositionRules.clamp(');
     expect(overlay).toContain('display.mode.physicalWidth');
