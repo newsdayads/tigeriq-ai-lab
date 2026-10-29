@@ -1,0 +1,79 @@
+// GH-5135 F16: static contract for V2-owned local backup/restore.
+// This proves source wiring only, not device acceptance or V1 full backup parity.
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+
+const home = readFileSync(
+  new URL('../../apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt', import.meta.url),
+  'utf8',
+);
+const rules = readFileSync(
+  new URL('../../apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeBackupRules.kt', import.meta.url),
+  'utf8',
+);
+
+describe('GH-5135 F16 local backup/restore source contract', () => {
+  it('uses Android Storage Access Framework instead of broad filesystem permission', () => {
+    expect(home).toContain('ActivityResultContracts.CreateDocument("application/json")');
+    expect(home).toContain('ActivityResultContracts.OpenDocument()');
+    expect(home).toContain('contentResolver.openOutputStream(uri, "wt")');
+    expect(home).toContain('contentResolver.openInputStream(uri)');
+    expect(home).not.toContain('MANAGE_EXTERNAL_STORAGE');
+  });
+
+  it('exports only bounded V2-owned HOME state with an explicit schema', () => {
+    expect(home).toContain('private fun exportHomeBackupJson(): JSONObject');
+    expect(home).toContain('.put("backupSchemaVersion", HomeBackupRules.CURRENT_BACKUP_SCHEMA_VERSION)');
+    expect(home).toContain('.put("quickSlots", normalizedQuickSlotsForStorage(quickSlots()))');
+    expect(home).toContain('.put("savedConfigurations", savedConfigurations())');
+    expect(home).toContain('.put("defaultHomeConfiguration", defaultSafe ?: JSONObject.NULL)');
+    expect(rules).toContain('const val MAX_BACKUP_BYTES = 256 * 1024');
+  });
+
+  it('validates the full payload before applying preferences', () => {
+    const start = home.indexOf('private fun importHomeBackupJson(text: String): Boolean');
+    const end = home.indexOf('private fun editDriverName()');
+    const block = home.slice(start, end);
+    expect(block).toContain('HomeBackupRules.canReadBackupSchema');
+    expect(block).toContain('rawSlots.length() != QuickSlotRules.SLOT_COUNT');
+    expect(block).toContain('rawConfigs.length() > HomeConfigRules.MAX_SAVED');
+    expect(block).toContain('normalizeHomeConfiguration(item) ?: return false');
+    expect(block).toContain('val editor = prefs.edit()');
+    expect(block.indexOf('val editor = prefs.edit()')).toBeGreaterThan(block.indexOf('normalizeHomeConfiguration(item) ?: return false'));
+    expect(block).toContain('editor.apply()');
+  });
+
+  it('backs up and restores bounded DeX camera overlay positions without changing legacy v1 backups', () => {
+    expect(home).toContain('private fun exportOverlayPositions(): JSONArray');
+    expect(home).toContain('getSharedPreferences("v2_camera_shortcut", Context.MODE_PRIVATE)');
+    expect(home).toContain('.put("overlayPositions", exportOverlayPositions())');
+    expect(home).toContain('HomeBackupRules.requiresOverlayPositions(backupSchema)');
+    expect(home).toContain('rawOverlayPositions.length() > HomeBackupRules.MAX_OVERLAY_DISPLAYS');
+    expect(home).toContain('!seenDisplays.add(displayId)');
+    expect(home).toContain('.edit().clear()');
+    expect(home).toContain('OverlayPositionRules.xKey(displayId)');
+    expect(home).toContain('OverlayPositionRules.yKey(displayId)');
+    expect(rules).toContain('const val LEGACY_BACKUP_SCHEMA_VERSION = 1');
+    expect(rules).toContain('const val CURRENT_BACKUP_SCHEMA_VERSION = 3');
+    expect(rules).toContain('version in LEGACY_BACKUP_SCHEMA_VERSION..CURRENT_BACKUP_SCHEMA_VERSION');
+    expect(rules).toContain('fun requiresVehicleState(version: Int): Boolean');
+    expect(home).toContain('"vehicleModel"');
+    expect(home).toContain('"licensePlate"');
+    expect(home).toContain('VehicleRules.PREF_MODEL');
+    expect(home).toContain('VehicleRules.PREF_LICENSE_PLATE');
+  });
+
+  it('refreshes an active DeX overlay immediately after a successful restore', () => {
+    expect(home).toContain('private fun refreshOverlayAfterRestore()');
+    expect(home).toContain('OverlayService.EXTRA_FORCE_REATTACH');
+    expect(home).toMatch(/importHomeBackupJson\(text\)[\s\S]*render\(\)[\s\S]*refreshOverlayAfterRestore\(\)/);
+  });
+
+  it('exposes explicit backup and restore actions without touching V1 data', () => {
+    expect(home).toContain('"Sao lưu cấu hình V2"');
+    expect(home).toContain('"Khôi phục cấu hình V2"');
+    expect(home).toContain('exportBackupLauncher.launch(HomeBackupRules.exportFileName())');
+    expect(home).toContain('importBackupLauncher.launch(arrayOf("application/json", "text/plain"))');
+    expect(home).toContain('getSharedPreferences("ultracar_v2_home", Context.MODE_PRIVATE)');
+  });
+});
