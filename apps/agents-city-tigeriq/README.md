@@ -2,7 +2,7 @@
 
 Authority: Owner-approved Work Order #5424.
 
-Animal City is a loopback-only TigerIQ operator view. It reads canonical Work Orders from TigerIQ Core and separately reads live Core runtime evidence for active workers/jobs. It is not a second scheduler, lease service, or dispatch surface.
+Animal City is a loopback-only TigerIQ operator view. It reads canonical Work Orders from TigerIQ Core and separately reads live Core runtime evidence for active workers/jobs. It is not a second scheduler or lease service. Owner actions can submit a new LOCAL/P2 objective exclusively through the existing Core API after explicit in-browser confirmation.
 
 ## Product behavior
 
@@ -31,8 +31,11 @@ Operational endpoints:
     GET /ready
     GET /api/rooms
     GET /api/live
+    GET /api/owner-config
+    GET /api/owner-objectives
+    POST /api/owner-objectives  (only after confirmation; LOCAL P2)
 
-All mutating HTTP methods are rejected. Host validation restricts use to localhost.
+All other mutating HTTP methods are rejected. Host validation restricts use to localhost. The one POST action requires same-origin, CSRF token, one-use idempotency key, bounded body, and is passed to Core POST /api/objectives without a parallel queue.
 
 ## Managed PC01 operation
 
@@ -54,7 +57,7 @@ If `D:\TigerIQ` is unavailable, the log falls back under the current user's Loca
 
 ## Tests
 
-    node --test tests/agents-city-tigeriq-bridge.test.mjs
+    node --test tests/agents-city-tigeriq-bridge.test.mjs tests/animal-city-owner-actions.test.mjs
 
 The repository `npm test` chain also includes this suite.
 
@@ -62,7 +65,7 @@ The repository `npm test` chain also includes this suite.
 
 - Sole Work Order source is the canonical Core Work Order projection.
 - Sole active worker truth is the current Core runtime status projection.
-- No browser-side call reaches Core directly; the local server normalizes and bounds both sources.
+- No browser-side call reaches Core directly; the local server normalizes and bounds both read sources, and forwards only a verified Owner action through the authorized Core endpoint.
 - User-visible Issue content is rendered with DOM `textContent`.
 - GitHub Issue links are reconstructed from validated issue numbers.
 - No credentials are read, returned or stored by Animal City.
@@ -104,3 +107,10 @@ source SHA; GET http://127.0.0.1:8866/health, GET /ready and /scene3d.js,
 then open the local UI in Chrome and validate WebGL rendering,
 orbit/zoom/selection, verified-worker-only lighting and Core work cards.
 Do not claim UI accepted from a CI test alone.
+
+
+## Owner console / actual controls (GH-5453)
+
+The browser can now submit a new, explicit LOCAL/P2 objective to the existing Core `POST /api/objectives`. Core must return an `OBJ-...` receipt. This is *accepted for scheduling*, not an AI execution or completion claim. Provider selection remains Core-owned and the objective's `routingProfile: LOCAL` is enforced at the existing Core router, with no paid-model fallback. User confirmation is required; no automated or background objective creation by the UI. A bounded latest-objectives read via Core `GET /api/status` shows objective state and the available latest job associations, clearly marked as a partial status window. Work Order search and state filter are visual only, with real links to canonical GitHub issues. All other Core authority and TigerIQ permission gates remain unchanged.
+
+Acceptance of the Owner controls requires actual POST success with Core receipt and subsequent status readback on PC01. Source CI alone is not a live-workflow acceptance.
