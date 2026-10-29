@@ -1,0 +1,38 @@
+// GH-5135 F07 — static source/manifest contract only; not Samsung device acceptance.
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+
+const receiver = readFileSync(
+  new URL('../../apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexDockReceiver.kt', import.meta.url),
+  'utf8',
+);
+const rules = readFileSync(
+  new URL('../../apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexDockRules.kt', import.meta.url),
+  'utf8',
+);
+const manifest = readFileSync(
+  new URL('../../apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml', import.meta.url),
+  'utf8',
+);
+
+describe('GH-5135 F07 Samsung DeX dock source contract', () => {
+  it('registers the verified Samsung enter/exit actions without exporting the receiver', () => {
+    expect(manifest).toContain('<receiver android:name=".DexDockReceiver" android:exported="false">');
+    expect(manifest).toContain('android.app.action.ENTER_KNOX_DESKTOP_MODE');
+    expect(manifest).toContain('android.app.action.EXIT_KNOX_DESKTOP_MODE');
+    expect(manifest).toContain('android:resizeableActivity="true"');
+  });
+
+  it('launches only V2 Home on a resolved external display and never touches V1', () => {
+    expect(receiver).toContain('Intent(context, HomeActivity::class.java)');
+    expect(receiver).toContain('launchDisplayId = displayId!!');
+    expect(receiver).toContain('DexUtils.resolveDisplay(context, Display.DEFAULT_DISPLAY)');
+    expect(receiver).toContain('context.stopService(Intent(context, OverlayService::class.java))');
+    expect(receiver).not.toContain('com.tigeriq.dexsplit');
+  });
+
+  it('fails closed for non-enter, inactive desktop and default/missing display', () => {
+    expect(rules).toContain('displayId != null && displayId > 0');
+    expect(rules).toContain('isEnterAction(action) && desktopActive');
+  });
+});
