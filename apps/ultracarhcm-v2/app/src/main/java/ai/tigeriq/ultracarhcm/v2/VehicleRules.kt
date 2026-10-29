@@ -9,6 +9,9 @@ internal object VehicleRules {
     const val MODEL_LAMBORGHINI_WHITE = "lamborghini_white"
     const val MAX_LICENSE_PLATE_LENGTH = 20
 
+    fun isSupportedModel(model: String?): Boolean =
+        model == MODEL_LIMO_RED || model == MODEL_LAMBORGHINI_WHITE
+
     fun currentModel(stored: String?, legacyLimo: Boolean): String = when (stored) {
         MODEL_LIMO_RED, MODEL_LAMBORGHINI_WHITE -> stored
         else -> if (legacyLimo) MODEL_LIMO_RED else MODEL_LAMBORGHINI_WHITE
