@@ -92,14 +92,26 @@ describe('GH-5135 native Android compile gate (synthetic fixtures, not a release
       requireSuccess(built,'Android SDK compile/lint/unit at '+expected);
       const apk=join(app,'app/build/outputs/apk/debug/app-debug.apk');
       expect(existsSync(apk),'Debug APK missing after Gradle passed').toBe(true);
-      const junit = join(app,'app/build/test-results/testDebugUnitTest/TEST-ai.tigeriq.ultracarhcm.v2.HomeConfigRulesTest.xml');
-      expect(existsSync(junit),'Real JVM unit test result XML is required').toBe(true);
-      const report=readFileSync(junit,'utf8');
-      expect(report).toMatch(/tests="2"/);
-      expect(report).toMatch(/failures="0"/);
-      expect(report).toMatch(/errors="0"/);
+      const junitSuites = [
+        ['HomeConfigRulesTest', 2],
+        ['QuickSlotRulesTest', 3],
+        ['GuideTrackModelTest', 4],
+      ] as const;
+      let assertedJvmTests = 0;
+      for (const [suite, expectedTests] of junitSuites) {
+        const junit = join(
+          app,
+          'app/build/test-results/testDebugUnitTest/TEST-ai.tigeriq.ultracarhcm.v2.' + suite + '.xml',
+        );
+        expect(existsSync(junit), 'Real JVM unit test result XML is required: ' + suite).toBe(true);
+        const report = readFileSync(junit, 'utf8');
+        expect(report).toMatch(new RegExp('tests="' + expectedTests + '"'));
+        expect(report).toMatch(/failures="0"/);
+        expect(report).toMatch(/errors="0"/);
+        assertedJvmTests += expectedTests;
+      }
       const digest=createHash('sha256').update(readFileSync(apk)).digest('hex');
-      console.log('ANDROID_JUNIT_HOME_RULES=2_OF_2_PASS');
+      console.log('ANDROID_JUNIT_ULTRACAR_RULES=' + assertedJvmTests + '_OF_' + assertedJvmTests + '_PASS');
       console.log('ANDROID_EXACT_HEAD='+expected);
       console.log('ANDROID_SYNTHETIC_FIXTURE_APK_SHA256='+digest);
       console.log('ANDROID_R01_FIXTURE_NATIVE_BUILD_PASS_NOT_FOR_RELEASE');
