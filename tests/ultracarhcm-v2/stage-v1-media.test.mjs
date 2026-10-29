@@ -1,9 +1,37 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, symlinkSync, lstatSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { media, stageMedia } from '../../apps/ultracarhcm-v2/ci/stage-v1-media.mjs';
+import {
+  media,
+  stageMedia,
+  RIGHTS_SCHEMA,
+  RIGHTS_SCOPE,
+} from '../../apps/ultracarhcm-v2/ci/stage-v1-media.mjs';
+
+const sha256 = path => createHash('sha256').update(readFileSync(path)).digest('hex');
+
+function writeValidRights(root, source, overrides = {}) {
+  const evidence = join(root, 'rights.json');
+  const receipt = {
+    schema: RIGHTS_SCHEMA,
+    workOrder: 'GH-5135',
+    scope: RIGHTS_SCOPE,
+    decision: 'GRANTED',
+    grantor: 'Unit Test Rights Fixture',
+    evidenceRef: 'urn:tigeriq:test:gh5135:rights-fixture',
+    issuedAt: '2026-10-29T00:00:00Z',
+    assets: media.map(item => ({
+      path: item.from,
+      sha256: sha256(join(source, item.from)),
+    })),
+    ...overrides,
+  };
+  writeFileSync(evidence, JSON.stringify(receipt, null, 2));
+  return evidence;
+}
 
 test('PC01-observed original filenames map to the six Kotlin V2 resource IDs', () => {
   assert.equal(media.length, 6);
@@ -23,7 +51,7 @@ test('read-only audit reports missing source rather than inventing images', () =
   } finally { rmSync(root,{recursive:true,force:true}); }
 });
 
-test('private stage requires independent local rights evidence and verifies bytes', () => {
+test('private stage rejects arbitrary text and requires an exact hash-bound rights receipt', () => {
   const root = mkdtempSync(join(tmpdir(), 'gh5135-private-'));
   try {
     const src = join(root,'src'), dest = join(root,'v2');
@@ -34,12 +62,51 @@ test('private stage requires independent local rights evidence and verifies byte
     }
     const audit = stageMedia({ sourceRes: src, projectDir: dest });
     assert.equal(audit.ok,true); assert.equal(audit.staged,false);
-    assert.throws(()=>stageMedia({sourceRes:src,projectDir:dest,stage:true}),/V1_MEDIA_REUSE_RIGHTS_EVIDENCE_REQUIRED/);
-    const evidence=join(root,'rights.txt');
-    writeFileSync(evidence,'SYNTHETIC TEST LICENSE RECEIPT, NOT A REAL V1 GRANT');
+    assert.throws(
+      ()=>stageMedia({sourceRes:src,projectDir:dest,stage:true}),
+      /V1_MEDIA_REUSE_RIGHTS_EVIDENCE_REQUIRED/
+    );
+
+    const arbitrary=join(root,'rights.txt');
+    writeFileSync(arbitrary,'SYNTHETIC TEST LICENSE RECEIPT, NOT A REAL V1 GRANT');
+    assert.throws(
+      ()=>stageMedia({sourceRes:src,projectDir:dest,stage:true,rightsEvidence:arbitrary}),
+      /V1_MEDIA_REUSE_RIGHTS_EVIDENCE_INVALID_JSON/
+    );
+
+    const evidence=writeValidRights(root,src);
     const result=stageMedia({sourceRes:src,projectDir:dest,stage:true,rightsEvidence:evidence});
     assert.equal(result.ok,true);assert.equal(result.staged,true);
-    for (const item of media) assert.equal(readFileSync(join(dest,'app/src/main/res',item.to)).length, item.observedBytes);
+    for (const item of media)
+      assert.equal(readFileSync(join(dest,'app/src/main/res',item.to)).length, item.observedBytes);
+  } finally { rmSync(root,{recursive:true,force:true}); }
+});
+
+test('rights receipt must cover all six assets and exact source SHA256 values', () => {
+  const root=mkdtempSync(join(tmpdir(),'gh5135-rights-binding-'));
+  try {
+    const src=join(root,'src'),dest=join(root,'v2');
+    for (const [i,item] of media.entries()) {
+      const file=join(src,item.from);
+      mkdirSync(dirname(file),{recursive:true});
+      writeFileSync(file,Buffer.alloc(item.observedBytes,70+i));
+    }
+
+    const fullAssets=media.map(item=>({path:item.from,sha256:sha256(join(src,item.from))}));
+    const incomplete=writeValidRights(root,src,{assets:fullAssets.slice(0,-1)});
+    assert.throws(
+      ()=>stageMedia({sourceRes:src,projectDir:dest,stage:true,rightsEvidence:incomplete}),
+      /V1_MEDIA_REUSE_RIGHTS_EVIDENCE_INCOMPLETE_ASSET_SET/
+    );
+
+    const wrongHash=writeValidRights(root,src,{
+      assets:fullAssets.map((asset,index)=>index===2?{...asset,sha256:'0'.repeat(64)}:asset),
+    });
+    assert.throws(
+      ()=>stageMedia({sourceRes:src,projectDir:dest,stage:true,rightsEvidence:wrongHash}),
+      /V1_MEDIA_REUSE_RIGHTS_EVIDENCE_SHA_MISMATCH:drawable\/logo_ultracar[.]png/
+    );
+    assert.equal(existsSync(join(dest,'app/src/main/res')),false);
   } finally { rmSync(root,{recursive:true,force:true}); }
 });
 
@@ -50,7 +117,7 @@ test('an existing edited local resource is never silently overwritten', () => {
     for(const item of media){const f=join(src,item.from);mkdirSync(dirname(f),{recursive:true});writeFileSync(f,Buffer.alloc(item.observedBytes, 76));}
     const existing=join(dest,'app/src/main/res',media[0].to);
     mkdirSync(dirname(existing),{recursive:true});writeFileSync(existing,'different-content');
-    const evidence=join(root,'rights.txt');writeFileSync(evidence,'SYNTHETIC TEST LICENSE RECEIPT, NOT A REAL V1 GRANT');
+    const evidence=writeValidRights(root,src);
     assert.throws(()=>stageMedia({sourceRes:src,projectDir:dest,stage:true,rightsEvidence:evidence}),/DESTINATION_ALREADY_EXISTS_DIFFERENT_BYTES/);
   }finally{rmSync(root,{recursive:true,force:true});}
 });
@@ -96,8 +163,7 @@ test('dangling destination-file symlink cannot redirect private media staging ou
     symlinkSync(outside,first);
     assert.equal(existsSync(first),false,'dangling symlink bypasses existsSync');
     assert.equal(lstatSync(first).isSymbolicLink(),true);
-    const rights=join(root,'rights.txt');
-    writeFileSync(rights,'SYNTHETIC TEST RIGHTS ONLY, NOT A REAL V1 GRANT');
+    const rights=writeValidRights(root,src);
     assert.throws(
       ()=>stageMedia({sourceRes:src,projectDir:dest,stage:true,rightsEvidence:rights}),
       /DESTINATION_SYMLINK_FORBIDDEN/
@@ -121,8 +187,7 @@ test('a symlinked parent resource directory fails before any staging writes', ()
     mkdirSync(dirname(parent),{recursive:true});
     mkdirSync(outside);
     symlinkSync(outside,parent,'dir');
-    const rights=join(root,'rights.txt');
-    writeFileSync(rights,'SYNTHETIC TEST RIGHTS ONLY, NOT A REAL V1 GRANT');
+    const rights=writeValidRights(root,src);
     assert.throws(
       ()=>stageMedia({sourceRes:src,projectDir:dest,stage:true,rightsEvidence:rights}),
       /DESTINATION_SYMLINK_FORBIDDEN/
