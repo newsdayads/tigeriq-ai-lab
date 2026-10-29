@@ -7,11 +7,6 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.util.AttributeSet
 import android.view.View
-import kotlin.math.abs
-import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.sign
-
 internal data class GuideCurveState(
     val reverseActive: Boolean = false,
     val steeringDegrees: Float = 0f,
@@ -87,7 +82,6 @@ open class GuideTrackView @JvmOverloads constructor(
         val next = GuideTrackModel.normalize(state)
         if (next == curveState) return
         curveState = next
-        visibility = if (next.reverseActive) VISIBLE else GONE
         invalidate()
     }
 
