@@ -312,10 +312,11 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
   const authorizedTools = {
     tool(name, description, schema, handler) {
       server.tool(name, description, schema, async (args = {}) => {
-        if (!allowMutation) return mcpReply({
+        const isMutating = MUTATING_GENERAL_TOOLS.has(name);
+        if (isMutating && !allowMutation) return mcpReply({
           ok: false, action: name, reason: 'MCP_EXISTING_AUTH_REQUIRED',
         });
-        if (!MUTATING_GENERAL_TOOLS.has(name)) return handler(args);
+        if (!isMutating) return handler(args);
         // All mutations share the existing NV06 PC01 operator resource.
         // A new bearer request is not an exclusive Core lease.
         const db = leaseDb === undefined ? existingCoreLeaseDb() : leaseDb;

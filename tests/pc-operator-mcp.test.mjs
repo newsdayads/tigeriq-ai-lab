@@ -234,7 +234,6 @@ describe('TigerIQ PC Operator MCP Server', () => {
     const port = server.address().port;
     try {
       const blockedCalls = [
-        { name: 'file_read', arguments: { path: 'D:\\TigerIQ\\State\\read.txt' } },
         { name: 'file_write', arguments: { path: 'D:\\TigerIQ\\State\\write.txt', content: 'NEVER_WRITTEN' } },
         { name: 'shell_exec', arguments: { command: 'echo MUST_NOT_EXECUTE' } },
         { name: 'ui_action', arguments: { action: 'pad_health' } },
