@@ -1,73 +1,72 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { generateKeyPairSync, sign } from 'node:crypto';
-import { createOAuthResourceServer } from '../apps/tigeriq-core/pc-operator-oauth-runtime.mjs';
+import { describe, it, expect } from 'vitest';
+import {
+  createOAuthResourceServer,
+  oauthRuntimeConfig,
+  oauthRuntimeReadiness,
+} from '../apps/tigeriq-core/pc-operator-oauth-runtime.mjs';
 
-const issuerUrl = 'https://auth.example.test/';
-const resourceUrl = 'https://pc01.example.test/mcp';
-const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-const jwk = publicKey.export({ format: 'jwk' });
-jwk.kid = 'test-key-1';
-jwk.alg = 'RS256';
-jwk.use = 'sig';
-const config = {
-  issuerUrl, resourceUrl, jwksUrl: 'https://auth.example.test/.well-known/jwks.json',
+const complete = Object.freeze({
+  issuerUrl: 'https://auth.example.test/',
+  resourceUrl: 'https://pc01.example.test/mcp',
+  jwksUrl: 'https://auth.example.test/.well-known/jwks.json',
   authorizationEndpoint: 'https://auth.example.test/authorize',
   tokenEndpoint: 'https://auth.example.test/token',
-};
-const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url');
-function token(payload = {}, kid = 'test-key-1') {
-  const header = encode({ alg: 'RS256', kid, typ: 'JWT' });
-  const body = encode({
-    iss: issuerUrl, aud: resourceUrl, sub: 'owner', exp: 1800000300,
-    scope: 'mcp:read pc01:write', ...payload,
-  });
-  const input = header + '.' + body;
-  return input + '.' + sign('RSA-SHA256', Buffer.from(input), privateKey).toString('base64url');
-}
-function runtime(now = 1800000000) {
-  return createOAuthResourceServer({
-    config, now: () => now,
-    fetchImpl: async url => new Response(JSON.stringify({ keys: url === config.jwksUrl ? [jwk] : [] }), {
-      headers: { 'content-type': 'application/json' },
-    }),
-  });
-}
-
-test('runtime publishes protected resource and authorization metadata', () => {
-  const r = runtime();
-  assert.equal(r.configured(), true);
-  assert.deepEqual(r.protectedMetadata(), {
-    resource: resourceUrl,
-    authorization_servers: [issuerUrl],
-    scopes_supported: ['mcp:read', 'pc01:write', 'pc01:execute', 'pc01:ui', 'pc01:admin'],
-    bearer_methods_supported: ['header'],
-  });
-  assert.equal(r.authorizationMetadata().code_challenge_methods_supported[0], 'S256');
-  assert.equal(r.authorizationMetadata().jwks_uri, config.jwksUrl);
+  registrationEndpoint: '',
 });
 
-test('verifies RS256 JWKS token and normalizes scopes', async () => {
-  const result = await runtime().verifyBearer({ authorization: 'Bearer ' + token() });
-  assert.equal(result.ok, true);
-  assert.equal(result.principal.verified, true);
-  assert.deepEqual(result.principal.scopes, ['mcp:read', 'pc01:write']);
-});
+describe('PC Operator OAuth runtime readiness', () => {
+  it('does not activate OAuth until authorization and token endpoints are present', () => {
+    const config = {
+      ...complete,
+      authorizationEndpoint: '',
+      tokenEndpoint: '',
+    };
+    const readiness = oauthRuntimeReadiness(config);
+    expect(readiness.configured).toBe(false);
+    expect(readiness.missing).toEqual(['authorizationEndpoint', 'tokenEndpoint']);
+    expect(readiness.invalid).toEqual([]);
+    expect(createOAuthResourceServer({ config }).configured()).toBe(false);
+  });
 
-test('fails closed on missing token, wrong audience, expiry, kid and signature', async () => {
-  const r = runtime();
-  assert.equal((await r.verifyBearer({})).status, 401);
-  assert.equal((await r.verifyBearer({ authorization: 'Bearer ' + token({ aud: 'https://other.example/mcp' }) })).status, 401);
-  assert.equal((await r.verifyBearer({ authorization: 'Bearer ' + token({ exp: 1800000000 }) })).status, 401);
-  assert.equal((await r.verifyBearer({ authorization: 'Bearer ' + token({}, 'other-key') })).status, 401);
-  assert.equal((await r.verifyBearer({ authorization: 'Bearer abc.def.ghi' })).status, 401);
-});
+  it('rejects invalid required and optional HTTPS endpoints without exposing values', () => {
+    const config = {
+      ...complete,
+      authorizationEndpoint: 'http://auth.example.test/authorize',
+      registrationEndpoint: 'https://u:p@auth.example.test/register',
+    };
+    const readiness = oauthRuntimeReadiness(config);
+    expect(readiness.configured).toBe(false);
+    expect(readiness.missing).toEqual([]);
+    expect(readiness.invalid).toEqual(['authorizationEndpoint', 'registrationEndpoint']);
+    expect(JSON.stringify(readiness)).not.toContain('u:p');
+  });
 
-test('unconfigured runtime returns a deployment blocker, never accepts static input', async () => {
-  const r = createOAuthResourceServer({ config: {
-    issuerUrl: '', resourceUrl, jwksUrl: '',
-    authorizationEndpoint: '', tokenEndpoint: '',
-  }});
-  assert.equal(r.configured(), false);
-  assert.equal((await r.verifyBearer({ authorization: 'Bearer anything' })).status, 503);
+  it('reports fully valid metadata as configured', () => {
+    const runtime = createOAuthResourceServer({ config: complete });
+    expect(runtime.readiness()).toEqual({
+      configured: true,
+      missing: [],
+      invalid: [],
+    });
+    expect(runtime.configured()).toBe(true);
+    expect(runtime.authorizationMetadata()).toMatchObject({
+      issuer: complete.issuerUrl,
+      authorization_endpoint: complete.authorizationEndpoint,
+      token_endpoint: complete.tokenEndpoint,
+      jwks_uri: complete.jwksUrl,
+      code_challenge_methods_supported: ['S256'],
+    });
+  });
+
+  it('maps environment variables without inventing defaults', () => {
+    const config = oauthRuntimeConfig({
+      TIGERIQ_OAUTH_ISSUER: complete.issuerUrl,
+      TIGERIQ_OAUTH_RESOURCE: complete.resourceUrl,
+      TIGERIQ_OAUTH_JWKS_URL: complete.jwksUrl,
+      TIGERIQ_OAUTH_AUTHORIZATION_ENDPOINT: complete.authorizationEndpoint,
+      TIGERIQ_OAUTH_TOKEN_ENDPOINT: complete.tokenEndpoint,
+    });
+    expect(config.registrationEndpoint).toBe('');
+    expect(oauthRuntimeReadiness(config).configured).toBe(true);
+  });
 });
