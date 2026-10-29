@@ -39,6 +39,7 @@ class HomeActivity : ComponentActivity() {
     private val tickHandler = Handler(Looper.getMainLooper())
     private var clock: TextView? = null
     private var homeVideo: VideoView? = null
+    private var customBackgroundVideo: VideoView? = null
     private var homeVisible = false
     private val accent = Color.rgb(0, 208, 255)
     private val clockTick = object : Runnable {
@@ -114,6 +115,81 @@ class HomeActivity : ComponentActivity() {
             video.stopPlayback()
         }
         homeVideo = null
+        customBackgroundVideo?.let { video ->
+            video.setOnPreparedListener(null)
+            video.setOnErrorListener(null)
+            video.stopPlayback()
+        }
+        customBackgroundVideo = null
+    }
+
+    private fun clearInvalidCustomBackground() {
+        prefs.edit()
+            .remove(AppearanceRules.PREF_CUSTOM_BACKGROUND_URI)
+            .remove(AppearanceRules.PREF_CUSTOM_BACKGROUND_KIND)
+            .apply()
+    }
+
+    private fun renderBackground(night: Boolean) {
+        val uriText = prefs.getString(AppearanceRules.PREF_CUSTOM_BACKGROUND_URI, null)
+        val kind = prefs.getString(AppearanceRules.PREF_CUSTOM_BACKGROUND_KIND, null)
+        if (uriText.isNullOrBlank() || !AppearanceRules.isSupportedKind(kind)) {
+            image(
+                if (night) R.drawable.v2_road_city_night else R.drawable.v2_road_city_day,
+                0f, 0f, 1f, 1f, ImageView.ScaleType.FIT_XY,
+            )
+            return
+        }
+
+        val uri = runCatching { Uri.parse(uriText) }.getOrNull()
+        if (uri == null) {
+            clearInvalidCustomBackground()
+            image(
+                if (night) R.drawable.v2_road_city_night else R.drawable.v2_road_city_day,
+                0f, 0f, 1f, 1f, ImageView.ScaleType.FIT_XY,
+            )
+            return
+        }
+
+        when (kind) {
+            AppearanceRules.KIND_IMAGE -> {
+                try {
+                    ImageView(this).also { view ->
+                        view.scaleType = ImageView.ScaleType.CENTER_CROP
+                        view.setImageURI(uri)
+                        place(view, 0f, 0f, 1f, 1f)
+                    }
+                } catch (error: SecurityException) {
+                    android.util.Log.e("UltraCarV2", "Custom image permission lost", error)
+                    clearInvalidCustomBackground()
+                    image(
+                        if (night) R.drawable.v2_road_city_night else R.drawable.v2_road_city_day,
+                        0f, 0f, 1f, 1f, ImageView.ScaleType.FIT_XY,
+                    )
+                }
+            }
+            AppearanceRules.KIND_VIDEO -> {
+                val video = VideoView(this)
+                customBackgroundVideo = video
+                video.setVideoURI(uri)
+                video.setOnPreparedListener { player ->
+                    if (customBackgroundVideo === video) {
+                        player.isLooping = true
+                        player.setVolume(0f, 0f)
+                        if (homeVisible) video.start()
+                    }
+                }
+                video.setOnErrorListener { _, _, _ ->
+                    if (customBackgroundVideo === video) {
+                        clearInvalidCustomBackground()
+                        customBackgroundVideo = null
+                        root.post { if (homeVisible) render() }
+                    }
+                    true
+                }
+                place(video, 0f, 0f, 1f, 1f)
+            }
+        }
     }
 
     // DisplayManager APIs work back to minSdk 26; Activity.getDisplay() requires API 30.
@@ -328,8 +404,7 @@ class HomeActivity : ComponentActivity() {
         releaseHomeVideo()
         root.removeAllViews()
         val night = prefs.getBoolean("night", false)
-        image(if (night) R.drawable.v2_road_city_night else R.drawable.v2_road_city_day,
-              0f, 0f, 1f, 1f, ImageView.ScaleType.FIT_XY)
+        renderBackground(night)
         val bg = label("", 10f)
         bg.background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
             intArrayOf(0x12000000, 0x00000000, 0x28000000, 0xa2000000.toInt()))
@@ -778,7 +853,7 @@ class HomeActivity : ComponentActivity() {
 
     private fun showSettings() {
         val options = arrayOf(
-            if (prefs.getBoolean("night", false)) "Nền ban ngày" else "Nền ban đêm",
+            "Giao diện / hình nền",
             if (prefs.getBoolean("limo", false)) "Xe Lamborghini trắng" else "Xe Limo đỏ",
             "Camera USB thật (UVC Host)",
             "Cấp quyền nút Camera nổi DeX",
@@ -792,7 +867,7 @@ class HomeActivity : ComponentActivity() {
         AlertDialog.Builder(this).setTitle("UltraCarHCM V2 — Bản xây dựng")
             .setItems(options) { _, which ->
                 when(which) {
-                    0 -> { prefs.edit().putBoolean("night", !prefs.getBoolean("night", false)).apply(); render() }
+                    0 -> startActivity(Intent(this, AppearanceActivity::class.java))
                     1 -> { prefs.edit().putBoolean("limo", !prefs.getBoolean("limo", false)).apply(); render() }
                     2 -> startActivity(Intent(this, UsbCameraActivity::class.java))
                     3 -> {
