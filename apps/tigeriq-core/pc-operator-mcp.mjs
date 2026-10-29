@@ -960,6 +960,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
       name: z.string().optional().describe('Tên phần tử UI'),
       automationId: z.string().optional().describe('AutomationId của phần tử UI'),
       controlType: z.string().optional().describe('Loại phần tử UI (Button, Edit, Text...)'),
+      index: z.number().int().min(0).max(20).optional().describe('Chỉ số phần tử khi selector khớp nhiều phần tử'),
       match: z.enum(['exact', 'contains']).optional().describe('Kiểu so khớp tên (exact/contains)'),
       value: z.string().optional().describe('Giá trị cần nhập khi action = pad_set_value'),
       key: z.string().optional().describe('Phím tắt cần bấm khi action = pad_keys (ENTER, ESC, TAB, CTRL+S, F5...)'),
