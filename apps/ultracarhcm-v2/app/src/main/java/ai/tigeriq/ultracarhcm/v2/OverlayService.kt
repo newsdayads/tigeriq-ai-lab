@@ -70,11 +70,21 @@ class OverlayService : Service(), DisplayManager.DisplayListener {
         val h = display.mode.physicalHeight
         val xKey = OverlayPositionRules.xKey(id)
         val yKey = OverlayPositionRules.yKey(id)
-        val legacyX = pref.getInt("x", OverlayPositionRules.DEFAULT_X)
-        val legacyY = pref.getInt("y", OverlayPositionRules.DEFAULT_Y)
+        fun storedInt(key: String): Int? =
+            if (pref.contains(key)) pref.getInt(key, 0) else null
         val restored = OverlayPositionRules.clamp(
-            pref.getInt(xKey, legacyX),
-            pref.getInt(yKey, legacyY),
+            OverlayPositionRules.restoredCoordinate(
+                storedInt(xKey),
+                storedInt(OverlayPositionRules.PORTABLE_X_KEY),
+                storedInt("x"),
+                OverlayPositionRules.DEFAULT_X,
+            ),
+            OverlayPositionRules.restoredCoordinate(
+                storedInt(yKey),
+                storedInt(OverlayPositionRules.PORTABLE_Y_KEY),
+                storedInt("y"),
+                OverlayPositionRules.DEFAULT_Y,
+            ),
             w,
             h,
             size,
@@ -123,6 +133,8 @@ class OverlayService : Service(), DisplayManager.DisplayListener {
                                 pref.edit()
                                     .putInt(xKey, p.x)
                                     .putInt(yKey, p.y)
+                                    .putInt(OverlayPositionRules.PORTABLE_X_KEY, p.x)
+                                    .putInt(OverlayPositionRules.PORTABLE_Y_KEY, p.y)
                                     .remove("x")
                                     .remove("y")
                                     .apply()

@@ -566,10 +566,14 @@ class HomeActivity : ComponentActivity() {
 
     private fun exportOverlayPositions(): JSONArray {
         val overlayPrefs = getSharedPreferences("v2_camera_shortcut", Context.MODE_PRIVATE)
+        val preferredDisplayId = DexUtils.resolveDisplay(this, 0)?.displayId
         val ids = overlayPrefs.all.keys
             .mapNotNull(HomeBackupRules::displayIdFromOverlayKey)
             .distinct()
-            .sorted()
+            .sortedWith(
+                compareBy<Int> { if (it == preferredDisplayId) 0 else 1 }
+                    .thenBy { it },
+            )
             .take(HomeBackupRules.MAX_OVERLAY_DISPLAYS)
         val result = JSONArray()
         for (displayId in ids) {
@@ -742,6 +746,11 @@ class HomeActivity : ComponentActivity() {
                 overlayEditor
                     .putInt(OverlayPositionRules.xKey(displayId), x)
                     .putInt(OverlayPositionRules.yKey(displayId), y)
+            }
+            safeOverlayPositions.firstOrNull()?.let { (_, x, y) ->
+                overlayEditor
+                    .putInt(OverlayPositionRules.PORTABLE_X_KEY, x)
+                    .putInt(OverlayPositionRules.PORTABLE_Y_KEY, y)
             }
             overlayEditor.apply()
         }
