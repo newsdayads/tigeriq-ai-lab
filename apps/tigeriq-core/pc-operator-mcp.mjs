@@ -304,6 +304,40 @@ function wrapTool(server, name, description, schemaObj, handler) {
   });
 }
 
+// #5417: Execute the installed source's Vitest CLI with node.exe directly.
+// Windows child_process.spawn of an .cmd wrapper may fail with spawn EINVAL;
+// never shell out, download packages via npx, or run outside tests/**.
+export function pcOperatorTestRunSpec(testPath, {
+  runtimeRoot = 'D:\\TigerIQ\\Runtime\\CoreSource',
+  nodeExecutable = process.execPath,
+} = {}) {
+  const normalized = String(testPath || '').replaceAll('\\', '/');
+  const segments = normalized.split('/');
+  if (!normalized.startsWith('tests/') || segments.some(p => !p || p === '.' || p === '..')
+    || !segments.slice(1, -1).every(p => /^[A-Za-z0-9_.-]+$/.test(p))
+    || !/^[A-Za-z0-9_.-]+$/.test(segments.at(-1))
+    || !['.test.mjs', '.test.js', '.test.ts', '.test.tsx'].some(ext => segments.at(-1).endsWith(ext)))
+    throw new Error('MCP_TEST_PATH_NOT_ALLOWED');
+  return {
+    exe: nodeExecutable,
+    args: [win.join(runtimeRoot, 'node_modules', 'vitest', 'vitest.mjs'), 'run', normalized],
+    cwd: runtimeRoot,
+    testPath: normalized,
+  };
+}
+
+export async function pcOperatorWorkOrderResponse(res, workOrder) {
+  // Core may answer 404 "not_found" as plain text; never JSON.parse it.
+  if (res.status === 404) return { workOrder: workOrder || null, found: false, status: 404, reason: 'WORK_ORDER_NOT_FOUND' };
+  if (!res.ok) return { workOrder: workOrder || null, found: false, status: res.status, reason: 'CORE_WORK_ORDER_HTTP_ERROR' };
+  try {
+    const data = await res.json();
+    return { workOrder: workOrder || null, found: true, data };
+  } catch {
+    return { workOrder: workOrder || null, found: false, status: res.status, reason: 'CORE_WORK_ORDER_INVALID_JSON' };
+  }
+}
+
 export function registerPcOperatorTools(server, executePcActionImpl = executePcAction, {
   allowMutation = false, leaseDb, leaseApi = leaseApiDefault, now = () => Date.now(),
 } = {}) {
@@ -993,16 +1027,19 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
       timeoutSec: z.number().optional().describe('Thời gian chờ tối đa (giây, mặc định 120)'),
     },
     async ({ testPath, timeoutSec = 120 }) => {
-      const safeTestPath = win.normalize(testPath).replaceAll('\\', '/');
-      const result = await spawnProcess('npx.cmd', ['vitest', 'run', safeTestPath], {
-        cwd: 'D:\\TigerIQ\\Workspace\\tigeriq-ai-lab',
+      const spec = pcOperatorTestRunSpec(testPath);
+      // The bundled runner is already installed; do not fetch packages.
+      if (!existsSync(spec.args[0])) throw new Error('MCP_TEST_RUNNER_NOT_INSTALLED');
+      const result = await spawnProcess(spec.exe, spec.args, {
+        cwd: spec.cwd,
         timeoutSec,
       });
       return {
-        testPath: safeTestPath,
+        testPath: spec.testPath,
+        sourceRoot: spec.cwd,
         exitCode: result.exitCode,
         timedOut: result.timedOut,
-        passed: result.exitCode === 0,
+        passed: result.exitCode === 0 && !result.timedOut,
         output: result.stdout || result.stderr,
       };
     }
@@ -1075,8 +1112,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
     async ({ workOrder }) => {
       const url = workOrder ? `http://127.0.0.1:8795/api/work-order?id=${encodeURIComponent(workOrder)}` : 'http://127.0.0.1:8795/api/status';
       const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-      const data = await res.json();
-      return { workOrder, data };
+      return pcOperatorWorkOrderResponse(res, workOrder);
     }
   );
 }
