@@ -44,7 +44,7 @@ class OverlayService : Service(), DisplayManager.DisplayListener {
         return START_NOT_STICKY
     }
 
-    private fun update() {
+    private fun update(forceReattach: Boolean = false) {
         if (!Settings.canDrawOverlays(this) || !DexUtils.isDesktop(this)) {
             remove()
             Log.i(logTag, "Permission or DeX unavailable")
@@ -52,7 +52,7 @@ class OverlayService : Service(), DisplayManager.DisplayListener {
         }
         val display = DexUtils.resolveDisplay(this, requestedId) ?: run { remove(); return }
         val id = display.displayId
-        if (shortcut != null && currentId == id) return
+        if (!forceReattach && shortcut != null && currentId == id) return
         remove()
         val size = (56f * resources.displayMetrics.density).toInt()
         val pref = getSharedPreferences("v2_camera_shortcut", Context.MODE_PRIVATE)
@@ -153,8 +153,10 @@ class OverlayService : Service(), DisplayManager.DisplayListener {
         currentId = -1
     }
     override fun onDisplayAdded(displayId: Int) = update()
-    override fun onDisplayChanged(displayId: Int) = update()
-    override fun onDisplayRemoved(displayId: Int) = update()
+    override fun onDisplayChanged(displayId: Int) =
+        update(forceReattach = displayId == currentId)
+    override fun onDisplayRemoved(displayId: Int) =
+        update(forceReattach = displayId == currentId)
     override fun onDestroy() {
         (getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)?.unregisterDisplayListener(this)
         remove()
