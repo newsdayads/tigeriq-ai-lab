@@ -1,7 +1,32 @@
+import path from 'node:path';
 import { createServer } from 'node:http';
-import { pathToFileURL } from 'node:url';
-import { createPcOperatorMcpHandler } from './pc-operator-mcp.mjs';
-import { createOAuthResourceServer, oauthRuntimeConfig } from './pc-operator-oauth-runtime.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const DEFAULT_RUNTIME_CORE_DIR = 'D:\\TigerIQ\\Runtime\\CoreSource\\apps\\tigeriq-core';
+
+export function gatewayDependencyPaths(
+  moduleUrl = import.meta.url,
+  runtimeCoreDir = process.env.TIGERIQ_CORE_RUNTIME_APP_DIR || DEFAULT_RUNTIME_CORE_DIR,
+) {
+  const modulePath = fileURLToPath(moduleUrl);
+  const normalized = modulePath.replaceAll('\\\\','/').toLowerCase();
+  const relocated = normalized.endsWith('/tigeriq/runtime/mcpfunnelgateway/server.mjs');
+  const base = relocated ? runtimeCoreDir : path.dirname(modulePath);
+  const join = relocated ? path.win32.join : path.join;
+  return {
+    pcOperator: join(base, 'pc-operator-mcp.mjs'),
+    oauthRuntime: join(base, 'pc-operator-oauth-runtime.mjs'),
+  };
+}
+
+const dependencyPaths = gatewayDependencyPaths();
+const [
+  { createPcOperatorMcpHandler },
+  { createOAuthResourceServer, oauthRuntimeConfig },
+] = await Promise.all([
+  import(pathToFileURL(dependencyPaths.pcOperator).href),
+  import(pathToFileURL(dependencyPaths.oauthRuntime).href),
+]);
 
 function json(res, status, body, headers = {}) {
   res.writeHead(status, {
