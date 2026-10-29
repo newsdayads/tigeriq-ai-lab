@@ -43,6 +43,21 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
     expect(block).toContain('editor.apply()');
   });
 
+  it('backs up and restores bounded DeX camera overlay positions without changing legacy v1 backups', () => {
+    expect(home).toContain('private fun exportOverlayPositions(): JSONArray');
+    expect(home).toContain('getSharedPreferences("v2_camera_shortcut", Context.MODE_PRIVATE)');
+    expect(home).toContain('.put("overlayPositions", exportOverlayPositions())');
+    expect(home).toContain('HomeBackupRules.requiresOverlayPositions(backupSchema)');
+    expect(home).toContain('rawOverlayPositions.length() > HomeBackupRules.MAX_OVERLAY_DISPLAYS');
+    expect(home).toContain('!seenDisplays.add(displayId)');
+    expect(home).toContain('.edit().clear()');
+    expect(home).toContain('OverlayPositionRules.xKey(displayId)');
+    expect(home).toContain('OverlayPositionRules.yKey(displayId)');
+    expect(rules).toContain('const val LEGACY_BACKUP_SCHEMA_VERSION = 1');
+    expect(rules).toContain('const val CURRENT_BACKUP_SCHEMA_VERSION = 2');
+    expect(rules).toContain('version in LEGACY_BACKUP_SCHEMA_VERSION..CURRENT_BACKUP_SCHEMA_VERSION');
+  });
+
   it('exposes explicit backup and restore actions without touching V1 data', () => {
     expect(home).toContain('"Sao lưu cấu hình V2"');
     expect(home).toContain('"Khôi phục cấu hình V2"');
