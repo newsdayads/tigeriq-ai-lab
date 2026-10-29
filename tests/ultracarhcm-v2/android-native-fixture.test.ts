@@ -47,12 +47,15 @@ function createSyntheticAssets(project: string) {
 }
 
 describe('GH-5135 native Android compile gate (synthetic fixtures, not a release)',()=>{
-  const ci = process.env.GITHUB_ACTIONS === 'true' && process.env.GITHUB_EVENT_NAME === 'pull_request';
-  (ci ? it : it.skip)('builds/lints/unit-tests exact PR source using Android SDK without redistributing V1 media', async ()=>{
+  const eventName = process.env.GITHUB_EVENT_NAME;
+  const ci = process.env.GITHUB_ACTIONS === 'true' && (eventName === 'pull_request' || eventName === 'push');
+  (ci ? it : it.skip)('builds/lints/unit-tests exact GitHub event source using Android SDK without redistributing V1 media', async ()=>{
     const eventFile=process.env.GITHUB_EVENT_PATH;
     expect(eventFile).toBeTruthy();
     const event=JSON.parse(readFileSync(eventFile!,'utf8'));
-    const expected=event.pull_request?.head?.sha;
+    const expected = eventName === 'pull_request'
+      ? event.pull_request?.head?.sha
+      : process.env.GITHUB_SHA;
     expect(expected).toMatch(/^[0-9a-f]{40}$/);
     const sdk=process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
     expect(sdk, 'Android SDK must exist on the hosted runner').toBeTruthy();
