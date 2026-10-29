@@ -296,13 +296,26 @@
     {
       "id": "F15",
       "expected": "User/notification tabs and independent update checking",
-      "status": "NOT_IMPLEMENTED",
-      "sourceEvidence": [],
-      "gap": "No corresponding V2 source implementation found in the current scoped app.",
-      "actual": "No scoped V2 notification tab or independent update-check implementation is present.",
-      "testStatus": "NOT_TESTED_NO_IMPLEMENTATION",
-      "entryPoints": [],
-      "permissions": []
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UpdateActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UpdateRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/res/values/strings.xml"
+      ],
+      "gap": "Independent update-check source follows verified V1 metadata fields and HTTPS-only download behavior, but the V2 update endpoint is intentionally unconfigured to prevent cross-package use of the V1 channel; notification-tab parity is still absent.",
+      "actual": "ProfileActivity exposes a separate CẬP NHẬT action. UpdateActivity can fetch bounded JSON metadata only from a verified HTTPS V2 endpoint, validate latestVersionCode/latestVersionName/apkUrl/sha256/releaseNotes/mandatory, compare installed build code, and only then expose an HTTPS download action. With no verified V2 endpoint it fails closed instead of using V1 version.json.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "ProfileActivity.buildContent",
+        "UpdateActivity.checkForUpdate",
+        "UpdateActivity.fetchMetadata",
+        "UpdateRules.validateMetadata",
+        "UpdateRules.hasNewerVersion"
+      ],
+      "permissions": [
+        "android.permission.INTERNET"
+      ]
     },
     {
       "id": "F16",
@@ -440,4 +453,4 @@
     "DEVICE_QA_NOT_TESTED",
     "NOT_TESTED_NO_IMPLEMENTATION"
   ]
-}
+}\n
