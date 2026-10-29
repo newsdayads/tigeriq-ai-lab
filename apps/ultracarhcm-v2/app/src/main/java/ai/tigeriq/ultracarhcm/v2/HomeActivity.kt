@@ -564,6 +564,32 @@ class HomeActivity : ComponentActivity() {
             }.setNegativeButton("Đóng", null).show()
     }
 
+    private fun exportOverlayPositions(): JSONArray {
+        val overlayPrefs = getSharedPreferences("v2_camera_shortcut", Context.MODE_PRIVATE)
+        val ids = overlayPrefs.all.keys
+            .mapNotNull(HomeBackupRules::displayIdFromOverlayKey)
+            .distinct()
+            .sorted()
+            .take(HomeBackupRules.MAX_OVERLAY_DISPLAYS)
+        val result = JSONArray()
+        for (displayId in ids) {
+            val xKey = OverlayPositionRules.xKey(displayId)
+            val yKey = OverlayPositionRules.yKey(displayId)
+            if (!overlayPrefs.contains(xKey) || !overlayPrefs.contains(yKey)) continue
+            val x = overlayPrefs.getInt(xKey, OverlayPositionRules.DEFAULT_X)
+            val y = overlayPrefs.getInt(yKey, OverlayPositionRules.DEFAULT_Y)
+            if (!HomeBackupRules.validOverlayCoordinate(x) ||
+                !HomeBackupRules.validOverlayCoordinate(y)) continue
+            result.put(
+                JSONObject()
+                    .put("displayId", displayId)
+                    .put("x", x)
+                    .put("y", y),
+            )
+        }
+        return result
+    }
+
     private fun exportHomeBackupJson(): JSONObject {
         val defaultRaw = prefs.getString("v2_default_home_config", null)
         val defaultSafe = try {
@@ -585,6 +611,7 @@ class HomeActivity : ComponentActivity() {
             .put("quickSlots", normalizedQuickSlotsForStorage(quickSlots()))
             .put("savedConfigurations", savedConfigurations())
             .put("defaultHomeConfiguration", defaultSafe ?: JSONObject.NULL)
+            .put("overlayPositions", exportOverlayPositions())
     }
 
     private fun writeHomeBackup(uri: Uri) {
@@ -636,7 +663,8 @@ class HomeActivity : ComponentActivity() {
     private fun importHomeBackupJson(text: String): Boolean {
         if (!HomeBackupRules.withinSize(text.toByteArray(Charsets.UTF_8).size)) return false
         val root = try { JSONObject(text) } catch (_: Exception) { return false }
-        if (!HomeBackupRules.canReadBackupSchema(root.optInt("backupSchemaVersion", -1))) return false
+        val backupSchema = root.optInt("backupSchemaVersion", -1)
+        if (!HomeBackupRules.canReadBackupSchema(backupSchema)) return false
         if (!root.has("night") || !root.has("limo") || !root.has("driver")) return false
 
         val driver = HomeConfigRules.normalizeName(root.optString("driver", ""))
@@ -662,6 +690,25 @@ class HomeActivity : ComponentActivity() {
             normalizeHomeConfiguration(item) ?: return false
         }
 
+        val replaceOverlayPositions = HomeBackupRules.requiresOverlayPositions(backupSchema)
+        val safeOverlayPositions = mutableListOf<Triple<Int, Int, Int>>()
+        if (replaceOverlayPositions) {
+            val rawOverlayPositions = root.optJSONArray("overlayPositions") ?: return false
+            if (rawOverlayPositions.length() > HomeBackupRules.MAX_OVERLAY_DISPLAYS) return false
+            val seenDisplays = mutableSetOf<Int>()
+            for (index in 0 until rawOverlayPositions.length()) {
+                val item = rawOverlayPositions.optJSONObject(index) ?: return false
+                val displayId = item.optInt("displayId", -1)
+                val x = item.optInt("x", -1)
+                val y = item.optInt("y", -1)
+                if (!HomeBackupRules.validOverlayDisplayId(displayId) ||
+                    !HomeBackupRules.validOverlayCoordinate(x) ||
+                    !HomeBackupRules.validOverlayCoordinate(y) ||
+                    !seenDisplays.add(displayId)) return false
+                safeOverlayPositions.add(Triple(displayId, x, y))
+            }
+        }
+
         val editor = prefs.edit()
             .putBoolean("night", root.optBoolean("night", false))
             .putBoolean("limo", root.optBoolean("limo", false))
@@ -671,6 +718,19 @@ class HomeActivity : ComponentActivity() {
         if (safeDefault == null) editor.remove("v2_default_home_config")
         else editor.putString("v2_default_home_config", safeDefault.toString())
         editor.apply()
+
+        if (replaceOverlayPositions) {
+            val overlayEditor = getSharedPreferences(
+                "v2_camera_shortcut",
+                Context.MODE_PRIVATE,
+            ).edit().clear()
+            for ((displayId, x, y) in safeOverlayPositions) {
+                overlayEditor
+                    .putInt(OverlayPositionRules.xKey(displayId), x)
+                    .putInt(OverlayPositionRules.yKey(displayId), y)
+            }
+            overlayEditor.apply()
+        }
         return true
     }
 
