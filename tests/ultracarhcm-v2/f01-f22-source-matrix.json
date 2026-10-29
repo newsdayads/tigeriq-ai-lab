@@ -1,0 +1,211 @@
+{
+  "schema": "tigeriq.ultracarhcm-v2.f01-f22-source-matrix.v1",
+  "workOrder": "GH-5135",
+  "baseline": {
+    "pullRequest": "https://github.com/newsdayads/tigeriq-ai-lab/pull/5146",
+    "note": "Expected behavior comes from the verified static baseline/parity contract; this matrix records only current V2 source coverage and never converts source presence into runtime acceptance."
+  },
+  "statuses": [
+    "PARTIAL_SOURCE",
+    "SOURCE_IMPLEMENTED_DEVICE_REQUIRED",
+    "NOT_IMPLEMENTED"
+  ],
+  "acceptanceRule": "No row is PASS/ACCEPTED from source evidence alone. Hardware/media/runtime gates remain separate.",
+  "features": [
+    {
+      "id": "F01",
+      "expected": "UltraCar cockpit/home illustrated dashboard with V1 proportions/background/sidebar/shortcuts in DeX",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt"
+      ],
+      "gap": "Home shell exists, but original six governed media are not legally staged and screenshot parity is not accepted."
+    },
+    {
+      "id": "F02",
+      "expected": "Vehicle card/model/color selection, parked/moving images and license plate",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt"
+      ],
+      "gap": "Two vehicle image choices exist; full vehicle card, moving states and license plate parity are absent."
+    },
+    {
+      "id": "F03",
+      "expected": "Real USB Host UVC streaming, image controls and USB permission lifecycle",
+      "status": "SOURCE_IMPLEMENTED_DEVICE_REQUIRED",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml"
+      ],
+      "gap": "USB-host UVC source lifecycle exists; real USB camera preview/control QA is not accepted."
+    },
+    {
+      "id": "F04",
+      "expected": "Separate camera window with manual open/close while preserving real camera video",
+      "status": "SOURCE_IMPLEMENTED_DEVICE_REQUIRED",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbCameraActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt"
+      ],
+      "gap": "Separate window and toggle path exist; real video/device behavior remains unaccepted."
+    },
+    {
+      "id": "F05",
+      "expected": "Reverse signal plus 0.5m/1.0m/1.5m parking guide activation and calibration",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbCameraActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DynamicGuideView.kt"
+      ],
+      "gap": "Intent-fed reverse/steering guide exists, but no verified vehicle reverse-signal source or calibrated distance acceptance exists."
+    },
+    {
+      "id": "F06",
+      "expected": "Exactly one draggable transparent DeX Camera shortcut with the same action as in-app Camera",
+      "status": "SOURCE_IMPLEMENTED_DEVICE_REQUIRED",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexUtils.kt"
+      ],
+      "gap": "Single transparent draggable shortcut source exists; DeX display behavior requires real-device QA."
+    },
+    {
+      "id": "F07",
+      "expected": "DeX auto-launch, multiple displays, freeform windows, zone overlays and layout persistence",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexUtils.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt"
+      ],
+      "gap": "Display resolution and camera overlay exist; full auto-launch, zone/freeform orchestration and layout persistence do not."
+    },
+    {
+      "id": "F08",
+      "expected": "Multi-zone/slot dashboard management with saved/default layouts and relaunch",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeConfigRules.kt"
+      ],
+      "gap": "Local Home snapshots save theme/vehicle/name only; full V1 multi-zone layouts/default/relaunch are absent."
+    },
+    {
+      "id": "F09",
+      "expected": "Road/city/theme/day/night/video/custom image Home backgrounds",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt"
+      ],
+      "gap": "Day/night governed backgrounds are referenced; custom image/video background parity is absent and original media are not staged."
+    },
+    {
+      "id": "F10",
+      "expected": "Shortcut bar/map applications and bottom actions/image/music",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/QuickBarCompose.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/QuickSlotRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt"
+      ],
+      "gap": "Nine assignable/launchable slots exist; complete V1 bottom-zone behavior and parity are not accepted."
+    },
+    {
+      "id": "F11",
+      "expected": "GPS, battery/weather/telemetry and diagnostics zone",
+      "status": "NOT_IMPLEMENTED",
+      "sourceEvidence": [],
+      "gap": "No corresponding V2 source implementation found in the current scoped app."
+    },
+    {
+      "id": "F12",
+      "expected": "OBD/Bluetooth pairing, speed/rpm/battery and diagnostics",
+      "status": "NOT_IMPLEMENTED",
+      "sourceEvidence": [],
+      "gap": "No corresponding V2 source implementation found in the current scoped app."
+    },
+    {
+      "id": "F13",
+      "expected": "Taxi meter, trip distance/time/rates/history/revenue",
+      "status": "NOT_IMPLEMENTED",
+      "sourceEvidence": [],
+      "gap": "No corresponding V2 source implementation found in the current scoped app."
+    },
+    {
+      "id": "F14",
+      "expected": "Profile, identity/license, greeting and registration/extension",
+      "status": "NOT_IMPLEMENTED",
+      "sourceEvidence": [],
+      "gap": "No corresponding V2 profile/auth implementation found; Home driver display name is not feature parity."
+    },
+    {
+      "id": "F15",
+      "expected": "User/notification tabs and independent update checking",
+      "status": "NOT_IMPLEMENTED",
+      "sourceEvidence": [],
+      "gap": "No corresponding V2 source implementation found in the current scoped app."
+    },
+    {
+      "id": "F16",
+      "expected": "Backup/export/import/restore all user settings/images/layout/shortcuts/sound/vehicle with security-bound exclusions",
+      "status": "NOT_IMPLEMENTED",
+      "sourceEvidence": [],
+      "gap": "Device-local SharedPreferences are not a backup/export/import/restore implementation."
+    },
+    {
+      "id": "F17",
+      "expected": "Language/theme/appearance/color palettes",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt"
+      ],
+      "gap": "Day/night Home toggle exists; language and full appearance/palette parity are absent."
+    },
+    {
+      "id": "F18",
+      "expected": "Administrative/licensing/customer activation/device registration where legitimately available",
+      "status": "NOT_IMPLEMENTED",
+      "sourceEvidence": [],
+      "gap": "No corresponding V2 administrative/licensing implementation found."
+    },
+    {
+      "id": "F19",
+      "expected": "Data export/reporting sheets where supported by V1",
+      "status": "NOT_IMPLEMENTED",
+      "sourceEvidence": [],
+      "gap": "No corresponding V2 export/reporting implementation found."
+    },
+    {
+      "id": "F20",
+      "expected": "Permissions for camera/USB/geolocation/overlay/update package/privacy/error recovery",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt"
+      ],
+      "gap": "Camera/USB-host/overlay lifecycle is partially covered; geolocation/update/privacy/recovery parity is incomplete."
+    },
+    {
+      "id": "F21",
+      "expected": "Responsive portrait/phone/landscape/DeX two/three-column profile cards without clipping",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml"
+      ],
+      "gap": "Home uses proportional placement and handles configuration changes; required profile-card layouts and device-size acceptance are absent."
+    },
+    {
+      "id": "F22",
+      "expected": "Crash/restart, offline/backups, migration, coexistence, signing and rollback",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt"
+      ],
+      "gap": "Independent package and lifecycle cleanup exist; migration, backup/restore, signing/release and rollback acceptance are absent."
+    }
+  ]
+}
