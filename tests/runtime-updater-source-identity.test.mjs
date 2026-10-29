@@ -7,7 +7,7 @@ test('recovery helper is unique and does not duplicate updater code',()=>{
   expect(source.match(/function Runtime-Source-Dirty/g)).toHaveLength(1);
   expect(source.match(/function Restart-Core/g)).toHaveLength(1);
   expect(source.match(/function Gates-Pass/g)).toHaveLength(1);
-  expect(source.length).toBeLessThan(67000); // Includes bounded MCP Funnel gateway lifecycle checks without duplicating updater code.
+  expect(source.length).toBeLessThan(68000); // Includes bounded MCP Funnel gateway lifecycle checks without duplicating updater code.
 });
 test('installed metadata must match worktree and be a valid known commit',()=>{
   const block=source.slice(source.indexOf('function Resolve-DeployedSourceSha'),source.indexOf('function Runtime-Source-Dirty'));
@@ -49,8 +49,11 @@ test('reconciles standalone MCP Funnel gateway only through exact supervised top
   expect(source).toContain("$mcpGatewayReconcile=Reconcile-McpFunnelGatewayRuntime $remote");
   expect(source).toContain("$mcpRollback=if(-not $CanaryMode){Reconcile-McpFunnelGatewayRuntime $previousRuntimeSha}");
   expect(source.match(/function Sync-McpFunnelGatewayRuntime/g)).toHaveLength(1);
-  expect(source).toContain("$mcpGatewaySourcePath=(Join-Path $runtimeRepo 'apps\\tigeriq-core\\mcp-funnel-gateway.mjs')");
+  expect(source).toContain("$mcpGatewaySourcePath=(Join-Path $runtimeRepo 'scripts\\tigeriq-core\\mcp-funnel-gateway-runtime.mjs')");
   expect(source).toContain("MCP_GATEWAY_SYNC_HASH_MISMATCH");
+  expect(source).toContain("MCP_GATEWAY_CANONICAL_SOURCE_AND_BACKUP_MISSING");
+  expect(source).toContain("$backup=$mcpGatewayServerPath+'.previous'");
+  expect(source).toContain("action='restored_previous'");
   expect(source.indexOf('$mcpGatewaySync=Sync-McpFunnelGatewayRuntime')).toBeLessThan(source.indexOf('$mcpGatewayReconcile=Reconcile-McpFunnelGatewayRuntime $remote'));
 });
 

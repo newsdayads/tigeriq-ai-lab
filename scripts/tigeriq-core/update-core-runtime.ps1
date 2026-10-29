@@ -45,7 +45,7 @@ $remoteDesktopRuntime='D:\TigerIQ\Runtime\desktop-commander-remote'
 $remoteDesktopLifecycleGeneration='20260930_TOPOLOGY_2'
 $remoteDesktopLifecycleState='D:\TigerIQ\State\rdc-lifecycle-generation.txt'
 $mcpGatewayServerPath='D:\TigerIQ\Runtime\McpFunnelGateway\server.mjs'
-$mcpGatewaySourcePath=(Join-Path $runtimeRepo 'apps\tigeriq-core\mcp-funnel-gateway.mjs')
+$mcpGatewaySourcePath=(Join-Path $runtimeRepo 'scripts\tigeriq-core\mcp-funnel-gateway-runtime.mjs')
 $mcpGatewaySupervisorPaths=@('D:\TigerIQ\Runtime\McpFunnelGateway\run-mcp-gateway.cmd','D:\TigerIQ\Runtime\McpFunnelGateway\run-mcp-gateway.ps1')
 $mcpGatewayPort=8805
 $remoteDesktopGuardInstaller=(Join-Path $runtimeRepo 'apps\remote-desktop-guard\install-runtime.mjs')
@@ -652,15 +652,21 @@ function Stop-NodeProcessesByMatch([string]$match){
   foreach($p in $procs){try{Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop}catch{}}
 }
 function Sync-McpFunnelGatewayRuntime(){
-  if(-not(Test-Path -LiteralPath $mcpGatewaySourcePath)){return @{action='blocked';reason='MCP_GATEWAY_CANONICAL_SOURCE_MISSING'}}
+  $backup=$mcpGatewayServerPath+'.previous'
+  if(-not(Test-Path -LiteralPath $mcpGatewaySourcePath)){
+    if(-not(Test-Path -LiteralPath $backup)){return @{action='blocked';reason='MCP_GATEWAY_CANONICAL_SOURCE_AND_BACKUP_MISSING'}}
+    $tmp=$mcpGatewayServerPath+'.tmp';Copy-Item -LiteralPath $backup -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $mcpGatewayServerPath -Force
+    return @{action='restored_previous';sha256=(Get-FileHash -LiteralPath $mcpGatewayServerPath -Algorithm SHA256).Hash}
+  }
   New-Item -ItemType Directory -Path (Split-Path -Parent $mcpGatewayServerPath) -Force|Out-Null
   $expected=(Get-FileHash -LiteralPath $mcpGatewaySourcePath -Algorithm SHA256).Hash
   $actual=if(Test-Path -LiteralPath $mcpGatewayServerPath){(Get-FileHash -LiteralPath $mcpGatewayServerPath -Algorithm SHA256).Hash}else{''}
   if($actual -eq $expected){return @{action='none';sha256=$expected}}
+  if(Test-Path -LiteralPath $mcpGatewayServerPath){Copy-Item -LiteralPath $mcpGatewayServerPath -Destination $backup -Force}
   $tmp=$mcpGatewayServerPath+'.tmp';Copy-Item -LiteralPath $mcpGatewaySourcePath -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $mcpGatewayServerPath -Force
   $verified=(Get-FileHash -LiteralPath $mcpGatewayServerPath -Algorithm SHA256).Hash
   if($verified -ne $expected){return @{action='blocked';reason='MCP_GATEWAY_SYNC_HASH_MISMATCH'}}
-  return @{action='updated';sha256=$expected}
+  return @{action='updated';sha256=$expected;backup=$backup}
 }
 function Reconcile-McpFunnelGatewayRuntime([string]$installedSha){
   if(-not(Test-Path -LiteralPath $mcpGatewayServerPath)){return @{action='skip';reason='MCP_GATEWAY_SERVER_MISSING'}}
