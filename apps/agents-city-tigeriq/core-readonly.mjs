@@ -111,23 +111,49 @@ export function normalizeCoreSnapshot(source, {now = Date.now()} = {}) {
 
 export async function fetchCoreSnapshot({
   fetchImpl = fetch, now = Date.now(), url = CORE_URL, timeoutMs = 4000,
+  attempts = 2, retryDelayMs = 150,
 } = {}) {
   // Refuse arbitrary destinations/redirects: keep Core reads on loopback.
   if (url !== CORE_URL) throw new Error('CORE_ORIGIN_NOT_ALLOWED');
   if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 15_000)
     throw new Error('INVALID_TIMEOUT');
-  const response = await fetchImpl(url, {
-    method:'GET', redirect:'error', cache:'no-store',
-    headers:{accept:'application/json'},
-    signal:AbortSignal.timeout(timeoutMs),
-  });
-  if (!response || response.ok !== true || response.status !== 200)
-    throw new Error('CORE_HTTP_UNAVAILABLE');
-  const length = Number(response.headers?.get?.('content-length'));
-  if (Number.isFinite(length) && length > MAX_BODY_BYTES) throw new Error('CORE_BODY_TOO_LARGE');
-  const body = await response.text();
-  if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) throw new Error('CORE_BODY_TOO_LARGE');
-  let parsed;
-  try { parsed = JSON.parse(body); } catch { throw new Error('CORE_JSON_INVALID'); }
-  return normalizeCoreSnapshot(parsed, {now});
+  if (!Number.isInteger(attempts) || attempts < 1 || attempts > 3)
+    throw new Error('INVALID_ATTEMPTS');
+  if (!Number.isInteger(retryDelayMs) || retryDelayMs < 0 || retryDelayMs > 1000)
+    throw new Error('INVALID_RETRY_DELAY');
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    let response;
+    try {
+      response = await fetchImpl(url, {
+        method:'GET', redirect:'error', cache:'no-store',
+        headers:{accept:'application/json'},
+        signal:AbortSignal.timeout(timeoutMs),
+      });
+    } catch {
+      if (attempt < attempts) {
+        if (retryDelayMs) await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+        continue;
+      }
+      throw new Error('CORE_HTTP_UNAVAILABLE');
+    }
+
+    if (!response || response.ok !== true || response.status !== 200) {
+      if (attempt < attempts) {
+        if (retryDelayMs) await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+        continue;
+      }
+      throw new Error('CORE_HTTP_UNAVAILABLE');
+    }
+
+    const length = Number(response.headers?.get?.('content-length'));
+    if (Number.isFinite(length) && length > MAX_BODY_BYTES) throw new Error('CORE_BODY_TOO_LARGE');
+    const body = await response.text();
+    if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) throw new Error('CORE_BODY_TOO_LARGE');
+    let parsed;
+    try { parsed = JSON.parse(body); } catch { throw new Error('CORE_JSON_INVALID'); }
+    return normalizeCoreSnapshot(parsed, {now});
+  }
+
+  throw new Error('CORE_HTTP_UNAVAILABLE');
 }
