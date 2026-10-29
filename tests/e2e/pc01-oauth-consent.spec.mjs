@@ -22,12 +22,14 @@ test('PC01 consent reaches only the exact ChatGPT callback as GET without Owner 
       end(data=''){this.body+=data;return this;}};
     await auth.handle(req,res,new URL(url));return res;
   };
-  const callbacks=[], approvals=[];
+  const callbacks=[], approvals=[], diagnostics=[];
+  page.on('console',message=>{if(message.type()==='error')diagnostics.push(message.text());});
   await context.route('**/*',async route=>{
     const req=route.request(), url=new URL(req.url());
     if(url.origin===origin){
       if(url.pathname==='/oauth/approve')approvals.push(req.method());
       const result=await dispatch(req.url(),req.method(),await req.allHeaders(),req.postData()||'');
+      diagnostics.push({path:url.pathname,status:result.status});
       await route.fulfill({status:result.status,headers:result.headers,body:result.body});return;
     }
     if(url.origin+url.pathname===CHATGPT_REDIRECT){
@@ -42,7 +44,9 @@ test('PC01 consent reaches only the exact ChatGPT callback as GET without Owner 
   await page.goto(origin+'/oauth/authorize?'+params);
   await page.locator('input[name=owner_code]').fill(ownerCode);
   await page.getByRole('button',{name:'ĐĂNG NHẬP VÀ CẤP QUYỀN'}).click();
-  await expect(page.getByRole('heading',{name:'Synthetic callback accepted'})).toBeVisible({timeout:7000});
+  await expect(page.getByRole('heading',{name:'Synthetic callback accepted'})).toBeVisible({timeout:7000}).catch(error=>{
+    throw Error(JSON.stringify({audit,approvals,callbackCount:callbacks.length,path:new URL(page.url()).pathname,diagnostics})+'\\n'+error.message);
+  });
   expect(approvals).toEqual(['POST']);
   expect(callbacks).toHaveLength(1);
   expect(callbacks[0].method).toBe('GET');
