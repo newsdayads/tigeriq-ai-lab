@@ -28,9 +28,9 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(home).toContain('private fun savedConfigurations(): JSONArray');
     expect(home).toContain('JSONArray(prefs.getString("v2_home_configs", "[]")');
     expect(home).toContain('private fun applyHomeConfiguration(item: JSONObject, renderAfter: Boolean)');
-    expect(home).toContain('.putBoolean("night", item.optBoolean("night", false))');
-    expect(home).toContain('.putBoolean("limo", item.optBoolean("limo", false))');
-    expect(home).toContain('.putString("driver_name", item.optString("driver", "Driver"))');
+    expect(home).toContain('.putBoolean("night", safe.optBoolean("night", false))');
+    expect(home).toContain('.putBoolean("limo", safe.optBoolean("limo", false))');
+    expect(home).toContain('.putString("driver_name", safe.optString("driver", "Driver"))');
     expect(home).toContain('editor.putString("v2_quick_slots", normalizedQuickSlotsForStorage(slots).toString())');
     expect(home).toContain('if (i != index) remaining.put(entries.get(i))');
     expect(home).toContain('.putString("v2_home_configs", remaining.toString())');
@@ -53,7 +53,7 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
   it('supports a device-local default HOME configuration without claiming V1 parity', () => {
     expect(home).toContain('applyDefaultHomeConfiguration()');
     expect(home).toContain('private fun setDefaultHomeConfiguration(item: JSONObject)');
-    expect(home).toContain('putString("v2_default_home_config", item.toString()).apply()');
+    expect(home).toContain('putString("v2_default_home_config", safe.toString()).apply()');
     expect(home).toContain('arrayOf("Áp dụng", "Đặt làm mặc định", "Xóa cấu hình")');
     expect(home).toContain('editor.remove("v2_default_home_config")');
     expect(home).toContain('Corrupt or unsupported default HOME configuration');
