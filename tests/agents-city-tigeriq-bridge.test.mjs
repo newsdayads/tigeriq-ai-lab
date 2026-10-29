@@ -200,6 +200,15 @@ test('HTTP operational server exposes work orders, live workers, liveness and re
     assert.match(await page.text(),/Animal City/);
     const js=await fetch(root+'/app.js');
     assert.equal(js.status,200);
+    const world=await fetch(root+'/scene3d.js');
+    assert.equal(world.status,200);
+    assert.match(world.headers.get('content-type'),/javascript/);
+    const worldSource=await world.text();
+    assert.match(worldSource,/getContext\('webgl'/);
+    assert.match(worldSource,/tigeriq:live/);
+    assert.match(worldSource,/activeWorkerVerified===true/);
+    const worldPost=await fetch(root+'/scene3d.js',{method:'POST'});
+    assert.equal(worldPost.status,405);
     const snapshot=await (await fetch(root+'/api/rooms')).json();
     assert.equal(snapshot.ok,true);
     assert.equal(snapshot.dispatchEnabled,false);
@@ -272,4 +281,17 @@ test('PC01 operational task targets the interactive desktop user and remains lim
   assert.doesNotMatch(script,/WindowsIdentity.*GetCurrent/);
   assert.doesNotMatch(script,/RunLevel Highest/);
   assert.doesNotMatch(script,/ExecutionPolicy\s+Bypass/i);
+});
+
+test('3D Animal scene is local and cannot fabricate a running AI',async()=>{
+  const html=await readFile(new URL('../apps/agents-city-tigeriq/index.html',import.meta.url),'utf8');
+  const world=await readFile(new URL('../apps/agents-city-tigeriq/scene3d.js',import.meta.url),'utf8');
+  assert.match(html,/scene3d.js/);
+  assert.match(html,/animal-scene/);
+  assert.match(world,/getContext\('webgl'/);
+  assert.match(world,/tigeriq:live/);
+  assert.match(world,/liveWorkerBindingsVerified===true/);
+  assert.match(world,/activeWorkerVerified===true/);
+  assert.doesNotMatch(world,/https?:\/\//);
+  assert.doesNotMatch(world,/fetch\(/);
 });
