@@ -1075,7 +1075,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
         passed: result.exitCode === 0 && !result.timedOut,
         output: boundedText([result.stdout, result.stderr].filter(Boolean).join('\n')),
       };
-    }    }
+    }
   );
 
   // 21. evidence_record
