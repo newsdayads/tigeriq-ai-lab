@@ -625,9 +625,11 @@ describe('TigerIQ PC Operator MCP Server', () => {
     }
   });
 
-  it('permits mutating tools without bearer token when serverAuthorized is enabled', async () => {
+  it('never treats serverAuthorized as a credential and requires per-request bearer', async () => {
+    const secret = 's'.repeat(32);
     const handler = createPcOperatorMcpHandler({
       serverAuthorized: true,
+      existingSecret: secret,
       leaseDb: null,
       executePcActionImpl: vi.fn().mockResolvedValue({ simulated: true }),
     });
@@ -638,71 +640,53 @@ describe('TigerIQ PC Operator MCP Server', () => {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const port = server.address().port;
     const testFile = 'D:\\TigerIQ\\State\\mcp-server-auth-test.txt';
+    const call = (name, args = {}, authorization = null) => fetch(`http://127.0.0.1:${port}/mcp`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(authorization ? { authorization } : {}),
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 50,
+        method: 'tools/call',
+        params: { name, arguments: args },
+      }),
+    });
     try {
-      // file_write without authorization header
-      const writeRes = await fetch(`http://127.0.0.1:${port}/mcp`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 50,
-          method: 'tools/call',
-          params: {
-            name: 'file_write',
-            arguments: { path: testFile, content: 'SERVER_AUTHORIZED_OK' },
-          },
-        }),
-      });
-      expect(writeRes.status).toBe(200);
-      const writePayload = parseSsePayload(await writeRes.text());
-      expect(writePayload.ok).toBe(true);
-      expect(writePayload.completedStepId).toBe('file_write');
+      const denied = await call('file_write', { path: testFile, content: 'SHOULD_NOT_WRITE' });
+      expect(denied.status).toBe(401);
+      expect(denied.headers.get('www-authenticate')).toBe('Bearer');
+      expect(await denied.json()).toEqual({ ok: false, reason: 'MCP_PER_REQUEST_AUTH_REQUIRED' });
+      await expect(fs.stat(testFile)).rejects.toThrow();
 
-      // shell_exec without authorization header
-      const shellRes = await fetch(`http://127.0.0.1:${port}/mcp`, {
+      const initDenied = await fetch(`http://127.0.0.1:${port}/mcp`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 51,
-          method: 'tools/call',
-          params: {
-            name: 'shell_exec',
-            arguments: { command: 'echo TEST_SERVER_AUTH' },
-          },
+          jsonrpc: '2.0', id: 51, method: 'initialize',
+          params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'anonymous', version: '1' } },
         }),
       });
-      expect(shellRes.status).toBe(200);
-      const shellPayload = parseSsePayload(await shellRes.text());
-      expect(shellPayload.ok).toBe(true);
-      expect(shellPayload.completedStepId).toBe('shell_exec');
+      expect(initDenied.status).toBe(401);
 
-      // ui_action without authorization header
-      const uiRes = await fetch(`http://127.0.0.1:${port}/mcp`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 52,
-          method: 'tools/call',
-          params: {
-            name: 'ui_action',
-            arguments: { action: 'pad_health' },
-          },
-        }),
-      });
-      expect(uiRes.status).toBe(200);
-      const uiPayload = parseSsePayload(await uiRes.text());
-      expect(uiPayload.ok).toBe(true);
-      expect(uiPayload.completedStepId).toBe('ui_action');
+      const authorization = 'Bearer ' + secret;
+      const accepted = await call('file_write', { path: testFile, content: 'PER_REQUEST_AUTH_OK' }, authorization);
+      expect(accepted.status).toBe(200);
+      const acceptedPayload = parseSsePayload(await accepted.text());
+      expect(acceptedPayload.ok).toBe(true);
+      expect(acceptedPayload.completedStepId).toBe('file_write');
+
+      const readBack = await fs.readFile(testFile, 'utf8');
+      expect(readBack).toBe('PER_REQUEST_AUTH_OK');
     } finally {
       server.close();
-      try { await fs.promises.unlink(testFile); } catch {}
+      try { await fs.unlink(testFile); } catch {}
     }
   });
 
   it('handles docker_status gracefully without throwing ENOENT', async () => {
-    const handler = createPcOperatorMcpHandler({ serverAuthorized: true });
+    const handler = createPcOperatorMcpHandler();
     const server = createServer(async (req, res) => {
       const url = new URL(req.url, 'http://localhost');
       const handled = await handler(req, res, url);
@@ -737,7 +721,6 @@ describe('TigerIQ PC Operator MCP Server', () => {
 
   it('handles ui_window_list with structured window response', async () => {
     const handler = createPcOperatorMcpHandler({
-      serverAuthorized: true,
       executePcActionImpl: async () => ({
         ok: true,
         data: {
