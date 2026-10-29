@@ -27,4 +27,17 @@ class DexDockRulesTest {
         assertFalse(DexDockRules.shouldLaunchHome(DexDockRules.ACTION_EXIT_DEX, true, 2))
         assertFalse(DexDockRules.shouldLaunchHome(DexDockRules.ACTION_ENTER_DEX, true, null))
     }
+
+    @Test fun stopsOverlayOnlyAfterRealExternalDexIsGone() {
+        assertTrue(DexDockRules.shouldStopOverlay(DexDockRules.ACTION_EXIT_DEX, false, null))
+        assertTrue(DexDockRules.shouldStopOverlay(DexDockRules.ACTION_EXIT_DEX, true, null))
+        assertFalse(DexDockRules.shouldStopOverlay(DexDockRules.ACTION_EXIT_DEX, true, 2))
+    }
+
+    @Test fun ignoresSpoofedOrWrongExitWhileExternalDexIsActive() {
+        assertFalse(DexDockRules.shouldStopOverlay(null, false, null))
+        assertFalse(DexDockRules.shouldStopOverlay("other", false, null))
+        assertFalse(DexDockRules.shouldStopOverlay(DexDockRules.ACTION_ENTER_DEX, false, null))
+        assertFalse(DexDockRules.shouldStopOverlay(DexDockRules.ACTION_EXIT_DEX, true, 3))
+    }
 }

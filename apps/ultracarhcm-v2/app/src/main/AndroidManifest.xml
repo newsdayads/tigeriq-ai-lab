@@ -35,7 +35,7 @@
     <activity android:name=".RecoveryActivity" android:exported="false" android:resizeableActivity="true"/>
     <activity android:name=".UpdateActivity" android:exported="false" android:resizeableActivity="true"/>
     <service android:name=".OverlayService" android:exported="false"/>
-    <receiver android:name=".DexDockReceiver" android:exported="false">
+    <receiver android:name=".DexDockReceiver" android:exported="true">
       <intent-filter>
         <action android:name="android.app.action.ENTER_KNOX_DESKTOP_MODE"/>
         <action android:name="android.app.action.EXIT_KNOX_DESKTOP_MODE"/>
