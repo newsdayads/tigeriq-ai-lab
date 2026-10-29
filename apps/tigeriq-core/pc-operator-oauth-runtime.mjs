@@ -122,6 +122,7 @@ export function createOAuthResourceServer({
     }
   }
   return Object.freeze({
+    config,
     configured,
     protectedMetadata,
     authorizationMetadata,
