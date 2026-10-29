@@ -17,11 +17,19 @@ class DexDockReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when {
             DexDockRules.isEnterAction(intent.action) -> launchV2HomeOnDex(context, intent.action)
-            DexDockRules.isExitAction(intent.action) -> {
-                runCatching { context.stopService(Intent(context, OverlayService::class.java)) }
-                    .onFailure { Log.w(TAG, "Unable to stop V2 overlay after DeX exit", it) }
-            }
+            DexDockRules.isExitAction(intent.action) -> stopOverlayIfDexGone(context, intent.action)
         }
+    }
+
+    private fun stopOverlayIfDexGone(context: Context, action: String?) {
+        val desktopActive = DexUtils.isDesktop(context)
+        val displayId = DexUtils.resolveDisplay(context, Display.DEFAULT_DISPLAY)?.displayId
+        if (!DexDockRules.shouldStopOverlay(action, desktopActive, displayId)) {
+            Log.i(TAG, "DeX exit ignored: desktop=$desktopActive display=$displayId")
+            return
+        }
+        runCatching { context.stopService(Intent(context, OverlayService::class.java)) }
+            .onFailure { Log.w(TAG, "Unable to stop V2 overlay after DeX exit", it) }
     }
 
     private fun launchV2HomeOnDex(context: Context, action: String?) {
