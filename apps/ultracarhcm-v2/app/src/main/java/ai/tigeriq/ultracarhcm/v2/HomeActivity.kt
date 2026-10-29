@@ -430,8 +430,25 @@ class HomeActivity : ComponentActivity() {
         place(clock!!, .026f, .334f, .22f, .074f)
         clock?.text = SimpleDateFormat("EEEE\ndd/MM\nHH:mm", Locale("vi", "VN")).format(Date())
 
-        image(if (prefs.getBoolean("limo", false)) R.drawable.v2_car_limo_do_parked
-              else R.drawable.v2_car_lambogini_trang_parked, .295f, .458f, .41f, .242f)
+        val vehicleModel = VehicleRules.currentModel(
+            prefs.getString(VehicleRules.PREF_MODEL, null),
+            prefs.getBoolean("limo", false),
+        )
+        image(
+            if (vehicleModel == VehicleRules.MODEL_LIMO_RED) R.drawable.v2_car_limo_do_parked
+            else R.drawable.v2_car_lambogini_trang_parked,
+            .295f, .458f, .41f, .242f,
+        )
+        val plate = prefs.getString(VehicleRules.PREF_LICENSE_PLATE, "")
+            ?.takeIf { it.isNotBlank() }
+        if (plate != null) {
+            place(
+                label(plate, 14f, Color.WHITE, true).apply {
+                    background = shape(0xb8101a20.toInt(), radius = 8f)
+                },
+                .375f, .665f, .25f, .034f,
+            )
+        }
 
         renderQuickBar()
 
@@ -854,7 +871,7 @@ class HomeActivity : ComponentActivity() {
     private fun showSettings() {
         val options = arrayOf(
             "Giao diện / hình nền",
-            if (prefs.getBoolean("limo", false)) "Xe Lamborghini trắng" else "Xe Limo đỏ",
+            "Xe / biển số",
             "Camera USB thật (UVC Host)",
             "Cấp quyền nút Camera nổi DeX",
             "Trạng thái tương đương APP gốc",
@@ -868,7 +885,7 @@ class HomeActivity : ComponentActivity() {
             .setItems(options) { _, which ->
                 when(which) {
                     0 -> startActivity(Intent(this, AppearanceActivity::class.java))
-                    1 -> { prefs.edit().putBoolean("limo", !prefs.getBoolean("limo", false)).apply(); render() }
+                    1 -> startActivity(Intent(this, VehicleActivity::class.java))
                     2 -> startActivity(Intent(this, UsbCameraActivity::class.java))
                     3 -> {
                         if (!Settings.canDrawOverlays(this)) {
