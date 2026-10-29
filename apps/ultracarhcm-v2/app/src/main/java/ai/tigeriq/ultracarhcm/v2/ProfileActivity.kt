@@ -1,6 +1,7 @@
 package ai.tigeriq.ultracarhcm.v2
 
-import android.content.Context\nimport android.content.Intent
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
