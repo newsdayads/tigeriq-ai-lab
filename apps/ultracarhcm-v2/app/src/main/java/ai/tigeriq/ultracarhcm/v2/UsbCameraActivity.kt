@@ -98,10 +98,21 @@ class UsbCameraActivity : Activity() {
         openCamera()
     }
     private fun applyReverseGuideIntent(intent: Intent) {
+        val current = guide.curveState
+        val reverseActive =
+            if (intent.hasExtra(EXTRA_REVERSE_ACTIVE))
+                intent.getBooleanExtra(EXTRA_REVERSE_ACTIVE, current.reverseActive)
+            else current.reverseActive
+        val steeringDegrees =
+            if (intent.hasExtra(EXTRA_STEERING_DEGREES))
+                intent.getFloatExtra(EXTRA_STEERING_DEGREES, current.steeringDegrees)
+            else current.steeringDegrees
+
         guide.updateGuide(
             GuideCurveState(
-                reverseActive = intent.getBooleanExtra(EXTRA_REVERSE_ACTIVE, false),
-                steeringDegrees = intent.getFloatExtra(EXTRA_STEERING_DEGREES, 0f),
+                reverseActive = reverseActive,
+                steeringDegrees = steeringDegrees,
+                warp = current.warp,
             ),
         )
         updateGuideVisibility()
