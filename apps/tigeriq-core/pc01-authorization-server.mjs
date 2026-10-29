@@ -28,7 +28,7 @@ async function body(req) {
 export function ownerCodeDigest(code, salt) {
   return scryptSync(code, salt, 32, {N:16384,r:8,p:1}).toString('hex');
 }
-export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = Date.now, audit = () => {}}) {
+export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = Date.now, audit = () => {}, sessionStore = {load: () => [], save: () => {}, revoke: () => {}}}) {
   const issuer = exactHttpsUrl(config.issuerUrl);
   const resource = exactHttpsUrl(config.resourceUrl, {resource:true});
   const origin = new URL(issuer).origin;
@@ -40,8 +40,10 @@ export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = 
   const publicJwk = createPublicKey(key).export({format:'jwk'});
   const kid = hash(publicJwk.n).slice(0,24);
   const pending = new Map(), codes = new Map(), refresh = new Map();
+  // Refresh sessions are durable and have no fixed wall-clock expiry; revocation is explicit.
+  for (const session of (sessionStore.load?.() || [])) if (session?.hash && session.expires === null) refresh.set(session.hash, session);
   let cachedClient = null, clientAt = 0, loginWindow = 0, loginCount = 0;
-  const prune = map => { for (const [id, item] of map) if (item.expires <= now()) map.delete(id); };
+  const prune = map => { for (const [id, item] of map) if (item.expires !== null && item.expires <= now()) map.delete(id); };
   function limited(map) { prune(map); if (map.size >= 1000) throw Error('temporarily_unavailable'); }
   const events = (event, extra = {}) => audit({event, ...extra, at:new Date(now()).toISOString()});
   async function client() {
@@ -77,14 +79,15 @@ export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = 
     const input = header + '.' + payload;
     const access = input + '.' + sign('RSA-SHA256', Buffer.from(input), key).toString('base64url');
     const renewal = random();
-    refresh.set(hash(renewal), {...grant, expires:familyExpires});
+    const session = {hash:hash(renewal), ...grant, expires:null, familyId:grant.familyId || random()};
+    refresh.set(session.hash, session); sessionStore.save?.([...refresh.values()].map(({hash: _hash, ...value}) => ({hash:_hash, ...value})));
     events('OAUTH_TOKEN_ISSUED', {clientId:grant.clientId,scopes:grant.scopes});
     return {access_token:access,token_type:'Bearer',expires_in:600,scope:grant.scopes.join(' '),refresh_token:renewal};
   }
   const metadata = {
     issuer,authorization_endpoint:origin+'/oauth/authorize',token_endpoint:origin+'/oauth/token',
     jwks_uri:origin+'/oauth/jwks',response_types_supported:['code'],
-    grant_types_supported:['authorization_code','refresh_token'],code_challenge_methods_supported:['S256'],
+    grant_types_supported:['authorization_code','refresh_token','revoke'],code_challenge_methods_supported:['S256'],
     token_endpoint_auth_methods_supported:['none'],client_id_metadata_document_supported:true,
     authorization_response_iss_parameter_supported:true,scopes_supported:[...OAUTH_SCOPES],
   };
@@ -171,11 +174,20 @@ export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = 
         if (params.get('grant_type') === 'refresh_token') {
           stage = 'refresh_exchange';
           const renewalHash = hash(params.get('refresh_token') || ''); grant = refresh.get(renewalHash);
-          if (!grant || grant.expires <= now() || grant.clientId !== params.get('client_id') ||
+          if (!grant || (grant.expires !== null && grant.expires <= now()) || grant.clientId !== params.get('client_id') ||
               (params.has('resource') && params.get('resource') !== grant.resource) ||
               (params.has('scope') && params.get('scope') !== grant.scopes.join(' '))) throw Error('invalid_grant');
-          refresh.delete(renewalHash);
-          json(res,200,tokens(grant,grant.expires));return true;
+          refresh.delete(renewalHash); sessionStore.revoke?.(renewalHash);
+          json(res,200,tokens(grant,null));return true;
+        }
+        if (params.get('grant_type') === 'revoke') {
+          stage = 'session_revoke';
+          const renewalHash = hash(params.get('token') || '');
+          const session = refresh.get(renewalHash);
+          if (!session || session.clientId !== params.get('client_id')) throw Error('invalid_grant');
+          refresh.delete(renewalHash); sessionStore.revoke?.(renewalHash);
+          events('OAUTH_SESSION_REVOKED',{clientId:session.clientId,scopes:session.scopes});
+          res.writeHead(204,{'Cache-Control':'no-store'}).end(); return true;
         }
         throw Error('unsupported_grant_type');
       }
