@@ -2,14 +2,14 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="dark"><title>TigerIQ Animal City — bản xem dữ liệu thật</title>
+<meta name="color-scheme" content="dark"><title>TigerIQ Animal City — vận hành thực tế</title>
 <style>
 :root{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#ecf7ff;background:#101c2f}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 65% 15%,#294966 0%,#142842 44%,#101c2f 100%);min-height:100vh}
-header{display:flex;justify-content:space-between;gap:20px;align-items:center;padding:20px 28px;border-bottom:1px solid #ffffff16;background:#101b2dcc}
+header{display:flex;justify-content:space-between;gap:20px;align-items:center;padding:20px 28px;border-bottom:1px solid #ffffff16;background:#101b2dcc;position:sticky;top:0;z-index:5}
 .logo{font-size:23px;font-weight:850;letter-spacing:-.7px;color:#fff}.logo strong{color:#ffbb64}.subtitle{font-size:12px;color:#9fb8cd;margin-top:3px}
 .tag{font-size:12px;padding:8px 12px;background:#233855;border:1px solid #52769c;border-radius:18px;color:#d0eaf9}
-main{max-width:1400px;margin:auto;display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px;padding:25px}
+main{max-width:1480px;margin:auto;display:grid;grid-template-columns:minmax(0,1fr) 390px;gap:20px;padding:25px}
 h1{font-size:27px;margin:0 0 8px}.lead{color:#aac3d5;font-size:14px;margin:0 0 17px;line-height:1.5}
 .city{position:relative;border:1px solid #4b729a70;border-radius:24px;padding:30px 18px 38px;background:radial-gradient(ellipse at 50% 100%,#446a59 0%,#294a52 51%,#213c55 100%);overflow:hidden}
 .city:before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,transparent 35%,#ffffff05 35% 37%,transparent 37%);pointer-events:none}
@@ -23,49 +23,54 @@ h1{font-size:27px;margin:0 0 8px}.lead{color:#aac3d5;font-size:14px;margin:0 0 1
 .room-count{background:#152c42e0;color:#d2edff;padding:6px 11px;border-radius:14px;font-size:12px}
 .banner{font-size:12px;position:relative;margin:8px auto 0;text-align:center;color:#c6e2e0}
 .panel{border:1px solid #456b8c70;border-radius:20px;background:#142b43d9;padding:19px;box-shadow:0 14px 26px #0003}
-.panel h2{font-size:17px;margin:0 0 16px}
-.metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin:10px 0 17px}
-.metric{background:#1e3854;border:1px solid #42617c;border-radius:12px;padding:13px}
-.metric label{display:block;font-size:12px;color:#bad3e7}.metric strong{font-size:28px;display:block;margin-top:4px}
-.source{font-size:12px;line-height:1.6;color:#b7d4e6;background:#0d2237;border-radius:12px;padding:12px}
-.source b{color:#fff}.error{color:#ffd49c}
-button.action{padding:11px 15px;background:#ffb859;border:none;border-radius:10px;color:#18263a;font-weight:800;cursor:pointer}
-button.action:disabled{opacity:.5;cursor:not-allowed}
+.panel h2{font-size:17px;margin:0 0 16px}.section-title{font-size:14px!important;margin:19px 0 7px!important;color:#dcecff}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:10px 0 14px}
+.metric{background:#1e3854;border:1px solid #42617c;border-radius:12px;padding:12px;min-width:0}
+.metric label{display:block;font-size:11px;color:#bad3e7}.metric strong{font-size:25px;display:block;margin-top:4px}
+.source{font-size:12px;line-height:1.55;color:#b7d4e6;background:#0d2237;border-radius:12px;padding:11px;margin-top:8px}.source b{color:#fff}.error{color:#ffd49c}
+button.action{padding:11px 15px;background:#ffb859;border:none;border-radius:10px;color:#18263a;font-weight:800;cursor:pointer}button.action:disabled{opacity:.5;cursor:not-allowed}
 .row{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.work{margin-top:20px;border:1px solid #46657e;border-radius:14px;background:#1a344b;padding:13px}
-.work h3{font-size:13px;margin:0 0 8px;line-height:1.5}
-.work .meta{font-size:11px;color:#bdd1de;line-height:1.6}.work a{display:inline-block;font-size:12px;margin-top:9px;color:#ffc779;text-decoration:underline;text-underline-offset:3px}
-#cards{max-height:475px;overflow-y:auto}.empty{padding:20px 8px;color:#b8c7d4;font-size:13px;line-height:1.5}
+.work,.worker{margin-top:10px;border:1px solid #46657e;border-radius:14px;background:#1a344b;padding:13px}.work h3,.worker h3{font-size:13px;margin:0 0 8px;line-height:1.5}.work .meta,.worker .meta{font-size:11px;color:#bdd1de;line-height:1.6}
+.work a{display:inline-block;font-size:12px;margin-top:9px;color:#ffc779;text-decoration:underline;text-underline-offset:3px}
+.worker{border-color:#5b856f;background:#173d3a}.worker-job{font-size:12px;margin-top:7px;color:#d7f5e6;line-height:1.45}
+#cards{max-height:390px;overflow-y:auto;padding-right:3px}#workers{max-height:240px;overflow-y:auto;padding-right:3px}.empty{padding:15px 8px;color:#b8c7d4;font-size:13px;line-height:1.5}
 .note{margin-top:15px;color:#c3d8e9;font-size:12px;line-height:1.6}
-@media(max-width:950px){main{grid-template-columns:1fr}.plaza{min-height:270px;gap:14px}.room{min-height:225px}.animal{font-size:65px}}
-@media(max-width:570px){header{padding:14px}.logo{font-size:18px}main{padding:12px}h1{font-size:21px}.city{padding:20px 8px 27px}.plaza{gap:8px}.room{padding:7px;min-height:174px;border-radius:13px}.room-name{font-size:12px}.animal{font-size:47px}.desk{font-size:9px;padding:7px}.room-count{font-size:10px;padding:4px}.subtitle{font-size:10px}}
+@media(max-width:1000px){main{grid-template-columns:1fr}.plaza{min-height:270px;gap:14px}.room{min-height:225px}.animal{font-size:65px}}
+@media(max-width:570px){header{padding:14px}.logo{font-size:18px}main{padding:12px}h1{font-size:21px}.city{padding:20px 8px 27px}.plaza{gap:8px}.room{padding:7px;min-height:174px;border-radius:13px}.room-name{font-size:12px}.animal{font-size:47px}.desk{font-size:9px;padding:7px}.room-count{font-size:10px;padding:4px}.subtitle{font-size:10px}.metrics{grid-template-columns:1fr 1fr 1fr}.metric{padding:9px}.metric strong{font-size:21px}}
 </style>
 </head>
 <body>
 <header>
- <div><div class="logo">Tiger<strong>IQ</strong> · Animal City</div><div class="subtitle">Bản thử nghiệm 2.5D · dựa trên dữ liệu thật · không có quyền điều phối</div></div>
- <span class="tag">CORE READ-ONLY · V1</span>
+ <div><div class="logo">Tiger<strong>IQ</strong> · Animal City</div><div class="subtitle">Vận hành local · Work Order thật · worker/job thật khi Core xác minh</div></div>
+ <span class="tag">CORE LIVE · LOCAL</span>
 </header>
 <main>
  <section>
   <h1>Văn phòng AI TigerIQ</h1>
-  <p class="lead">Ba phòng làm việc Animal. Bấm vào phòng để xem thẻ công việc lấy trực tiếp từ TigerIQ Core. Nhân vật là hình minh họa, không phải bằng chứng AI đang chạy.</p>
+  <p class="lead">Ba phòng Animal hiển thị Work Order và hoạt động worker lấy trực tiếp từ TigerIQ Core. Worker chỉ hiện “đang làm” khi resource BUSY và job running khớp chính xác danh tính.</p>
   <div class="city">
    <div class="plaza" aria-label="Ba phòng của công ty">
     <button class="room selected" data-room="coordination"><span class="room-name">Điều phối</span><span class="animal" aria-hidden="true">🐯</span><span class="desk">Phòng Vy · Giao việc</span><span class="room-count" id="count-coordination">Chưa tải</span></button>
     <button class="room" data-room="engineering"><span class="room-name">Kỹ thuật</span><span class="animal" aria-hidden="true">🦊</span><span class="desk">Phòng lập trình</span><span class="room-count" id="count-engineering">Chưa tải</span></button>
     <button class="room" data-room="quality"><span class="room-name">Kiểm thử</span><span class="animal" aria-hidden="true">🐼</span><span class="desk">Phòng QA</span><span class="room-count" id="count-quality">Chưa tải</span></button>
    </div>
-   <p class="banner">Cấu trúc Agents City: một Seat · các chuyên môn · một nguồn sự thật · không tạo trạng thái giả</p>
+   <p class="banner">Một nguồn Core · một binding worker/job thật · không tạo hàng đợi thứ hai · không suy đoán trạng thái</p>
   </div>
-  <p class="note">Phòng ban hiện là cách nhóm thông tin để quan sát, chưa phải phân công chính thức của Core. Khi job/lease chưa được xác nhận, không có nhân viên nào được hiển thị là “đang làm”.</p>
+  <p class="note">Nhân vật là hình minh họa. Danh tính NVxx chỉ xuất hiện trong bảng runtime khi Core trả resource BUSY + job running trùng employee/resource. Không có bằng chứng thì hiển thị chưa xác minh.</p>
  </section>
  <aside class="panel">
   <div class="row"><h2 id="panelTitle">Phòng điều phối</h2><button class="action" id="refresh">Tải lại</button></div>
-  <div class="metrics"><div class="metric"><label>Thẻ quan sát</label><strong id="total">—</strong></div><div class="metric"><label>Đã nghiệm thu chắc chắn</label><strong id="done">—</strong></div></div>
-  <div class="source" role="status" id="sourceStatus">Chưa kiểm tra dữ liệu Core.</div>
-  <h2 style="margin:19px 0 5px">Công việc thực tế</h2>
-  <div id="cards"><p class="empty">Nhấn “Tải lại” để đọc Work Order.</p></div>
+  <div class="metrics">
+    <div class="metric"><label>Work Order</label><strong id="total">—</strong></div>
+    <div class="metric"><label>DONE xác minh</label><strong id="done">—</strong></div>
+    <div class="metric"><label>Worker đang làm</label><strong id="activeWorkers">—</strong></div>
+  </div>
+  <div class="source" role="status" id="sourceStatus">Chưa kiểm tra Work Order.</div>
+  <div class="source" role="status" id="liveStatus">Chưa kiểm tra worker/job Core.</div>
+  <h2 class="section-title">Nhân sự đang làm thực tế</h2>
+  <div id="workers"><p class="empty">Đang chờ dữ liệu Core.</p></div>
+  <h2 class="section-title">Công việc thực tế</h2>
+  <div id="cards"><p class="empty">Đang chờ dữ liệu Work Order.</p></div>
  </aside>
 </main>
 <script src="/app.js" defer></script>
