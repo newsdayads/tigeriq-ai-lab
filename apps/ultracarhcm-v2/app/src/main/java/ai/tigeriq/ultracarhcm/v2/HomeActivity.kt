@@ -913,7 +913,8 @@ class HomeActivity : ComponentActivity() {
             "Đổi tên tài xế hiển thị Home",
             "Sao lưu cấu hình V2",
             "Khôi phục cấu hình V2",
-            "Hồ sơ người lái"
+            "Hồ sơ người lái",
+            "Quyền & riêng tư"
         )
         AlertDialog.Builder(this).setTitle("UltraCarHCM V2 — Bản xây dựng")
             .setItems(options) { _, which ->
@@ -941,6 +942,7 @@ class HomeActivity : ComponentActivity() {
                     7 -> exportBackupLauncher.launch(HomeBackupRules.exportFileName())
                     8 -> importBackupLauncher.launch(arrayOf("application/json", "text/plain"))
                     9 -> startActivity(Intent(this, ProfileActivity::class.java))
+                    10 -> startActivity(Intent(this, PrivacyActivity::class.java))
                 }
             }.show()
     }
