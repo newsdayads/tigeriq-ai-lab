@@ -81,7 +81,7 @@ describe('PC01 Owner-authenticated self-hosted OAuth',()=>{
   });
   it('locks repeated browser submit with a nonce-authorized script',async()=>{
     const f=fixture(), {page}=await f.pending();
-    const script=page.body.match(/<script nonce="([^"]+)">([\\s\\S]*?)<\\/script>/);
+    const script=page.body.match(/<script nonce="([^"]+)">([\s\S]*?)<\/script>/);
     expect(script).not.toBeNull();
     expect(page.headers['content-security-policy']).toContain("script-src 'nonce-"+script[1]+"'");
     let submit;
