@@ -22,4 +22,25 @@ internal object DexDockRules {
      */
     fun shouldStopOverlay(action: String?, desktopActive: Boolean, displayId: Int?): Boolean =
         isExitAction(action) && (!desktopActive || !hasExternalDisplay(displayId))
+
+    const val MAX_ENTER_ATTEMPTS = 3
+
+    /**
+     * Samsung can announce DeX transition before DisplayManager/configuration converges.
+     * Retry only the transient "state not ready" case; never retry a completed launch.
+     */
+    fun shouldRetryEnter(
+        action: String?,
+        attempt: Int,
+        desktopActive: Boolean,
+        displayId: Int?,
+    ): Boolean =
+        isEnterAction(action) &&
+            attempt < MAX_ENTER_ATTEMPTS &&
+            !shouldLaunchHome(action, desktopActive, displayId)
+
+    fun retryDelayMs(nextAttempt: Int): Long = when (nextAttempt) {
+        2 -> 350L
+        else -> 900L
+    }
 }

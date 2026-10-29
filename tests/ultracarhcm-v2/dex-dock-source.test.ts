@@ -38,4 +38,21 @@ describe('GH-5135 F07 Samsung DeX dock source contract', () => {
     expect(receiver).toContain('DexDockRules.shouldStopOverlay(action, desktopActive, displayId)');
     expect(receiver).toContain('DeX exit ignored: desktop=$desktopActive display=$displayId');
   });
+
+  it('uses goAsync with bounded retries for transient DeX display-state convergence', () => {
+    expect(receiver).toContain('val pendingResult = goAsync()');
+    expect(receiver).toContain('launchV2HomeOnDexWithRetry(');
+    expect(receiver).toContain('MAIN_HANDLER.postDelayed(');
+    expect(receiver).toContain('DexDockRules.shouldRetryEnter(action, attempt, desktopActive, displayId)');
+    expect(receiver).toContain('pendingResult.finish()');
+    expect(rules).toContain('const val MAX_ENTER_ATTEMPTS = 3');
+    expect(rules).toContain('attempt < MAX_ENTER_ATTEMPTS');
+    expect(rules).toContain('2 -> 350L');
+    expect(rules).toContain('else -> 900L');
+  });
+
+  it('does not retry a platform-rejected activity launch', () => {
+    expect(receiver).toContain('Platform launch failure is terminal for this broadcast');
+    expect(receiver).toMatch(/catch \(error: Throwable\)[\s\S]*finally \{\s*pendingResult\.finish\(\)/);
+  });
 });
