@@ -82,8 +82,10 @@ test('Windows host monitors and recovers a dead local backend', () => {
 test('Windows GUI refuses Session 0 and installer maintains per-user interactive autostart', () => {
   const dir=path.dirname(fileURLToPath(import.meta.url));
   const program=fs.readFileSync(path.join(dir,'windows','Program.cs'),'utf8');
-  const install=fs.readFileSync(path.join(dir,'windows','install-user.ps1'),'utf8');
-  const uninstall=fs.readFileSync(path.join(dir,'windows','uninstall-user.ps1'),'utf8');
+  const installSource=path.join(dir,'windows','install-user.ps1');
+  const uninstallSource=path.join(dir,'windows','uninstall-user.ps1');
+  const install=fs.readFileSync(fs.existsSync(installSource)?installSource:path.join(dir,'install-user.ps1'),'utf8');
+  const uninstall=fs.readFileSync(fs.existsSync(uninstallSource)?uninstallSource:path.join(dir,'uninstall-user.ps1'),'utf8');
   assert.match(program,/Process\.GetCurrentProcess\(\)\.SessionId == 0 \|\| !Environment\.UserInteractive/);
   assert.match(program,/Environment\.ExitCode = 12;/);
   assert.match(install,/SpecialFolders\('Startup'\)/);
