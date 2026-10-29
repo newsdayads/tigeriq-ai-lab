@@ -23,6 +23,9 @@ import android.widget.ImageButton
 import kotlin.math.abs
 
 class OverlayService : Service(), DisplayManager.DisplayListener {
+    companion object {
+        const val EXTRA_FORCE_REATTACH = "ai.tigeriq.ultracarhcm.v2.extra.FORCE_OVERLAY_REATTACH"
+    }
     private val handler = Handler(Looper.getMainLooper())
     private var manager: WindowManager? = null
     private var shortcut: View? = null
@@ -40,7 +43,8 @@ class OverlayService : Service(), DisplayManager.DisplayListener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         requestedId = intent?.getIntExtra("displayId", requestedId) ?: requestedId
-        update()
+        val forceReattach = intent?.getBooleanExtra(EXTRA_FORCE_REATTACH, false) ?: false
+        update(forceReattach = forceReattach)
         return START_NOT_STICKY
     }
 
