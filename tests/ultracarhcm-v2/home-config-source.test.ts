@@ -32,7 +32,8 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(home).toContain('.putString("driver_name", item.optString("driver", "Driver"))');
     expect(home).toContain('editor.putString("v2_quick_slots", normalizedQuickSlotsForStorage(slots).toString())');
     expect(home).toContain('if (i != index) remaining.put(entries.get(i))');
-    expect(home).toContain('putString("v2_home_configs", remaining.toString()).apply()');
+    expect(home).toContain('.putString("v2_home_configs", remaining.toString())');
+    expect(home).toContain('editor.apply()');
     expect(home).toContain('chưa phải bố cục V1');
     expect(home).not.toContain('prefs.getInt("saved_count", 0)');
   });
