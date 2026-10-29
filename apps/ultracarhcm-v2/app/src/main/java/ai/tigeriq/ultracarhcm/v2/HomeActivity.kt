@@ -522,11 +522,21 @@ class HomeActivity : ComponentActivity() {
         }
         val name = HomeConfigRules.normalizeName(item.optString("name", "Home")).ifEmpty { "Home" }
         val driver = HomeConfigRules.normalizeName(item.optString("driver", "Driver")).ifEmpty { "Driver" }
+        val legacyLimo = item.optBoolean("limo", false)
+        val vehicleModel = VehicleRules.currentModel(
+            item.optString("vehicleModel", ""),
+            legacyLimo,
+        )
+        val licensePlate = VehicleRules.normalizeLicensePlate(
+            item.optString("licensePlate", ""),
+        )
         return JSONObject()
             .put("schemaVersion", HomeConfigRules.CURRENT_SCHEMA_VERSION)
             .put("name", name)
             .put("night", item.optBoolean("night", false))
-            .put("limo", item.optBoolean("limo", false))
+            .put("limo", vehicleModel == VehicleRules.MODEL_LIMO_RED)
+            .put("vehicleModel", vehicleModel)
+            .put("licensePlate", licensePlate)
             .put("driver", driver)
             .also { normalized ->
                 if (item.has("quickSlots")) {
@@ -543,6 +553,8 @@ class HomeActivity : ComponentActivity() {
         val editor = prefs.edit()
             .putBoolean("night", safe.optBoolean("night", false))
             .putBoolean("limo", safe.optBoolean("limo", false))
+            .putString(VehicleRules.PREF_MODEL, safe.optString("vehicleModel"))
+            .putString(VehicleRules.PREF_LICENSE_PLATE, safe.optString("licensePlate"))
             .putString("driver_name", safe.optString("driver", "Driver"))
         safe.optJSONArray("quickSlots")?.let { slots ->
             editor.putString("v2_quick_slots", normalizedQuickSlotsForStorage(slots).toString())
@@ -598,11 +610,20 @@ class HomeActivity : ComponentActivity() {
                 if (name.isEmpty()) {
                     toast("Cần nhập tên cấu hình")
                 } else {
+                    val selectedModel = VehicleRules.currentModel(
+                        prefs.getString(VehicleRules.PREF_MODEL, null),
+                        prefs.getBoolean("limo", false),
+                    )
+                    val licensePlate = VehicleRules.normalizeLicensePlate(
+                        prefs.getString(VehicleRules.PREF_LICENSE_PLATE, "") ?: "",
+                    )
                     current.put(JSONObject()
                         .put("schemaVersion", HomeConfigRules.CURRENT_SCHEMA_VERSION)
                         .put("name", name)
                         .put("night", prefs.getBoolean("night", false))
-                        .put("limo", prefs.getBoolean("limo", false))
+                        .put("limo", selectedModel == VehicleRules.MODEL_LIMO_RED)
+                        .put("vehicleModel", selectedModel)
+                        .put("licensePlate", licensePlate)
                         .put("driver", prefs.getString("driver_name", "Driver") ?: "Driver")
                         .put("quickSlots", normalizedQuickSlotsForStorage(quickSlots())))
                     prefs.edit().putString("v2_home_configs", current.toString()).apply()
