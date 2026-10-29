@@ -26,10 +26,19 @@
       const el=node('article',undefined,'recent-item');
       el.append(node('strong',item.objective));
       const jobs=item.jobs||[];
-      const summary=item.id+' · Trạng thái Core: '+item.state+' · '+jobs.length+' job trong cửa sổ dữ liệu';
+      const phase=item.campaign?(' · Giai đoạn '+Math.min(item.campaign.currentPhase+1,item.campaign.phaseCount)+'/'+item.campaign.phaseCount):'';
+      const summary=item.id+' · Trạng thái Core: '+item.state+phase+' · '+jobs.length+' job trong cửa sổ dữ liệu';
       el.append(node('div',summary,'meta'));
-      for(const job of jobs.slice(0,4)){
-        el.append(node('div','Job '+job.id+': '+job.status+' · '+(job.employeeId||'chưa gán nhân viên'),'meta'));
+      for(const job of jobs.slice(0,6)){
+        const lease=job.status==='running'?(job.leaseActive?' · lease ĐẠT':' · lease CHƯA XÁC MINH'):'';
+        const identity=(job.employeeId||'chưa gán')+(job.resourceId?' / '+job.resourceId:'');
+        el.append(node('div','Job '+job.id+': '+job.status+' · '+identity+' · '+(job.capability||'chưa rõ')+lease,'meta'));
+        if(job.resultSummary)el.append(node('div','Kết quả: '+job.resultSummary,'meta'));
+        if(job.failureSummary)el.append(node('div','Lỗi: '+job.failureSummary,'meta'));
+      }
+      if(item.campaign?.checkpoints?.length){
+        const done=item.campaign.checkpoints.map(c=>'P'+c.phaseNumber+' '+(c.phaseTitle||'')+' · '+(c.employeeId||'')+'/'+(c.resourceId||'')).join(' | ');
+        el.append(node('div','Checkpoint: '+done,'meta'));
       }
       if(item.summary)el.append(node('div',item.summary,'meta'));
       recent.append(el);
@@ -69,7 +78,7 @@
       inform('Mục tiêu phải dài từ 12 đến 2000 ký tự.',true);return;
     }
     const approved=window.confirm(
-      'Giao mục tiêu này cho TigerIQ Core?\nChỉ dùng AI LOCAL, ưu tiên P2.\nĐây là hành động TẠO MỤC TIÊU THẬT; không xác nhận đã hoàn thành.');
+      'Giao mục tiêu này cho TigerIQ Core?\nChỉ dùng AI LOCAL, P2. Core sẽ chạy 3 giai đoạn: thực thi → QA độc lập → nghiệm thu.\nĐây là hành động TẠO MỤC TIÊU THẬT; không xác nhận đã hoàn thành.');
     if(!approved)return;
     pending=true;submit.disabled=true;
     inform('Đang gửi yêu cầu tạo mục tiêu đến Core…');
@@ -83,7 +92,7 @@
       const data=await r.json();
       if(!r.ok||data.ok!==true||data.receiptVerified!==true)
         throw Error(data.reason||'CORE_REJECTED');
-      inform('CORE ĐÃ NHẬN: '+data.objectiveId+' · LOCAL P2. Đây là biên nhận tiếp nhận, không phải DONE.');
+      inform('CORE ĐÃ NHẬN: '+data.objectiveId+' · LOCAL P2 · '+data.phaseCount+' giai đoạn. Đây là biên nhận tiếp nhận, không phải DONE.');
       $('ownerObjective').value='';
       await loadRecent();
       window.dispatchEvent(new Event('tigeriq:refresh'));
