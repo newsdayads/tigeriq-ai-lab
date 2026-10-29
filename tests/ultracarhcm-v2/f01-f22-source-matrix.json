@@ -124,17 +124,20 @@
       "status": "PARTIAL_SOURCE",
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexUtils.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayPositionRules.kt"
       ],
-      "gap": "Display resolution and camera overlay exist; full auto-launch, zone/freeform orchestration and layout persistence do not.",
-      "actual": "DexUtils detects desktop/external display and OverlayService follows display add/change/remove; full auto-launch/freeform/zone orchestration is absent.",
+      "gap": "Per-display overlay position persistence is implemented in source; full DeX auto-launch, freeform/zone orchestration and real-device acceptance remain open.",
+      "actual": "DexUtils detects desktop/external displays; OverlayService follows display add/change/remove and now persists the draggable camera shortcut position per display with legacy x/y migration and bounds clamping.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "DexUtils.isDesktop",
         "DexUtils.resolveDisplay",
+        "OverlayService.update",
         "OverlayService.onDisplayAdded",
         "OverlayService.onDisplayChanged",
-        "OverlayService.onDisplayRemoved"
+        "OverlayService.onDisplayRemoved",
+        "OverlayPositionRules.clamp"
       ],
       "permissions": [
         "android.permission.SYSTEM_ALERT_WINDOW"
