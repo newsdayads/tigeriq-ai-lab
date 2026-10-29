@@ -142,8 +142,8 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexDockReceiver.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexDockRules.kt"
       ],
-      "gap": "Samsung DeX enter/exit broadcast source now requests V2 Home on a resolved external display and cleans the V2 overlay on exit; OEM background-launch delivery, full zone orchestration and real-device acceptance remain open.",
-      "actual": "DexUtils detects desktop/external displays; OverlayService follows display add/change/remove with per-display position persistence; DexDockReceiver handles Samsung's documented ENTER/EXIT_KNOX_DESKTOP_MODE broadcasts, fail-closes unless an external display is resolved, requests V2 Home on that display, and removes the V2 overlay on exit.",
+      "gap": "Samsung DeX receiver is now exported for actual system broadcast delivery and validates real desktop/external-display state before acting; OEM background-activity launch behavior, full zone orchestration and real-device acceptance remain open.",
+      "actual": "DexUtils detects desktop/external displays; OverlayService follows display changes with per-display persistence; the exported DexDockReceiver can receive Samsung ENTER/EXIT_KNOX_DESKTOP_MODE broadcasts, launches V2 Home only when a real external DeX display exists, and ignores EXIT while external DeX is still active before stopping the V2 overlay.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "DexUtils.isDesktop",
@@ -154,7 +154,8 @@
         "OverlayService.onDisplayRemoved",
         "OverlayPositionRules.clamp",
         "DexDockReceiver.onReceive",
-        "DexDockRules.shouldLaunchHome"
+        "DexDockRules.shouldLaunchHome",
+        "DexDockRules.shouldStopOverlay"
       ],
       "permissions": [
         "android.permission.SYSTEM_ALERT_WINDOW"
