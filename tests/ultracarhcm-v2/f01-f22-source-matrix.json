@@ -51,8 +51,8 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
         "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml"
       ],
-      "gap": "USB-host UVC source lifecycle exists; real USB camera preview/control QA is not accepted.",
-      "actual": "UsbUvcController discovers USB video-class devices, requests device selection/open, starts preview and handles detach/cancel/error cleanup.",
+      "gap": "USB-host UVC source lifecycle and hot-plug recovery exist; real USB camera permission/preview/reconnect behavior is not device-accepted.",
+      "actual": "UsbUvcController discovers USB video-class devices, waits for UVC hot-plug when none is present, auto-selects an attached UVC device while the session is requested, opens preview, and preserves recovery state across detach/close/error.",
       "testStatus": "DEVICE_QA_NOT_TESTED",
       "entryPoints": [
         "UsbCameraActivity.onCreate",
@@ -311,14 +311,17 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt"
       ],
-      "gap": "Camera/USB-host/overlay lifecycle is partially covered; geolocation/update/privacy/recovery parity is incomplete.",
-      "actual": "Manifest and runtime source cover camera, USB-host feature declaration and overlay permission checks; geolocation/update/privacy/recovery parity remains incomplete.",
+      "gap": "USB/overlay permission and reconnect error-recovery paths are covered in source; geolocation/update/privacy permission parity and real-device validation remain incomplete.",
+      "actual": "Manifest/runtime source cover camera, USB-host and overlay permissions; UVC permission denial stops cleanly while recoverable USB close/detach/error keeps the requested session alive for reconnect. Geolocation/update/privacy parity remains incomplete.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "AndroidManifest.xml",
         "UsbUvcController.start",
         "OverlayService.update",
-        "HomeActivity.showSettings"
+        "HomeActivity.showSettings",
+        "UsbUvcController.onAttach",
+        "UsbUvcController.onDetach",
+        "UsbUvcController.onError"
       ],
       "permissions": [
         "android.permission.CAMERA",
