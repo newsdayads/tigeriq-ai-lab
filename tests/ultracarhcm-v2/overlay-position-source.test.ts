@@ -10,8 +10,9 @@ describe('GH-5135 F07 DeX overlay persistence source contract', () => {
   it('stores camera shortcut position per display and migrates legacy x/y', () => {
     expect(overlay).toContain('OverlayPositionRules.xKey(id)');
     expect(overlay).toContain('OverlayPositionRules.yKey(id)');
-    expect(overlay).toContain('pref.getInt("x", OverlayPositionRules.DEFAULT_X)');
-    expect(overlay).toContain('pref.getInt("y", OverlayPositionRules.DEFAULT_Y)');
+    expect(overlay).toContain('storedInt("x")');
+    expect(overlay).toContain('storedInt("y")');
+    expect(overlay).toContain('OverlayPositionRules.restoredCoordinate(');
     expect(overlay).toContain('.putInt(xKey, p.x)');
     expect(overlay).toContain('.putInt(yKey, p.y)');
     expect(overlay).toContain('.remove("x")');
