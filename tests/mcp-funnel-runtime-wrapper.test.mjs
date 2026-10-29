@@ -23,8 +23,9 @@ describe('MCP Funnel runtime wrapper', () => {
   });
 
   it('source gateway keeps normal local dependency resolution', () => {
-    const deps = gatewayDependencyPaths(import.meta.url);
-    expect(deps.pcOperator.replaceAll('\\\\','/')).toContain('/tests/pc-operator-mcp.mjs');
-    expect(deps.oauthRuntime.replaceAll('\\\\','/')).toContain('/tests/pc-operator-oauth-runtime.mjs');
+    const sourceUrl = new URL('../apps/tigeriq-core/mcp-funnel-gateway.mjs', import.meta.url).href;
+    const deps = gatewayDependencyPaths(sourceUrl);
+    expect(deps.pcOperator.replaceAll('\\\\','/')).toContain('/apps/tigeriq-core/pc-operator-mcp.mjs');
+    expect(deps.oauthRuntime.replaceAll('\\\\','/')).toContain('/apps/tigeriq-core/pc-operator-oauth-runtime.mjs');
   });
 });
