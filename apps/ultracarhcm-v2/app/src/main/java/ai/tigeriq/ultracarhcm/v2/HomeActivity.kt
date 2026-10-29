@@ -377,12 +377,25 @@ class HomeActivity : ComponentActivity() {
         place(footer, .02f, .954f, .96f, .018f)
     }
 
-    // Real, device-local HOME snapshots (vehicle/theme/name only). These are not V1 layout parity.
-    private fun savedConfigurations(): JSONArray = try {
-        JSONArray(prefs.getString("v2_home_configs", "[]") ?: "[]")
-    } catch (e: Exception) {
-        android.util.Log.w("UltraCarV2", "Corrupt local HOME config", e)
-        JSONArray()
+    // Real, device-local HOME snapshots only. These are not V1 layout parity.
+    private fun savedConfigurations(): JSONArray {
+        val raw = try {
+            JSONArray(prefs.getString("v2_home_configs", "[]") ?: "[]")
+        } catch (e: Exception) {
+            android.util.Log.w("UltraCarV2", "Corrupt local HOME config", e)
+            prefs.edit().remove("v2_home_configs").apply()
+            return JSONArray()
+        }
+        val normalized = JSONArray()
+        val limit = minOf(raw.length(), HomeConfigRules.MAX_SAVED)
+        for (index in 0 until limit) {
+            val item = raw.optJSONObject(index) ?: continue
+            normalizeHomeConfiguration(item)?.let(normalized::put)
+        }
+        if (normalized.toString() != raw.toString()) {
+            prefs.edit().putString("v2_home_configs", normalized.toString()).apply()
+        }
+        return normalized
     }
 
     private fun normalizedQuickSlotsForStorage(source: JSONArray?): JSONArray {
@@ -398,30 +411,67 @@ class HomeActivity : ComponentActivity() {
         return normalized
     }
 
-    private fun applyHomeConfiguration(item: JSONObject, renderAfter: Boolean) {
+    private fun normalizeHomeConfiguration(item: JSONObject): JSONObject? {
+        val schema = item.optInt("schemaVersion", 0)
+        if (!HomeConfigRules.canReadSchema(schema)) {
+            android.util.Log.w("UltraCarV2", "Unsupported HOME config schema=$schema")
+            return null
+        }
+        val name = HomeConfigRules.normalizeName(item.optString("name", "Home")).ifEmpty { "Home" }
+        val driver = HomeConfigRules.normalizeName(item.optString("driver", "Driver")).ifEmpty { "Driver" }
+        return JSONObject()
+            .put("schemaVersion", HomeConfigRules.CURRENT_SCHEMA_VERSION)
+            .put("name", name)
+            .put("night", item.optBoolean("night", false))
+            .put("limo", item.optBoolean("limo", false))
+            .put("driver", driver)
+            .also { normalized ->
+                if (item.has("quickSlots")) {
+                    normalized.put(
+                        "quickSlots",
+                        normalizedQuickSlotsForStorage(item.optJSONArray("quickSlots")),
+                    )
+                }
+            }
+    }
+
+    private fun applyHomeConfiguration(item: JSONObject, renderAfter: Boolean): Boolean {
+        val safe = normalizeHomeConfiguration(item) ?: return false
         val editor = prefs.edit()
-            .putBoolean("night", item.optBoolean("night", false))
-            .putBoolean("limo", item.optBoolean("limo", false))
-            .putString("driver_name", item.optString("driver", "Driver"))
-        item.optJSONArray("quickSlots")?.let { slots ->
+            .putBoolean("night", safe.optBoolean("night", false))
+            .putBoolean("limo", safe.optBoolean("limo", false))
+            .putString("driver_name", safe.optString("driver", "Driver"))
+        safe.optJSONArray("quickSlots")?.let { slots ->
             editor.putString("v2_quick_slots", normalizedQuickSlotsForStorage(slots).toString())
         }
         editor.apply()
         if (renderAfter) render()
+        return true
     }
 
     private fun applyDefaultHomeConfiguration() {
         val raw = prefs.getString("v2_default_home_config", null) ?: return
         try {
-            applyHomeConfiguration(JSONObject(raw), false)
+            val item = JSONObject(raw)
+            val safe = normalizeHomeConfiguration(item)
+                ?: throw IllegalArgumentException("Unsupported HOME config schema")
+            if (safe.toString() != item.toString()) {
+                prefs.edit().putString("v2_default_home_config", safe.toString()).apply()
+            }
+            applyHomeConfiguration(safe, false)
         } catch (e: Exception) {
-            android.util.Log.w("UltraCarV2", "Corrupt default HOME configuration", e)
+            android.util.Log.w("UltraCarV2", "Corrupt or unsupported default HOME configuration", e)
             prefs.edit().remove("v2_default_home_config").apply()
         }
     }
 
     private fun setDefaultHomeConfiguration(item: JSONObject) {
-        prefs.edit().putString("v2_default_home_config", item.toString()).apply()
+        val safe = normalizeHomeConfiguration(item)
+        if (safe == null) {
+            toast("Không thể đặt cấu hình không tương thích làm mặc định")
+            return
+        }
+        prefs.edit().putString("v2_default_home_config", safe.toString()).apply()
         toast("Đã đặt cấu hình Home mặc định")
     }
 
@@ -446,6 +496,7 @@ class HomeActivity : ComponentActivity() {
                     toast("Cần nhập tên cấu hình")
                 } else {
                     current.put(JSONObject()
+                        .put("schemaVersion", HomeConfigRules.CURRENT_SCHEMA_VERSION)
                         .put("name", name)
                         .put("night", prefs.getBoolean("night", false))
                         .put("limo", prefs.getBoolean("limo", false))
@@ -478,8 +529,11 @@ class HomeActivity : ComponentActivity() {
                     .setItems(arrayOf("Áp dụng", "Đặt làm mặc định", "Xóa cấu hình")) { _, choice ->
                         when (choice) {
                             0 -> {
-                                applyHomeConfiguration(item, true)
-                                toast("Đã áp dụng cấu hình Home")
+                                if (applyHomeConfiguration(item, true)) {
+                                    toast("Đã áp dụng cấu hình Home")
+                                } else {
+                                    toast("Cấu hình Home không tương thích")
+                                }
                             }
                             1 -> setDefaultHomeConfiguration(item)
                             else -> {
