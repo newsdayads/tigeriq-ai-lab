@@ -127,6 +127,15 @@ export function validateRightsEvidence(rightsEvidence, files) {
   };
 }
 
+export function projectDirFromArgs(args) {
+  const option = flag => {
+    const at = args.indexOf(flag);
+    return at === -1 ? null : (args[at + 1] ?? null);
+  };
+  // --target is the documented CLI name; --project remains a compatibility alias.
+  return option('--target') || option('--project');
+}
+
 export function stageMedia({ sourceRes, projectDir, stage = false, rightsEvidence = null }) {
   if (!sourceRes || !projectDir) throw new Error('SOURCE_AND_PROJECT_DIR_REQUIRED');
   const source = resolve(sourceRes);
@@ -190,7 +199,7 @@ if (self) {
   };
   try {
     const sourceRes = option('--source');
-    const projectDir = option('--project');
+    const projectDir = projectDirFromArgs(args);
     const stage = args.includes('--stage');
     const rightsEvidence = option('--rights-evidence');
     const report = stageMedia({ sourceRes, projectDir, stage, rightsEvidence });
