@@ -58,6 +58,12 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
     expect(rules).toContain('version in LEGACY_BACKUP_SCHEMA_VERSION..CURRENT_BACKUP_SCHEMA_VERSION');
   });
 
+  it('refreshes an active DeX overlay immediately after a successful restore', () => {
+    expect(home).toContain('private fun refreshOverlayAfterRestore()');
+    expect(home).toContain('OverlayService.EXTRA_FORCE_REATTACH');
+    expect(home).toMatch(/importHomeBackupJson\(text\)[\s\S]*render\(\)[\s\S]*refreshOverlayAfterRestore\(\)/);
+  });
+
   it('exposes explicit backup and restore actions without touching V1 data', () => {
     expect(home).toContain('"Sao lưu cấu hình V2"');
     expect(home).toContain('"Khôi phục cấu hình V2"');
