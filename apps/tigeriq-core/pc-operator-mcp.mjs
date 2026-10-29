@@ -427,6 +427,12 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     ['paperclip_lab_broker_install', 'Install Paperclip broker through an exclusive NV06 Core lease.', 'R07'],
   ]) {
     server.tool(action, description, {}, async () => {
+      if (verifiedPrincipal) {
+        const decision = authorizeVerifiedTool({ verifiedPrincipal, toolName: action, issuerUrl, resourceUrl });
+        if (!decision.ok) return mcpReply({
+          ok: false, action, reason: decision.reason, missing: decision.missing || [],
+        });
+      }
       const jobId = 'JOB-MCP-' + randomUUID();
       const common = {
         jobId,
@@ -1212,7 +1218,7 @@ export function createPcOperatorMcpHandler({
       }
       // Do not let sessionId become a bearer credential for a privileged
       // SSE connection. The original owner token is mandatory on every POST.
-      if (session.authorized && !isAuthorizedCaller(req.headers)) {
+      if (session.authorized && !isAuthorizedCaller(req.headers, session.principal)) {
         res.writeHead(401, { 'Content-Type': 'text/plain' }).end('MCP_AUTH_REQUIRED');
         return true;
       }
