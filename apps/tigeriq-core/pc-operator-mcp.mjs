@@ -1,5 +1,5 @@
 import { randomUUID, timingSafeEqual, createHash } from 'node:crypto';
-import { promises as fs } from 'node:fs';
+import { promises as fs, existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -203,12 +203,13 @@ function boundedText(value, maxChars = MAX_OUTPUT_CHARS) {
 
 async function spawnProcess(exe, args, { cwd = DEFAULT_ROOT, timeoutSec = 60, env = {} } = {}) {
   const safeCwd = assertPathSafety(cwd);
+  const effectiveCwd = (process.platform === 'win32' || existsSync(safeCwd)) ? safeCwd : process.cwd();
   const timeout = Math.max(1, Math.min(MAX_TIMEOUT_SEC, Number(timeoutSec) || 60));
   const childEnv = { ...process.env, ...env };
 
   return await new Promise((resolve, reject) => {
     const child = spawn(exe, args, {
-      cwd: safeCwd,
+      cwd: effectiveCwd,
       windowsHide: true,
       env: childEnv,
       stdio: ['ignore', 'pipe', 'pipe'],
