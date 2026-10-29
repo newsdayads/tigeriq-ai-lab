@@ -102,6 +102,12 @@ class TelemetryActivity : ComponentActivity(), LocationListener {
                 startActivity(Intent(this@TelemetryActivity, ObdActivity::class.java))
             }
         })
+        body.addView(Button(this).apply {
+            text = "Taxi Meter"
+            setOnClickListener {
+                startActivity(Intent(this@TelemetryActivity, TaxiMeterActivity::class.java))
+            }
+        })
 
         return ScrollView(this).apply { addView(body) }
     }
