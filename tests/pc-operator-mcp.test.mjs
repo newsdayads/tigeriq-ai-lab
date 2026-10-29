@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { createServer } from 'node:http';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { createPcOperatorMcpHandler, PC_OPERATOR_MCP_TOOLS } from '../apps/tigeriq-core/pc-operator-mcp.mjs';
+import { createPcOperatorMcpHandler, PC_OPERATOR_MCP_TOOLS, pcOperatorTestRunSpec, pcOperatorWorkOrderResponse } from '../apps/tigeriq-core/pc-operator-mcp.mjs';
 
 function parseSsePayload(text) {
   const lines = text.split('\n');
@@ -699,5 +699,40 @@ describe('TigerIQ PC Operator MCP Server', () => {
       server.close();
       try { await fs.promises.unlink(testFile); } catch {}
     }
+  });
+});
+
+
+describe('P0 GH-5417: native PC Operator test runner and Work Order diagnostics', () => {
+  it('runs installed runtime source with node.exe, not an npm .cmd shim', () => {
+    const spec = pcOperatorTestRunSpec('tests/github-coding-intake.test.mjs', {
+      runtimeRoot: 'D:\\TigerIQ\\Runtime\\CoreSource',
+      nodeExecutable: 'C:\\Program Files\\nodejs\\node.exe',
+    });
+    expect(spec.exe).toBe('C:\\Program Files\\nodejs\\node.exe');
+    expect(spec.args[0]).toBe('D:\\TigerIQ\\Runtime\\CoreSource\\node_modules\\vitest\\vitest.mjs');
+    expect(spec.args.slice(1)).toEqual(['run', 'tests/github-coding-intake.test.mjs']);
+    expect(spec.cwd).toBe('D:\\TigerIQ\\Runtime\\CoreSource');
+    expect(spec.args.some(x => x.endsWith('.cmd'))).toBe(false);
+  });
+  it('refuses an absolute path, traversal or executable outside tests/**', () => {
+    for (const testPath of ['D:\\unsafe\\test.js', '../secrets.test.mjs', 'tests/../secrets.test.mjs',
+      'tests//foo.test.mjs', 'apps/tigeriq-core/core.mjs', 'tests/foo.js', 'tests/nope.test.exe']) {
+      expect(() => pcOperatorTestRunSpec(testPath)).toThrow('MCP_TEST_PATH_NOT_ALLOWED');
+    }
+  });
+  it('turns plain-text Core 404 into a structured missing-work-order receipt', async () => {
+    await expect(pcOperatorWorkOrderResponse(new Response('not_found', {status:404}), '5417'))
+      .resolves.toEqual({workOrder:'5417',found:false,status:404,reason:'WORK_ORDER_NOT_FOUND'});
+  });
+  it('does not parse untrusted non-JSON Core failures', async () => {
+    await expect(pcOperatorWorkOrderResponse(new Response('unavailable', {status:503}), '5417'))
+      .resolves.toEqual({workOrder:'5417',found:false,status:503,reason:'CORE_WORK_ORDER_HTTP_ERROR'});
+    await expect(pcOperatorWorkOrderResponse(new Response('not json', {status:200}), '5417'))
+      .resolves.toEqual({workOrder:'5417',found:false,status:200,reason:'CORE_WORK_ORDER_INVALID_JSON'});
+  });
+  it('preserves valid Core JSON receipt unchanged', async () => {
+    await expect(pcOperatorWorkOrderResponse(new Response(JSON.stringify({ok:true,workOrderId:'WO-1'}), {status:200}), 'WO-1'))
+      .resolves.toEqual({workOrder:'WO-1',found:true,data:{ok:true,workOrderId:'WO-1'}});
   });
 });
