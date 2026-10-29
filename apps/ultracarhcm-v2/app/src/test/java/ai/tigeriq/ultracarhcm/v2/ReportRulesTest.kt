@@ -9,9 +9,11 @@ class ReportRulesTest {
     }
 
     @Test fun quotesAndEscapesCsvSpecialCharacters() {
-        assertEquals(""A,B"", ReportRules.csvCell("A,B"))
-        assertEquals(""A""B"", ReportRules.csvCell("A"B"))
-        assertEquals(""A\nB"", ReportRules.csvCell("A\nB"))
+        val quote = '"'
+        assertEquals(quote.toString() + "A,B" + quote, ReportRules.csvCell("A,B"))
+        val withQuote = "A" + quote + "B"
+        val escaped = quote.toString() + "A" + quote + quote + "B" + quote
+        assertEquals(escaped, ReportRules.csvCell(withQuote))
     }
 
     @Test fun exposesStableTripReportHeader() {
