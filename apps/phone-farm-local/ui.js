@@ -81,7 +81,7 @@ function cardActions(card,d){
   const make=(symbol,title,fn)=>{
     const b=document.createElement('button');b.textContent=symbol;b.title=title;b.onclick=fn;buttons.append(b);
   };
-  make('□','Điều khiển phóng lớn trong ứng dụng',()=>showControl(d.serial));
+  make('▣','Điều khiển video thời gian thực (scrcpy)',()=>openMirror(d.serial));
   make('⌂','Trang chủ',()=>sendInput([d.serial],{action:'key',key:'HOME'}));
   make('↶','Quay lại',()=>sendInput([d.serial],{action:'key',key:'BACK'}));
   make('✎','Đổi tên',async()=>{const label=prompt('Đặt tên thiết bị',d.label||d.model||'');if(label===null)return;try{await api('/api/label',{serial:d.serial,label});d.label=label;renderDevices()}catch(e){toast(e.message,true)}});
@@ -109,8 +109,8 @@ function renderDevices(){
     if(d.state==='device'){
       const img=document.createElement('img');img.alt='Android '+d.serial;img.draggable=false;
       img.dataset.serial=d.serial;
-      img.onload=()=>{img.dataset.busy='';img.dataset.retryAt='0';current.sizes.set(d.serial,{width:img.naturalWidth,height:img.naturalHeight})};
-      img.onerror=()=>{img.dataset.busy='';img.dataset.retryAt=String(Date.now()+6000);img.alt='Chưa tải được màn hình';img.title='Ảnh lỗi, sẽ tự thử lại'};
+      img.onload=()=>{settleScreen(img,true);current.sizes.set(d.serial,{width:img.naturalWidth,height:img.naturalHeight})};
+      img.onerror=()=>{settleScreen(img,false);img.alt='Chưa tải được màn hình';img.title='Ảnh lỗi, sẽ tự thử lại'};
       img.onpointerdown=e=>{img.dataset.startX=String(e.clientX);img.dataset.startY=String(e.clientY);try{img.setPointerCapture(e.pointerId)}catch{}};
       img.onpointerup=e=>{if(!img.dataset.startX)return;performPointer(img,e).catch(err=>toast(err.message,true))};
       screen.append(img);
@@ -134,9 +134,11 @@ async function performPointer(img,e){
   const left=rect.left+(rect.width-displayedWidth)/2;
   const top=rect.top+(rect.height-displayedHeight)/2;
   const norm=(x,y)=>[clamp((x-left)/displayedWidth),clamp((y-top)/displayedHeight)];
-  const a=norm(Number(img.dataset.startX),Number(img.dataset.startY)),b=norm(e.clientX,e.clientY);
+  const startX=Number(img.dataset.startX),startY=Number(img.dataset.startY);
+  const a=norm(startX,startY),b=norm(e.clientX,e.clientY);
   delete img.dataset.startX;delete img.dataset.startY;
-  const isSwipe=Math.hypot((a[0]-b[0])*size.width,(a[1]-b[1])*size.height)>18;
+  // Mouse jitter must be measured in CSS pixels, not 1080/1440 Android pixels.
+  const isSwipe=Math.hypot(e.clientX-startX,e.clientY-startY)>8;
   const syncEnabled=img.id==='controlImage'?$('controlSync').checked:$('sync').checked;
   const serials=syncEnabled?[...new Set([serial,...active()])]:[serial];
   if(!serials.length)throw Error('Chọn các thiết bị để đồng bộ chuột');
@@ -147,11 +149,28 @@ async function performPointer(img,e){
     return api('/api/input',{serials:[s],...action});
   }));
   const failed=outputs.flatMap(x=>x.results).filter(x=>!x.ok);
-  toast(failed.length?'Thao tác lỗi '+failed[0].error:'Đã gửi lệnh '+(isSwipe?'vuốt':'chạm')+' tới '+serials.length+' máy; chờ kiểm tra màn hình',failed.length>0);
-  refreshOne(img);
+  toast(failed.length?'ADB lỗi '+failed.length+'/'+serials.length+': '+failed[0].error:'ADB nhận '+(isSwipe?'vuốt':'chạm')+'; đang tải ảnh kiểm tra (không phải video trực tiếp)',failed.length>0);
+  for(const s of serials.slice(0,4)){
+    const target=current.cards.get(s)?.querySelector('.screen img');
+    if(target)refreshOne(target,true);
+  }
+  if(img.id==='controlImage')refreshOne(img,true);
 }
-function refreshOne(img){
-  if(img.dataset.busy||!img.isConnected||Number(img.dataset.retryAt||0)>Date.now())return;
+function settleScreen(img,ok){
+  img.dataset.busy='';
+  img.dataset.retryAt=ok?'0':String(Date.now()+6000);
+  if(img.dataset.forceAfterBusy==='1'){
+    img.dataset.forceAfterBusy='';
+    setTimeout(()=>refreshOne(img,true),200);
+  }
+}
+function refreshOne(img,priority=false){
+  if(!img.isConnected)return;
+  if(img.dataset.busy==='1'){
+    if(priority)img.dataset.forceAfterBusy='1';
+    return;
+  }
+  if(!priority&&Number(img.dataset.retryAt||0)>Date.now())return;
   img.dataset.busy='1';
   img.src='/api/screen?serial='+encodeURIComponent(img.dataset.serial)+'&ts='+Date.now();
 }
@@ -198,7 +217,12 @@ async function sendInput(serials,params){
     if(!serials.length)throw Error('Vui lòng chọn ít nhất một thiết bị');
     const result=await api('/api/input',{serials,...params});
     const fail=result.results.filter(x=>!x.ok);
-    toast(fail.length?'Lỗi '+fail.length+'/'+serials.length+' • '+fail[0].error:'Đã gửi '+params.action+' tới '+serials.length+' thiết bị',fail.length>0);
+    toast(fail.length?'ADB lỗi '+fail.length+'/'+serials.length+' • '+fail[0].error:'ADB nhận '+params.action+' trên '+serials.length+' máy; đang cập nhật ảnh',fail.length>0);
+    for(const serial of serials.slice(0,4)){
+      const img=current.cards.get(serial)?.querySelector('.screen img');
+      if(img)refreshOne(img,true);
+    }
+    if(controlSerial&&serials.includes(controlSerial))refreshOne($('controlImage'),true);
   }catch(e){toast(e.message,true)}
 }
 
@@ -218,8 +242,8 @@ function showControl(serial){
   img.dataset.serial=serial;img.dataset.busy='';img.dataset.retryAt='0';img.dataset.nextAt='0';
   img.onpointerdown=e=>{img.dataset.startX=String(e.clientX);img.dataset.startY=String(e.clientY);try{img.setPointerCapture(e.pointerId)}catch{}};
   img.onpointerup=e=>{if(!img.dataset.startX)return;performPointer(img,e).catch(err=>toast(err.message,true))};
-  img.onload=()=>{img.dataset.busy='';img.dataset.retryAt='0';current.sizes.set(serial,{width:img.naturalWidth,height:img.naturalHeight})};
-  img.onerror=()=>{img.dataset.busy='';img.dataset.retryAt=String(Date.now()+4500);$('controlNote').textContent='Không tải được màn hình; đang thử lại.'};
+  img.onload=()=>{settleScreen(img,true);current.sizes.set(serial,{width:img.naturalWidth,height:img.naturalHeight})};
+  img.onerror=()=>{settleScreen(img,false);$('controlNote').textContent='Không tải được màn hình; đang thử lại.'};
   $('controlNote').textContent='Chạm hoặc vuốt trực tiếp. Ảnh làm mới định kỳ, không phải video trực tiếp.';
   refreshOne(img);
 }
@@ -239,9 +263,9 @@ setInterval(()=>{
 
 async function openMirror(serial){
   const payload={serial,maxFps:Number($('mirrorFps').value),maxSize:Number($('mirrorSize').value),videoBitRateMbps:Number($('mirrorBitrate').value)};
-  try{const x=await api('/api/open',payload);toast(x.already?'Cửa sổ đã mở':'Đã mở mirror realtime')}catch(e){toast(e.message,true)}
+  try{const x=await api('/api/open',payload);toast(x.already?'Đã có tiến trình phản chiếu của máy này':'Đã yêu cầu mở cửa sổ scrcpy; kiểm tra hiển thị và chạm thực tế')}catch(e){toast(e.message,true)}
 }
-$('mirrorSelected').onclick=()=>{const ss=active();if(!ss.length)return toast('Chọn thiết bị trước',true);showControl(ss[0]);if(ss.length>1)toast('Đang điều khiển máy đầu tiên; bật Đồng bộ để gửi tới cả nhóm')};
+$('mirrorSelected').onclick=()=>{const ss=active();if(!ss.length)return toast('Chọn thiết bị trước',true);void openMirror(ss[0])};
 $('openFirst').onclick=()=>{const s=active()[0];if(!s)return toast('Chọn thiết bị',true);showControl(s)};
 $('openScrcpy').onclick=()=>{const s=active()[0];if(!s)return toast('Chọn thiết bị',true);openMirror(s)};
 document.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=>sendInput($('syncKeys').checked?active():active().slice(0,1),{action:'key',key:b.dataset.key}));
