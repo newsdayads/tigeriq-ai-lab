@@ -1,9 +1,10 @@
-// Local-only Animal City preview. No mutation route, no second work queue.
+// Local-only Animal City operational server. No mutation route, no second work queue.
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
 import {fetchCoreSnapshot} from './core-readonly.mjs';
+import {fetchLiveCoreSnapshot} from './core-live-readonly.mjs';
 
 const htmlPath = fileURLToPath(new URL('./index.html', import.meta.url));
 const scriptPath = fileURLToPath(new URL('./app.js', import.meta.url));
@@ -20,7 +21,17 @@ function send(res, status, body, type) {
   res.end(body);
 }
 
-export function createAnimalCityServer({fetchImpl = fetch} = {}) {
+function sourceFailure(error, live = false) {
+  const known = live
+    ? ['CORE_LIVE_UNVERIFIED','CORE_LIVE_STALE','CORE_LIVE_HTTP_UNAVAILABLE',
+       'CORE_LIVE_BODY_TOO_LARGE','CORE_LIVE_JSON_INVALID']
+    : ['CORE_SOURCE_UNVERIFIED','CORE_SOURCE_STALE','CORE_HTTP_UNAVAILABLE',
+       'CORE_BODY_TOO_LARGE','CORE_JSON_INVALID'];
+  return known.includes(error?.message) ? error.message :
+    live ? 'CORE_LIVE_SOURCE_UNAVAILABLE' : 'CORE_SOURCE_UNAVAILABLE';
+}
+
+export function createAnimalCityServer({fetchImpl = fetch, startedAt = new Date().toISOString()} = {}) {
   return createServer(async (req, res) => {
     const port = req.socket.localPort;
     const host = String(req.headers.host || '').toLowerCase();
@@ -29,22 +40,59 @@ export function createAnimalCityServer({fetchImpl = fetch} = {}) {
     }
     if (req.method !== 'GET') return send(res,405,'Read-only','text/plain; charset=utf-8');
     const route = (req.url || '').split('?')[0];
+
     if (route === '/api/rooms') {
       try {
         const snapshot = await fetchCoreSnapshot({fetchImpl});
         return send(res,200,JSON.stringify(snapshot),'application/json; charset=utf-8');
       } catch (error) {
-        // Do not render old, cached or invented statuses on source failure.
-        const type = ['CORE_SOURCE_UNVERIFIED','CORE_SOURCE_STALE','CORE_HTTP_UNAVAILABLE',
-          'CORE_BODY_TOO_LARGE','CORE_JSON_INVALID'].includes(error?.message)
-          ? error.message : 'CORE_SOURCE_UNAVAILABLE';
-        return send(res,503,JSON.stringify({ok:false,reason:type,rooms:[],readOnly:true}),
-          'application/json; charset=utf-8');
+        return send(res,503,JSON.stringify({
+          ok:false,reason:sourceFailure(error),rooms:[],readOnly:true,
+        }),'application/json; charset=utf-8');
       }
     }
-    if (route === '/health') return send(res,200,
-      JSON.stringify({ok:true,mode:'READ_ONLY_PREVIEW',sourceCheck:'NOT_PERFORMED'}),
-      'application/json; charset=utf-8');
+
+    if (route === '/api/live') {
+      try {
+        const snapshot = await fetchLiveCoreSnapshot({fetchImpl});
+        return send(res,200,JSON.stringify(snapshot),'application/json; charset=utf-8');
+      } catch (error) {
+        return send(res,503,JSON.stringify({
+          ok:false,reason:sourceFailure(error,true),workers:[],
+          liveWorkerBindingsVerified:false,
+        }),'application/json; charset=utf-8');
+      }
+    }
+
+    if (route === '/health') return send(res,200,JSON.stringify({
+      ok:true,
+      mode:'OPERATIONAL_LOCAL',
+      pid:process.pid,
+      startedAt,
+      uptimeSec:Math.max(0,Math.floor((Date.now()-Date.parse(startedAt))/1000)),
+      loopbackOnly:true,
+      writeRoutes:false,
+    }),'application/json; charset=utf-8');
+
+    if (route === '/ready') {
+      try {
+        const [workOrders,live] = await Promise.all([
+          fetchCoreSnapshot({fetchImpl}),
+          fetchLiveCoreSnapshot({fetchImpl}),
+        ]);
+        return send(res,200,JSON.stringify({
+          ok:true,mode:'OPERATIONAL_LOCAL',
+          workOrders:{ok:true,verifiedAt:workOrders.verifiedAt,total:workOrders.total},
+          live:{ok:true,verifiedAt:live.verifiedAt,totalActiveWorkers:live.totalActiveWorkers},
+        }),'application/json; charset=utf-8');
+      } catch (error) {
+        return send(res,503,JSON.stringify({
+          ok:false,mode:'OPERATIONAL_LOCAL',reason:sourceFailure(error,
+            String(error?.message||'').startsWith('CORE_LIVE_')),
+        }),'application/json; charset=utf-8');
+      }
+    }
+
     if (route === '/favicon.ico') return send(res,204,'','text/plain');
     if (route === '/' || route === '/app.js') {
       try {
@@ -63,9 +111,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const port = Number(process.env.TIGERIQ_ANIMAL_PORT || 8866);
   if (!Number.isInteger(port) || port < 1024 || port > 65535)
     throw new Error('INVALID_LISTEN_PORT');
-  const server = createAnimalCityServer();
+  const startedAt = new Date().toISOString();
+  const server = createAnimalCityServer({startedAt});
   server.listen(port, '127.0.0.1', () => {
-    console.log(JSON.stringify({event:'TIGERIQ_ANIMAL_CITY_PREVIEW_READY',
-      url:'http://127.0.0.1:' + port,writeRoutes:false}));
+    console.log(JSON.stringify({event:'TIGERIQ_ANIMAL_CITY_OPERATIONAL_READY',
+      url:'http://127.0.0.1:' + port,startedAt,writeRoutes:false,loopbackOnly:true}));
   });
 }
