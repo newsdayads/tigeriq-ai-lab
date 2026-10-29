@@ -668,8 +668,7 @@ function Sync-McpFunnelGatewayRuntime(){
   if($verified -ne $expected){return @{action='blocked';reason='MCP_GATEWAY_SYNC_HASH_MISMATCH'}}
   return @{action='updated';sha256=$expected;backup=$backup}
 }
-function Reconcile-McpFunnelGatewayRuntime([string]$installedSha){
-  if(-not(Test-Path -LiteralPath $mcpGatewayServerPath)){return @{action='skip';reason='MCP_GATEWAY_SERVER_MISSING'}}
+function Get-McpFunnelGatewayTopology(){
   $all=@(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
   $supervisors=@($all|Where-Object{
     if(-not $_.CommandLine){$false}else{
@@ -677,8 +676,42 @@ function Reconcile-McpFunnelGatewayRuntime([string]$installedSha){
       [bool]@($mcpGatewaySupervisorPaths|Where-Object{$line.Contains($_.ToLowerInvariant())}).Count
     }
   })
-  $children=@($all|Where-Object{$_.Name -eq 'node.exe' -and $_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($mcpGatewayServerPath.ToLowerInvariant())})
-  if($supervisors.Count -ne 1 -or $children.Count -ne 1){return @{action='blocked';reason='MCP_GATEWAY_TOPOLOGY_UNVERIFIED';supervisors=$supervisors.Count;children=$children.Count}}
+  $children=@($all|Where-Object{
+    $_.Name -eq 'node.exe' -and $_.CommandLine -and
+    $_.CommandLine.ToLowerInvariant().Contains($mcpGatewayServerPath.ToLowerInvariant())
+  })
+  return @{supervisors=$supervisors;children=$children}
+}
+function Reconcile-McpFunnelGatewayRuntime([string]$installedSha){
+  if(-not(Test-Path -LiteralPath $mcpGatewayServerPath)){return @{action='skip';reason='MCP_GATEWAY_SERVER_MISSING'}}
+  $topology=Get-McpFunnelGatewayTopology
+  $supervisors=@($topology.supervisors)
+  $children=@($topology.children)
+  if($supervisors.Count -ne 1 -or $children.Count -gt 1){
+    return @{action='blocked';reason='MCP_GATEWAY_TOPOLOGY_UNVERIFIED';supervisors=$supervisors.Count;children=$children.Count}
+  }
+
+  # The managed cmd/PowerShell supervisor intentionally respawns the Node child
+  # after a short delay. Runtime sync may replace server.mjs during that gap.
+  # Wait only for the one verified supervisor to recreate its own child; never
+  # start an unmanaged gateway process from the updater.
+  if($children.Count -eq 0){
+    $spawnDeadline=(Get-Date).AddSeconds(12)
+    while((Get-Date)-lt $spawnDeadline){
+      Start-Sleep -Milliseconds 500
+      $topology=Get-McpFunnelGatewayTopology
+      $supervisors=@($topology.supervisors)
+      $children=@($topology.children)
+      if($supervisors.Count -ne 1 -or $children.Count -gt 1){
+        return @{action='blocked';reason='MCP_GATEWAY_TOPOLOGY_UNVERIFIED';supervisors=$supervisors.Count;children=$children.Count}
+      }
+      if($children.Count -eq 1){break}
+    }
+    if($children.Count -ne 1){
+      return @{action='blocked';reason='MCP_GATEWAY_CHILD_RESPAWN_TIMEOUT';supervisors=$supervisors.Count;children=$children.Count}
+    }
+  }
+
   try{$meta=Get-Content -Raw -LiteralPath $runtimeSourceState|ConvertFrom-Json -ErrorAction Stop;$sourceAt=[DateTime]::Parse([string]$meta.updatedAt).ToUniversalTime()}catch{return @{action='blocked';reason='MCP_GATEWAY_SOURCE_STATE_INVALID'}}
   $child=$children[0];$created=([DateTime]$child.CreationDate).ToUniversalTime()
   if($created -ge $sourceAt -and (Test-TcpPort '127.0.0.1' $mcpGatewayPort)){return @{action='none';pid=[int]$child.ProcessId;installedSha=$installedSha}}
@@ -687,7 +720,12 @@ function Reconcile-McpFunnelGatewayRuntime([string]$installedSha){
   $deadline=(Get-Date).AddSeconds(30)
   while((Get-Date)-lt$deadline){
     Start-Sleep -Seconds 2
-    $new=@(Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue|Where-Object{$_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($mcpGatewayServerPath.ToLowerInvariant())})
+    $topology=Get-McpFunnelGatewayTopology
+    $supervisors=@($topology.supervisors)
+    $new=@($topology.children)
+    if($supervisors.Count -ne 1 -or $new.Count -gt 1){
+      return @{action='blocked';reason='MCP_GATEWAY_TOPOLOGY_UNVERIFIED';supervisors=$supervisors.Count;children=$new.Count}
+    }
     if($new.Count -eq 1 -and [int]$new[0].ProcessId -ne $oldPid -and ([DateTime]$new[0].CreationDate).ToUniversalTime() -ge $started -and (Test-TcpPort '127.0.0.1' $mcpGatewayPort)){
       return @{action='restarted';pid=[int]$new[0].ProcessId;previousPid=$oldPid;installedSha=$installedSha;port=$mcpGatewayPort}
     }
