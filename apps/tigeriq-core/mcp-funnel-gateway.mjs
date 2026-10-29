@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createPc01AuthorizationServer } from './pc01-authorization-server.mjs';
 import path from 'node:path';
 import { createServer } from 'node:http';
@@ -30,6 +30,13 @@ const [
   import(pathToFileURL(dependencyPaths.oauthRuntime).href),
 ]);
 
+export function createOAuthSessionStore(filePath = process.env.TIGERIQ_OAUTH_SESSION_STORE || 'C:\\ProgramData\\TigerIQMcpAuth\\sessions.json') {
+  const load = () => { try { const value = JSON.parse(readFileSync(filePath, 'utf8')); return Array.isArray(value) ? value : []; } catch (error) { if (error.code === 'ENOENT') return []; throw error; } };
+  const save = sessions => { mkdirSync(path.dirname(filePath), {recursive:true}); writeFileSync(filePath, JSON.stringify(sessions), {encoding:'utf8', mode:0o600}); };
+  const revoke = hash => { const next = load().filter(item => item.hash !== hash); save(next); };
+  return {load, save, revoke};
+}
+
 function json(res, status, body, headers = {}) {
   res.writeHead(status, {
     'Content-Type': 'application/json',
@@ -55,9 +62,10 @@ export function createMcpFunnelGateway({
   oauthRuntime = null,
   mcpHandler = null,
   selfHostedAuthConfig = loadPc01AuthorizationConfig(),
+  oauthSessionStore = createOAuthSessionStore(),
 } = {}) {
   const authority = selfHostedAuthConfig ? createPc01AuthorizationServer({
-    config: selfHostedAuthConfig, fetchImpl,
+    config: selfHostedAuthConfig, fetchImpl, sessionStore: oauthSessionStore,
     audit: event => console.log(JSON.stringify({service:'pc01-oauth',...event})),
   }) : null;
   const oauth = oauthRuntime || createOAuthResourceServer({
