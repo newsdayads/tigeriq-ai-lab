@@ -797,15 +797,33 @@ describe('TigerIQ PC Operator MCP Server', () => {
 
 
 describe('P0 GH-5417: native PC Operator test runner and Work Order diagnostics', () => {
-  it('runs installed runtime source with node.exe, not an npm .cmd shim', () => {
+  it('runs Vitest suites with installed node.exe, not an npm .cmd shim', () => {
     const spec = pcOperatorTestRunSpec('tests/github-coding-intake.test.mjs', {
       runtimeRoot: 'D:\\TigerIQ\\Runtime\\CoreSource',
       nodeExecutable: 'C:\\Program Files\\nodejs\\node.exe',
+      testSource: "import { describe, it, expect } from 'vitest';",
     });
     expect(spec.exe).toBe('C:\\Program Files\\nodejs\\node.exe');
-    expect(spec.args[0]).toBe('D:\\TigerIQ\\Runtime\\CoreSource\\node_modules\\vitest\\vitest.mjs');
-    expect(spec.args.slice(1)).toEqual(['run', 'tests/github-coding-intake.test.mjs']);
+    expect(spec.runner).toBe('vitest');
+    expect(spec.runnerPath).toBe('D:\\TigerIQ\\Runtime\\CoreSource\\node_modules\\vitest\\vitest.mjs');
+    expect(spec.args).toEqual([
+      'D:\\TigerIQ\\Runtime\\CoreSource\\node_modules\\vitest\\vitest.mjs',
+      'run',
+      'tests/github-coding-intake.test.mjs',
+    ]);
     expect(spec.cwd).toBe('D:\\TigerIQ\\Runtime\\CoreSource');
+    expect(spec.args.some(x => x.endsWith('.cmd'))).toBe(false);
+  });
+  it('runs node:test suites with node --test instead of forcing Vitest', () => {
+    const spec = pcOperatorTestRunSpec('tests/pc-operator-oauth-policy.test.mjs', {
+      runtimeRoot: 'D:\\TigerIQ\\Runtime\\CoreSource',
+      nodeExecutable: 'C:\\Program Files\\nodejs\\node.exe',
+      testSource: "import test from 'node:test';",
+    });
+    expect(spec.exe).toBe('C:\\Program Files\\nodejs\\node.exe');
+    expect(spec.runner).toBe('node:test');
+    expect(spec.runnerPath).toBe('C:\\Program Files\\nodejs\\node.exe');
+    expect(spec.args).toEqual(['--test', 'tests/pc-operator-oauth-policy.test.mjs']);
     expect(spec.args.some(x => x.endsWith('.cmd'))).toBe(false);
   });
   it('refuses an absolute path, traversal or executable outside tests/**', () => {
