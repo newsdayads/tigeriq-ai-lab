@@ -20,6 +20,8 @@ import android.widget.ImageView
 import android.widget.VideoView
 import android.widget.TextView
 import android.widget.EditText
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.platform.ComposeView
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -276,46 +278,37 @@ class HomeActivity : Activity() {
             .show()
     }
 
-    private fun quickSlotGlyph(icon: QuickSlotIcon): String = when (icon) {
-        QuickSlotIcon.PLAY -> "▶"
-        QuickSlotIcon.CAR -> "CAR"
-        QuickSlotIcon.ROUTE -> "MAP"
-        QuickSlotIcon.CAMERA -> "CAM"
-        QuickSlotIcon.ADD -> "+"
-        QuickSlotIcon.APPS -> "APP"
-    }
-
     private fun renderQuickBar() {
         val slots = quickSlots()
-        val slotWidth = .284f
-        val slotHeight = .038f
-        val leftStart = .054f
-        val columnGap = .020f
-        val rowGap = .006f
-
-        // V1.0.64 lifted the three-row cluster by 50dp toward the vehicle tail.
-        val baselineTopPx = root.height * .69f
-        val liftedTop = ((baselineTopPx - dp(50)).coerceAtLeast(root.height * .56f)) / root.height
-
-        for (index in 0 until QuickSlotRules.SLOT_COUNT) {
-            val row = index / 3
-            val column = index % 3
+        val models = (0 until QuickSlotRules.SLOT_COUNT).map { index ->
             val slot = slots.optJSONObject(index) ?: JSONObject()
             val label = slot.optString("label", "")
             val target = slot.optString("target", "")
-            val icon = QuickSlotRules.iconFor(label, target)
-            val title = if (label.isBlank()) "Ô ${index + 1}" else label
-            button(
-                value = "${quickSlotGlyph(icon)}  $title",
-                left = leftStart + column * (slotWidth + columnGap),
-                top = liftedTop + row * (slotHeight + rowGap),
-                width = slotWidth,
-                height = slotHeight,
-                outline = false,
-                onLongClick = { showQuickSlotEditor(index) },
-                onClick = { launchQuickSlot(slot) },
+            QuickSlotUi(
+                index = index,
+                label = label,
+                icon = QuickSlotRules.iconFor(label, target),
             )
         }
+
+        // V1.0.64 lifted the three-row shortcut cluster by 50dp toward the vehicle tail.
+        val baselineTopPx = root.height * .69f
+        val liftedTop = ((baselineTopPx - dp(50)).coerceAtLeast(root.height * .56f)) / root.height
+        val quickBar = ComposeView(this).apply {
+            setContent {
+                MaterialTheme {
+                    QuickBarGrid(
+                        slots = models,
+                        onClick = { index ->
+                            val slot = slots.optJSONObject(index) ?: JSONObject()
+                            launchQuickSlot(slot)
+                        },
+                        onLongClick = { index -> showQuickSlotEditor(index) },
+                    )
+                }
+            }
+        }
+        place(quickBar, .045f, liftedTop, .91f, .145f)
     }
 
     private fun render() {
