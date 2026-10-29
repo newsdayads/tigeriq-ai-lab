@@ -16,8 +16,8 @@ const config = {
   tokenEndpoint: 'https://auth.example.test/token',
 };
 const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url');
-function token(payload = {}) {
-  const header = encode({ alg: 'RS256', kid: 'test-key-1', typ: 'JWT' });
+function token(payload = {}, kid = 'test-key-1') {
+  const header = encode({ alg: 'RS256', kid, typ: 'JWT' });
   const body = encode({
     iss: issuerUrl, aud: resourceUrl, sub: 'owner', exp: 1800000300,
     scope: 'mcp:read pc01:write', ...payload,
@@ -59,7 +59,7 @@ test('fails closed on missing token, wrong audience, expiry, kid and signature',
   assert.equal((await r.verifyBearer({})).status, 401);
   assert.equal((await r.verifyBearer({ authorization: 'Bearer ' + token({ aud: 'https://other.example/mcp' }) })).status, 401);
   assert.equal((await r.verifyBearer({ authorization: 'Bearer ' + token({ exp: 1800000000 }) })).status, 401);
-  assert.equal((await r.verifyBearer({ authorization: 'Bearer ' + token({}) .replace('test-key-1', 'other-key') })).status, 401);
+  assert.equal((await r.verifyBearer({ authorization: 'Bearer ' + token({}, 'other-key') })).status, 401);
   assert.equal((await r.verifyBearer({ authorization: 'Bearer abc.def.ghi' })).status, 401);
 });
 
