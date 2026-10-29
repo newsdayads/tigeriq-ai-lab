@@ -125,34 +125,46 @@ test('failed USB camera open and preview leave controller ready for a manual ret
   assert.match(preview,/UVC preview failed[\s\S]*?releasePreview\(\)[\s\S]*?stop\(\)/);
 });
 
-test('UVC error frees surface and resets requested state for retry (source guard only)',()=>{
+test('UVC error frees surface and keeps requested session ready for reconnect (source guard only)',()=>{
   const source=readFileSync(new URL('../../apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt',import.meta.url),'utf8');
   const handler=source.split('override fun onError(')[1]?.split('override fun onSurfaceTextureAvailable(')[0];
   assert.ok(handler);
   assert.match(handler,/if \(device == target && requested\)/);
-  assert.match(handler,/releasePreview\(\)[\s\S]*?stop\(\)/);
+  assert.match(handler,/releasePreview\(\)[\s\S]*?target = null[\s\S]*?đang chờ kết nối lại/);
+  assert.doesNotMatch(handler,/stop\(\)/);
 });
 
-test('terminal USB errors reset requested before telling the Activity to render retry controls (source guard only)',()=>{
+test('terminal USB failures stop while hot-plug and disconnect paths remain recoverable (source guard only)',()=>{
   const source=readFileSync(new URL('../../apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt',import.meta.url),'utf8');
+
   for (const [section,next,errorText] of [
-    ['fun start() {','private fun beginPreview()', 'Không thấy thiết bị Camera UVC'],
     ['private fun beginPreview() {','override fun onAttach(', 'Lỗi hình Camera UVC'],
     ['override fun onDeviceOpen(', 'override fun onCameraOpen(', 'Không mở được Camera UVC'],
-    ['override fun onDetach(', 'override fun onCancel(', 'Đã rút Camera USB'],
-    ['override fun onCancel(', 'override fun onError(', 'Quyền USB bị từ chối'],
-    ['override fun onError(', 'override fun onSurfaceTextureAvailable(', 'Lỗi UVC:']
+    ['override fun onCancel(', 'override fun onError(', 'Quyền USB bị từ chối']
   ]) {
     const sectionBody=source.split(section)[1]?.split(next)[0];
     assert.ok(sectionBody,'missing source section '+section);
     const errorIndex=sectionBody.indexOf(errorText);
-    assert.ok(errorIndex>=0,'missing error report: '+errorText);
-    const beforeReport=sectionBody.slice(0,errorIndex);
-    assert.ok(beforeReport.lastIndexOf('stop()') >= 0,'stop() must precede final UI report for '+errorText);
+    assert.ok(errorIndex>=0,'missing terminal report: '+errorText);
+    assert.ok(sectionBody.slice(0,errorIndex).lastIndexOf('stop()') >= 0,
+      'stop() must precede terminal UI report for '+errorText);
+  }
+
+  for (const [section,next,errorText] of [
+    ['fun start() {','private fun beginPreview()', 'Đang chờ Camera UVC qua USB Host'],
+    ['override fun onDetach(', 'override fun onCancel(', 'Đã rút Camera USB'],
+    ['override fun onError(', 'override fun onSurfaceTextureAvailable(', 'Lỗi UVC:']
+  ]) {
+    const sectionBody=source.split(section)[1]?.split(next)[0];
+    assert.ok(sectionBody,'missing source section '+section);
+    const reportIndex=sectionBody.indexOf(errorText);
+    assert.ok(reportIndex>=0,'missing recoverable report: '+errorText);
+    assert.equal(sectionBody.slice(0,reportIndex).includes('stop()'),false,
+      'recoverable path must not stop requested session for '+errorText);
   }
 });
 
-test('camera close and device close release preview and return to retryable state (source guard only)',()=>{
+test('camera close and device close release preview and keep reconnect session active (source guard only)',()=>{
   const controller=readFileSync(new URL('../../apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt',import.meta.url),'utf8');
   for (const [name,next] of [
     ['onCameraClose','onDeviceClose'],
@@ -162,9 +174,10 @@ test('camera close and device close release preview and return to retryable stat
     assert.ok(body,'missing '+name+' lifecycle callback');
     assert.match(body,/if \(device == target && requested\)/,'ignore stale '+name+' callbacks');
     const released=body.indexOf('releasePreview()');
-    const stopped=body.indexOf('stop()');
+    const cleared=body.indexOf('target = null');
     const reported=body.indexOf('report(');
-    assert.ok(released>=0 && released<stopped && stopped<reported,
-      name+': cleanup and reset must happen before UI reports retry state');
+    assert.ok(released>=0 && released<cleared && cleared<reported,
+      name+': cleanup and target reset must happen before reconnect UI report');
+    assert.equal(body.includes('stop()'),false,name+': recoverable close must keep requested session active');
   }
 });
