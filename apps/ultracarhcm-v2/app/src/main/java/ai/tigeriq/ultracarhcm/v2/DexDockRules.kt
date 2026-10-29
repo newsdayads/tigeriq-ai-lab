@@ -8,7 +8,18 @@ internal object DexDockRules {
     fun isEnterAction(action: String?): Boolean = action == ACTION_ENTER_DEX
     fun isExitAction(action: String?): Boolean = action == ACTION_EXIT_DEX
 
+    private fun hasExternalDisplay(displayId: Int?): Boolean =
+        displayId != null && displayId > 0
+
     /** V2 auto-launch is limited to a real external display; standalone/unknown stays fail-closed. */
     fun shouldLaunchHome(action: String?, desktopActive: Boolean, displayId: Int?): Boolean =
-        isEnterAction(action) && desktopActive && displayId != null && displayId > 0
+        isEnterAction(action) && desktopActive && hasExternalDisplay(displayId)
+
+    /**
+     * The receiver is exported so Samsung/System can deliver the DeX broadcast.
+     * Do not trust an EXIT action by itself: an untrusted sender must not be able
+     * to tear down the overlay while external DeX is still active.
+     */
+    fun shouldStopOverlay(action: String?, desktopActive: Boolean, displayId: Int?): Boolean =
+        isExitAction(action) && (!desktopActive || !hasExternalDisplay(displayId))
 }
