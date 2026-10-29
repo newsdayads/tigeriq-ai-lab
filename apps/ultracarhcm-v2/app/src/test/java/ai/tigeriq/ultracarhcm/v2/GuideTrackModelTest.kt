@@ -50,4 +50,16 @@ class GuideTrackModelTest {
         val horizonWidth = horizon.second.x - horizon.first.x
         assertTrue(bottomWidth > horizonWidth)
     }
+    @Test
+    fun preservesObservedV1DistanceLabelOrderWithoutClaimingCalibration() {
+        assertEquals(
+            listOf("1.5m", "1.0m", "0.5m"),
+            GuideTrackModel.distanceMarkers.map { it.label },
+        )
+        assertEquals(
+            listOf(0.72f, 0.48f, 0.22f),
+            GuideTrackModel.distanceMarkers.map { it.progress },
+        )
+    }
+
 }
