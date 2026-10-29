@@ -7,7 +7,7 @@ test('recovery helper is unique and does not duplicate updater code',()=>{
   expect(source.match(/function Runtime-Source-Dirty/g)).toHaveLength(1);
   expect(source.match(/function Restart-Core/g)).toHaveLength(1);
   expect(source.match(/function Gates-Pass/g)).toHaveLength(1);
-  expect(source.length).toBeLessThan(65000); // Includes bounded MCP Funnel gateway lifecycle checks without duplicating updater code.
+  expect(source.length).toBeLessThan(67000); // Includes bounded MCP Funnel gateway lifecycle checks without duplicating updater code.
 });
 test('installed metadata must match worktree and be a valid known commit',()=>{
   const block=source.slice(source.indexOf('function Resolve-DeployedSourceSha'),source.indexOf('function Runtime-Source-Dirty'));
@@ -42,8 +42,15 @@ test('reconciles standalone MCP Funnel gateway only through exact supervised top
   expect(source).toContain("Stop-Process -Id $oldPid -Force -ErrorAction Stop");
   expect(source).toContain("[int]$new[0].ProcessId -ne $oldPid");
   expect(source).toContain("Test-TcpPort '127.0.0.1' $mcpGatewayPort");
-  expect(source).toContain("$mcpGatewayReconcile=Reconcile-McpFunnelGatewayRuntime $local");
+  const noChangeSync=source.indexOf('$mcpGatewaySync=Sync-McpFunnelGatewayRuntime');
+  const noChangeReconcile=source.indexOf("else{Reconcile-McpFunnelGatewayRuntime $local}",noChangeSync);
+  expect(noChangeSync).toBeGreaterThan(0);
+  expect(noChangeReconcile).toBeGreaterThan(noChangeSync);
   expect(source).toContain("$mcpGatewayReconcile=Reconcile-McpFunnelGatewayRuntime $remote");
   expect(source).toContain("$mcpRollback=if(-not $CanaryMode){Reconcile-McpFunnelGatewayRuntime $previousRuntimeSha}");
+  expect(source.match(/function Sync-McpFunnelGatewayRuntime/g)).toHaveLength(1);
+  expect(source).toContain("$mcpGatewaySourcePath=(Join-Path $runtimeRepo 'apps\\tigeriq-core\\mcp-funnel-gateway.mjs')");
+  expect(source).toContain("MCP_GATEWAY_SYNC_HASH_MISMATCH");
+  expect(source.indexOf('$mcpGatewaySync=Sync-McpFunnelGatewayRuntime')).toBeLessThan(source.indexOf('$mcpGatewayReconcile=Reconcile-McpFunnelGatewayRuntime $remote'));
 });
 
