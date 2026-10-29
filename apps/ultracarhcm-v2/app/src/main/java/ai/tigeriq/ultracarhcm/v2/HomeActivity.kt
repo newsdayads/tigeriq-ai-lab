@@ -20,6 +20,7 @@ import android.widget.VideoView
 import android.widget.TextView
 import android.widget.EditText
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.platform.ComposeView
 import org.json.JSONArray
@@ -45,6 +46,16 @@ class HomeActivity : ComponentActivity() {
             clock?.text = SimpleDateFormat("EEEE\ndd/MM\nHH:mm", Locale("vi", "VN")).format(Date())
             tickHandler.postDelayed(this, 1000L)
         }
+    }
+    private val exportBackupLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri != null) writeHomeBackup(uri)
+    }
+    private val importBackupLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) readHomeBackup(uri)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -553,6 +564,116 @@ class HomeActivity : ComponentActivity() {
             }.setNegativeButton("Đóng", null).show()
     }
 
+    private fun exportHomeBackupJson(): JSONObject {
+        val defaultRaw = prefs.getString("v2_default_home_config", null)
+        val defaultSafe = try {
+            defaultRaw?.let { normalizeHomeConfiguration(JSONObject(it)) }
+        } catch (e: Exception) {
+            android.util.Log.w("UltraCarV2", "Ignoring corrupt default HOME config during backup", e)
+            null
+        }
+        return JSONObject()
+            .put("backupSchemaVersion", HomeBackupRules.CURRENT_BACKUP_SCHEMA_VERSION)
+            .put("night", prefs.getBoolean("night", false))
+            .put("limo", prefs.getBoolean("limo", false))
+            .put(
+                "driver",
+                HomeConfigRules.normalizeName(
+                    prefs.getString("driver_name", "Driver") ?: "Driver",
+                ).ifEmpty { "Driver" },
+            )
+            .put("quickSlots", normalizedQuickSlotsForStorage(quickSlots()))
+            .put("savedConfigurations", savedConfigurations())
+            .put("defaultHomeConfiguration", defaultSafe ?: JSONObject.NULL)
+    }
+
+    private fun writeHomeBackup(uri: Uri) {
+        try {
+            val payload = exportHomeBackupJson().toString(2)
+            if (!HomeBackupRules.withinSize(payload.toByteArray(Charsets.UTF_8).size)) {
+                toast("Bản sao lưu vượt giới hạn an toàn")
+                return
+            }
+            val stream = contentResolver.openOutputStream(uri, "wt")
+                ?: throw IllegalStateException("Không mở được tệp đích")
+            stream.bufferedWriter(Charsets.UTF_8).use { it.write(payload) }
+            toast("Đã sao lưu cấu hình V2")
+        } catch (e: Exception) {
+            android.util.Log.e("UltraCarV2", "HOME backup export failed", e)
+            toast("Không thể sao lưu cấu hình V2")
+        }
+    }
+
+    private fun readHomeBackup(uri: Uri) {
+        try {
+            val stream = contentResolver.openInputStream(uri)
+                ?: throw IllegalStateException("Không mở được tệp sao lưu")
+            val text = stream.bufferedReader(Charsets.UTF_8).use { reader ->
+                val buffer = CharArray(8192)
+                val out = StringBuilder()
+                while (true) {
+                    val count = reader.read(buffer)
+                    if (count < 0) break
+                    out.append(buffer, 0, count)
+                    if (!HomeBackupRules.withinSize(out.toString().toByteArray(Charsets.UTF_8).size)) {
+                        throw IllegalArgumentException("Backup vượt giới hạn")
+                    }
+                }
+                out.toString()
+            }
+            if (!importHomeBackupJson(text)) {
+                toast("Tệp sao lưu không hợp lệ hoặc không tương thích")
+                return
+            }
+            render()
+            toast("Đã khôi phục cấu hình V2")
+        } catch (e: Exception) {
+            android.util.Log.e("UltraCarV2", "HOME backup import failed", e)
+            toast("Không thể khôi phục cấu hình V2")
+        }
+    }
+
+    private fun importHomeBackupJson(text: String): Boolean {
+        if (!HomeBackupRules.withinSize(text.toByteArray(Charsets.UTF_8).size)) return false
+        val root = try { JSONObject(text) } catch (_: Exception) { return false }
+        if (!HomeBackupRules.canReadBackupSchema(root.optInt("backupSchemaVersion", -1))) return false
+        if (!root.has("night") || !root.has("limo") || !root.has("driver")) return false
+
+        val driver = HomeConfigRules.normalizeName(root.optString("driver", ""))
+        if (driver.isEmpty()) return false
+
+        val rawSlots = root.optJSONArray("quickSlots") ?: return false
+        if (rawSlots.length() != QuickSlotRules.SLOT_COUNT) return false
+        val safeSlots = normalizedQuickSlotsForStorage(rawSlots)
+
+        val rawConfigs = root.optJSONArray("savedConfigurations") ?: return false
+        if (rawConfigs.length() > HomeConfigRules.MAX_SAVED) return false
+        val safeConfigs = JSONArray()
+        for (index in 0 until rawConfigs.length()) {
+            val item = rawConfigs.optJSONObject(index) ?: return false
+            val safe = normalizeHomeConfiguration(item) ?: return false
+            safeConfigs.put(safe)
+        }
+
+        val safeDefault = if (root.isNull("defaultHomeConfiguration")) {
+            null
+        } else {
+            val item = root.optJSONObject("defaultHomeConfiguration") ?: return false
+            normalizeHomeConfiguration(item) ?: return false
+        }
+
+        val editor = prefs.edit()
+            .putBoolean("night", root.optBoolean("night", false))
+            .putBoolean("limo", root.optBoolean("limo", false))
+            .putString("driver_name", driver)
+            .putString("v2_quick_slots", safeSlots.toString())
+            .putString("v2_home_configs", safeConfigs.toString())
+        if (safeDefault == null) editor.remove("v2_default_home_config")
+        else editor.putString("v2_default_home_config", safeDefault.toString())
+        editor.apply()
+        return true
+    }
+
     private fun editDriverName() {
         val input = EditText(this).apply {
             setSingleLine(true)
@@ -579,7 +700,9 @@ class HomeActivity : ComponentActivity() {
             "Camera USB thật (UVC Host)",
             "Cấp quyền nút Camera nổi DeX",
             "Trạng thái tương đương APP gốc",
-            "Đổi tên tài xế hiển thị Home"
+            "Đổi tên tài xế hiển thị Home",
+            "Sao lưu cấu hình V2",
+            "Khôi phục cấu hình V2"
         )
         AlertDialog.Builder(this).setTitle("UltraCarHCM V2 — Bản xây dựng")
             .setItems(options) { _, which ->
@@ -603,6 +726,8 @@ class HomeActivity : ComponentActivity() {
                         .setMessage("Màn Home V2 vẫn đang xây dựng. Camera USB, DeX, các tab, bố cục V1 và dữ liệu gốc chưa được nghiệm thu.")
                         .setPositiveButton("Đóng", null).show()
                     5 -> editDriverName()
+                    6 -> exportBackupLauncher.launch(HomeBackupRules.exportFileName())
+                    7 -> importBackupLauncher.launch(arrayOf("application/json", "text/plain"))
                 }
             }.show()
     }
