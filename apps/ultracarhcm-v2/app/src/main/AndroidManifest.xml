@@ -5,12 +5,16 @@
   <uses-feature android:name="android.hardware.camera" android:required="false"/>
   <uses-feature android:name="android.software.freeform_window_management" android:required="false"/>
   <uses-feature android:name="android.hardware.location.gps" android:required="false"/>
+  <uses-feature android:name="android.hardware.bluetooth" android:required="false"/>
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.CAMERA"/>
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+  <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+  <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
+  <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
   <application android:label="@string/app_name" android:allowBackup="false" android:extractNativeLibs="true" android:supportsRtl="true"
        android:icon="@android:drawable/ic_menu_camera" android:theme="@android:style/Theme.Material.NoActionBar">
     <activity android:name=".HomeActivity" android:exported="true" android:resizeableActivity="true"
@@ -20,6 +24,7 @@
     </activity>
     <activity android:name=".UsbCameraActivity" android:exported="false" android:resizeableActivity="true" android:launchMode="singleTop"/>
     <activity android:name=".TelemetryActivity" android:exported="false" android:resizeableActivity="true"/>
+    <activity android:name=".ObdActivity" android:exported="false" android:resizeableActivity="true"/>
     <service android:name=".OverlayService" android:exported="false"/>
   </application>
 </manifest>

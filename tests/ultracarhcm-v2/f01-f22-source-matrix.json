@@ -225,13 +225,28 @@
     {
       "id": "F12",
       "expected": "OBD/Bluetooth pairing, speed/rpm/battery and diagnostics",
-      "status": "NOT_IMPLEMENTED",
-      "sourceEvidence": [],
-      "gap": "No corresponding V2 source implementation found in the current scoped app.",
-      "actual": "No scoped V2 OBD/Bluetooth pairing or vehicle telemetry implementation is present.",
-      "testStatus": "NOT_TESTED_NO_IMPLEMENTATION",
-      "entryPoints": [],
-      "permissions": []
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ObdActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ObdProtocol.kt",
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml"
+      ],
+      "gap": "Paired-device selection, RFCOMM OBD session and speed/RPM/adapter-voltage parsing are implemented in source; actual adapter pairing/connection, vehicle compatibility and real telemetry acceptance require device/vehicle QA.",
+      "actual": "ObdActivity opens system Bluetooth settings for pairing, lists already bonded devices with Android runtime BLUETOOTH_CONNECT permission, connects by RFCOMM SPP, initializes a generic OBD adapter, then queries vehicle speed, engine RPM and adapter voltage. ObdProtocol parses the returned values without claiming V1 UI parity.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "TelemetryActivity.buildContent",
+        "ObdActivity.requestDeviceSelection",
+        "ObdActivity.showPairedDevices",
+        "ObdActivity.connect",
+        "ObdActivity.queryTelemetry",
+        "ObdProtocol.parseSpeedKph",
+        "ObdProtocol.parseRpm",
+        "ObdProtocol.parseVoltage"
+      ],
+      "permissions": [
+        "android.permission.BLUETOOTH_CONNECT"
+      ]
     },
     {
       "id": "F13",
@@ -332,10 +347,11 @@
         "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TelemetryActivity.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TelemetryActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ObdActivity.kt"
       ],
-      "gap": "USB/overlay/location permission and reconnect error-recovery paths are covered in source; update/privacy permission parity and real-device validation remain incomplete.",
-      "actual": "Manifest/runtime source cover camera, USB-host, overlay and foreground location permissions; TelemetryActivity requests fine/coarse location only when used, while UVC permission denial stops cleanly and recoverable USB close/detach/error keeps the requested session alive for reconnect. Update/privacy parity remains incomplete.",
+      "gap": "USB/overlay/location/Bluetooth runtime permission and reconnect/error-recovery paths are covered in source; update/privacy permission parity and real-device validation remain incomplete.",
+      "actual": "Manifest/runtime source cover camera, USB-host, overlay, foreground location and Bluetooth-connect permissions; TelemetryActivity requests location only when used, ObdActivity requests Bluetooth connect only before bonded-device access, and UVC recovery remains bounded. Update/privacy parity remains incomplete.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "AndroidManifest.xml",
@@ -345,7 +361,8 @@
         "UsbUvcController.onAttach",
         "UsbUvcController.onDetach",
         "UsbUvcController.onError",
-        "TelemetryActivity.refreshLocation"
+        "TelemetryActivity.refreshLocation",
+        "ObdActivity.requestDeviceSelection"
       ],
       "permissions": [
         "android.permission.CAMERA",
@@ -353,7 +370,8 @@
         "android.permission.INTERNET",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION"
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.BLUETOOTH_CONNECT"
       ]
     },
     {

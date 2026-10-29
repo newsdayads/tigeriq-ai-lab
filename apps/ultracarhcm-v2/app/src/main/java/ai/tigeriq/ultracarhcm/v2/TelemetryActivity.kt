@@ -96,6 +96,12 @@ class TelemetryActivity : ComponentActivity(), LocationListener {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ),
         )
+        body.addView(Button(this).apply {
+            text = "OBD Bluetooth"
+            setOnClickListener {
+                startActivity(Intent(this@TelemetryActivity, ObdActivity::class.java))
+            }
+        })
 
         return ScrollView(this).apply { addView(body) }
     }
