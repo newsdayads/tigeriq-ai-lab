@@ -54,8 +54,13 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
     expect(home).toContain('OverlayPositionRules.xKey(displayId)');
     expect(home).toContain('OverlayPositionRules.yKey(displayId)');
     expect(rules).toContain('const val LEGACY_BACKUP_SCHEMA_VERSION = 1');
-    expect(rules).toContain('const val CURRENT_BACKUP_SCHEMA_VERSION = 2');
+    expect(rules).toContain('const val CURRENT_BACKUP_SCHEMA_VERSION = 3');
     expect(rules).toContain('version in LEGACY_BACKUP_SCHEMA_VERSION..CURRENT_BACKUP_SCHEMA_VERSION');
+    expect(rules).toContain('fun requiresVehicleState(version: Int): Boolean');
+    expect(home).toContain('"vehicleModel"');
+    expect(home).toContain('"licensePlate"');
+    expect(home).toContain('VehicleRules.PREF_MODEL');
+    expect(home).toContain('VehicleRules.PREF_LICENSE_PLATE');
   });
 
   it('refreshes an active DeX overlay immediately after a successful restore', () => {
