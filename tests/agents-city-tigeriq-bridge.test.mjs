@@ -131,6 +131,30 @@ test('Core work-order request allows exactly one loopback URL, GET, and fails ba
   await assert.rejects(fetchCoreSnapshot({fetchImpl:async()=>new Response('not-json',{status:200})}),/CORE_JSON_INVALID/);
 });
 
+test('work-order source retries one transient HTTP failure without using cached data',async()=>{
+  let calls=0;
+  const valid=await fetchCoreSnapshot({
+    now:NOW,retryDelayMs:0,
+    fetchImpl:async()=>{
+      calls+=1;
+      if(calls===1)return new Response('{}',{status:503});
+      return new Response(JSON.stringify(source()),{status:200});
+    }
+  });
+  assert.equal(calls,2);
+  assert.equal(valid.total,3);
+  assert.equal(valid.source,'TigerIQ Core /api/work-orders');
+});
+
+test('work-order source keeps retry bounded and fails closed after repeated transport failure',async()=>{
+  let calls=0;
+  await assert.rejects(fetchCoreSnapshot({
+    attempts:2,retryDelayMs:0,
+    fetchImpl:async()=>{calls+=1;throw new Error('transient');}
+  }),/CORE_HTTP_UNAVAILABLE/);
+  assert.equal(calls,2);
+});
+
 test('live projection shows only BUSY resources with an exact running job identity',()=>{
   const live=normalizeLiveCoreSnapshot(liveSource(),{now:NOW});
   assert.equal(live.ok,true);
@@ -241,6 +265,7 @@ test('PC01 operational task targets the interactive desktop user and remains lim
   assert.match(script,/Get-Process explorer -IncludeUserName/);
   assert.match(script,/RunLevel Limited/);
   assert.match(script,/LogonType Interactive/);
+  assert.match(script,/Invoke-RestMethod -Uri \$Url -TimeoutSec 12/);
   assert.match(script,/New-ScheduledTaskAction -Execute \$NodePath/);
   assert.match(script,/127\.0\.0\.1/);
   assert.match(script,/uninstall/);
