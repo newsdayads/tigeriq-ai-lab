@@ -22,18 +22,22 @@ test('PC01 consent reaches only the exact ChatGPT callback as GET without Owner 
       end(data=''){this.body+=data;return this;}};
     await auth.handle(req,res,new URL(url));return res;
   };
+  let restrictiveCspProbe=true;
   const callbacks=[], approvals=[], diagnostics=[];
+  // Offline mode prevents redirected synthetic codes from reaching a real service.
+  await context.setOffline(true);
+  page.on('request',req=>{const url=new URL(req.url());if(url.origin+url.pathname===CHATGPT_REDIRECT)callbacks.push({method:req.method(),url:req.url(),body:req.postData()});});
   page.on('console',message=>{if(message.type()==='error')diagnostics.push(message.text());});
   await context.route('**/*',async route=>{
     const req=route.request(), url=new URL(req.url());
     if(url.origin===origin){
       if(url.pathname==='/oauth/approve')approvals.push(req.method());
       const result=await dispatch(req.url(),req.method(),await req.allHeaders(),req.postData()||'');
+      if(restrictiveCspProbe && url.pathname==='/oauth/authorize')result.headers['content-security-policy']=result.headers['content-security-policy'].replace(' '+CHATGPT_REDIRECT,'');
       diagnostics.push({path:url.pathname,status:result.status});
       await route.fulfill({status:result.status,headers:result.headers,body:result.body});return;
     }
     if(url.origin+url.pathname===CHATGPT_REDIRECT){
-      callbacks.push({method:req.method(),url:req.url(),body:req.postData()});
       await route.fulfill({status:200,contentType:'text/html',body:'<h1>Synthetic callback accepted</h1>'});return;
     }
     await route.abort();
@@ -41,10 +45,20 @@ test('PC01 consent reaches only the exact ChatGPT callback as GET without Owner 
   const params=new URLSearchParams({client_id:CHATGPT_CLIENT,redirect_uri:CHATGPT_REDIRECT,response_type:'code',
     resource,scope:'mcp:read pc01:execute pc01:admin',state:'browser-fixture-state',
     code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256'});
+  // Reproduce the previous header's actual Chrome block before testing production policy.
   await page.goto(origin+'/oauth/authorize?'+params);
   await page.locator('input[name=owner_code]').fill(ownerCode);
+  const violation=page.waitForEvent('console',{predicate:message=>message.type()==='error'&&message.text().includes('form-action'),timeout:7000});
   await page.getByRole('button',{name:'ĐĂNG NHẬP VÀ CẤP QUYỀN'}).click();
-  await expect(page.getByRole('heading',{name:'Synthetic callback accepted'})).toBeVisible({timeout:7000}).catch(error=>{
+  await violation;
+  expect(callbacks).toHaveLength(0);
+  expect(audit.filter(e=>e.event==='OAUTH_OWNER_CONSENT_GRANTED')).toHaveLength(1);
+  restrictiveCspProbe=false;callbacks.length=0;approvals.length=0;audit.length=0;diagnostics.length=0;
+  await page.goto(origin+'/oauth/authorize?'+params);
+  await page.locator('input[name=owner_code]').fill(ownerCode);
+  const callbackRequest=page.waitForRequest(req=>{const url=new URL(req.url());return url.origin+url.pathname===CHATGPT_REDIRECT;},{timeout:7000});
+  await page.getByRole('button',{name:'ĐĂNG NHẬP VÀ CẤP QUYỀN'}).click();
+  await callbackRequest.catch(error=>{
     throw Error(JSON.stringify({audit,approvals,callbackCount:callbacks.length,path:new URL(page.url()).pathname,diagnostics})+'\\n'+error.message);
   });
   expect(approvals).toEqual(['POST']);
