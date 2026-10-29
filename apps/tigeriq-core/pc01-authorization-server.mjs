@@ -39,7 +39,7 @@ export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = 
   if (key.asymmetricKeyType !== 'rsa' || key.asymmetricKeyDetails.modulusLength < 2048) throw Error('SIGNING_KEY_INVALID');
   const publicJwk = createPublicKey(key).export({format:'jwk'});
   const kid = hash(publicJwk.n).slice(0,24);
-  const pending = new Map(), codes = new Map(), refresh = new Map();
+  const pending = new Map(), codes = new Map(), refresh = new Map(), spentRefresh = new Set();
   // Refresh sessions are durable and have no fixed wall-clock expiry; revocation is explicit.
   for (const session of (sessionStore.load?.() || [])) if (session?.hash && session.expires === null) refresh.set(session.hash, session);
   let cachedClient = null, clientAt = 0, loginWindow = 0, loginCount = 0;
@@ -173,11 +173,11 @@ export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = 
         }
         if (params.get('grant_type') === 'refresh_token') {
           stage = 'refresh_exchange';
-          const renewalHash = hash(params.get('refresh_token') || ''); grant = refresh.get(renewalHash);
+          const renewalHash = hash(params.get('refresh_token') || ''); grant = spentRefresh.has(renewalHash) ? null : refresh.get(renewalHash);
           if (!grant || (grant.expires !== null && grant.expires <= now()) || grant.clientId !== params.get('client_id') ||
               (params.has('resource') && params.get('resource') !== grant.resource) ||
               (params.has('scope') && params.get('scope') !== grant.scopes.join(' '))) throw Error('invalid_grant');
-          refresh.delete(renewalHash); sessionStore.revoke?.(renewalHash);
+          refresh.delete(renewalHash); spentRefresh.add(renewalHash); sessionStore.revoke?.(renewalHash);
           json(res,200,tokens(grant,null));return true;
         }
         if (params.get('grant_type') === 'revoke') {
