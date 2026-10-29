@@ -40,7 +40,9 @@ describe('GH-5135 V1.0.64 reverse guide source contract', () => {
     expect(camera).toContain('EXTRA_STEERING_DEGREES');
     expect(camera).toContain('setIntent(intent)');
     expect(camera).toContain('applyReverseGuideIntent(intent)');
-    expect(camera).toContain('intent.getFloatExtra(EXTRA_STEERING_DEGREES, 0f)');
+    expect(camera).toContain('intent.hasExtra(EXTRA_REVERSE_ACTIVE)');
+    expect(camera).toContain('intent.hasExtra(EXTRA_STEERING_DEGREES)');
+    expect(camera).toContain('intent.getFloatExtra(EXTRA_STEERING_DEGREES, current.steeringDegrees)');
     expect(camera).toContain('Chưa hiệu chuẩn khoảng cách/góc lái và chưa nghiệm thu trên xe');
   });
 });
