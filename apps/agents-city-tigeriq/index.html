@@ -37,6 +37,30 @@ button.action{padding:11px 15px;background:#ffb859;border:none;border-radius:10p
 .note{margin-top:15px;color:#c3d8e9;font-size:12px;line-height:1.6}
 @media(max-width:1000px){main{grid-template-columns:1fr}.plaza{min-height:270px;gap:14px}.room{min-height:225px}.animal{font-size:65px}}
 @media(max-width:570px){header{padding:14px}.logo{font-size:18px}main{padding:12px}h1{font-size:21px}.city{padding:20px 8px 27px}.plaza{gap:8px}.room{padding:7px;min-height:174px;border-radius:13px}.room-name{font-size:12px}.animal{font-size:47px}.desk{font-size:9px;padding:7px}.room-count{font-size:10px;padding:4px}.subtitle{font-size:10px}.metrics{grid-template-columns:1fr 1fr 1fr}.metric{padding:9px}.metric strong{font-size:21px}}
+
+/* Animal City 3D: model is the primary view, work controls remain accessible. */
+.animal-scene{position:relative;height:490px;border-radius:18px;overflow:hidden;
+ background:radial-gradient(circle at 52% 25%,#477a93,#142b45 75%);
+ border:1px solid #88b3bc80;box-shadow:inset 0 0 45px #09172866,0 18px 40px #0c283266}
+.animal-scene canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.animal-scene canvas:active{cursor:grabbing}
+.scene-info,.scene-footer{position:absolute;left:16px;z-index:1;pointer-events:none;
+ font-size:11px;letter-spacing:.07em;color:#e0eff6;background:#122b42e0;border-radius:9px;padding:8px 11px}
+.scene-info{top:13px;font-weight:750}.scene-footer{bottom:13px;letter-spacing:0;color:#c3dbe1}
+.scene-reset{position:absolute;right:13px;top:13px;z-index:1;padding:9px 12px;border:1px solid #88b5c7;
+ color:#eaf8fb;background:#173b54e6;border-radius:10px;font-weight:750;cursor:pointer}
+.scene-reset:hover,.scene-reset:focus-visible{background:#315c70}
+.plaza{min-height:unset;max-width:930px;margin:13px auto 3px;gap:10px;display:flex;align-items:stretch}
+.room{min-height:58px;flex:1;flex-direction:row;padding:10px 13px;box-shadow:none;border-radius:11px}
+.room:before,.room .animal,.room .desk{display:none}
+.room-name{font-size:13px;padding:3px;background:none}
+.room-count{font-size:11px;padding:5px 8px;white-space:nowrap}
+.room:hover,.room:focus-visible{transform:translateY(-2px)}
+@media(max-width:570px){.animal-scene{height:355px}.scene-info{font-size:9px;top:9px;left:8px;right:100px}
+.scene-footer{font-size:9px;bottom:9px;left:8px;right:8px}
+.scene-reset{font-size:10px;right:8px;top:9px;padding:8px}
+.plaza{gap:5px}.room{min-height:54px;padding:7px 4px;flex-direction:column;gap:5px}
+.room-name{font-size:11px}.room-count{font-size:10px;padding:3px 6px}}
 </style>
 </head>
 <body>
@@ -47,7 +71,7 @@ button.action{padding:11px 15px;background:#ffb859;border:none;border-radius:10p
 <main>
  <section>
   <h1>Văn phòng AI TigerIQ</h1>
-  <p class="lead">Ba phòng Animal hiển thị Work Order và hoạt động worker lấy trực tiếp từ TigerIQ Core. Worker chỉ hiện “đang làm” khi resource BUSY và job running khớp chính xác danh tính.</p>
+  <p class="lead">Văn phòng 3D Animal gồm ba phòng có bàn làm việc, nội thất và nhân viên thú hoạt hình. Chọn phòng trên mô hình hoặc thanh điều hướng để xem Work Order và hoạt động worker thật từ TigerIQ Core. Worker chỉ hiện “đang làm” khi resource BUSY và job running khớp chính xác danh tính.</p>
   <div class="city">
    <div class="plaza" aria-label="Ba phòng của công ty">
     <button class="room selected" data-room="coordination"><span class="room-name">Điều phối</span><span class="animal" aria-hidden="true">🐯</span><span class="desk">Phòng Vy · Giao việc</span><span class="room-count" id="count-coordination">Chưa tải</span></button>
@@ -74,5 +98,6 @@ button.action{padding:11px 15px;background:#ffb859;border:none;border-radius:10p
  </aside>
 </main>
 <script src="/app.js" defer></script>
+<script src="/scene3d.js" defer></script>
 </body>
 </html>

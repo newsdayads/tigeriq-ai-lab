@@ -8,6 +8,7 @@ import {fetchLiveCoreSnapshot} from './core-live-readonly.mjs';
 
 const htmlPath = fileURLToPath(new URL('./index.html', import.meta.url));
 const scriptPath = fileURLToPath(new URL('./app.js', import.meta.url));
+const scenePath = fileURLToPath(new URL('./scene3d.js', import.meta.url));
 
 function send(res, status, body, type) {
   res.writeHead(status, {
@@ -94,9 +95,10 @@ export function createAnimalCityServer({fetchImpl = fetch, startedAt = new Date(
     }
 
     if (route === '/favicon.ico') return send(res,204,'','text/plain');
-    if (route === '/' || route === '/app.js') {
+    if (route === '/' || route === '/app.js' || route === '/scene3d.js') {
       try {
-        const content = await readFile(route === '/' ? htmlPath : scriptPath);
+        const path = route === '/' ? htmlPath : route === '/app.js' ? scriptPath : scenePath;
+        const content = await readFile(path);
         return send(res,200,content,route === '/' ? 'text/html; charset=utf-8' :
           'text/javascript; charset=utf-8');
       } catch {
