@@ -49,6 +49,35 @@ function fixture() {
   return {auth,call,params,pending,approve,code,exchange,audit,advance:ms=>{clock+=ms;},now:()=>Math.floor(clock/1000),fetches:()=>fetches};
 }
 describe('PC01 Owner-authenticated self-hosted OAuth',()=>{
+  it('uses POST/303/GET callback and does not issue another code for duplicate approval',async()=>{
+    const f=fixture(), request=await f.pending();
+    const [first, duplicate]=await Promise.all([f.approve(request),f.approve(request)]);
+    expect(first.status).toBe(303);
+    expect(duplicate.status).toBe(409);
+    expect(duplicate.headers.location).toBeUndefined();
+    const callback=new URL(first.headers.location);
+    expect(callback.origin+callback.pathname).toBe(CHATGPT_REDIRECT);
+    expect(callback.searchParams.get('state')).toBe('opaque-state');
+    const code=callback.searchParams.get('code');
+    expect((await f.exchange(code)).status).toBe(200);
+    expect((await f.exchange(code)).status).toBe(400);
+    expect(f.audit.filter(e=>e.event==='OAUTH_OWNER_CONSENT_GRANTED')).toHaveLength(1);
+    expect(f.audit.filter(e=>e.event==='OAUTH_APPROVAL_DUPLICATE')).toHaveLength(1);
+    const serialized=JSON.stringify(f.audit);
+    expect(serialized).not.toContain(code);
+    expect(serialized).not.toContain(request.id);
+    expect(serialized).not.toContain(ownerCode);
+  });
+  it('keeps CSRF checks for duplicate approvals and records only safe request diagnostics',async()=>{
+    const f=fixture(), request=await f.pending();
+    await f.approve(request);
+    const result=await f.call('/oauth/approve',{method:'POST',headers:{origin:'https://evil.test',cookie:request.cookie},
+      data:{request_id:request.id,owner_code:ownerCode}});
+    expect(result.status).toBe(403);
+    expect(f.audit.at(-1)).toMatchObject({event:'OAUTH_REQUEST_DENIED',method:'POST',path:'/oauth/approve',stage:'origin',reason:'access_denied'});
+    expect((await f.exchange('invalid-code')).status).toBe(400);
+    expect(f.audit.at(-1)).toMatchObject({event:'OAUTH_REQUEST_DENIED',method:'POST',path:'/oauth/token',stage:'code_exchange',reason:'invalid_grant'});
+  });
   it('publishes exact issuer, S256, CIMD and public-only JWKS',async()=>{
     const f=fixture(), metadata=await f.call('/.well-known/oauth-authorization-server');
     expect(JSON.parse(metadata.body)).toMatchObject({issuer:origin+'/',client_id_metadata_document_supported:true,authorization_response_iss_parameter_supported:true,code_challenge_methods_supported:['S256']});
