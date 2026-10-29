@@ -19,7 +19,9 @@ describe('GH-5135 F20/R03 USB UVC recovery source contract', () => {
 
   it('auto-selects a newly attached UVC device only while the session is requested', () => {
     expect(uvc).toContain('if (requested && target == null && isUvcDevice(device))');
-    expect(uvc).toContain('if (requested && target == null) selectTarget(device)');
+    expect(uvc).toMatch(
+      /if \(requested && target == null\) \{[\s\S]*?recoveryGeneration\+\+[\s\S]*?recoveryAttempts = 0[\s\S]*?selectTarget\(device\)/,
+    );
   });
 
   it('releases preview state but keeps waiting after recoverable close/detach/error', () => {
