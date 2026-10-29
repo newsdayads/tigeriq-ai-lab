@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
 import {fetchCoreSnapshot} from './core-readonly.mjs';
 import {fetchLiveCoreSnapshot} from './core-live-readonly.mjs';
+import {createOwnerActions} from './owner-actions.mjs';
 
 const htmlPath = fileURLToPath(new URL('./index.html', import.meta.url));
 const scriptPath = fileURLToPath(new URL('./app.js', import.meta.url));
@@ -33,14 +34,26 @@ function sourceFailure(error, live = false) {
 }
 
 export function createAnimalCityServer({fetchImpl = fetch, startedAt = new Date().toISOString()} = {}) {
+  const owner=createOwnerActions({fetchImpl});
   return createServer(async (req, res) => {
     const port = req.socket.localPort;
     const host = String(req.headers.host || '').toLowerCase();
     if (host !== '127.0.0.1:' + port && host !== 'localhost:' + port) {
       return send(res,403,'Forbidden','text/plain; charset=utf-8');
     }
-    if (req.method !== 'GET') return send(res,405,'Read-only','text/plain; charset=utf-8');
     const route = (req.url || '').split('?')[0];
+    // Only this explicit, CSRF-protected action can write, via native Core.
+    if (route === '/api/owner-objectives' && req.method === 'POST') {
+      const result=await owner.postObjective(req,port);
+      return send(res,result.status,JSON.stringify(result.body),'application/json; charset=utf-8');
+    }
+    if (req.method !== 'GET') return send(res,405,'Method not allowed','text/plain; charset=utf-8');
+    if (route === '/api/owner-config') return send(res,200,JSON.stringify(owner.config()),
+      'application/json; charset=utf-8');
+    if (route === '/api/owner-objectives') {
+      const result=await owner.recentObjectives();
+      return send(res,result.status,JSON.stringify(result.body),'application/json; charset=utf-8');
+    }
 
     if (route === '/api/rooms') {
       try {
@@ -72,7 +85,7 @@ export function createAnimalCityServer({fetchImpl = fetch, startedAt = new Date(
       startedAt,
       uptimeSec:Math.max(0,Math.floor((Date.now()-Date.parse(startedAt))/1000)),
       loopbackOnly:true,
-      writeRoutes:false,
+      writeRoutes:['POST /api/owner-objectives (LOCAL P2, browser confirmation)'],
     }),'application/json; charset=utf-8');
 
     if (route === '/ready') {
@@ -117,6 +130,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const server = createAnimalCityServer({startedAt});
   server.listen(port, '127.0.0.1', () => {
     console.log(JSON.stringify({event:'TIGERIQ_ANIMAL_CITY_OPERATIONAL_READY',
-      url:'http://127.0.0.1:' + port,startedAt,writeRoutes:false,loopbackOnly:true}));
+      url:'http://127.0.0.1:' + port,startedAt,writeRoutes:['LOCAL_P2_OBJECTIVE'],loopbackOnly:true}));
   });
 }
