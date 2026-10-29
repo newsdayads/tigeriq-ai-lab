@@ -7,6 +7,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import pg from 'pg';
 import { z } from 'zod';
+import { authorizeVerifiedTool } from './pc-operator-oauth-policy.mjs';
 import { executePcAction } from '../openclaw-tigeriq-runtime/operator.mjs';
 import {
   acquireSharedResourceLease,
@@ -343,6 +344,7 @@ export async function pcOperatorWorkOrderResponse(res, workOrder) {
 
 export function registerPcOperatorTools(server, executePcActionImpl = executePcAction, {
   allowMutation = false, leaseDb, leaseApi = leaseApiDefault, now = () => Date.now(),
+  verifiedPrincipal = null, issuerUrl, resourceUrl,
 } = {}) {
   // The gateway's bearer is a server-side authorization gate, not a ChatGPT
   // "allow all actions" preference. Never expose host files/shell/UI to a
@@ -350,6 +352,12 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
   const authorizedTools = {
     tool(name, description, schema, handler) {
       server.tool(name, description, schema, async (args = {}) => {
+        if (verifiedPrincipal) {
+          const decision = authorizeVerifiedTool({ verifiedPrincipal, toolName: name, issuerUrl, resourceUrl });
+          if (!decision.ok) return mcpReply({
+            ok: false, action: name, reason: decision.reason, missing: decision.missing || [],
+          });
+        }
         const isMutating = MUTATING_GENERAL_TOOLS.has(name);
         if (isMutating && !allowMutation) return mcpReply({
           ok: false, action: name, reason: 'MCP_EXISTING_AUTH_REQUIRED',
@@ -419,6 +427,12 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     ['paperclip_lab_broker_install', 'Install Paperclip broker through an exclusive NV06 Core lease.', 'R07'],
   ]) {
     server.tool(action, description, {}, async () => {
+      if (verifiedPrincipal) {
+        const decision = authorizeVerifiedTool({ verifiedPrincipal, toolName: action, issuerUrl, resourceUrl });
+        if (!decision.ok) return mcpReply({
+          ok: false, action, reason: decision.reason, missing: decision.missing || [],
+        });
+      }
       const jobId = 'JOB-MCP-' + randomUUID();
       const common = {
         jobId,
@@ -1126,20 +1140,25 @@ export function createPcOperatorMcpHandler({
   existingSecret = process.env.TIGERIQ_HEALTH_VIEW_KEY,
   leaseDb,
   leaseApi,
+  oauthVerifier = null,
   serverAuthorized = (process.env.TIGERIQ_MCP_SERVER_AUTHORIZED === 'true' || process.env.TIGERIQ_MCP_ALLOW_MUTATIONS === 'true'),
 } = {}) {
   const sseTransports = new Map();
 
-  function isAuthorizedCaller(headers = {}) {
-    return serverAuthorized || allowMcpMutation(headers, existingSecret);
+  function isAuthorizedCaller(headers = {}, principal = null) {
+    return serverAuthorized || allowMcpMutation(headers, existingSecret) || principal?.verified === true;
   }
 
-  function createServerInstance(allowMutation = false) {
+  function createServerInstance(allowMutation = false, verifiedPrincipal = null) {
     const server = new McpServer({
       name: 'TigerIQ PC Operator',
       version: '2.0.0',
     });
-    registerPcOperatorTools(server, executePcActionImpl, { allowMutation, leaseDb, leaseApi });
+    registerPcOperatorTools(server, executePcActionImpl, {
+      allowMutation, leaseDb, leaseApi, verifiedPrincipal,
+      issuerUrl: oauthVerifier?.config?.issuerUrl || process.env.TIGERIQ_OAUTH_ISSUER,
+      resourceUrl: oauthVerifier?.config?.resourceUrl || process.env.TIGERIQ_OAUTH_RESOURCE,
+    });
     return server;
   }
 
@@ -1159,15 +1178,29 @@ export function createPcOperatorMcpHandler({
       return true;
     }
 
+    if (oauthVerifier) {
+      const auth = await oauthVerifier.verifyBearer(req.headers);
+      if (!auth.ok) {
+        const status = auth.status === 503 ? 503 : (auth.status === 401 ? 401 : 403);
+        const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+        if (status === 401) headers['WWW-Authenticate'] = oauthVerifier.challenge({ error: 'invalid_token' });
+        res.writeHead(status, headers).end(JSON.stringify({ ok: false, reason: auth.reason }));
+        return true;
+      }
+      req.__tigeriqOAuthPrincipal = auth.principal;
+    }
+
     // Route 1: Classic SSE GET /mcp or /mcp/sse
     const accept = String(req.headers['accept'] || '');
     if (req.method === 'GET' && (url.pathname === '/mcp' || url.pathname === '/mcp/sse') && accept.includes('text/event-stream')) {
+      const principal = req.__tigeriqOAuthPrincipal || null;
       const sseTransport = new SSEServerTransport('/mcp/messages', res);
-      const sseServer = createServerInstance(isAuthorizedCaller(req.headers));
+      const sseServer = createServerInstance(isAuthorizedCaller(req.headers, principal), principal);
       await sseServer.connect(sseTransport);
       sseTransports.set(sseTransport.sessionId, {
         transport: sseTransport,
-        authorized: isAuthorizedCaller(req.headers),
+        authorized: isAuthorizedCaller(req.headers, principal),
+        principal,
       });
       res.on('close', () => {
         sseTransports.delete(sseTransport.sessionId);
@@ -1185,7 +1218,7 @@ export function createPcOperatorMcpHandler({
       }
       // Do not let sessionId become a bearer credential for a privileged
       // SSE connection. The original owner token is mandatory on every POST.
-      if (session.authorized && !isAuthorizedCaller(req.headers)) {
+      if (session.authorized && !isAuthorizedCaller(req.headers, session.principal)) {
         res.writeHead(401, { 'Content-Type': 'text/plain' }).end('MCP_AUTH_REQUIRED');
         return true;
       }
@@ -1198,7 +1231,8 @@ export function createPcOperatorMcpHandler({
       if (!accept.includes('text/event-stream')) {
         req.headers['accept'] = (accept ? accept + ', ' : '') + 'text/event-stream, application/json';
       }
-      const server = createServerInstance(isAuthorizedCaller(req.headers));
+      const principal = req.__tigeriqOAuthPrincipal || null;
+      const server = createServerInstance(isAuthorizedCaller(req.headers, principal), principal);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });

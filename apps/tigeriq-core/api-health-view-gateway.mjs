@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { createPcOperatorMcpHandler } from './pc-operator-mcp.mjs';
+import { createOAuthResourceServer, oauthRuntimeConfig } from './pc-operator-oauth-runtime.mjs';
 
 export const DISPLAY_PATHS = new Set([
   '/', '/work-ui.css', '/work-center-visual.css', '/work-center.js',
@@ -15,15 +16,31 @@ function authorized(provided, secret) {
 }
 export function createHealthViewGateway({ secret = process.env.TIGERIQ_HEALTH_VIEW_KEY,
   core = 'http://127.0.0.1:8795', fetchImpl = fetch,
-  mcpHandler = createPcOperatorMcpHandler() } = {}) {
+  mcpHandler = null, oauthRuntime = null } = {}) {
+  const oauth = oauthRuntime || createOAuthResourceServer({ config: oauthRuntimeConfig(), fetchImpl });
+  const effectiveMcpHandler = mcpHandler || createPcOperatorMcpHandler({ oauthVerifier: oauth });
   if (!secret || String(secret).length < 32) throw Error('HEALTH_VIEW_KEY_REQUIRED');
   return createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Robots-Tag', 'noindex, nofollow');
     const url = new URL(req.url || '/', 'http://localhost');
+    if (url.pathname === '/.well-known/oauth-protected-resource/mcp') {
+      if (!oauth.configured()) { res.writeHead(503, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: false, reason: 'OAUTH_RUNTIME_NOT_CONFIGURED' })); return; }
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(oauth.protectedMetadata()));
+      return;
+    }
+    if (url.pathname === '/.well-known/oauth-authorization-server') {
+      if (!oauth.configured()) { res.writeHead(503, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: false, reason: 'OAUTH_RUNTIME_NOT_CONFIGURED' })); return; }
+      try {
+        res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(oauth.authorizationMetadata()));
+      } catch {
+        res.writeHead(503, { 'Content-Type': 'application/json' }).end(JSON.stringify({ ok: false, reason: 'OAUTH_AUTHORIZATION_METADATA_INCOMPLETE' }));
+      }
+      return;
+    }
     if (url.pathname.startsWith('/mcp')) {
-      const handled = await mcpHandler(req, res, url);
+      const handled = await effectiveMcpHandler(req, res, url);
       if (handled) return;
     }
     if (req.method !== 'GET') { res.writeHead(405, { Allow:'GET' }); res.end(); return; }
