@@ -88,7 +88,7 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeConfigRules.kt"
       ],
-      "gap": "Local Home snapshots save theme/vehicle/name only; full V1 multi-zone layouts/default/relaunch are absent."
+      "gap": "Local Home snapshots now persist theme/vehicle/name plus nine quick slots and support a device-local default restore; full V1 multi-zone orchestration is still absent."
     },
     {
       "id": "F09",
