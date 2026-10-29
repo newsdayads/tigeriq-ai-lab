@@ -6,6 +6,9 @@ import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+export const RIGHTS_SCHEMA = 'tigeriq.ultracarhcm-v2.media-rights.v1';
+export const RIGHTS_SCOPE = 'PRIVATE_V2_REUSE';
+
 export const media = Object.freeze([
   { from: 'drawable/road_city_day.jpg', to: 'drawable-nodpi/v2_road_city_day.jpg', observedBytes: 504703 },
   { from: 'drawable/road_city_night.jpg', to: 'drawable-nodpi/v2_road_city_night.jpg', observedBytes: 371840 },
@@ -59,6 +62,71 @@ function assertNoSourceSymlink(sourceRes, input, assetName) {
   }
 }
 
+function isIsoDateTime(value) {
+  return typeof value === 'string' &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value) &&
+    Number.isFinite(Date.parse(value));
+}
+
+/**
+ * Machine-verifiable receipt contract only. This does not adjudicate copyright
+ * ownership; it prevents an arbitrary text file from bypassing the staging gate
+ * and binds the asserted grant to the exact six audited source bytes.
+ */
+export function validateRightsEvidence(rightsEvidence, files) {
+  if (!rightsEvidence || !existsSync(rightsEvidence) || !statSync(rightsEvidence).isFile())
+    throw new Error('V1_MEDIA_REUSE_RIGHTS_EVIDENCE_REQUIRED');
+
+  let receipt;
+  try {
+    receipt = JSON.parse(readFileSync(rightsEvidence, 'utf8'));
+  } catch {
+    throw new Error('V1_MEDIA_REUSE_RIGHTS_EVIDENCE_INVALID_JSON');
+  }
+
+  if (receipt?.schema !== RIGHTS_SCHEMA)
+    throw new Error('V1_MEDIA_REUSE_RIGHTS_EVIDENCE_SCHEMA_MISMATCH');
+  if (receipt?.workOrder !== 'GH-5135')
+    throw new Error('V1_MEDIA_REUSE_RIGHTS_EVIDENCE_WORK_ORDER_MISMATCH');
+  if (receipt?.scope !== RIGHTS_SCOPE)
+    throw new Error('V1_MEDIA_REUSE_RIGHTS_EVIDENCE_SCOPE_MISMATCH');
+  if (receipt?.decision !== 'GRANTED')
+    throw new Error('V1_MEDIA_REUSE_RIGHTS_EVIDENCE_NOT_GRANTED');
+  if (typeof receipt?.grantor !== 'string' || receipt.grantor.trim().length < 3)
+    throw new Error('V1_MEDIA_REUSE_RIGHTS_EVIDENCE_GRANTOR_REQUIRED');
+  if (typeof receipt?.evidenceRef !== 'string' || receipt.evidenceRef.trim().length < 5)
+    throw new Error('V1_MEDIA_REUSE_RIGHTS_EVIDENCE_REF_REQUIRED');
+  if (!isIsoDateTime(receipt?.issuedAt))
+    throw new Error('V1_MEDIA_REUSE_RIGHTS_EVIDENCE_ISSUED_AT_INVALID');
+  if (!Array.isArray(receipt?.assets))
+    throw new Error('V1_MEDIA_REUSE_RIGHTS_EVIDENCE_ASSETS_REQUIRED');
+
+  const expected = new Map(files.map(item => [item.from, item.sha256]));
+  const seen = new Set();
+  for (const asset of receipt.assets) {
+    if (!asset || typeof asset.path !== 'string' || !expected.has(asset.path))
+      throw new Error('V1_MEDIA_REUSE_RIGHTS_EVIDENCE_UNEXPECTED_ASSET');
+    if (seen.has(asset.path))
+      throw new Error('V1_MEDIA_REUSE_RIGHTS_EVIDENCE_DUPLICATE_ASSET:' + asset.path);
+    if (typeof asset.sha256 !== 'string' || asset.sha256.toLowerCase() !== expected.get(asset.path))
+      throw new Error('V1_MEDIA_REUSE_RIGHTS_EVIDENCE_SHA_MISMATCH:' + asset.path);
+    seen.add(asset.path);
+  }
+  if (seen.size !== expected.size)
+    throw new Error('V1_MEDIA_REUSE_RIGHTS_EVIDENCE_INCOMPLETE_ASSET_SET');
+
+  return {
+    schema: receipt.schema,
+    workOrder: receipt.workOrder,
+    scope: receipt.scope,
+    decision: receipt.decision,
+    grantor: receipt.grantor.trim(),
+    evidenceRef: receipt.evidenceRef.trim(),
+    issuedAt: receipt.issuedAt,
+    assetCount: seen.size,
+  };
+}
+
 export function stageMedia({ sourceRes, projectDir, stage = false, rightsEvidence = null }) {
   if (!sourceRes || !projectDir) throw new Error('SOURCE_AND_PROJECT_DIR_REQUIRED');
   const source = resolve(sourceRes);
@@ -91,11 +159,9 @@ export function stageMedia({ sourceRes, projectDir, stage = false, rightsEvidenc
       files: files.map(({ input, output, ...safe }) => safe) };
   }
   if (stage) {
-    // A license grant / rights receipt must be supplied externally; this script does not invent one.
-    if (!rightsEvidence || !existsSync(rightsEvidence) || !statSync(rightsEvidence).isFile() ||
-        readFileSync(rightsEvidence, 'utf8').trim().length < 20) {
-      throw new Error('V1_MEDIA_REUSE_RIGHTS_EVIDENCE_REQUIRED');
-    }
+    // Rights must come from an external, explicit receipt. This script only
+    // validates the receipt contract and exact asset hashes; it never invents a grant.
+    validateRightsEvidence(rightsEvidence, files);
     // Preflight all destinations first; a late conflict must never leave partial copies.
     for (const item of files) {
       assertNoDestinationSymlink(projectDir, item.output, item.to);
