@@ -54,15 +54,18 @@
       "status": "SOURCE_IMPLEMENTED_DEVICE_REQUIRED",
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
-        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml"
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UvcRecoveryRules.kt"
       ],
-      "gap": "USB-host UVC source lifecycle and hot-plug recovery exist; real USB camera permission/preview/reconnect behavior is not device-accepted.",
-      "actual": "UsbUvcController discovers USB video-class devices, waits for UVC hot-plug when none is present, auto-selects an attached UVC device while the session is requested, opens preview, and preserves recovery state across detach/close/error.",
+      "gap": "USB-host UVC source lifecycle, hot-plug handling and bounded transient-loss reselect exist; real USB camera permission/preview/reconnect behavior is not device-accepted.",
+      "actual": "UsbUvcController discovers USB video-class devices, waits for hot-plug, auto-selects an attached UVC device, opens preview, and after transient camera/device close or UVC error performs at most two delayed reselect attempts only while the same UVC device remains attached. Permission denial stays terminal and manual retry remains available.",
       "testStatus": "DEVICE_QA_NOT_TESTED",
       "entryPoints": [
         "UsbCameraActivity.onCreate",
         "UsbUvcController.start",
-        "UsbUvcController.beginPreview"
+        "UsbUvcController.beginPreview",
+        "UsbUvcController.scheduleRecovery",
+        "UvcRecoveryRules.shouldSchedule"
       ],
       "permissions": [
         "android.permission.CAMERA",

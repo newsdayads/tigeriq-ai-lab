@@ -24,6 +24,8 @@ class UsbUvcController(
     private var target: UsbDevice? = null
     private var surface: Surface? = null
     private var previewStarted = false
+    private var recoveryAttempts = 0
+    private var recoveryGeneration = 0L
     var requested = false
         private set
     val logTag = "UltraCarV2UVC"
@@ -49,6 +51,8 @@ class UsbUvcController(
     fun start() {
         if (requested) return
         requested = true
+        recoveryAttempts = 0
+        recoveryGeneration++
         preview.surfaceTextureListener = this
         try {
             UVCUtils.init(activity.application)
@@ -78,6 +82,8 @@ class UsbUvcController(
             h.addSurface(s, false)
             h.startPreview()
             previewStarted = true
+            recoveryAttempts = 0
+            recoveryGeneration++
             report("Đang nhận hình Camera USB UVC", true)
             Log.i(logTag, "USB-host UVC preview started")
         } catch (t: Throwable) {
@@ -90,11 +96,44 @@ class UsbUvcController(
         }
     }
 
+    private fun sameAttachedUvc(device: UsbDevice): UsbDevice? =
+        helper?.deviceList.orEmpty().firstOrNull {
+            it.deviceId == device.deviceId && isUvcDevice(it)
+        }
+
+    private fun scheduleRecovery(device: UsbDevice) {
+        if (!UvcRecoveryRules.shouldSchedule(requested, target == null, recoveryAttempts)) {
+            if (requested && target == null && UvcRecoveryRules.exhausted(recoveryAttempts)) {
+                report("UVC chưa tự khôi phục sau ${UvcRecoveryRules.MAX_AUTOMATIC_ATTEMPTS} lần — hãy bấm thử lại hoặc rút/cắm USB", false)
+            }
+            return
+        }
+        recoveryAttempts = UvcRecoveryRules.nextAttempt(recoveryAttempts)
+        val attempt = recoveryAttempts
+        val generation = ++recoveryGeneration
+        Log.w(logTag, "Scheduling UVC recovery attempt $attempt/${UvcRecoveryRules.MAX_AUTOMATIC_ATTEMPTS}")
+        main.postDelayed({
+            if (generation != recoveryGeneration || !requested || target != null) return@postDelayed
+            val attached = sameAttachedUvc(device)
+            if (attached != null) {
+                Log.i(logTag, "Retrying still-attached UVC device on attempt $attempt")
+                selectTarget(attached)
+            } else {
+                recoveryAttempts = 0
+                report("Camera UVC không còn gắn — đang chờ cắm lại", false)
+            }
+        }, UvcRecoveryRules.RETRY_DELAY_MS)
+    }
+
     override fun onAttach(device: UsbDevice) {
         Log.i(logTag, "USB device attached: ${device.vendorId}:${device.productId}")
         if (requested && target == null && isUvcDevice(device)) {
             main.post {
-                if (requested && target == null) selectTarget(device)
+                if (requested && target == null) {
+                    recoveryGeneration++
+                    recoveryAttempts = 0
+                    selectTarget(device)
+                }
             }
         }
     }
@@ -122,6 +161,7 @@ class UsbUvcController(
                 releasePreview()
                 target = null
                 report("Camera UVC đã đóng — đang chờ kết nối lại", false)
+                scheduleRecovery(device)
             }
         }
     }
@@ -131,17 +171,23 @@ class UsbUvcController(
                 releasePreview()
                 target = null
                 report("USB camera mất kết nối — đang chờ kết nối lại", false)
+                scheduleRecovery(device)
             }
         }
     }
     override fun onDetach(device: UsbDevice) {
         main.post {
             if (device == target) {
+                recoveryGeneration++
+                recoveryAttempts = 0
                 releasePreview()
                 target = null
                 if (requested) {
                     report("Đã rút Camera USB — đang chờ cắm lại", false)
                 }
+            } else if (target == null) {
+                recoveryGeneration++
+                recoveryAttempts = 0
             }
         }
     }
@@ -160,7 +206,10 @@ class UsbUvcController(
             if (device == target && requested) {
                 releasePreview()
                 target = null
+                runCatching { helper?.closeCamera() }
+                    .onFailure { Log.w(logTag, "closeCamera after UVC error", it) }
                 report("Lỗi UVC: ${e.message} — đang chờ kết nối lại", false)
+                scheduleRecovery(device)
             }
         }
     }
@@ -187,6 +236,8 @@ class UsbUvcController(
     }
     fun stop() {
         requested = false
+        recoveryGeneration++
+        recoveryAttempts = 0
         if (preview.surfaceTextureListener === this) preview.surfaceTextureListener = null
         releasePreview()
         try { helper?.setStateCallback(null) } catch (_: Throwable) {}
