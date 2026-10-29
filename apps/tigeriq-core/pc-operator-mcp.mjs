@@ -1161,7 +1161,9 @@ export function createPcOperatorMcpHandler({
   const sseTransports = new Map();
 
   function isAuthorizedCaller(headers = {}, principal = null) {
-    return serverAuthorized || allowMcpMutation(headers, existingSecret) || principal?.verified === true;
+    // serverAuthorized is a legacy deployment hint, never a credential.
+    // Every privileged request still needs a static bearer or verified OAuth principal.
+    return allowMcpMutation(headers, existingSecret) || principal?.verified === true;
   }
 
   function createServerInstance(allowMutation = false, verifiedPrincipal = null) {
@@ -1203,6 +1205,18 @@ export function createPcOperatorMcpHandler({
         return true;
       }
       req.__tigeriqOAuthPrincipal = auth.principal;
+    }
+
+    // Legacy Funnel gateway used serverAuthorized=true as a blanket bypass.
+    // Fail closed instead: without OAuth middleware, require the existing
+    // per-request static Bearer on every MCP transport request.
+    if (!oauthVerifier && serverAuthorized && !allowMcpMutation(req.headers, existingSecret)) {
+      res.writeHead(401, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+        'WWW-Authenticate': 'Bearer',
+      }).end(JSON.stringify({ ok: false, reason: 'MCP_PER_REQUEST_AUTH_REQUIRED' }));
+      return true;
     }
 
     // Route 1: Classic SSE GET /mcp or /mcp/sse
