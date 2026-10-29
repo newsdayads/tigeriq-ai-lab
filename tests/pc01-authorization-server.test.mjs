@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { generateKeyPairSync, createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
+import { runInNewContext } from 'node:vm';
 import { createPc01AuthorizationServer, ownerCodeDigest, CHATGPT_CLIENT, CHATGPT_REDIRECT } from '../apps/tigeriq-core/pc01-authorization-server.mjs';
 import { createOAuthResourceServer } from '../apps/tigeriq-core/pc-operator-oauth-runtime.mjs';
 
@@ -38,7 +39,7 @@ function fixture() {
   }
   async function code() {
     const request=await pending(), response=await approve(request);
-    expect(response.status).toBe(302);
+    expect(response.status).toBe(303);
     const result=new URL(response.headers.location);
     expect(result.searchParams.get('iss')).toBe(origin+'/');
     expect(result.searchParams.get('state')).toBe('opaque-state');
@@ -78,6 +79,22 @@ describe('PC01 Owner-authenticated self-hosted OAuth',()=>{
     expect((await f.exchange('invalid-code')).status).toBe(400);
     expect(f.audit.at(-1)).toMatchObject({event:'OAUTH_REQUEST_DENIED',method:'POST',path:'/oauth/token',stage:'code_exchange',reason:'invalid_grant'});
   });
+  it('locks repeated browser submit with a nonce-authorized script',async()=>{
+    const f=fixture(), {page}=await f.pending();
+    const script=page.body.match(/<script nonce="([^"]+)">([\\s\\S]*?)<\\/script>/);
+    expect(script).not.toBeNull();
+    expect(page.headers['content-security-policy']).toContain("script-src 'nonce-"+script[1]+"'");
+    let submit;
+    const button={disabled:false,textContent:''};
+    const form={dataset:{},querySelector:()=>button,addEventListener:(name,handler)=>{expect(name).toBe('submit');submit=handler;}};
+    runInNewContext(script[2],{document:{querySelector:()=>form}});
+    const first={preventDefault:()=>{throw Error('first submit blocked');}};
+    submit.call(form,first);
+    expect(button.disabled).toBe(true);
+    let blocked=false;
+    submit.call(form,{preventDefault:()=>{blocked=true;}});
+    expect(blocked).toBe(true);
+  });
   it('publishes exact issuer, S256, CIMD and public-only JWKS',async()=>{
     const f=fixture(), metadata=await f.call('/.well-known/oauth-authorization-server');
     expect(JSON.parse(metadata.body)).toMatchObject({issuer:origin+'/',client_id_metadata_document_supported:true,authorization_response_iss_parameter_supported:true,code_challenge_methods_supported:['S256']});
@@ -91,7 +108,7 @@ describe('PC01 Owner-authenticated self-hosted OAuth',()=>{
     // Keep strict Origin+CSRF validation; use a form-compatible policy.
     expect(request.page.headers['referrer-policy']).toBe('same-origin');
     expect((await f.call('/oauth/approve',{method:'POST',headers:{origin:'null',cookie:request.cookie},data:{request_id:request.id,owner_code:ownerCode}})).status).toBe(403);
-    expect((await f.approve(request)).status).toBe(302);
+    expect((await f.approve(request)).status).toBe(303);
   });
   it('requires Owner login and issues a verifiable audience/scoped RS256 token',async()=>{
     const f=fixture(), code=await f.code(), result=await f.exchange(code);
@@ -110,8 +127,8 @@ describe('PC01 Owner-authenticated self-hosted OAuth',()=>{
     expect((await f.approve(request,{owner_code:'wrong'.repeat(10)})).status).toBe(403);
     expect((await f.call('/oauth/approve',{method:'POST',headers:{origin:'https://evil.test',cookie:request.cookie},data:{request_id:request.id,owner_code:ownerCode}})).status).toBe(403);
     expect((await f.call('/oauth/approve',{method:'POST',headers:{origin},data:{request_id:request.id,owner_code:ownerCode}})).status).toBe(403);
-    expect((await f.approve(request)).status).toBe(302);
-    expect((await f.approve(request)).status).toBe(403);
+    expect((await f.approve(request)).status).toBe(303);
+    expect((await f.approve(request)).status).toBe(409);
   });
   it.each([
     {client_id:'https://evil.test/client.json'},{redirect_uri:'https://evil.test/callback'},
