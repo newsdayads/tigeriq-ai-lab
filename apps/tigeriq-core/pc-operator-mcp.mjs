@@ -314,6 +314,7 @@ function wrapTool(server, name, description, schemaObj, handler) {
 export function pcOperatorTestRunSpec(testPath, {
   runtimeRoot = 'D:\\TigerIQ\\Runtime\\CoreSource',
   nodeExecutable = process.execPath,
+  testSource = '',
 } = {}) {
   const normalized = String(testPath || '').replaceAll('\\', '/');
   const segments = normalized.split('/');
@@ -322,11 +323,17 @@ export function pcOperatorTestRunSpec(testPath, {
     || !/^[A-Za-z0-9_.-]+$/.test(segments.at(-1))
     || !['.test.mjs', '.test.js', '.test.ts', '.test.tsx'].some(ext => segments.at(-1).endsWith(ext)))
     throw new Error('MCP_TEST_PATH_NOT_ALLOWED');
+
+  const source = String(testSource || '');
+  const usesNodeTest = /(?:\bfrom\s+['"]node:test['"]|\bimport\s+['"]node:test['"]|\brequire\s*\(\s*['"]node:test['"]\s*\))/.test(source);
+  const vitestPath = win.join(runtimeRoot, 'node_modules', 'vitest', 'vitest.mjs');
   return {
     exe: nodeExecutable,
-    args: [win.join(runtimeRoot, 'node_modules', 'vitest', 'vitest.mjs'), 'run', normalized],
+    args: usesNodeTest ? ['--test', normalized] : [vitestPath, 'run', normalized],
     cwd: runtimeRoot,
     testPath: normalized,
+    runner: usesNodeTest ? 'node:test' : 'vitest',
+    runnerPath: usesNodeTest ? nodeExecutable : vitestPath,
   };
 }
 
@@ -1045,9 +1052,16 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
       timeoutSec: z.number().optional().describe('Thời gian chờ tối đa (giây, mặc định 120)'),
     },
     async ({ testPath, timeoutSec = 120 }) => {
-      const spec = pcOperatorTestRunSpec(testPath);
-      // The bundled runner is already installed; do not fetch packages.
-      if (!existsSync(spec.args[0])) throw new Error('MCP_TEST_RUNNER_NOT_INSTALLED');
+      const validated = pcOperatorTestRunSpec(testPath);
+      const testFilePath = win.join(validated.cwd, ...validated.testPath.split('/'));
+      const testSource = await fs.readFile(testFilePath, 'utf8');
+      const spec = pcOperatorTestRunSpec(testPath, {
+        runtimeRoot: validated.cwd,
+        nodeExecutable: validated.exe,
+        testSource,
+      });
+      // The selected runner is already installed; do not fetch packages.
+      if (!existsSync(spec.runnerPath)) throw new Error('MCP_TEST_RUNNER_NOT_INSTALLED');
       const result = await spawnProcess(spec.exe, spec.args, {
         cwd: spec.cwd,
         timeoutSec,
@@ -1055,12 +1069,13 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
       return {
         testPath: spec.testPath,
         sourceRoot: spec.cwd,
+        runner: spec.runner,
         exitCode: result.exitCode,
         timedOut: result.timedOut,
         passed: result.exitCode === 0 && !result.timedOut,
-        output: result.stdout || result.stderr,
+        output: boundedText([result.stdout, result.stderr].filter(Boolean).join('\n')),
       };
-    }
+    }    }
   );
 
   // 21. evidence_record
