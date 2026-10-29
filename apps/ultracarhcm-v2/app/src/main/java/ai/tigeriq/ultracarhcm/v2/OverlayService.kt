@@ -64,8 +64,19 @@ class OverlayService : Service(), DisplayManager.DisplayListener {
         p.gravity = Gravity.TOP or Gravity.START
         val w = display.mode.physicalWidth
         val h = display.mode.physicalHeight
-        p.x = pref.getInt("x", 32).coerceIn(0, maxOf(0, w - size))
-        p.y = pref.getInt("y", 200).coerceIn(0, maxOf(0, h - size))
+        val xKey = OverlayPositionRules.xKey(id)
+        val yKey = OverlayPositionRules.yKey(id)
+        val legacyX = pref.getInt("x", OverlayPositionRules.DEFAULT_X)
+        val legacyY = pref.getInt("y", OverlayPositionRules.DEFAULT_Y)
+        val restored = OverlayPositionRules.clamp(
+            pref.getInt(xKey, legacyX),
+            pref.getInt(yKey, legacyY),
+            w,
+            h,
+            size,
+        )
+        p.x = restored.x
+        p.y = restored.y
         try {
             var ctx: Context = createDisplayContext(display)
             if (Build.VERSION.SDK_INT >= 30) {
@@ -104,8 +115,16 @@ class OverlayService : Service(), DisplayManager.DisplayListener {
                             return true
                         }
                         MotionEvent.ACTION_UP -> {
-                            if (dragging) pref.edit().putInt("x", p.x).putInt("y", p.y).apply()
-                            else UsbCameraActivity.toggleFromShortcut(this@OverlayService, currentId)
+                            if (dragging) {
+                                pref.edit()
+                                    .putInt(xKey, p.x)
+                                    .putInt(yKey, p.y)
+                                    .remove("x")
+                                    .remove("y")
+                                    .apply()
+                            } else {
+                                UsbCameraActivity.toggleFromShortcut(this@OverlayService, currentId)
+                            }
                             return true
                         }
                         MotionEvent.ACTION_CANCEL -> return true
