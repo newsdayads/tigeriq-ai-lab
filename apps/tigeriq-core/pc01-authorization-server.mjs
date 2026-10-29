@@ -92,7 +92,7 @@ export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = 
     const path = url.pathname;
     if (!path.startsWith('/oauth/') && !path.startsWith('/.well-known/oauth-')) return false;
     res.setHeader('Cache-Control','no-store'); res.setHeader('X-Content-Type-Options','nosniff');
-    res.setHeader('Referrer-Policy','no-referrer'); res.setHeader('X-Frame-Options','DENY');
+    res.setHeader('Referrer-Policy','same-origin'); res.setHeader('X-Frame-Options','DENY');
     try {
       if (req.method === 'GET' && ['/\.well-known/oauth-authorization-server'.replace('\\',''),'/.well-known/openid-configuration'].includes(path)) {
         json(res,200,metadata); return true;
