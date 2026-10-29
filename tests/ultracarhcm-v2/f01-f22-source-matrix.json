@@ -148,8 +148,8 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeConfigRules.kt"
       ],
-      "gap": "Local Home snapshots now persist theme/vehicle/name plus nine quick slots and support a device-local default restore; full V1 multi-zone orchestration is still absent.",
-      "actual": "HomeActivity saves/applies/removes local Home configurations containing theme, vehicle, driver and nine quick slots; a saved configuration can be the default restored on app creation.",
+      "gap": "Local saved/default Home state is versioned and recovered safely; full V1 multi-zone orchestration remains absent.",
+      "actual": "HomeActivity saves/applies/removes versioned local Home configurations containing theme, vehicle, driver and nine quick slots; a saved configuration can be the default restored on app creation, with legacy migration and corrupt-state cleanup.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.saveHomeConfiguration",
@@ -350,8 +350,8 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt"
       ],
-      "gap": "Independent package and lifecycle cleanup exist; migration, backup/restore, signing/release and rollback acceptance are absent.",
-      "actual": "V2 has an independent package, activity lifecycle cleanup and UVC resource cleanup; migration, signing/release and rollback workflows are not accepted.",
+      "gap": "Local state migration/recovery is implemented in source, but full backup/restore, release signing and real rollback acceptance are still absent.",
+      "actual": "V2 has an independent package, lifecycle/UVC cleanup, versioned local Home-state migration, bounded preset recovery and fail-closed handling for corrupt/future configuration schemas; signing/release/rollback acceptance remains open.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "AndroidManifest.xml",
