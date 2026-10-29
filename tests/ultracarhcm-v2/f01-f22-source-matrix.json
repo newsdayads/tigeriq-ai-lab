@@ -333,16 +333,18 @@
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeBackupRules.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayPositionRules.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayPositionRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleRules.kt"
       ],
-      "gap": "V2-owned Home/shortcut/config/DeX overlay state is portable across displayId changes with bounded schema validation; V1 images/sound/other unimplemented feature data and real-device acceptance remain open.",
-      "actual": "HomeActivity exports/restores validated V2-owned Home state and per-display DeX camera positions through SAF. The active DeX position is exported first and restored as a portable fallback, so a backup moved to a device/display with a different displayId still restores the Camera shortcut position; exact display-specific state remains higher priority.",
+      "gap": "Backup schema v3 now includes V2-owned Home state, quick slots, saved/default configs, per-display DeX positions, day/night, driver, vehicle model and license plate. User-selected SAF background bytes/URI grants remain intentionally non-portable; V1 images/sound/other unimplemented feature data and real-device acceptance remain open.",
+      "actual": "HomeActivity exports schema v3 and restores vehicle model/license plate while preserving backward compatibility with schema 1/2 and legacy limo state. Overlay positions remain portable with validated bounds. Device/provider-bound custom background SAF grants are not exported as if portable.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.exportHomeBackupJson",
         "HomeActivity.writeHomeBackup",
         "HomeActivity.readHomeBackup",
-        "HomeActivity.importHomeBackupJson"
+        "HomeActivity.importHomeBackupJson",
+        "HomeBackupRules.requiresVehicleState"
       ],
       "permissions": []
     },
