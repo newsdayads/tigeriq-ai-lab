@@ -256,12 +256,20 @@
     {
       "id": "F16",
       "expected": "Backup/export/import/restore all user settings/images/layout/shortcuts/sound/vehicle with security-bound exclusions",
-      "status": "NOT_IMPLEMENTED",
-      "sourceEvidence": [],
-      "gap": "Device-local SharedPreferences are not a backup/export/import/restore implementation.",
-      "actual": "No export/import/restore backup implementation is present; private SharedPreferences persistence alone is not backup parity.",
-      "testStatus": "NOT_TESTED_NO_IMPLEMENTATION",
-      "entryPoints": [],
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeBackupRules.kt"
+      ],
+      "gap": "V2-owned Home preferences, quick slots and saved/default Home configurations can be exported/imported through Storage Access Framework with bounded schema validation; V1 images/sound/other unimplemented feature data and device acceptance remain open.",
+      "actual": "HomeActivity exports and restores validated V2-owned Home state as bounded JSON via Android document pickers without broad storage permission or V1 data access.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "HomeActivity.exportHomeBackupJson",
+        "HomeActivity.writeHomeBackup",
+        "HomeActivity.readHomeBackup",
+        "HomeActivity.importHomeBackupJson"
+      ],
       "permissions": []
     },
     {
