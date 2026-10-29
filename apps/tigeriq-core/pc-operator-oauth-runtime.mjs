@@ -14,7 +14,7 @@ function audienceList(aud) {
   return Array.isArray(aud) ? aud.filter(v => typeof v === 'string') : [];
 }
 function scopeList(payload) {
-  if (typeof payload.scope === 'string') return payload.scope.split(/\\s+/).filter(Boolean);
+  if (typeof payload.scope === 'string') return payload.scope.split(/\s+/).filter(Boolean);
   return Array.isArray(payload.scopes) ? payload.scopes.filter(v => typeof v === 'string') : [];
 }
 function requiredConfig(config) {
@@ -91,7 +91,7 @@ export function createOAuthResourceServer({
   async function verifyBearer(headers = {}) {
     if (!configured()) return { ok: false, status: 503, reason: 'OAUTH_RUNTIME_NOT_CONFIGURED' };
     const header = String(headers.authorization || '');
-    const match = header.match(/^Bearer\\s+([^\\s]+)$/i);
+    const match = header.match(/^Bearer\s+([^\s]+)$/i);
     if (!match) return { ok: false, status: 401, reason: 'OAUTH_TOKEN_REQUIRED' };
     const token = match[1];
     const parts = token.split('.');
