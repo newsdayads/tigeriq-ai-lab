@@ -699,6 +699,19 @@ class HomeActivity : ComponentActivity() {
             .put("night", prefs.getBoolean("night", false))
             .put("limo", prefs.getBoolean("limo", false))
             .put(
+                "vehicleModel",
+                VehicleRules.currentModel(
+                    prefs.getString(VehicleRules.PREF_MODEL, null),
+                    prefs.getBoolean("limo", false),
+                ),
+            )
+            .put(
+                "licensePlate",
+                VehicleRules.normalizeLicensePlate(
+                    prefs.getString(VehicleRules.PREF_LICENSE_PLATE, "") ?: "",
+                ),
+            )
+            .put(
                 "driver",
                 HomeConfigRules.normalizeName(
                     prefs.getString("driver_name", "Driver") ?: "Driver",
@@ -780,6 +793,25 @@ class HomeActivity : ComponentActivity() {
         val driver = HomeConfigRules.normalizeName(root.optString("driver", ""))
         if (driver.isEmpty()) return false
 
+        val requiresVehicleState = HomeBackupRules.requiresVehicleState(backupSchema)
+        val safeVehicleModel: String
+        val safeLicensePlate: String
+        if (requiresVehicleState) {
+            if (!root.has("vehicleModel") || !root.has("licensePlate")) return false
+            val rawModel = root.optString("vehicleModel", "")
+            if (!VehicleRules.isSupportedModel(rawModel)) return false
+            safeVehicleModel = rawModel
+            safeLicensePlate = VehicleRules.normalizeLicensePlate(
+                root.optString("licensePlate", ""),
+            )
+        } else {
+            safeVehicleModel = VehicleRules.currentModel(
+                null,
+                root.optBoolean("limo", false),
+            )
+            safeLicensePlate = ""
+        }
+
         val rawSlots = root.optJSONArray("quickSlots") ?: return false
         if (rawSlots.length() != QuickSlotRules.SLOT_COUNT) return false
         val safeSlots = normalizedQuickSlotsForStorage(rawSlots)
@@ -821,7 +853,9 @@ class HomeActivity : ComponentActivity() {
 
         val editor = prefs.edit()
             .putBoolean("night", root.optBoolean("night", false))
-            .putBoolean("limo", root.optBoolean("limo", false))
+            .putBoolean("limo", safeVehicleModel == VehicleRules.MODEL_LIMO_RED)
+            .putString(VehicleRules.PREF_MODEL, safeVehicleModel)
+            .putString(VehicleRules.PREF_LICENSE_PLATE, safeLicensePlate)
             .putString("driver_name", driver)
             .putString("v2_quick_slots", safeSlots.toString())
             .putString("v2_home_configs", safeConfigs.toString())
