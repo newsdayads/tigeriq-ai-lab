@@ -107,7 +107,7 @@ export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = 
         const id = random(), csrf = random(), nonce = random();
         pending.set(id,{...grant,csrfHash:hash(csrf),expires:now()+600000});
         res.setHeader('Set-Cookie','__Host-tigeriq_oauth_csrf='+csrf+'; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=600');
-        res.setHeader('Content-Security-Policy',"default-src 'none';style-src 'unsafe-inline';form-action 'self';script-src 'nonce-"+nonce+"';base-uri 'none';frame-ancestors 'none'");
+        res.setHeader('Content-Security-Policy',"default-src 'none';style-src 'unsafe-inline';form-action 'self' "+CHATGPT_REDIRECT+";script-src 'nonce-"+nonce+"';base-uri 'none';frame-ancestors 'none'");
         res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'}).end(
           '<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
           '<title>TigerIQ — cấp quyền PC01</title><style>body{font:16px system-ui;background:#101827;color:#fff;max-width:620px;margin:8vh auto;padding:24px}input,button{display:block;padding:14px;margin:16px 0;width:100%;box-sizing:border-box}code{word-break:break-all}</style>'+
