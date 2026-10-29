@@ -201,13 +201,26 @@
     {
       "id": "F11",
       "expected": "GPS, battery/weather/telemetry and diagnostics zone",
-      "status": "NOT_IMPLEMENTED",
-      "sourceEvidence": [],
-      "gap": "No corresponding V2 source implementation found in the current scoped app.",
-      "actual": "No scoped V2 GPS/weather/battery/telemetry zone implementation is present.",
-      "testStatus": "NOT_TESTED_NO_IMPLEMENTATION",
-      "entryPoints": [],
-      "permissions": []
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TelemetryActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TelemetryRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml"
+      ],
+      "gap": "Real Android battery and foreground GPS diagnostics are implemented in source; weather provider, full V1 telemetry presentation and real-device location acceptance remain open.",
+      "actual": "TelemetryActivity reads sticky Android battery state, requests foreground fine/coarse location permission, shows the freshest last-known GPS/network location and requests one fresh fix from an enabled provider. Weather is explicitly left unconnected until a verified V1/provider contract exists.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "HomeActivity.showSettings",
+        "TelemetryActivity.onCreate",
+        "TelemetryActivity.refreshBattery",
+        "TelemetryActivity.refreshLocation",
+        "TelemetryActivity.onLocationChanged"
+      ],
+      "permissions": [
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ]
     },
     {
       "id": "F12",
@@ -318,10 +331,11 @@
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TelemetryActivity.kt"
       ],
-      "gap": "USB/overlay permission and reconnect error-recovery paths are covered in source; geolocation/update/privacy permission parity and real-device validation remain incomplete.",
-      "actual": "Manifest/runtime source cover camera, USB-host and overlay permissions; UVC permission denial stops cleanly while recoverable USB close/detach/error keeps the requested session alive for reconnect. Geolocation/update/privacy parity remains incomplete.",
+      "gap": "USB/overlay/location permission and reconnect error-recovery paths are covered in source; update/privacy permission parity and real-device validation remain incomplete.",
+      "actual": "Manifest/runtime source cover camera, USB-host, overlay and foreground location permissions; TelemetryActivity requests fine/coarse location only when used, while UVC permission denial stops cleanly and recoverable USB close/detach/error keeps the requested session alive for reconnect. Update/privacy parity remains incomplete.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "AndroidManifest.xml",
@@ -330,13 +344,16 @@
         "HomeActivity.showSettings",
         "UsbUvcController.onAttach",
         "UsbUvcController.onDetach",
-        "UsbUvcController.onError"
+        "UsbUvcController.onError",
+        "TelemetryActivity.refreshLocation"
       ],
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.INTERNET",
-        "android.permission.FOREGROUND_SERVICE"
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
       ]
     },
     {

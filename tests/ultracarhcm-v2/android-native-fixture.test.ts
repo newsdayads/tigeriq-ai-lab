@@ -98,6 +98,7 @@ describe('GH-5135 native Android compile gate (synthetic fixtures, not a release
         ['QuickSlotRulesTest', 4],
         ['GuideTrackModelTest', 4],
         ['OverlayPositionRulesTest', 4],
+        ['TelemetryRulesTest', 2],
       ] as const;
       let assertedJvmTests = 0;
       for (const [suite, expectedTests] of junitSuites) {

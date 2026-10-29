@@ -783,6 +783,7 @@ class HomeActivity : ComponentActivity() {
             "Camera USB thật (UVC Host)",
             "Cấp quyền nút Camera nổi DeX",
             "Trạng thái tương đương APP gốc",
+            "GPS / Pin / Chẩn đoán",
             "Đổi tên tài xế hiển thị Home",
             "Sao lưu cấu hình V2",
             "Khôi phục cấu hình V2"
@@ -808,9 +809,10 @@ class HomeActivity : ComponentActivity() {
                     4 -> AlertDialog.Builder(this).setTitle("Chưa đạt V2")
                         .setMessage("Màn Home V2 vẫn đang xây dựng. Camera USB, DeX, các tab, bố cục V1 và dữ liệu gốc chưa được nghiệm thu.")
                         .setPositiveButton("Đóng", null).show()
-                    5 -> editDriverName()
-                    6 -> exportBackupLauncher.launch(HomeBackupRules.exportFileName())
-                    7 -> importBackupLauncher.launch(arrayOf("application/json", "text/plain"))
+                    5 -> startActivity(Intent(this, TelemetryActivity::class.java))
+                    6 -> editDriverName()
+                    7 -> exportBackupLauncher.launch(HomeBackupRules.exportFileName())
+                    8 -> importBackupLauncher.launch(arrayOf("application/json", "text/plain"))
                 }
             }.show()
     }
