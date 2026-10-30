@@ -964,10 +964,10 @@ body.api-health #workList.wo-list.work-list.tiq-work-center{
 body.api-health #workList.tiq-work-center>.tiq-work-card[data-project-theme] .work-hierarchy{
   display:none!important;
 }
+/* Keep long work titles readable in full and inside the card (existing Playwright invariant). */
 :is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center>.tiq-work-card .work-title{
-  display:-webkit-box!important;-webkit-box-orient:vertical!important;
-  -webkit-line-clamp:3!important;overflow:hidden!important;
-  min-width:0!important;max-width:100%!important;overflow-wrap:anywhere!important;
+  min-width:0!important;max-width:100%!important;
+  white-space:normal!important;overflow-wrap:anywhere!important;
 }
 body.api-health #workList.tiq-work-center>.tiq-work-card :is(
  .card-project-banner,.card-live-action-box,.card-stepper-strip,.action-header){
