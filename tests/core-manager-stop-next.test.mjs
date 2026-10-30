@@ -1,6 +1,6 @@
 import { describe,expect,it } from 'vitest';
 import {managerIdleStepStopPlan} from '../apps/tigeriq-core/manager-cycle-policy.mjs';
-import {managerJobMaterializationDecision} from '../apps/tigeriq-core/manager-job-policy.mjs';
+import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,failedCampaignRuntimeRearmDecision,managerJobMaterializationDecision} from '../apps/tigeriq-core/manager-job-policy.mjs';
 import {apiDoctorAutoworkPriority} from '../apps/tigeriq-core/api-doctor.mjs';
 
 describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
@@ -33,6 +33,25 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
     expect(managerJobMaterializationDecision('done').action).toBe('dedupe');
     expect(managerJobMaterializationDecision('queued').action).toBe('dedupe');
     expect(managerJobMaterializationDecision('').action).toBe('create');
+  });
+  it('requeues the same failed LOCAL campaign job only after a newer runtime source and within budget',()=>{
+    const base={
+      objectiveStatus:'blocked',
+      objectiveSummary:FAILED_LOGICAL_JOB_BLOCK_SUMMARY,
+      jobStatus:'failed',
+      attempts:1,
+      maxAttempts:2,
+      jobCompletedAt:'2026-10-30T06:32:42Z',
+      runtimeUpdatedAt:'2026-10-30T06:52:18Z',
+      hasCampaign:true,
+      routingProfile:'LOCAL',
+    };
+    expect(failedCampaignRuntimeRearmDecision(base))
+      .toEqual({action:'requeue',reason:'runtime_source_newer_than_failed_campaign_job'});
+    expect(failedCampaignRuntimeRearmDecision({...base,runtimeUpdatedAt:'2026-10-30T06:32:42Z'}).action).toBe('keep');
+    expect(failedCampaignRuntimeRearmDecision({...base,attempts:2}).reason).toBe('retry_budget_exhausted');
+    expect(failedCampaignRuntimeRearmDecision({...base,routingProfile:'AUTO'}).reason).toBe('not_local_campaign');
+    expect(failedCampaignRuntimeRearmDecision({...base,objectiveSummary:'other'}).reason).toBe('not_failed_logical_job_guard');
   });
 });
 
