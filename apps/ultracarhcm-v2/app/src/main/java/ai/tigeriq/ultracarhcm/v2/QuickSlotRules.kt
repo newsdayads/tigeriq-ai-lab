@@ -55,6 +55,21 @@ internal object QuickSlotRules {
         }
     }
 
+    fun isValidPersistedAssignment(label: String, target: String): Boolean {
+        val trimmedLabel = label.trim()
+        val trimmedTarget = target.trim()
+        if (trimmedLabel.length > MAX_LABEL_LENGTH || trimmedTarget.length > MAX_TARGET_LENGTH) {
+            return false
+        }
+
+        val safeLabel = normalizeLabel(label)
+        val safeTarget = normalizeTarget(target)
+        if (safeTarget.isEmpty()) return safeLabel.isEmpty()
+        if (safeLabel.isEmpty()) return false
+        if (safeTarget == CAMERA_TARGET) return true
+        return packageNamePattern.matches(safeTarget)
+    }
+
     fun parseCustomAssignment(value: String): QuickSlotAssignment? {
         val pieces = value.split('|', limit = 2)
         if (pieces.size != 2) return null
