@@ -50,7 +50,7 @@ test('renaming NV10 does not break stale NV02 Ollama identity reconciliation',()
 test('display-name updates do not change roles, model tags, or resource IDs',()=>{
   assert.match(core,/NV08'|CORE_MANAGER_EMPLOYEE_ID = 'NV08'/);
   assert.match(core,/nv08Resource\.capabilities = \['manager'\]/);
-  assert.match(core,/nv09Resource\.capabilities = \['coding_local'\]/);
+  assert.match(core,/nv09Resource\.capabilities = \['coding_local','review'\]/);
   assert.match(core,/nv10Resource\.capabilities = \['general','reasoning','review',API_DOCTOR_CAPABILITY\]/);
   assert.match(core,/capabilities:\['pc_operator'\]/);
   assert.match(core,/CORE_MANAGER_MODEL = process\.env\.TIGERIQ_CORE_MANAGER_MODEL\?\.trim\(\) \|\| 'qwen3:8b'/);
