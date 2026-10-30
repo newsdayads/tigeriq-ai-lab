@@ -10,9 +10,8 @@ describe('GH-5135 F19 trip report hub source', () => {
   const manifest = read('apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml');
 
   it('uses only V2 Taxi Meter history and SAF CSV export', () => {
-    expect(report).toContain('getSharedPreferences(TAXI_PREFS, Context.MODE_PRIVATE)');
-    expect(report).toContain('TAXI_PREFS = "ultracar_v2_taxi_meter"');
-    expect(report).toContain('KEY_HISTORY = "trip_history_json"');
+    expect(report).toContain('getSharedPreferences(TaxiMeterRules.PREFS_NAME, Context.MODE_PRIVATE)');
+    expect(report).toContain('TaxiMeterRules.KEY_HISTORY');
     expect(report).toContain('ActivityResultContracts.CreateDocument("text/csv")');
     expect(report).toContain('contentResolver.openOutputStream(uri, "wt")');
   });
