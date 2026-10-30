@@ -21,11 +21,13 @@ $apksigner=Join-Path $tools 'AndroidBuildTools35\unpacked\android-15\apksigner.b
 $aapt2=Join-Path $tools 'AndroidBuildTools35\unpacked\android-15\aapt2.exe'
 $zipalign=Join-Path $tools 'AndroidBuildTools35\unpacked\android-15\zipalign.exe'
 $keystore=Join-Path $tools 'debug.keystore'
+$tempOutput=$output+'.tmp-'+[guid]::NewGuid().ToString('N')
 
 foreach($required in @($input,$apksigner,$aapt2,$zipalign,$keystore)){
   if(-not (Test-Path -LiteralPath $required -PathType Leaf)){throw ('REQUIRED_FILE_MISSING:'+ $required)}
 }
 if(Test-Path -LiteralPath $output){throw 'SIGNED_OUTPUT_ALREADY_EXISTS_NO_OVERWRITE'}
+if(Test-Path -LiteralPath $tempOutput){throw 'TEMP_OUTPUT_COLLISION'}
 
 $actualInputSha=(Get-FileHash -LiteralPath $input -Algorithm SHA256).Hash
 if($actualInputSha -cne $expectedInputSha){throw 'DEV11_INPUT_SHA_MISMATCH'}
@@ -51,38 +53,47 @@ $key=$null
 $ksPtr=[IntPtr]::Zero
 $keyPtr=[IntPtr]::Zero
 try {
-  $ks=Get-Content -LiteralPath $ksPath -Raw | ConvertTo-SecureString
-  $key=Get-Content -LiteralPath $keyPath -Raw | ConvertTo-SecureString
-  $ksPtr=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($ks)
-  $keyPtr=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($key)
-  $env:TIGERIQ_ULTRACAR_KS_PASS=[Runtime.InteropServices.Marshal]::PtrToStringBSTR($ksPtr)
-  $env:TIGERIQ_ULTRACAR_KEY_PASS=[Runtime.InteropServices.Marshal]::PtrToStringBSTR($keyPtr)
+  try {
+    $ks=Get-Content -LiteralPath $ksPath -Raw | ConvertTo-SecureString
+    $key=Get-Content -LiteralPath $keyPath -Raw | ConvertTo-SecureString
+    $ksPtr=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($ks)
+    $keyPtr=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($key)
+    $env:TIGERIQ_ULTRACAR_KS_PASS=[Runtime.InteropServices.Marshal]::PtrToStringBSTR($ksPtr)
+    $env:TIGERIQ_ULTRACAR_KEY_PASS=[Runtime.InteropServices.Marshal]::PtrToStringBSTR($keyPtr)
 
-  & $apksigner sign --ks $keystore --ks-pass 'env:TIGERIQ_ULTRACAR_KS_PASS' --key-pass 'env:TIGERIQ_ULTRACAR_KEY_PASS' --v2-signing-enabled true --v3-signing-enabled true --out $output $input
-  if($LASTEXITCODE -ne 0){throw 'DEV11_APKSIGNER_SIGN_FAILED'}
+    & $apksigner sign --ks $keystore --ks-pass 'env:TIGERIQ_ULTRACAR_KS_PASS' --key-pass 'env:TIGERIQ_ULTRACAR_KEY_PASS' --v2-signing-enabled true --v3-signing-enabled true --out $tempOutput $input
+    if($LASTEXITCODE -ne 0){throw 'DEV11_APKSIGNER_SIGN_FAILED'}
+  } finally {
+    Remove-Item Env:\TIGERIQ_ULTRACAR_KS_PASS -ErrorAction SilentlyContinue
+    Remove-Item Env:\TIGERIQ_ULTRACAR_KEY_PASS -ErrorAction SilentlyContinue
+    if($ksPtr -ne [IntPtr]::Zero){[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ksPtr)}
+    if($keyPtr -ne [IntPtr]::Zero){[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($keyPtr)}
+    if($ks){$ks.Dispose()}
+    if($key){$key.Dispose()}
+  }
+
+  if(-not (Test-Path -LiteralPath $tempOutput -PathType Leaf)){throw 'DEV11_TEMP_SIGNED_OUTPUT_MISSING'}
+  $verification=(& $apksigner verify --verbose --print-certs $tempOutput 2>&1) -join [Environment]::NewLine
+  if($LASTEXITCODE -ne 0 -or $verification -notmatch '(?m)^Verifies\s*$'){throw 'DEV11_APKSIGNER_VERIFY_FAILED'}
+  if($verification -notmatch 'Verified using v2 scheme[^\r\n]*:\s*true' -or
+     $verification -notmatch 'Verified using v3 scheme[^\r\n]*:\s*true'){
+    throw 'DEV11_V2_V3_SIGNATURE_REQUIRED'
+  }
+  if($verification -notmatch [regex]::Escape("Signer #1 certificate SHA-256 digest: $expectedCert")){
+    throw 'DEV11_CERTIFICATE_PIN_MISMATCH'
+  }
+
+  $signedBadging=(& $aapt2 dump badging $tempOutput 2>&1) -join [Environment]::NewLine
+  if($LASTEXITCODE -ne 0 -or -not $signedBadging.Contains($identityFragment)){throw 'DEV11_SIGNED_IDENTITY_MISMATCH'}
+
+  Move-Item -LiteralPath $tempOutput -Destination $output
 } finally {
-  Remove-Item Env:\TIGERIQ_ULTRACAR_KS_PASS -ErrorAction SilentlyContinue
-  Remove-Item Env:\TIGERIQ_ULTRACAR_KEY_PASS -ErrorAction SilentlyContinue
-  if($ksPtr -ne [IntPtr]::Zero){[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ksPtr)}
-  if($keyPtr -ne [IntPtr]::Zero){[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($keyPtr)}
-  if($ks){$ks.Dispose()}
-  if($key){$key.Dispose()}
+  if(Test-Path -LiteralPath $tempOutput){
+    Remove-Item -LiteralPath $tempOutput -Force -ErrorAction SilentlyContinue
+  }
 }
 
 if(-not (Test-Path -LiteralPath $output -PathType Leaf)){throw 'DEV11_SIGNED_OUTPUT_MISSING'}
-$verification=(& $apksigner verify --verbose --print-certs $output 2>&1) -join [Environment]::NewLine
-if($LASTEXITCODE -ne 0 -or $verification -notmatch '(?m)^Verifies\s*$'){throw 'DEV11_APKSIGNER_VERIFY_FAILED'}
-if($verification -notmatch 'Verified using v2 scheme[^\r\n]*:\s*true' -or
-   $verification -notmatch 'Verified using v3 scheme[^\r\n]*:\s*true'){
-  throw 'DEV11_V2_V3_SIGNATURE_REQUIRED'
-}
-if($verification -notmatch [regex]::Escape("Signer #1 certificate SHA-256 digest: $expectedCert")){
-  throw 'DEV11_CERTIFICATE_PIN_MISMATCH'
-}
-
-$signedBadging=(& $aapt2 dump badging $output 2>&1) -join [Environment]::NewLine
-if($LASTEXITCODE -ne 0 -or -not $signedBadging.Contains($identityFragment)){throw 'DEV11_SIGNED_IDENTITY_MISMATCH'}
-
 $signedSha=(Get-FileHash -LiteralPath $output -Algorithm SHA256).Hash
 $bytes=(Get-Item -LiteralPath $output).Length
 Write-Output ("DEV11_LOCAL_SIGN_PASS|PACKAGE=$expectedPackage|VERSION=$expectedVersionName|CODE=$expectedVersionCode|BYTES=$bytes|SHA256=$signedSha|CERT=$expectedCert|DRIVE=NOT_REQUESTED|INSTALL=NOT_REQUESTED|PRODUCTION=false")
