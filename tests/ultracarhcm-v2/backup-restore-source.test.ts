@@ -40,11 +40,26 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
     expect(home).toContain('rawLabel !is String || rawTarget !is String');
     expect(home).toContain('QuickSlotRules.isValidPersistedAssignment(rawLabel, rawTarget)');
     expect(block).toContain('rawConfigs.length() > HomeConfigRules.MAX_SAVED');
-    expect(block).toContain('normalizeHomeConfiguration(item) ?: return false');
-    expect(block).toContain('validatedQuickSlotsForBackup(item.optJSONArray("quickSlots")) == null');
+    expect(block).toContain('validatedHomeConfigurationForBackup(item) ?: return false');
+    expect(home).toContain('private fun validatedHomeConfigurationForBackup(item: JSONObject): JSONObject?');
     expect(block).toContain('val editor = prefs.edit()');
-    expect(block.indexOf('val editor = prefs.edit()')).toBeGreaterThan(block.indexOf('normalizeHomeConfiguration(item) ?: return false'));
+    expect(block.indexOf('val editor = prefs.edit()')).toBeGreaterThan(block.indexOf('validatedHomeConfigurationForBackup(item) ?: return false'));
     expect(block).toContain('editor.apply()');
+  });
+
+  it('rejects JSON scalar coercion before restore writes', () => {
+    expect(rules).toContain('fun exactBoolean(value: Any?): Boolean? = value as? Boolean');
+    expect(rules).toContain('fun exactString(value: Any?): String? = value as? String');
+    expect(rules).toContain('fun exactInt(value: Any?): Int?');
+    expect(home).toContain('HomeBackupRules.exactInt(root.opt("backupSchemaVersion")) ?: return false');
+    expect(home).toContain('HomeBackupRules.exactBoolean(root.opt("night")) ?: return false');
+    expect(home).toContain('HomeBackupRules.exactBoolean(root.opt("limo")) ?: return false');
+    expect(home).toContain('HomeBackupRules.exactString(root.opt("driver")) ?: return false');
+    expect(home).toContain('HomeBackupRules.exactString(root.opt("vehicleModel")) ?: return false');
+    expect(home).toContain('HomeBackupRules.exactString(root.opt("licensePlate")) ?: return false');
+    expect(home).toContain('HomeBackupRules.exactInt(item.opt("displayId")) ?: return false');
+    expect(home).toContain('HomeBackupRules.exactInt(item.opt("x")) ?: return false');
+    expect(home).toContain('HomeBackupRules.exactInt(item.opt("y")) ?: return false');
   });
 
   it('backs up and restores bounded DeX camera overlay positions without changing legacy v1 backups', () => {

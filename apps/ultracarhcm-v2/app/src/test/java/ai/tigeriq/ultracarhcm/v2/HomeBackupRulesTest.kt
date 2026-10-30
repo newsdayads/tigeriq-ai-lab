@@ -40,6 +40,19 @@ class HomeBackupRulesTest {
         assertFalse(HomeBackupRules.validOverlayCoordinate(HomeBackupRules.MAX_OVERLAY_COORDINATE + 1))
     }
 
+    @Test fun acceptsOnlyExactBackupScalarTypes() {
+        assertEquals(true, HomeBackupRules.exactBoolean(true))
+        assertNull(HomeBackupRules.exactBoolean("true"))
+        assertEquals("Driver", HomeBackupRules.exactString("Driver"))
+        assertNull(HomeBackupRules.exactString(123))
+        assertEquals(3, HomeBackupRules.exactInt(3))
+        assertEquals(3, HomeBackupRules.exactInt(3L))
+        assertEquals(3, HomeBackupRules.exactInt(3.0))
+        assertNull(HomeBackupRules.exactInt("3"))
+        assertNull(HomeBackupRules.exactInt(3.5))
+        assertNull(HomeBackupRules.exactInt(Long.MAX_VALUE))
+    }
+
     @Test fun usesStableJsonExportName() {
         assertEquals("ultracarhcm-v2-home-backup.json", HomeBackupRules.exportFileName())
     }

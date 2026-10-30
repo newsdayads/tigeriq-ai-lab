@@ -11,6 +11,20 @@ internal object HomeBackupRules {
     fun canReadBackupSchema(version: Int): Boolean =
         version in LEGACY_BACKUP_SCHEMA_VERSION..CURRENT_BACKUP_SCHEMA_VERSION
 
+    fun exactBoolean(value: Any?): Boolean? = value as? Boolean
+
+    fun exactString(value: Any?): String? = value as? String
+
+    fun exactInt(value: Any?): Int? {
+        if (value !is Number) return null
+        val doubleValue = value.toDouble()
+        if (!doubleValue.isFinite()) return null
+        val longValue = value.toLong()
+        if (doubleValue != longValue.toDouble()) return null
+        if (longValue < Int.MIN_VALUE || longValue > Int.MAX_VALUE) return null
+        return longValue.toInt()
+    }
+
     fun requiresOverlayPositions(version: Int): Boolean =
         version >= 2
 
