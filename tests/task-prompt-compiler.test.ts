@@ -9,6 +9,8 @@ import {
   parseExecutionResult,
   strictExecutionRetryPrompt,
   repairCompactExecutionPrompt,
+  compactLocalExecutionPrompt,
+  executionPacketFromPrompt,
 } from '../apps/tigeriq-core/task-prompt-compiler.mjs';
 
 const base = {
@@ -105,6 +107,20 @@ describe('Task Prompt Compiler V1',()=>{
     expect(repaired.prompt).toContain('criterion_index');
     expect(repairCompactExecutionPrompt(repaired.prompt).reason).toBe('compact_contract_already_present');
     expect(repairCompactExecutionPrompt('x'.repeat(11990),{maxChars:12000}).reason).toBe('compact_hint_budget_exhausted');
+  });
+
+  it('7d compacts duplicated provider text without losing the canonical packet or strict retry',()=>{
+    const longContext=Array.from({length:8},(_,i)=>`ctx-${i}-`+'x'.repeat(700));
+    const {packet,prompt}=compileTaskPrompt({...base,contextRefs:longContext});
+    expect(prompt.length).toBeGreaterThan(12000);
+    const compact=compactLocalExecutionPrompt(prompt,packet);
+    expect(compact.length).toBeLessThan(prompt.length);
+    expect(compact.length).toBeLessThanOrEqual(12000);
+    expect(executionPacketFromPrompt(compact)).toEqual(packet);
+    const retried=compactLocalExecutionPrompt(strictExecutionRetryPrompt(prompt,{code:'EXECUTION_ACCEPTANCE_MISSING'}),packet);
+    expect(retried).toContain('STRICT RETRY:');
+    expect(retried).toContain('EXECUTION_ACCEPTANCE_MISSING');
+    expect(executionPacketFromPrompt(retried)).toEqual(packet);
   });
 
   it('8 treats explicit blocked output as non-terminal acceptance',()=>{
