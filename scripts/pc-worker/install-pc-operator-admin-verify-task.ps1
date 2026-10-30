@@ -5,6 +5,7 @@ param(
 $ErrorActionPreference='Stop'
 $TaskName='TigerIQ PC Operator Admin Verify'
 $ExpectedUser='pc01\wdragons12x'
+$ExpectedSid=([Security.Principal.NTAccount]::new($ExpectedUser)).Translate([Security.Principal.SecurityIdentifier]).Value
 $Broker='D:\TigerIQ\Runtime\CoreSource\scripts\pc-worker\pc-operator-admin-verify-broker.ps1'
 $EvidenceRoot='D:\TigerIQ\Evidence'
 
@@ -12,7 +13,7 @@ $Identity=[Security.Principal.WindowsIdentity]::GetCurrent()
 $Principal=[Security.Principal.WindowsPrincipal]$Identity
 $Elevated=$Principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 $IsSystem=$Identity.User.Value -eq 'S-1-5-18'
-if($Identity.Name -ine $ExpectedUser){throw 'ADMIN_VERIFY_INSTALL_IDENTITY_MISMATCH'}
+if($Identity.User.Value -ne $ExpectedSid){throw 'ADMIN_VERIFY_INSTALL_IDENTITY_MISMATCH'}
 if(-not $Elevated){throw 'ADMIN_VERIFY_INSTALL_UAC_REQUIRED'}
 if($IsSystem){throw 'ADMIN_VERIFY_INSTALL_SYSTEM_NOT_ALLOWED'}
 if(-not (Test-Path -LiteralPath $Broker -PathType Leaf)){throw 'ADMIN_VERIFY_INSTALL_BROKER_MISSING'}
@@ -22,7 +23,8 @@ $Existing=Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 $AlreadyInstalled=$false
 if($Existing){
   $ExistingAction=@($Existing.Actions)[0]
-  $Matches=($Existing.Principal.UserId -ieq $ExpectedUser) -and
+  $ExistingSid=([Security.Principal.NTAccount]::new([string]$Existing.Principal.UserId)).Translate([Security.Principal.SecurityIdentifier]).Value
+  $Matches=($ExistingSid -eq $ExpectedSid) -and
     (@('Highest','HighestAvailable','1') -contains [string]$Existing.Principal.RunLevel) -and
     ([IO.Path]::GetFileName([string]$ExistingAction.Execute) -ieq 'powershell.exe') -and
     ([string]$ExistingAction.Arguments -eq $Arguments)
@@ -38,7 +40,8 @@ else {
 
 $Task=Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
 $TaskAction=@($Task.Actions)[0]
-if($Task.Principal.UserId -ine $ExpectedUser){throw 'ADMIN_VERIFY_INSTALL_TASK_USER_MISMATCH'}
+$TaskSid=([Security.Principal.NTAccount]::new([string]$Task.Principal.UserId)).Translate([Security.Principal.SecurityIdentifier]).Value
+if($TaskSid -ne $ExpectedSid){throw 'ADMIN_VERIFY_INSTALL_TASK_USER_MISMATCH'}
 if(@('Highest','HighestAvailable','1') -notcontains [string]$Task.Principal.RunLevel){throw 'ADMIN_VERIFY_INSTALL_TASK_RUNLEVEL_MISMATCH'}
 if([IO.Path]::GetFileName([string]$TaskAction.Execute) -ine 'powershell.exe'){throw 'ADMIN_VERIFY_INSTALL_TASK_EXECUTABLE_MISMATCH'}
 if([string]$TaskAction.Arguments -ne $Arguments){throw 'ADMIN_VERIFY_INSTALL_TASK_ACTION_MISMATCH'}

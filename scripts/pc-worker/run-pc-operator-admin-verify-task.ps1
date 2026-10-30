@@ -6,6 +6,7 @@ param(
 $ErrorActionPreference='Stop'
 $TaskName='TigerIQ PC Operator Admin Verify'
 $ExpectedUser='pc01\wdragons12x'
+$ExpectedSid=([Security.Principal.NTAccount]::new($ExpectedUser)).Translate([Security.Principal.SecurityIdentifier]).Value
 $Broker='D:\TigerIQ\Runtime\CoreSource\scripts\pc-worker\pc-operator-admin-verify-broker.ps1'
 $RequestDir='D:\TigerIQ\State\pc-operator-admin'
 $RequestPath=Join-Path $RequestDir 'verify-request.json'
@@ -15,14 +16,15 @@ $Full=[IO.Path]::GetFullPath($ReceiptPath)
 if(-not $Full.StartsWith($EvidenceRoot,[StringComparison]::OrdinalIgnoreCase)){throw 'ADMIN_VERIFY_RECEIPT_PATH_NOT_ALLOWED'}
 if([IO.Path]::GetExtension($Full) -ine '.json'){throw 'ADMIN_VERIFY_RECEIPT_EXTENSION_NOT_ALLOWED'}
 if(-not [IO.Path]::GetFileName($Full).StartsWith('gh5365-admin-verify-',[StringComparison]::OrdinalIgnoreCase)){throw 'ADMIN_VERIFY_RECEIPT_NAME_NOT_ALLOWED'}
-if([Security.Principal.WindowsIdentity]::GetCurrent().Name -ine $ExpectedUser){throw 'ADMIN_VERIFY_CALLER_IDENTITY_MISMATCH'}
+if([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne $ExpectedSid){throw 'ADMIN_VERIFY_CALLER_IDENTITY_MISMATCH'}
 if(-not (Test-Path -LiteralPath $Broker -PathType Leaf)){throw 'ADMIN_VERIFY_BROKER_MISSING'}
 if(Test-Path -LiteralPath $Full){throw 'ADMIN_VERIFY_RECEIPT_ALREADY_EXISTS'}
 if(Test-Path -LiteralPath $RequestPath){throw 'ADMIN_VERIFY_REQUEST_ALREADY_EXISTS'}
 
 $Task=Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if(-not $Task){throw 'ADMIN_VERIFY_BROKER_NOT_INSTALLED'}
-if($Task.Principal.UserId -ine $ExpectedUser){throw 'ADMIN_VERIFY_TASK_USER_MISMATCH'}
+$TaskSid=([Security.Principal.NTAccount]::new([string]$Task.Principal.UserId)).Translate([Security.Principal.SecurityIdentifier]).Value
+if($TaskSid -ne $ExpectedSid){throw 'ADMIN_VERIFY_TASK_USER_MISMATCH'}
 if(@('Highest','HighestAvailable','1') -notcontains [string]$Task.Principal.RunLevel){throw 'ADMIN_VERIFY_TASK_RUNLEVEL_MISMATCH'}
 $TaskAction=@($Task.Actions)[0]
 $ExpectedArguments='-NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File "'+$Broker+'"'

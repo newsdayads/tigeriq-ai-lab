@@ -100,10 +100,12 @@
       "status": "PARTIAL_SOURCE",
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbCameraActivity.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DynamicGuideView.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DynamicGuideView.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeLayoutRules.kt",
+        "tests/ultracarhcm-v2/dex-narrow-home-source.test.ts"
       ],
-      "gap": "Intent-fed reverse/steering guide exists, but no verified vehicle reverse-signal source or calibrated distance acceptance exists.",
-      "actual": "UsbCameraActivity accepts explicit reverse/steering intent values and DynamicGuideView draws curved guides only while camera frames and reverse state are active.",
+      "gap": "Owner private Drive video IMG_7926.MOV verifies a tall narrow UltraCar panel beside Maps and reverse-camera windows on DeX. V2 now has an evidence-backed narrow HOME panel, but automatic Samsung window sizing/placement, verified vehicle reverse-signal input, guide calibration and real-device acceptance remain open.",
+      "actual": "HomeActivity switches to a dedicated narrow DeX HOME panel only when its own desktop window is tall/narrow. The panel preserves V2 logo/background/clock/vehicle and bounded Google Maps, Camera USB and Settings actions without claiming control of other app windows. Existing reverse-guide source remains intent-fed and uncalibrated.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "UsbCameraActivity.applyReverseGuideIntent",
@@ -331,10 +333,12 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/res/values/strings.xml",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/NotificationActivity.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/NotificationRules.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/NotificationRules.kt",
+        "apps/ultracarhcm-v2/release/update-channel.json",
+        "tests/ultracarhcm-v2/update-channel-source.test.ts"
       ],
-      "gap": "Independent update-check source remains fail-closed until a verified V2 endpoint exists. Downloaded update bytes are now bounded and SHA-256 verified against metadata before being treated as integrity-checked; remote push/backend delivery, installation channel and exact V1 notification parity remain unverified.",
-      "actual": "ProfileActivity exposes separate CẬP NHẬT and THÔNG BÁO actions. UpdateActivity validates bounded HTTPS V2 metadata, records only newer-version notices, downloads a candidate package without redirects, enforces a 256 MiB bound, computes SHA-256 over the received bytes and rejects mismatches. It does not auto-install or open the package. NotificationActivity clears resolved notices after upgrade. No V1 channel or push backend is inferred.",
+      "gap": "Kênh metadata V2 TEST hiện đã được cấu hình tới tệp canonical trên GitHub main và fail-closed với releaseAvailable=false cho đến khi có APK V2 TEST ký số được phát hành. Remote push/backend, publication của signed APK, cài đặt trên thiết bị và exact V1 notification parity vẫn chưa nghiệm thu.",
+      "actual": "ProfileActivity tách CẬP NHẬT và THÔNG BÁO. UpdateActivity chỉ tin endpoint metadata V2 TEST canonical, chấp nhận trạng thái no-release không có apkUrl/sha256, và khi releaseAvailable=true chỉ chấp nhận URL GitHub release tag UltraCarHCM V2 cùng SHA-256 hợp lệ trước khi tải/kiểm toàn vẹn. Kênh hiện công khai build dev.11 nhưng không cung cấp APK, không dùng preview1 bị loại và không tự cài đặt.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "ProfileActivity.buildContent",

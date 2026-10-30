@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "channel": "ultracarhcm-v2-test",
+  "packageName": "ai.tigeriq.ultracarhcm.v2",
+  "releaseAvailable": false,
+  "latestVersionCode": 11,
+  "latestVersionName": "2.0.0-dev.11",
+  "releaseNotes": "Kênh V2 TEST đã được cấu hình nhưng chưa có APK V2 TEST ký số được phát hành. Không dùng APK preview1 đã bị loại hoặc APK chưa ký.",
+  "mandatory": false
+}
