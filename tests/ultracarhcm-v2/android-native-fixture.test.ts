@@ -114,7 +114,7 @@ describe('GH-5135 native Android compile gate (synthetic fixtures, not a release
         ['AppearanceRulesTest', 3],
         ['VehicleRulesTest', 4],
         ['PrivacyRulesTest', 2],
-        ['NotificationRulesTest', 4],
+        ['NotificationRulesTest', 5],
         ['RecoveryRulesTest', 4],
       ] as const;
       let assertedJvmTests = 0;
