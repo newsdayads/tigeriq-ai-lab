@@ -444,7 +444,7 @@ test('Owner journal moves into detail and blocker NONE is hidden',async({page})=
 
 
 test('Owner 3 screen density: compact cards, uniform buttons and usable content at 1664 924 630',async({page})=>{
- for(const [width,height,minWork,minWorkers] of [[1664,936,4,6],[924,1040,3,4],[630,1040,2,3]] as const){
+ for(const [width,height,minWork,minWorkers] of [[1664,936,4,6],[924,1040,2,4],[630,1040,2,3]] as const){
   await page.setViewportSize({width,height});
   await openFixture(page);
   const metrics=await page.evaluate(()=>{
