@@ -128,6 +128,7 @@ export function compileTaskPrompt(input = {}) {
     'OUTPUT REQUIREMENT:',
     'Return exactly one JSON object and nothing else. No markdown fences.',
     `Schema ${EXECUTION_RESULT_VERSION}: {"schema":"EXECUTION_RESULT_V1","status":"complete|blocked","summary":"short factual summary","acceptance":[{"criterion":"acceptance criterion text","passed":true|false,"evidence_refs":["evidence id"]}],"evidence":[{"id":"e1","type":"observation|artifact|test|source","value":"concrete evidence"}],"block_reason":null|string}`,
+    'Compact LOCAL adapters may use criterion_index (zero-based packet acceptance order) instead of repeating criterion text; Core resolves the index deterministically before acceptance.',
     'Every acceptance criterion in the packet must appear once in acceptance[].',
     'A complete result requires all criteria passed=true and each passed criterion must cite at least one evidence id present in evidence[].',
     'If any criterion cannot be proven, return status=blocked and explain the exact block_reason.',
@@ -177,7 +178,30 @@ export function executionResultGate(raw, packetInput) {
   if (!Array.isArray(result?.acceptance) || !Array.isArray(result?.evidence)) return { pass:false, code:'EXECUTION_RESULT_EVIDENCE_MISSING', result, missing:packet.acceptance, evidenceIds:[] };
 
   const evidenceIds = new Set(result.evidence.map(item => text(item?.id)).filter(Boolean));
-  const claimed = new Map(result.acceptance.map(item => [text(item?.criterion), item]));
+  const claimed = new Map();
+  for (const item of result.acceptance) {
+    const explicit = text(item?.criterion);
+    const hasIndex = Number.isInteger(item?.criterion_index);
+    let criterion = explicit;
+    if (hasIndex) {
+      const index = Number(item.criterion_index);
+      if (index < 0 || index >= packet.acceptance.length) {
+        return { pass:false, code:'EXECUTION_ACCEPTANCE_REFERENCE_INVALID', result, missing:packet.acceptance, evidenceIds:[...evidenceIds] };
+      }
+      const indexed = packet.acceptance[index];
+      if (explicit && explicit !== indexed) {
+        return { pass:false, code:'EXECUTION_ACCEPTANCE_REFERENCE_INVALID', result, missing:packet.acceptance, evidenceIds:[...evidenceIds] };
+      }
+      criterion = indexed;
+    }
+    if (!criterion) {
+      return { pass:false, code:'EXECUTION_ACCEPTANCE_REFERENCE_INVALID', result, missing:packet.acceptance, evidenceIds:[...evidenceIds] };
+    }
+    if (claimed.has(criterion)) {
+      return { pass:false, code:'EXECUTION_ACCEPTANCE_DUPLICATED', result, missing:packet.acceptance, evidenceIds:[...evidenceIds] };
+    }
+    claimed.set(criterion, { ...item, criterion });
+  }
   const missing = packet.acceptance.filter(criterion => !claimed.has(criterion));
   if (missing.length) return { pass:false, code:'EXECUTION_ACCEPTANCE_MISSING', result, missing, evidenceIds:[...evidenceIds] };
 
