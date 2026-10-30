@@ -255,7 +255,7 @@ test('TigerIQ System Control: landscape 4 workforce / 3 work and compact 2+1 mon
  }
 });
 
-test('System Control grows card count, never card scale, across FHD, QHD and 4K',async({page})=>{
+test('System Control retains four stable work cards across FHD, QHD and 4K',async({page})=>{
  const observations=[];
  for(const [width,height] of [[1920,1080],[2560,1440],[3840,2160]]){
    await page.setViewportSize({width,height});
@@ -274,7 +274,7 @@ test('System Control grows card count, never card scale, across FHD, QHD and 4K'
  }
  for(let i=1;i<observations.length;i++){
    expect(observations[i].people).toBeGreaterThan(observations[i-1].people);
-   expect(observations[i].work).toBeGreaterThan(observations[i-1].work);
+   expect(observations[i].work).toBe(4);
  }
  await expect(page.locator('[data-system-control-root=true]')).toBeVisible();
  expect(await page.locator('[data-module-id]').count()).toBe(5);
@@ -282,7 +282,7 @@ test('System Control grows card count, never card scale, across FHD, QHD and 4K'
  await expect(page.locator('.work-panel .panel-h h2')).toHaveCSS('color','rgb(45, 212, 191)');
 });
 
-test('same Work Center card skin in LIVE and API Health; Health never shrinks to 5 microcards',async({page})=>{
+test('same Work Center card skin in LIVE and API Health; Health hides duplicate project breadcrumb',async({page})=>{
  await page.setViewportSize({width:1440,height:900});
  await openFixture(page);
  const evidence=async()=>page.locator('#workList .tiq-work-card[data-work-number="3278"]').evaluate((el)=>{
@@ -310,7 +310,7 @@ test('same Work Center card skin in LIVE and API Health; Health never shrinks to
  expect(healthCard.height).toBeGreaterThanOrEqual(180);
  expect(healthCard.idPosition).toBe('absolute');
  expect(Math.abs(healthCard.idTopDelta)).toBeLessThanOrEqual(3);
- expect(healthCard.hierarchyDisplay).not.toBe('none');
+ expect(healthCard.hierarchyDisplay).toBe('none');
  expect(healthCard.mainBorder).toBe('rgb(59, 130, 246)');
  await page.route('https://tigeriq.test/**',async r=>{
    const url=new URL(r.request().url());
@@ -444,7 +444,7 @@ test('Owner journal moves into detail and blocker NONE is hidden',async({page})=
 
 
 test('Owner 3 screen density: compact cards, uniform buttons and usable content at 1664 924 630',async({page})=>{
- for(const [width,height,minWork,minWorkers] of [[1664,936,5,6],[924,1040,3,4],[630,1040,2,3]] as const){
+ for(const [width,height,minWork,minWorkers] of [[1664,936,4,6],[924,1040,2,4],[630,1040,2,3]] as const){
   await page.setViewportSize({width,height});
   await openFixture(page);
   const metrics=await page.evaluate(()=>{

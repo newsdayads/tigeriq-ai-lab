@@ -931,3 +931,74 @@ body.api-health #workDetailModal .work-detail-step-label{
 body.api-health #workDetailModal .tiq-audit-grid{
  grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))!important;
 }
+
+/* OWNER_WORK_CARDS_4COL_IPHONE_20261030: one project heading, four readable desktop cards, hard-wrapped step text.
+   Keep the existing three-card short-landscape mode and one-card phone portrait. */
+body:not(.api-health) #workList.tiq-work-center{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+}
+@media(min-width:900px){
+  body:not(.api-health) #workList.tiq-work-center{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+}
+@media(min-width:1200px){
+  body:not(.api-health) #workList.tiq-work-center{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+}
+@media(max-width:599px){
+  body:not(.api-health) #workList.tiq-work-center{grid-template-columns:minmax(0,1fr)!important}
+}
+body.api-health #workList.wo-list.work-list.tiq-work-center{
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+}
+@media(max-width:1449px){
+  body.api-health #workList.wo-list.work-list.tiq-work-center{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+}
+@media(max-width:1199px){
+  body.api-health #workList.wo-list.work-list.tiq-work-center{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
+@media(max-width:599px){
+  body.api-health #workList.wo-list.work-list.tiq-work-center{grid-template-columns:minmax(0,1fr)!important}
+}
+@media(orientation:landscape) and (min-width:640px) and (max-width:1199px) and (max-height:600px){
+  body.api-health #workList.wo-list.work-list.tiq-work-center{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+}
+body.api-health #workList.tiq-work-center>.tiq-work-card[data-project-theme] .work-hierarchy{
+  display:none!important;
+}
+/* Keep long work titles readable in full and inside the card (existing Playwright invariant). */
+:is(#workList,#workCenterWeb,#workCenterArchiveWeb).tiq-work-center>.tiq-work-card .work-title{
+  min-width:0!important;max-width:100%!important;
+  white-space:normal!important;overflow-wrap:anywhere!important;
+}
+body.api-health #workList.tiq-work-center>.tiq-work-card :is(
+ .card-project-banner,.card-live-action-box,.card-stepper-strip,.action-header){
+  min-width:0!important;max-width:100%!important;box-sizing:border-box!important;
+}
+body.api-health #workList.tiq-work-center>.tiq-work-card .card-project-banner>span{
+  min-width:0!important;max-width:100%!important;overflow-wrap:anywhere!important;
+}
+body.api-health #workList.tiq-work-center>.tiq-work-card .card-live-action-box>div:not(.action-header):not(.card-stepper-strip){
+  display:-webkit-box!important;-webkit-box-orient:vertical!important;
+  -webkit-line-clamp:3!important;overflow:hidden!important;
+  min-width:0!important;max-width:100%!important;
+  white-space:normal!important;overflow-wrap:anywhere!important;word-break:break-word!important;
+}
+body.api-health #workList.tiq-work-center>.tiq-work-card .card-stepper-strip{
+  display:flex!important;flex-wrap:wrap!important;gap:4px!important;
+}
+body.api-health #workList.tiq-work-center>.tiq-work-card .stepper-node{
+  flex:0 0 auto!important;max-width:100%!important;
+}
+@media(orientation:landscape) and (min-width:640px) and (max-width:1199px) and (max-height:600px){
+  body.api-health #workList.tiq-work-center>.tiq-work-card .card-live-action-box>div:not(.action-header):not(.card-stepper-strip){
+    -webkit-line-clamp:2!important;
+  }
+}
+
+
+/* OWNER_WORK_CARDS_FOUR_WIDE_CAP_20261030: prevent giant cards on QHD / 4K. */
+@media(min-width:1450px){
+  body.api-health #workList.wo-list.work-list.tiq-work-center{max-width:min(100%,1490px)!important}
+}
+@media(min-width:1200px){
+  body:not(.api-health) #workList.tiq-work-center{max-width:min(100%,1490px)!important}
+}
