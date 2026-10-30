@@ -8,6 +8,7 @@ import {
   assertExecutionResultAccepted,
   parseExecutionResult,
   strictExecutionRetryPrompt,
+  repairCompactExecutionPrompt,
 } from '../apps/tigeriq-core/task-prompt-compiler.mjs';
 
 const base = {
@@ -95,6 +96,15 @@ describe('Task Prompt Compiler V1',()=>{
     expect(executionResultGate(JSON.stringify(bad),packet).code).toBe('EXECUTION_ACCEPTANCE_REFERENCE_INVALID');
     const mismatch=JSON.parse(compact);mismatch.acceptance[0].criterion='not A';
     expect(executionResultGate(JSON.stringify(mismatch),packet).code).toBe('EXECUTION_ACCEPTANCE_REFERENCE_INVALID');
+  });
+
+  it('7c repairs a legacy stored prompt exactly once for compact LOCAL output',()=>{
+    const legacy='PACKET_JSON: {"task_id":"JOB-1"}\nOUTPUT REQUIREMENT: full criterion text';
+    const repaired=repairCompactExecutionPrompt(legacy);
+    expect(repaired.changed).toBe(true);
+    expect(repaired.prompt).toContain('criterion_index');
+    expect(repairCompactExecutionPrompt(repaired.prompt).reason).toBe('compact_contract_already_present');
+    expect(repairCompactExecutionPrompt('x'.repeat(11990),{maxChars:12000}).reason).toBe('compact_hint_budget_exhausted');
   });
 
   it('8 treats explicit blocked output as non-terminal acceptance',()=>{
