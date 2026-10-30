@@ -48,9 +48,11 @@ describe('#777 Core Smart Router integration',()=>{
     expect(core).toContain('repairCampaignReviewPrompt');
     expect(core).toContain("decision.action==='requeue_prompt_repair'");
     expect(core).toContain('prompt=$4');
-    expect(core).toContain('j.max_attempts<4');
+    expect(core).toContain('j.max_attempts<$7');
     expect(core).toContain('greatest(j.max_attempts,j.attempts+1)');
     expect(core).toContain('promptRepaired:promptRepair.changed');
+    expect(core).toContain('compactPromptRepaired:compactRepair.changed');
+    expect(core).toContain('const repairCap=compactRepair.changed?5:4');
     expect(core).toContain('repairCreditGranted:repairCredit');
     expect(core).not.toContain('max_attempts=max_attempts+10');
   });
