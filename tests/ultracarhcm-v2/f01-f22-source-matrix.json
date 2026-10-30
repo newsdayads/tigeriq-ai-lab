@@ -100,10 +100,12 @@
       "status": "PARTIAL_SOURCE",
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbCameraActivity.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DynamicGuideView.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DynamicGuideView.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeLayoutRules.kt",
+        "tests/ultracarhcm-v2/dex-narrow-home-source.test.ts"
       ],
-      "gap": "Intent-fed reverse/steering guide exists, but no verified vehicle reverse-signal source or calibrated distance acceptance exists.",
-      "actual": "UsbCameraActivity accepts explicit reverse/steering intent values and DynamicGuideView draws curved guides only while camera frames and reverse state are active.",
+      "gap": "Owner private Drive video IMG_7926.MOV verifies a tall narrow UltraCar panel beside Maps and reverse-camera windows on DeX. V2 now has an evidence-backed narrow HOME panel, but automatic Samsung window sizing/placement, verified vehicle reverse-signal input, guide calibration and real-device acceptance remain open.",
+      "actual": "HomeActivity switches to a dedicated narrow DeX HOME panel only when its own desktop window is tall/narrow. The panel preserves V2 logo/background/clock/vehicle and bounded Google Maps, Camera USB and Settings actions without claiming control of other app windows. Existing reverse-guide source remains intent-fed and uncalibrated.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "UsbCameraActivity.applyReverseGuideIntent",
