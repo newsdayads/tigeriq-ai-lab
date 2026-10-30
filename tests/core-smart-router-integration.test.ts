@@ -22,6 +22,17 @@ describe('#777 Core Smart Router integration',()=>{
   it('persists quota/rate-limit telemetry only from real provider signals or bounded cooldown evidence',()=>{expect(core).toContain('quota_state');expect(core).toContain('last_429_at');expect(core).toContain('syncQuotaFromHeaders');expect(core).toContain('x-ratelimit-limit-requests');expect(core).toContain('x-ratelimit-remaining-tokens');expect(core).toContain("kind==='rate_limit'");expect(core).toContain('rateLimitFailureState(currentQuota,policy.cooldownMs)');expect(core).toContain("select quota_state from tigeriq_ai_resources where resource_id=$1");});
   it('parses compound provider reset durations such as current Groq headers',()=>{const start=core.indexOf('function quotaResetDurationMs');const end=core.indexOf('\nfunction quotaResetAt',start);expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);const fn=new Function(`${core.slice(start,end)}; return quotaResetDurationMs;`)();expect(fn('2m59.56s')).toBeCloseTo(179560,5);expect(fn('7.66s')).toBeCloseTo(7660,5);expect(fn('n/a')).toBeNull();});
   it('uses task-kind performance and bounded failure-aware failover without paid fallback',()=>{expect(core).toContain('avg_latency_ms');expect(core).toContain('failurePolicy(kind)');expect(core).toContain('if(policy.stop)break');expect(router).toContain('paid_fallback_forbidden');expect(router).toContain("'security','credential','paid','production','irreversible'");});
+  it('recovers a blocked LOCAL campaign by requeueing the same failed job only after runtime source change',()=>{
+    expect(core).toContain('async function recoverFailedCampaignJobsAfterRuntimeSourceChange()');
+    expect(core).toContain("o.summary=$1");
+    expect(core).toContain("j.id=$1");
+    expect(core).toContain("j.attempts<j.max_attempts");
+    expect(core).toContain("j.completed_at<$2::timestamptz");
+    expect(core).toContain("status='active'");
+    expect(core).toContain("CAMPAIGN_FAILED_JOB_REARMED_AFTER_RUNTIME_SOURCE_CHANGE");
+    expect(core).toContain("await recoverStale();await recoverFailedCampaignJobsAfterRuntimeSourceChange();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;");
+  });
+
   it('reconciles failed safe GitHub autowork independently of manager priority',()=>{
     expect(core).toContain('async function reconcileFailedSafeAutoworkObjectives()');
     expect(core).toContain("kind='github_api_autowork' and status='failed'");
