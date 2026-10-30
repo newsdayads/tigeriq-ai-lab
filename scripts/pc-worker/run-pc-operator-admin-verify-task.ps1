@@ -27,7 +27,7 @@ $Registered=$false
 $TaskDeleted=$false
 $Receipt=$null
 try {
-  Register-ScheduledTask -TaskName $TaskName -Action $Action -Principal $Principal -Settings $Settings | Out-Null
+  Register-ScheduledTask -TaskName $TaskName -Action $Action -Principal $Principal -Settings $Settings -ErrorAction Stop | Out-Null
   $Registered=$true
 
   $Task=Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
