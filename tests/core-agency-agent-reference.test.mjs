@@ -8,6 +8,7 @@ import {
   selectAgencyRoleReferences, loadAgencyRoleReferences,
 } from '../apps/tigeriq-core/agency-agent-reference.mjs';
 import { readFileSync } from 'node:fs';
+import { fitSkillAndAdvisoryContext } from '../apps/tigeriq-core/skill-loader.mjs';
 
 test('selects bounded relevant source roles, not every upstream persona',()=>{
   assert.deepEqual(selectAgencyRoleReferences('backend API fix').map(x=>x.id),['backend-architect']);
@@ -49,4 +50,29 @@ test('skill loader only adds references behind a real ACTIVE skill',()=>{
   assert.match(src,/agencyReferences: agencyBlock \? agency\.references : \[\]/);
   assert.match(src,/maxChars - totalChars/);
   assert.match(src,/\.filter\(skill => skill\.state === 'ACTIVE'\)/);
+});
+
+test('pinned advisory fits actual rendered context by releasing lower-ranked ACTIVE slots',()=>{
+  const selected=[0,1,2].map(n=>({id:'canonical-'+n,version:'1.0.0',content:'x'.repeat(1880),chars:1880}));
+  const advisory='AGENCY ROLE REFERENCE '+('Q'.repeat(390));
+  const result=fitSkillAndAdvisoryContext(selected,advisory,6000);
+  assert.equal(selected.length,3,'caller canonical selection is unchanged');
+  assert.equal(result.selected.length,2,'only lowest-ranked canonical role yields context space');
+  assert.equal(result.selected[0].id,'canonical-0');
+  assert.equal(result.agencyBlock,advisory);
+  assert.ok(result.contextBlock.length<=6000);
+  assert.ok(result.contextBlock.includes('AGENCY ROLE REFERENCE'));
+});
+test('one primary ACTIVE skill always wins over lower-trust advisory when space is short',()=>{
+  const one=[{id:'canonical',version:'1.0.0',content:'x'.repeat(5810),chars:5810}];
+  const result=fitSkillAndAdvisoryContext(one,'AGENCY ROLE REFERENCE '+'z'.repeat(450),6000);
+  assert.deepEqual(result.selected.map(s=>s.id),['canonical']);
+  assert.equal(result.agencyBlock,'');
+  assert.ok(result.contextBlock.length<=6000);
+});
+test('hard context budget includes actual headings and metadata, no overflow on tiny caps',()=>{
+  const one=[{id:'short',version:'1.0.0',content:'small',chars:5}];
+  const result=fitSkillAndAdvisoryContext(one,'AGENCY ROLE REFERENCE',40);
+  assert.equal(result.contextBlock,'');
+  assert.equal(result.selected.length,0);
 });
