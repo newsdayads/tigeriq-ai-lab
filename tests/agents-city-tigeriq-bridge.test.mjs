@@ -299,3 +299,11 @@ test('3D Animal scene is local and cannot fabricate a running AI',async()=>{
   assert.doesNotMatch(world,/https?:\/\//);
   assert.doesNotMatch(world,/fetch\(/);
 });
+
+
+test('Core live status projects job lease for Animal City verification',async()=>{
+  const core=await readFile(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const statusJobsQuery=core.split('\n').find(line=>
+    line.includes('from tigeriq_jobs order by created_at desc limit 40')) || '';
+  assert.match(statusJobsQuery,/started_at,lease_until,completed_at/);
+});

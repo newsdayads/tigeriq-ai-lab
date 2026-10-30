@@ -186,7 +186,7 @@ export function scoreResource(resource,{profile='AUTO',capability='general',task
   if(!quotaUsable(resource.quota_state??resource.quotaState??{},nowMs))return {eligible:false,resourceId,score:Infinity,reasons:['quota']};
   if(!isFree(resource))return {eligible:false,resourceId,score:Infinity,reasons:['paid_fallback_forbidden']};
   if(normalizedProfile==='LOCAL'&&!isLocal(resource))return {eligible:false,resourceId,score:Infinity,reasons:['profile_local']};
-  if(normalizedProfile==='REVIEW'&&reviewerExclusions.has(resourceId))return {eligible:false,resourceId,score:Infinity,reasons:['reviewer_independence']};
+  if((normalizedProfile==='REVIEW'||String(capability||'').toLowerCase()==='review')&&reviewerExclusions.has(resourceId))return {eligible:false,resourceId,score:Infinity,reasons:['reviewer_independence']};
   const caps=capabilities(resource);
   const wanted=String(capability||'general').toLowerCase();
   if(wanted==='api_doctor'&&!caps.includes('api_doctor'))return {eligible:false,resourceId,score:Infinity,reasons:['capability']};
