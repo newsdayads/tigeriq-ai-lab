@@ -36,6 +36,83 @@ class UpdateRulesTest {
         assertNull(UpdateRules.validateMetadata(10L, "2.0", "https://example.com/app.apk", "1234", "", false))
     }
 
+
+    @Test fun acceptsOnlyExactJsonScalarTypes() {
+        assertNotNull(
+            UpdateRules.validateJsonMetadataScalars(
+                10,
+                "2.0.0-test.10",
+                "https://example.com/app.apk",
+                sha,
+                null,
+                null,
+            ),
+        )
+        assertNotNull(
+            UpdateRules.validateJsonMetadataScalars(
+                11L,
+                "2.0.0-test.11",
+                "https://example.com/app.apk",
+                sha,
+                "Notes",
+                true,
+            ),
+        )
+    }
+
+    @Test fun rejectsJsonScalarTypeCoercion() {
+        assertNull(
+            UpdateRules.validateJsonMetadataScalars(
+                "10",
+                "2.0.0-test.10",
+                "https://example.com/app.apk",
+                sha,
+                "",
+                false,
+            ),
+        )
+        assertNull(
+            UpdateRules.validateJsonMetadataScalars(
+                10.0,
+                "2.0.0-test.10",
+                "https://example.com/app.apk",
+                sha,
+                "",
+                false,
+            ),
+        )
+        assertNull(
+            UpdateRules.validateJsonMetadataScalars(
+                10,
+                200,
+                "https://example.com/app.apk",
+                sha,
+                "",
+                false,
+            ),
+        )
+        assertNull(
+            UpdateRules.validateJsonMetadataScalars(
+                10,
+                "2.0.0-test.10",
+                "https://example.com/app.apk",
+                sha,
+                123,
+                false,
+            ),
+        )
+        assertNull(
+            UpdateRules.validateJsonMetadataScalars(
+                10,
+                "2.0.0-test.10",
+                "https://example.com/app.apk",
+                sha,
+                "",
+                "false",
+            ),
+        )
+    }
+
     @Test fun matchesOnlyWellFormedExpectedSha256() {
         assertTrue(UpdateRules.matchesExpectedSha256("A".repeat(64), "a".repeat(64)))
         assertFalse(UpdateRules.matchesExpectedSha256("A".repeat(64), "B".repeat(64)))
