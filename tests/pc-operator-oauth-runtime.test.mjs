@@ -40,7 +40,7 @@ test('runtime publishes protected resource and authorization metadata', () => {
   assert.deepEqual(r.protectedMetadata(), {
     resource: resourceUrl,
     authorization_servers: [issuerUrl],
-    scopes_supported: ['mcp:read', 'pc01:write', 'pc01:execute', 'pc01:ui', 'pc01:admin'],
+    scopes_supported: ['mcp:read', 'pc01:write', 'pc01:execute', 'pc01:ui', 'pc01:admin', 'offline_access'],
     bearer_methods_supported: ['header'],
   });
   assert.equal(r.authorizationMetadata().code_challenge_methods_supported[0], 'S256');

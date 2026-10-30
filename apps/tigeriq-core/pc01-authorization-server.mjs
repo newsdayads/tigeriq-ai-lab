@@ -28,7 +28,13 @@ async function body(req) {
 export function ownerCodeDigest(code, salt) {
   return scryptSync(code, salt, 32, {N:16384,r:8,p:1}).toString('hex');
 }
-export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = Date.now, audit = () => {}}) {
+export function createPc01AuthorizationServer({
+  config,
+  fetchImpl = fetch,
+  now = Date.now,
+  audit = () => {},
+  sessionStore = { load: () => [], save: () => {}, revoke: () => {} },
+}) {
   const issuer = exactHttpsUrl(config.issuerUrl);
   const resource = exactHttpsUrl(config.resourceUrl, {resource:true});
   const origin = new URL(issuer).origin;
@@ -39,9 +45,34 @@ export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = 
   if (key.asymmetricKeyType !== 'rsa' || key.asymmetricKeyDetails.modulusLength < 2048) throw Error('SIGNING_KEY_INVALID');
   const publicJwk = createPublicKey(key).export({format:'jwk'});
   const kid = hash(publicJwk.n).slice(0,24);
+
   const pending = new Map(), codes = new Map(), refresh = new Map();
+  const spentRefresh = new Map(); // tokenHash -> familyId
+  const revokedFamilies = new Set();
+
+  function reloadSessions() {
+    const stored = sessionStore.load?.() || [];
+    for (const session of stored) {
+      if (!session) continue;
+      const familyId = session.familyId || session.activeHash || session.hash;
+      if (session.revoked) {
+        revokedFamilies.add(familyId);
+      }
+      if (Array.isArray(session.spentHashes)) {
+        for (const s of session.spentHashes) {
+          spentRefresh.set(s, familyId);
+        }
+      }
+      const activeKey = session.activeHash || session.hash;
+      if (!session.revoked && activeKey && (session.expires === null || session.expires > now())) {
+        refresh.set(activeKey, { ...session, familyId, activeHash: activeKey });
+      }
+    }
+  }
+  reloadSessions();
+
   let cachedClient = null, clientAt = 0, loginWindow = 0, loginCount = 0;
-  const prune = map => { for (const [id, item] of map) if (item.expires <= now()) map.delete(id); };
+  const prune = map => { for (const [id, item] of map) if (item.expires !== null && item.expires <= now()) map.delete(id); };
   function limited(map) { prune(map); if (map.size >= 1000) throw Error('temporarily_unavailable'); }
   const events = (event, extra = {}) => audit({event, ...extra, at:new Date(now()).toISOString()});
   async function client() {
@@ -68,7 +99,7 @@ export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = 
     if (!state || state.length > 2048 || /[\x00-\x1f]/.test(state)) throw Error('invalid_request');
     return {clientId:CHATGPT_CLIENT,redirectUri:CHATGPT_REDIRECT,resource,scopes,state,challenge:params.get('code_challenge')};
   }
-  function tokens(grant, familyExpires = now() + 86400000) {
+  function tokens(grant) {
     limited(refresh);
     const seconds = Math.floor(now()/1000);
     const header = Buffer.from(JSON.stringify({alg:'RS256',typ:'JWT',kid})).toString('base64url');
@@ -77,12 +108,35 @@ export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = 
     const input = header + '.' + payload;
     const access = input + '.' + sign('RSA-SHA256', Buffer.from(input), key).toString('base64url');
     const renewal = random();
-    refresh.set(hash(renewal), {...grant, expires:familyExpires});
+    const renewalHash = hash(renewal);
+    const familyId = grant.familyId || random();
+    const session = {
+      familyId,
+      clientId: grant.clientId,
+      resource: grant.resource,
+      scopes: grant.scopes,
+      activeHash: renewalHash,
+      hash: renewalHash,
+      spentHashes: grant.spentHashes || [],
+      revoked: false,
+      revokedReason: null,
+      revokedAt: null,
+      expires: null,
+      createdAt: grant.createdAt || now(),
+      updatedAt: now(),
+    };
+    refresh.set(renewalHash, session);
+
+    const existing = (sessionStore.load?.() || []).filter(s => s && s.familyId !== familyId);
+    existing.push(session);
+    sessionStore.save?.(existing);
+
     events('OAUTH_TOKEN_ISSUED', {clientId:grant.clientId,scopes:grant.scopes});
     return {access_token:access,token_type:'Bearer',expires_in:600,scope:grant.scopes.join(' '),refresh_token:renewal};
   }
   const metadata = {
     issuer,authorization_endpoint:origin+'/oauth/authorize',token_endpoint:origin+'/oauth/token',
+    revocation_endpoint:origin+'/oauth/revoke',
     jwks_uri:origin+'/oauth/jwks',response_types_supported:['code'],
     grant_types_supported:['authorization_code','refresh_token'],code_challenge_methods_supported:['S256'],
     token_endpoint_auth_methods_supported:['none'],client_id_metadata_document_supported:true,
@@ -131,8 +185,6 @@ export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = 
         const cookie = String(req.headers.cookie || '').split(';').map(v => v.trim()).find(v => v.startsWith('__Host-tigeriq_oauth_csrf='));
         const csrf = cookie ? cookie.slice('__Host-tigeriq_oauth_csrf='.length) : '';
         if (!grant || grant.expires <= now() || !same(hash(csrf),grant.csrfHash)) throw Error('access_denied');
-        // A double click must not mint a second code or disturb the first exchange.
-        // Retain only the CSRF-bound consumed marker until the original expiry.
         if (grant.approved) {
           events('OAUTH_APPROVAL_DUPLICATE',{method:req.method,path,status:409});
           json(res,409,{error:'approval_already_processed'}); return true;
@@ -170,14 +222,67 @@ export function createPc01AuthorizationServer({config, fetchImpl = fetch, now = 
         }
         if (params.get('grant_type') === 'refresh_token') {
           stage = 'refresh_exchange';
-          const renewalHash = hash(params.get('refresh_token') || ''); grant = refresh.get(renewalHash);
-          if (!grant || grant.expires <= now() || grant.clientId !== params.get('client_id') ||
+          const renewalToken = params.get('refresh_token') || '';
+          const renewalHash = hash(renewalToken);
+          reloadSessions();
+
+          if (spentRefresh.has(renewalHash)) {
+            const familyId = spentRefresh.get(renewalHash);
+            revokedFamilies.add(familyId);
+            for (const [h, s] of refresh.entries()) {
+              if (s.familyId === familyId) refresh.delete(h);
+            }
+            sessionStore.revoke?.(renewalHash, 'replay_detected');
+            events('OAUTH_REPLAY_DETECTED', {clientId:params.get('client_id'), familyId});
+            throw Error('invalid_grant');
+          }
+
+          grant = refresh.get(renewalHash);
+          if (!grant || grant.revoked || revokedFamilies.has(grant.familyId) ||
+              (grant.expires !== null && grant.expires <= now()) ||
+              grant.clientId !== params.get('client_id') ||
               (params.has('resource') && params.get('resource') !== grant.resource) ||
               (params.has('scope') && params.get('scope') !== grant.scopes.join(' '))) throw Error('invalid_grant');
+
           refresh.delete(renewalHash);
-          json(res,200,tokens(grant,grant.expires));return true;
+          spentRefresh.set(renewalHash, grant.familyId);
+          const nextSpent = [...(grant.spentHashes || []), renewalHash];
+          const nextGrant = {
+            ...grant,
+            familyId: grant.familyId,
+            spentHashes: nextSpent,
+            createdAt: grant.createdAt || now(),
+          };
+          json(res,200,tokens(nextGrant));return true;
+        }
+        if (params.get('grant_type') === 'revoke') {
+          throw Error('unsupported_grant_type');
         }
         throw Error('unsupported_grant_type');
+      }
+      if (req.method === 'POST' && path === '/oauth/revoke') {
+        stage = 'session_revoke';
+        const params = await body(req);
+        if (req.headers.authorization || params.get('client_id') !== CHATGPT_CLIENT) throw Error('invalid_client');
+        const token = params.get('token') || '';
+        if (!token) throw Error('invalid_request');
+        const tokenHash = hash(token);
+        reloadSessions();
+
+        let matchedFamilyId = spentRefresh.get(tokenHash);
+        if (!matchedFamilyId && refresh.has(tokenHash)) {
+          matchedFamilyId = refresh.get(tokenHash).familyId;
+        }
+        if (matchedFamilyId) {
+          revokedFamilies.add(matchedFamilyId);
+          for (const [h, s] of refresh.entries()) {
+            if (s.familyId === matchedFamilyId) refresh.delete(h);
+          }
+        }
+        sessionStore.revoke?.(tokenHash, 'explicit_revocation');
+        events('OAUTH_SESSION_REVOKED',{clientId:CHATGPT_CLIENT});
+        res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store','Pragma':'no-cache'}).end('{}');
+        return true;
       }
       json(res,404,{error:'not_found'});return true;
     } catch (error) {
