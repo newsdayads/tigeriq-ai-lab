@@ -14,6 +14,13 @@ class TaxiMeterRulesTest {
         assertNull(TaxiMeterRules.parseRateVndPerKm("-1"))
     }
 
+    @Test fun validatesConfiguredRateBounds() {
+        assertTrue(TaxiMeterRules.validRateVndPerKm(1.0))
+        assertTrue(TaxiMeterRules.validRateVndPerKm(1_000_000.0))
+        assertNull(TaxiMeterRules.parseRateVndPerKm("1000001"))
+        assertNull(TaxiMeterRules.parseRateVndPerKm("NaN"))
+    }
+
     @Test fun calculatesDistanceBetweenValidCoordinates() {
         val meters = TaxiMeterRules.segmentMeters(10.8231, 106.6297, 10.8241, 106.6297)!!
         assertTrue(meters in 110.0..112.5)
