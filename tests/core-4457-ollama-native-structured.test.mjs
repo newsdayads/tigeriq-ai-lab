@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compileTaskPrompt } from '../apps/tigeriq-core/task-prompt-compiler.mjs';
-import { structuredExecutionSchema, buildNativeExecutionRequest, invokeNativeStructuredExecution } from '../apps/tigeriq-core/ollama-native-structured.mjs';
+import { structuredExecutionSchema, compactStructuredExecutionSchema, buildNativeExecutionRequest, invokeNativeStructuredExecution } from '../apps/tigeriq-core/ollama-native-structured.mjs';
 
 const criteria = [
   'The summary reports CODE=READY from the synthetic fixture.',
@@ -53,6 +53,14 @@ test('schema pins every ordered criterion verbatim and denies extra acceptance s
   assert.equal(schema.properties.acceptance.maxItems, 3);
   assert.deepEqual(schema.properties.acceptance.prefixItems.map(x => x.properties.criterion.const), criteria);
   assert.equal(schema.properties.schema.const, 'EXECUTION_RESULT_V1');
+});
+test('compact schema replaces verbose criterion literals with stable indexes', () => {
+  const { packet } = fixture(), schema = compactStructuredExecutionSchema(packet);
+  assert.deepEqual(schema.properties.acceptance.prefixItems.map(x => x.properties.criterion_index.const), [0,1,2]);
+  assert.equal(schema.properties.acceptance.minItems, 3);
+  assert.equal(schema.properties.acceptance.maxItems, 3);
+  assert.equal(schema.properties.summary.maxLength, 180);
+  assert.equal(schema.properties.evidence.maxItems, 6);
 });
 test('native request stays loopback-only with a finite budget and a bound packet', () => {
   const { packet, prompt } = fixture(), body = buildNativeExecutionRequest({ packet, prompt });

@@ -8,6 +8,7 @@ import {
   assertExecutionResultAccepted,
   parseExecutionResult,
   strictExecutionRetryPrompt,
+  repairCompactExecutionPrompt,
 } from '../apps/tigeriq-core/task-prompt-compiler.mjs';
 
 const base = {
@@ -47,6 +48,7 @@ describe('Task Prompt Compiler V1',()=>{
     for(const marker of ['GOAL:','CONTEXT_REFS:','ALLOWED_SCOPE:','FORBIDDEN_ACTIONS:','STEPS:','ACCEPTANCE:','EVIDENCE_REQUIRED:','BLOCK_CONDITIONS:','OUTPUT REQUIREMENT:']){
       expect(prompt).toContain(marker);
     }
+    expect(prompt).toContain('criterion_index');
   });
 
   it('3 carries selected skills and capability',()=>{
@@ -80,6 +82,29 @@ describe('Task Prompt Compiler V1',()=>{
     const gate=executionResultGate(accepted(packet),packet);
     expect(gate.pass).toBe(true);
     expect(gate.code).toBe('EXECUTION_ACCEPTED');
+  });
+
+  it('7b accepts compact criterion_index output and rejects invalid references',()=>{
+    const {packet}=compileTaskPrompt({...base,acceptance:['A','B','C']});
+    const compact=JSON.stringify({
+      schema:'EXECUTION_RESULT_V1',status:'complete',summary:'compact verified',
+      acceptance:packet.acceptance.map((_,criterion_index)=>({criterion_index,passed:true,evidence_refs:['e1']})),
+      evidence:[{id:'e1',type:'test',value:'bounded compact schema proof'}],block_reason:null,
+    });
+    expect(executionResultGate(compact,packet).code).toBe('EXECUTION_ACCEPTED');
+    const bad=JSON.parse(compact);bad.acceptance[2].criterion_index=99;
+    expect(executionResultGate(JSON.stringify(bad),packet).code).toBe('EXECUTION_ACCEPTANCE_REFERENCE_INVALID');
+    const mismatch=JSON.parse(compact);mismatch.acceptance[0].criterion='not A';
+    expect(executionResultGate(JSON.stringify(mismatch),packet).code).toBe('EXECUTION_ACCEPTANCE_REFERENCE_INVALID');
+  });
+
+  it('7c repairs a legacy stored prompt exactly once for compact LOCAL output',()=>{
+    const legacy='PACKET_JSON: {"task_id":"JOB-1"}\nOUTPUT REQUIREMENT: full criterion text';
+    const repaired=repairCompactExecutionPrompt(legacy);
+    expect(repaired.changed).toBe(true);
+    expect(repaired.prompt).toContain('criterion_index');
+    expect(repairCompactExecutionPrompt(repaired.prompt).reason).toBe('compact_contract_already_present');
+    expect(repairCompactExecutionPrompt('x'.repeat(11990),{maxChars:12000}).reason).toBe('compact_hint_budget_exhausted');
   });
 
   it('8 treats explicit blocked output as non-terminal acceptance',()=>{
