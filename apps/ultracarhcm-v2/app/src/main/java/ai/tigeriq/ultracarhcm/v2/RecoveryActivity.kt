@@ -92,7 +92,7 @@ class RecoveryActivity : ComponentActivity() {
                 .append(if (RecoveryRules.isExpectedPackageName(packageName)) "Có" else "Không")
             append("\nPhiên bản: ")
                 .append(RecoveryRules.versionLabel(info.versionName, code))
-            append("\nSHA-256 chứng thư ký: ")
+            append("\nSHA-256 chứng thư ký hiện tại: ")
                 .append(signingSha256(info) ?: "không đọc được")
         }
     }
@@ -110,15 +110,22 @@ class RecoveryActivity : ComponentActivity() {
         val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val signingInfo = info.signingInfo ?: return null
             if (signingInfo.hasMultipleSigners()) {
-                signingInfo.apkContentsSigners
+                signingInfo.apkContentsSigners?.toList().orEmpty()
             } else {
                 signingInfo.signingCertificateHistory
+                    ?.lastOrNull()
+                    ?.let(::listOf)
+                    .orEmpty()
             }
         } else {
-            info.signatures
+            info.signatures?.toList().orEmpty()
         }
-        val certificate = signatures?.firstOrNull() ?: return null
-        val digest = MessageDigest.getInstance("SHA-256").digest(certificate.toByteArray())
-        return RecoveryRules.hex(digest)
+        if (signatures.isEmpty()) return null
+
+        val digest = MessageDigest.getInstance("SHA-256")
+        val fingerprints = signatures.map { certificate ->
+            digest.digest(certificate.toByteArray())
+        }
+        return RecoveryRules.formatSigningSha256(fingerprints)
     }
 }
