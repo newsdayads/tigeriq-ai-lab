@@ -89,7 +89,7 @@ test('compiled QA refuses prompt truncation before any Ollama call',async()=>{
       timeoutMs:2000,maxPromptChars:12000,
       format:{type:'object',required:['schema']}
     }),
-    error=>error?.message==='NV09_COMPILED_PROMPT_BUDGET_EXCEEDED'&&error?.kind==='configuration'
+    error=>error?.message==='NV09_COMPILED_PROMPT_BUDGET_EXCEEDED'&&error?.kind==='job_contract'
   );
   assert.equal(called,false);
 });
