@@ -1,6 +1,7 @@
 package ai.tigeriq.ultracarhcm.v2
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -38,6 +39,17 @@ class QuickSlotRulesTest {
     fun normalizesPersistedTargetsWithoutUnboundedValues() {
         assertEquals("com.example.app", QuickSlotRules.normalizeTarget("  com.example.app  "))
         assertEquals("x".repeat(160), QuickSlotRules.normalizeTarget("x".repeat(200)))
+    }
+
+    @Test
+    fun persistedAssignmentsFailClosedOnMalformedTargets() {
+        assertTrue(QuickSlotRules.isValidPersistedAssignment("", ""))
+        assertTrue(QuickSlotRules.isValidPersistedAssignment("Camera USB", QuickSlotRules.CAMERA_TARGET))
+        assertTrue(QuickSlotRules.isValidPersistedAssignment("Maps", "com.google.android.apps.maps"))
+        assertFalse(QuickSlotRules.isValidPersistedAssignment("", "com.example.app"))
+        assertFalse(QuickSlotRules.isValidPersistedAssignment("Broken", "not-a-package"))
+        assertFalse(QuickSlotRules.isValidPersistedAssignment("x".repeat(29), "com.example.app"))
+        assertFalse(QuickSlotRules.isValidPersistedAssignment("App", "x".repeat(161)))
     }
 
     @Test
