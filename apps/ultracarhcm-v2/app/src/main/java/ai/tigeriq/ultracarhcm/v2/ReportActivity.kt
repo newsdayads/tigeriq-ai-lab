@@ -20,7 +20,7 @@ import java.util.Locale
 
 class ReportActivity : ComponentActivity() {
     private val prefs by lazy {
-        getSharedPreferences(TAXI_PREFS, Context.MODE_PRIVATE)
+        getSharedPreferences(TaxiMeterRules.PREFS_NAME, Context.MODE_PRIVATE)
     }
     private lateinit var summaryView: TextView
     private lateinit var recentView: TextView
@@ -129,7 +129,7 @@ class ReportActivity : ComponentActivity() {
 
     private fun readRows(): List<TripReportRow> {
         val history = try {
-            JSONArray(prefs.getString(KEY_HISTORY, "[]") ?: "[]")
+            JSONArray(prefs.getString(TaxiMeterRules.KEY_HISTORY, "[]") ?: "[]")
         } catch (_: Exception) {
             return emptyList()
         }
@@ -187,8 +187,4 @@ class ReportActivity : ComponentActivity() {
     private fun toast(message: String) =
         android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
 
-    companion object {
-        private const val TAXI_PREFS = "ultracar_v2_taxi_meter"
-        private const val KEY_HISTORY = "trip_history_json"
-    }
 }
