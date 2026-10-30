@@ -35,9 +35,13 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
     const end = home.indexOf('private fun editDriverName()');
     const block = home.slice(start, end);
     expect(block).toContain('HomeBackupRules.canReadBackupSchema');
-    expect(block).toContain('rawSlots.length() != QuickSlotRules.SLOT_COUNT');
+    expect(block).toContain('validatedQuickSlotsForBackup(rawSlots) ?: return false');
+    expect(home).toContain('private fun validatedQuickSlotsForBackup(source: JSONArray?): JSONArray?');
+    expect(home).toContain('rawLabel !is String || rawTarget !is String');
+    expect(home).toContain('QuickSlotRules.isValidPersistedAssignment(rawLabel, rawTarget)');
     expect(block).toContain('rawConfigs.length() > HomeConfigRules.MAX_SAVED');
     expect(block).toContain('normalizeHomeConfiguration(item) ?: return false');
+    expect(block).toContain('validatedQuickSlotsForBackup(item.optJSONArray("quickSlots")) == null');
     expect(block).toContain('val editor = prefs.edit()');
     expect(block.indexOf('val editor = prefs.edit()')).toBeGreaterThan(block.indexOf('normalizeHomeConfiguration(item) ?: return false'));
     expect(block).toContain('editor.apply()');
