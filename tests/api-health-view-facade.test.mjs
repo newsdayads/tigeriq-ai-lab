@@ -45,6 +45,13 @@ test('Vercel facade is owner-login protected and only reads PC01 allowlist', asy
     assert.equal(res.statusCode,200);
     assert.equal(lastUrl,'https://pc01.tail35d2f3.ts.net/');
     assert.equal(lastHeader,'Bearer ' + 'a'.repeat(48));
+    assert.match(String(res.body), /\/pc01\/work-center\.js/);
+    assert.match(String(res.body), /\/pc01\/api\/status/);
+    assert.match(String(res.body), /tiq-proxy-mobile-reload-bootstrap/);
+    assert.match(String(res.body), /bottom:calc\(20px \+ env\(safe-area-inset-bottom\)\)/);
+    assert.match(String(res.body), /location\.reload\(\)/);
+    assert.match(String(res.body), /aria-label','Tải lại trang/);
+    assert.equal((String(res.body).match(/id="tiq-proxy-mobile-reload-bootstrap"/g)||[]).length,1);
     process.env.TIGERIQ_HEALTH_VIEW_PATH_PREFIX='/health-view';
     res=mockRes();
     await handler({method:'GET',headers:{...deviceHeader},query:{resource:'api/status'}},res);
@@ -56,13 +63,6 @@ test('Vercel facade is owner-login protected and only reads PC01 allowlist', asy
     assert.equal(res.statusCode,503);
     assert.equal(res.body,'HEALTH_VIEW_PATH_INVALID');
     delete process.env.TIGERIQ_HEALTH_VIEW_PATH_PREFIX;
-    assert.match(String(res.body), /\/pc01\/work-center\.js/);
-    assert.match(String(res.body), /\/pc01\/api\/status/);
-    assert.match(String(res.body), /tiq-proxy-mobile-reload-bootstrap/);
-    assert.match(String(res.body), /bottom:calc\(20px \+ env\(safe-area-inset-bottom\)\)/);
-    assert.match(String(res.body), /location\.reload\(\)/);
-    assert.match(String(res.body), /aria-label','Tải lại trang/);
-    assert.equal((String(res.body).match(/id="tiq-proxy-mobile-reload-bootstrap"/g)||[]).length,1);
     res=mockRes();
     await handler({method:'GET',headers:{...deviceHeader},query:{resource:'api/work-history',number:'../1'}},res);
     assert.equal(res.statusCode,400);
