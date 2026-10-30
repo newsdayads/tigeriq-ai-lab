@@ -22,7 +22,7 @@ test('dev11 signer is local-user and exact-output only',()=>{
   assert.match(source,/DEV11_INPUT_SHA_MISMATCH/);
   assert.match(source,/DEV11_ZIPALIGN_VERIFY_FAILED/);
   assert.match(source,/DEV11_APK_IDENTITY_MISMATCH/);
-  assert.doesNotMatch(source,/Copy-Item -Force|Remove-Item.*SIGNED_TEST|Get-ChildItem.*\.apk/i);
+  assert.doesNotMatch(source,/Copy-Item -Force|Get-ChildItem.*\.apk/i);
 });
 
 test('dev11 signer uses existing local DPAPI enrollment and erases process secrets',()=>{
@@ -36,8 +36,16 @@ test('dev11 signer uses existing local DPAPI enrollment and erases process secre
   assert.doesNotMatch(source,/Read-Host|ConvertFrom-SecureString|Register-ScheduledTask|schtasks\s+\/create|--ks-pass\s+pass:|--key-pass\s+pass:/i);
 });
 
+test('dev11 signer verifies temporary output before publishing final output',()=>{
+  assert.match(source,/\.tmp-'\+\[guid\]::NewGuid/);
+  assert.match(source,/apksigner verify --verbose --print-certs \$tempOutput/);
+  assert.match(source,/DEV11_CERTIFICATE_PIN_MISMATCH/);
+  assert.match(source,/DEV11_SIGNED_IDENTITY_MISMATCH/);
+  assert.match(source,/Move-Item -LiteralPath \$tempOutput -Destination \$output/);
+  assert.match(source,/Remove-Item -LiteralPath \$tempOutput -Force/);
+});
+
 test('dev11 signer verifies v2 v3 certificate and signed package identity',()=>{
-  assert.match(source,/apksigner verify --verbose --print-certs/);
   assert.match(source,/Verified using v2 scheme/);
   assert.match(source,/Verified using v3 scheme/);
   assert.match(source,/DEV11_CERTIFICATE_PIN_MISMATCH/);
