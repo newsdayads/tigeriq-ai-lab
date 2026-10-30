@@ -86,6 +86,7 @@ export function deriveRoutingProfile({requested,taskKind,capability}={}) {
 export function failurePolicy(kind='outage') {
   const k=String(kind||'outage').toLowerCase();
   if(k==='rate_limit')return {kind:k,retrySameResource:false,failover:true,cooldownMs:30*60*1000,stop:false};
+  if(k==='job_contract')return {kind:k,retrySameResource:false,failover:false,cooldownMs:0,stop:true};
   if(['auth','configuration','security','credential','paid','production','irreversible'].includes(k))return {kind:k,retrySameResource:false,failover:false,cooldownMs:6*60*60*1000,stop:true};
   if(k==='timeout')return {kind:k,retrySameResource:true,failover:true,cooldownMs:2*60*1000,stop:false};
   if(k==='invalid_response'||k==='model-output')return {kind:'invalid_response',retrySameResource:false,failover:true,cooldownMs:5*60*1000,stop:false};
