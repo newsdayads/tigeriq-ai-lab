@@ -27,6 +27,7 @@
     <activity android:name=".TelemetryActivity" android:exported="false" android:resizeableActivity="true"/>
     <activity android:name=".ObdActivity" android:exported="false" android:resizeableActivity="true"/>
     <activity android:name=".TaxiMeterActivity" android:exported="false" android:resizeableActivity="true"/>
+    <activity android:name=".ReportActivity" android:exported="false" android:resizeableActivity="true"/>
     <activity android:name=".ProfileActivity" android:exported="false" android:resizeableActivity="true"/>
     <activity android:name=".AppearanceActivity" android:exported="false" android:resizeableActivity="true"/>
     <activity android:name=".VehicleActivity" android:exported="false" android:resizeableActivity="true"/>
