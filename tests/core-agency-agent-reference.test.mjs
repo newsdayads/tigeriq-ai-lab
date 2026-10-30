@@ -45,7 +45,10 @@ test('uses only immutable blob-verified references with unchanged Core authority
 });
 test('skill loader only adds references behind a real ACTIVE skill',()=>{
   const src=readFileSync(new URL('../apps/tigeriq-core/skill-loader.mjs',import.meta.url),'utf8');
-  assert.match(src,/loaded\.length \? loadAgencyRoleReferences\(objectiveText/);
+  assert.match(src,/const agencyCandidate = ranked\.length && maxSkills > 0 \? loadAgencyRoleReferences/);
+  assert.match(src,/const agencyReservedChars = agencyCandidate\.contextBlock\.length/);
+  assert.match(src,/const skillBudget = agencyReservedChars/);
+  assert.match(src,/loaded\.length \? agencyCandidate/);
   assert.match(src,/agencyReferences: agencyBlock \? agency\.references : \[\]/);
   assert.match(src,/maxChars - totalChars/);
   assert.match(src,/\.filter\(skill => skill\.state === 'ACTIVE'\)/);
