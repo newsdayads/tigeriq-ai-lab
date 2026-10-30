@@ -10,6 +10,20 @@ class RecoveryRulesTest {
         assertEquals("000FA5FF", RecoveryRules.hex(byteArrayOf(0x00, 0x0F, 0xA5.toByte(), 0xFF.toByte())))
     }
 
+    @Test fun formatsCurrentSignerFingerprintsDeterministically() {
+        assertEquals(
+            "000F\nA5FF",
+            RecoveryRules.formatSigningSha256(
+                listOf(
+                    byteArrayOf(0xA5.toByte(), 0xFF.toByte()),
+                    byteArrayOf(0x00, 0x0F),
+                    byteArrayOf(0xA5.toByte(), 0xFF.toByte()),
+                ),
+            ),
+        )
+        assertEquals(null, RecoveryRules.formatSigningSha256(emptyList()))
+    }
+
     @Test fun acceptsOnlyDedicatedV2Package() {
         assertTrue(RecoveryRules.isExpectedPackageName("ai.tigeriq.ultracarhcm.v2"))
         assertFalse(RecoveryRules.isExpectedPackageName("ai.tigeriq.ultracarhcm"))
