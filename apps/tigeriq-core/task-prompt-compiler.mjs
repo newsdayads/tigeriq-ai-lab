@@ -140,6 +140,17 @@ function stripFence(raw) {
   return String(raw || '').trim().replace(/^\`\`\`(?:json)?\s*/i, '').replace(/\s*\`\`\`$/, '').trim();
 }
 
+
+export function repairCompactExecutionPrompt(prompt,{maxChars=12000}={}) {
+  const base=String(prompt||'').trim();
+  if(!base)return {changed:false,prompt:base,reason:'prompt_missing'};
+  if(base.includes('criterion_index'))return {changed:false,prompt:base,reason:'compact_contract_already_present'};
+  const hint='\n\nLOCAL COMPACT OUTPUT CONTRACT:\nWhen the provider schema requests criterion_index, use the zero-based packet acceptance order instead of repeating criterion text. Keep evidence_refs and all other EXECUTION_RESULT_V1 fields unchanged.';
+  const limit=Math.max(1000,Math.min(12000,Number(maxChars)||12000));
+  if(base.length+hint.length>limit)return {changed:false,prompt:base,reason:'compact_hint_budget_exhausted'};
+  return {changed:true,prompt:base+hint,reason:'compact_contract_appended'};
+}
+
 export function executionPacketFromPrompt(prompt) {
   const match = String(prompt || '').match(/^PACKET_JSON:\s*(\{.*\})$/m);
   if (!match) throw Object.assign(new Error('EXECUTION_PACKET_PROMPT_MISSING'), { kind:'invalid_response' });
