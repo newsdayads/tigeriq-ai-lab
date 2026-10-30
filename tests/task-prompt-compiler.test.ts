@@ -117,8 +117,11 @@ describe('Task Prompt Compiler V1',()=>{
     expect(stop).toBeGreaterThan(start);
     expect(router).toMatch(/options\.validateText\(text\).*?markResourceSuccess/s);
     expect(source).toContain('const validateText=compiledPacket?(text)=>assertExecutionResultAccepted(text,compiledPacket):null;');
-    expect(source).toContain('employeeAllowlist,validateText,compiledPacket}');
-    expect(source.split('employeeAllowlist,validateText,compiledPacket});').length-1).toBe(2);
+    expect(source).toContain('employeeAllowlist,validateText,validationRetryPrompt,compiledPacket}');
+    expect(source.split('employeeAllowlist,validateText,validationRetryPrompt,compiledPacket});').length-1).toBe(1);
+    expect(source.split('employeeAllowlist,validateText,compiledPacket});').length-1).toBe(1);
+    expect(router).toContain("typeof options.validationRetryPrompt==='function'");
+    expect(router).toContain("event('ROUTING_VALIDATION_RETRY'");
   });
 
 });
