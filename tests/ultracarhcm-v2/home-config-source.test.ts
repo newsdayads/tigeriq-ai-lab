@@ -75,7 +75,11 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(release).toContain('video.stopPlayback()');
     expect(release).toContain('homeVideo = null');
 
-    const rerender = home.slice(home.indexOf('private fun render()'), home.indexOf('val night = prefs.getBoolean'));
+    const renderStart = home.indexOf('private fun render()');
+    expect(renderStart).toBeGreaterThanOrEqual(0);
+    const renderNight = home.indexOf('val night = prefs.getBoolean', renderStart);
+    expect(renderNight).toBeGreaterThan(renderStart);
+    const rerender = home.slice(renderStart, renderNight);
     expect(rerender).toMatch(/releaseHomeVideo\(\)\s*root\.removeAllViews\(\)/);
     const destroy = home.slice(home.indexOf('override fun onDestroy()'), home.indexOf('private fun releaseHomeVideo()'));
     expect(destroy).toMatch(/homeVisible = false\s*tickHandler\.removeCallbacks\(clockTick\)\s*releaseHomeVideo\(\)\s*super\.onDestroy\(\)/);
