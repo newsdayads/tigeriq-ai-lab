@@ -325,7 +325,10 @@ export function pcOperatorTestRunSpec(testPath, {
     throw new Error('MCP_TEST_PATH_NOT_ALLOWED');
 
   const source = String(testSource || '');
-  const usesNodeTest = /(?:\bfrom\s+['"]node:test['"]|\bimport\s+['"]node:test['"]|\brequire\s*\(\s*['"]node:test['"]\s*\))/.test(source);
+  // Match actual import statements, not quoted examples in Vitest fixtures.
+  // A node:test string anywhere in a Vitest suite must not change the runner.
+  const usesNodeTest = /^\s*import\s+(?:[^\r\n;]*?\bfrom\s+)?['"]node:test['"]\s*;?/m.test(source)
+    || /^\s*(?:const|let|var)\s+[^\r\n=]+\s*=\s*require\s*\(\s*['"]node:test['"]\s*\)/m.test(source);
   const vitestPath = win.join(runtimeRoot, 'node_modules', 'vitest', 'vitest.mjs');
   return {
     exe: nodeExecutable,
