@@ -44,6 +44,17 @@ describe('#777 Core Smart Router integration',()=>{
     expect(core).toContain('campaign-prior-phase:');
   });
 
+  it('refreshes the same failed review prompt and grants at most one bounded repair credit',()=>{
+    expect(core).toContain('repairCampaignReviewPrompt');
+    expect(core).toContain("decision.action==='requeue_prompt_repair'");
+    expect(core).toContain('prompt=$4');
+    expect(core).toContain('j.max_attempts<4');
+    expect(core).toContain('greatest(j.max_attempts,j.attempts+1)');
+    expect(core).toContain('promptRepaired:promptRepair.changed');
+    expect(core).toContain('repairCreditGranted:repairCredit');
+    expect(core).not.toContain('max_attempts=max_attempts+10');
+  });
+
   it('reconciles failed safe GitHub autowork independently of manager priority',()=>{
     expect(core).toContain('async function reconcileFailedSafeAutoworkObjectives()');
     expect(core).toContain("kind='github_api_autowork' and status='failed'");

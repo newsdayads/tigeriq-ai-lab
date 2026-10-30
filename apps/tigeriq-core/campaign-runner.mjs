@@ -83,6 +83,24 @@ export function campaignPriorEvidenceContext({currentPhase=0,checkpoints=[],jobs
   return `PRIOR_CAMPAIGN_HANDOFF_V1 ${JSON.stringify(payload)}`.slice(0,2600);
 }
 
+export function repairCampaignReviewPrompt(prompt,priorContext,{maxChars=12000}={}){
+  const base=String(prompt||'').trim();
+  const context=String(priorContext||'').trim();
+  if(!base)return {changed:false,prompt:base,reason:'prompt_missing'};
+  if(!context)return {changed:false,prompt:base,reason:'prior_context_missing'};
+  if(base.includes('PRIOR_CAMPAIGN_HANDOFF_V1')||base.includes('AUTHORIZED PRIOR CAMPAIGN HANDOFF:'))
+    return {changed:false,prompt:base,reason:'prior_context_already_present'};
+  const marker='\n\nAUTHORIZED PRIOR CAMPAIGN HANDOFF:\n';
+  const limit=Math.max(1000,Math.min(12000,Number(maxChars)||12000));
+  const available=limit-base.length-marker.length;
+  if(available<256)return {changed:false,prompt:base,reason:'prompt_budget_exhausted'};
+  return {
+    changed:true,
+    prompt:`${base}${marker}${context.slice(0,available)}`,
+    reason:'prior_context_appended',
+  };
+}
+
 export function campaignTransition({status,currentPhase=0,phases=[]}) {
   const list = Array.isArray(phases) ? phases : [];
   if (status === 'blocked') return { action:'blocked', terminal:true, nextPhase:null };

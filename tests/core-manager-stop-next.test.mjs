@@ -1,7 +1,7 @@
 import { describe,expect,it } from 'vitest';
 import {managerIdleStepStopPlan} from '../apps/tigeriq-core/manager-cycle-policy.mjs';
 import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY,failedCampaignRuntimeRearmDecision,managerJobMaterializationDecision} from '../apps/tigeriq-core/manager-job-policy.mjs';
-import {campaignPriorEvidenceContext} from '../apps/tigeriq-core/campaign-runner.mjs';
+import {campaignPriorEvidenceContext,repairCampaignReviewPrompt} from '../apps/tigeriq-core/campaign-runner.mjs';
 import {apiDoctorAutoworkPriority} from '../apps/tigeriq-core/api-doctor.mjs';
 
 describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
@@ -48,12 +48,17 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
       routingProfile:'LOCAL',
     };
     expect(failedCampaignRuntimeRearmDecision(base))
-      .toEqual({action:'requeue',reason:'runtime_source_newer_than_failed_campaign_job'});
+      .toEqual({action:'requeue',reason:'runtime_source_newer_than_failed_campaign_job',nextMaxAttempts:2});
     expect(failedCampaignRuntimeRearmDecision({...base,runtimeUpdatedAt:'2026-10-30T06:32:42Z'}).action).toBe('keep');
     expect(failedCampaignRuntimeRearmDecision({...base,attempts:2}).reason).toBe('retry_budget_exhausted');
     expect(failedCampaignRuntimeRearmDecision({...base,routingProfile:'AUTO'}).reason).toBe('not_local_campaign');
     expect(failedCampaignRuntimeRearmDecision({...base,objectiveSummary:MANAGER_NO_PROGRESS_BLOCK_SUMMARY}).action).toBe('requeue');
     expect(failedCampaignRuntimeRearmDecision({...base,objectiveSummary:'other'}).reason).toBe('not_failed_campaign_rearm_guard');
+    const exhausted={...base,attempts:3,maxAttempts:3,runtimeUpdatedAt:'2026-10-30T07:00:00Z'};
+    expect(failedCampaignRuntimeRearmDecision({...exhausted,promptRepairEligible:true}))
+      .toEqual({action:'requeue_prompt_repair',reason:'runtime_source_newer_with_prompt_repair_credit',nextMaxAttempts:4});
+    expect(failedCampaignRuntimeRearmDecision({...exhausted,promptRepairEligible:false}).reason).toBe('retry_budget_exhausted');
+    expect(failedCampaignRuntimeRearmDecision({...exhausted,maxAttempts:4,attempts:4,promptRepairEligible:true}).reason).toBe('retry_budget_exhausted');
   });
   it('hands the immediately previous verified campaign evidence to the next phase without unbounded payloads',()=>{
     const text=campaignPriorEvidenceContext({
@@ -74,6 +79,18 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
   });
   it('does not invent prior campaign evidence on phase zero',()=>{
     expect(campaignPriorEvidenceContext({currentPhase:0,checkpoints:[],jobs:[]})).toBe('');
+  });
+  it('repairs a stale review prompt once without replacing its original compiled packet',()=>{
+    const original='PACKET_JSON: {"task_id":"JOB-1"}\nOUTPUT REQUIREMENT: JSON only';
+    const context='PRIOR_CAMPAIGN_HANDOFF_V1 {"checkpoint":{"jobId":"JOB-EVID-1"}}';
+    const repaired=repairCampaignReviewPrompt(original,context);
+    expect(repaired.changed).toBe(true);
+    expect(repaired.prompt).toContain(original);
+    expect(repaired.prompt).toContain('AUTHORIZED PRIOR CAMPAIGN HANDOFF:');
+    expect(repaired.prompt).toContain('JOB-EVID-1');
+    const second=repairCampaignReviewPrompt(repaired.prompt,context);
+    expect(second.changed).toBe(false);
+    expect(second.reason).toBe('prior_context_already_present');
   });
 });
 
