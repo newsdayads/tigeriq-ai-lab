@@ -48,7 +48,7 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
       routingProfile:'LOCAL',
     };
     expect(failedCampaignRuntimeRearmDecision(base))
-      .toEqual({action:'requeue',reason:'runtime_source_newer_than_failed_campaign_job'});
+      .toEqual({action:'requeue',reason:'runtime_source_newer_than_failed_campaign_job',nextMaxAttempts:2});
     expect(failedCampaignRuntimeRearmDecision({...base,runtimeUpdatedAt:'2026-10-30T06:32:42Z'}).action).toBe('keep');
     expect(failedCampaignRuntimeRearmDecision({...base,attempts:2}).reason).toBe('retry_budget_exhausted');
     expect(failedCampaignRuntimeRearmDecision({...base,routingProfile:'AUTO'}).reason).toBe('not_local_campaign');
