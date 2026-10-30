@@ -100,7 +100,7 @@ export async function runBoundedInferenceNv09(prompt, options = {}) {
   // truncate their tail (including the strict JSON output requirement).
   if (format && String(prompt || '').length > maxPromptChars) {
     const error = new Error('NV09_COMPILED_PROMPT_BUDGET_EXCEEDED');
-    error.kind = 'configuration';
+    error.kind = 'job_contract';
     throw error;
   }
   const entry = registeredModels.get(NV09_EMPLOYEE_ID) || registerNv09();

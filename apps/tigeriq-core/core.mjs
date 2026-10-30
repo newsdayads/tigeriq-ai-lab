@@ -614,7 +614,7 @@ async function hotPathStage(j, stage, extra = {}) {
 }
 function median(values){const xs=values.filter(Number.isFinite).sort((a,b)=>a-b);if(!xs.length)return null;const m=Math.floor(xs.length/2);return xs.length%2?xs[m]:Math.round((xs[m-1]+xs[m])/2);}
 function failureCooldownMs(kind){return failurePolicy(kind).cooldownMs;}
-function failureHealth(kind){return kind==='rate_limit'?'RATE_LIMITED':(['auth','configuration','security','credential','paid','production','irreversible'].includes(kind)?'OFFLINE':'ERROR');}
+function failureHealth(kind){return kind==='job_contract'?'READY':(kind==='rate_limit'?'RATE_LIMITED':(['auth','configuration','security','credential','paid','production','irreversible'].includes(kind)?'OFFLINE':'ERROR'));}
 async function maybeQuarantineResource(r){
   if(r.id!=='NV16')return null;
   const q=await pool.query(`select type from tigeriq_events where resource_id=$1 and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK','RESOURCE_FAILURE','RESOURCE_PROBE_FAIL') order by seq desc limit $2`,[r.resourceId,NV16_FAILURE_WINDOW]);
@@ -635,7 +635,7 @@ async function markResourceSuccess(r,jobId,latency,eventType='RESOURCE_SUCCESS',
 async function markResourceFailure(r,jobId,error,eventType='RESOURCE_FAILURE',releaseJob=true,context={}){
   const kind=error?.kind||'outage',policy=failurePolicy(kind),health=failureHealth(kind);
   const rateLimited=kind==='rate_limit';
-  let cooldownUntil=new Date(Date.now()+policy.cooldownMs).toISOString(),quotaPatch=null;
+  let cooldownUntil=policy.cooldownMs>0?new Date(Date.now()+policy.cooldownMs).toISOString():null,quotaPatch=null;
   if(rateLimited){
     const currentQuota=(await pool.query('select quota_state from tigeriq_ai_resources where resource_id=$1',[r.resourceId])).rows[0]?.quota_state||{};
     const state=rateLimitFailureState(currentQuota,policy.cooldownMs);
@@ -691,9 +691,23 @@ async function refreshResources() {
       credential='LOCAL';
       const availability=await nv09ModelAvailability();
       const cooldownActive=old?.cooldown_until && new Date(old.cooldown_until)>new Date();
+      if(availability.ok&&cooldownActive&&!old?.current_job_id){
+        const latestFailure=(await pool.query(
+          "select data->>'message' as message,ts from tigeriq_events where resource_id=$1 and type='RESOURCE_FAILURE' order by seq desc limit 1",
+          [r.resourceId],
+        )).rows[0]||null;
+        if(String(latestFailure?.message||'')==='NV09_COMPILED_PROMPT_BUDGET_EXCEEDED'){
+          const previousCooldown=old.cooldown_until;
+          await pool.query("update tigeriq_ai_resources set cooldown_until=null,health_state='READY',work_state='ON_DEMAND',updated_at=now() where resource_id=$1 and current_job_id is null",[r.resourceId]);
+          await pool.query("update tigeriq_resources set cooldown_until=null,health_state='READY',work_state='ON_DEMAND',updated_at=now() where employee_id=$1 and current_job_id is null",[r.id]);
+          old.cooldown_until=null;old.health_state='READY';old.work_state='ON_DEMAND';
+          await event('NV09_JOB_CONTRACT_COOLDOWN_RECONCILED',{employeeId:r.id,resourceId:r.resourceId,previousCooldown,failureAt:latestFailure?.ts||null,message:latestFailure.message});
+        }
+      }
+      const effectiveCooldownActive=old?.cooldown_until && new Date(old.cooldown_until)>new Date();
       const recentlyVerified=old?.health_state==='ONLINE' && old?.last_seen_at && (Date.now()-new Date(old.last_seen_at).getTime())<900000;
       if(!availability.ok)health='OFFLINE';
-      else if(cooldownActive&&['ERROR','RATE_LIMITED'].includes(old?.health_state))health=old.health_state;
+      else if(effectiveCooldownActive&&['ERROR','RATE_LIMITED'].includes(old?.health_state))health=old.health_state;
       else health=recentlyVerified?'ONLINE':'READY';
     }
     else if (r.provider === 'ollama') {
