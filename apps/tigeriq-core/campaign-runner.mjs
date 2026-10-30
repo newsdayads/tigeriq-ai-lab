@@ -28,6 +28,61 @@ export function currentCampaignGoal(objective, phases, currentPhase=0) {
   ].filter(Boolean).join('\n');
 }
 
+function campaignEvidenceText(value,max=700){
+  const raw=typeof value==='string'?value:JSON.stringify(value??null);
+  return String(raw||'').slice(0,Math.max(0,Number(max)||0));
+}
+
+export function campaignPriorEvidenceContext({currentPhase=0,checkpoints=[],jobs=[]}={}){
+  const phaseIndex=Math.max(0,Number(currentPhase)||0);
+  if(phaseIndex<=0)return '';
+  const previousPhaseIndex=phaseIndex-1;
+  const checkpoint=(Array.isArray(checkpoints)?checkpoints:[])
+    .filter(item=>Number(item?.phaseIndex)===previousPhaseIndex)
+    .slice(-1)[0]||null;
+  const receipts=(Array.isArray(jobs)?jobs:[])
+    .filter(job=>job?.status==='done'&&Number(job?.phase_index)===previousPhaseIndex)
+    .slice(0,4)
+    .map(job=>{
+      let result=job?.result??null;
+      if(typeof result==='string'){
+        try{result=JSON.parse(result);}catch{}
+      }
+      return {
+        id:String(job?.id||''),
+        title:String(job?.title||'').slice(0,180),
+        kind:String(job?.kind||''),
+        employeeId:String(job?.employee_id||''),
+        resourceId:String(job?.resource_id||''),
+        provider:String(job?.provider||''),
+        completedAt:job?.completed_at||null,
+        executionGate:result&&typeof result==='object'?{
+          pass:result?.executionGate?.pass===true,
+          code:String(result?.executionGate?.code||''),
+          evidenceIds:Array.isArray(result?.executionGate?.evidenceIds)?result.executionGate.evidenceIds.slice(0,8):[],
+        }:null,
+        resultText:campaignEvidenceText(result&&typeof result==='object'?result?.text:result,700),
+      };
+    });
+  if(!checkpoint&&!receipts.length)return '';
+  const payload={
+    schema:'TIGERIQ_CAMPAIGN_PRIOR_EVIDENCE_V1',
+    previousPhaseIndex,
+    checkpoint:checkpoint?{
+      phaseIndex:Number(checkpoint?.phaseIndex),
+      phaseNumber:Number(checkpoint?.phaseNumber)||previousPhaseIndex+1,
+      phaseTitle:String(checkpoint?.phaseTitle||'').slice(0,180),
+      summary:String(checkpoint?.summary||'').slice(0,400),
+      jobId:String(checkpoint?.jobId||''),
+      employeeId:String(checkpoint?.employeeId||''),
+      resourceId:String(checkpoint?.resourceId||''),
+      completedAt:checkpoint?.completedAt||null,
+    }:null,
+    receipts,
+  };
+  return `PRIOR_CAMPAIGN_HANDOFF_V1 ${JSON.stringify(payload)}`.slice(0,2600);
+}
+
 export function campaignTransition({status,currentPhase=0,phases=[]}) {
   const list = Array.isArray(phases) ? phases : [];
   if (status === 'blocked') return { action:'blocked', terminal:true, nextPhase:null };
