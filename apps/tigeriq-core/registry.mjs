@@ -92,6 +92,8 @@ export async function runBoundedInferenceNv09(prompt, options = {}) {
   const keepAlive = String(opts.keepAlive || '10m');
   const numCtx = Math.max(256, Math.min(4096, Number(opts.numCtx || 1024)));
   const numPredict = Math.max(1, Math.min(256, Number(opts.numPredict || 96)));
+  const maxPromptChars = Math.max(1000, Math.min(12000, Number(opts.maxPromptChars || 4000)));
+  const format = opts.format && typeof opts.format === 'object' && !Array.isArray(opts.format) ? opts.format : null;
   const fetchImpl = opts.fetchImpl || fetch;
   const entry = registeredModels.get(NV09_EMPLOYEE_ID) || registerNv09();
   setModelHealth(NV09_EMPLOYEE_ID, HEALTH_STATES.BUSY);
@@ -103,8 +105,9 @@ export async function runBoundedInferenceNv09(prompt, options = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: entry.model,
-        prompt: String(prompt || '').slice(0, 4000),
+        prompt: String(prompt || '').slice(0, maxPromptChars),
         stream: false,
+        ...(format ? { format } : {}),
         keep_alive: keepAlive,
         think: false,
         options: { temperature: 0, num_ctx: numCtx, num_predict: numPredict }
