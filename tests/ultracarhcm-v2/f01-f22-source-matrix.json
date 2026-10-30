@@ -362,24 +362,22 @@
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeBackupRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TaxiMeterRules.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayPositionRules.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleRules.kt"
       ],
-      "gap": "Backup schema v3 includes V2-owned Home state, quick slots, saved/default configs, per-display DeX positions, day/night, driver, vehicle model and license plate. Restore now fails closed on malformed quick-slot payloads and on JSON scalar type coercion across root fields, saved/default configs and overlay coordinates before any preference write. User-selected SAF background bytes/URI grants remain intentionally non-portable; V1 images/sound/other unimplemented feature data and real-device acceptance remain open.",
-      "actual": "HomeActivity exports schema v3 and preserves schema 1/2 compatibility. Backup import requires exact JSON boolean/string/integer scalar types instead of relying on coercing optBoolean/optString/optInt reads, strictly validates nested saved/default Home configuration scalars, validates all quick slots, and validates overlay display/x/y integers before mutating prefs. Malformed payloads fail the whole restore. Device/provider-bound custom background grants remain intentionally excluded.",
+      "gap": "Backup schema v4 now includes bounded V2-owned Taxi Meter configured rate and up to 100 validated trip records in addition to Home state, quick slots, saved/default configs, per-display DeX positions, day/night, driver, vehicle model and license plate. Schemas 1–3 remain readable without mutating Taxi Meter state. Device/provider-bound custom background grants, V1 images/sound/other unimplemented feature data and real-device acceptance remain open.",
+      "actual": "HomeActivity exports schema v4 through SAF and validates the complete payload before preference writes. Taxi Meter restore requires exact scalar types, a valid configured rate, bounded history length and valid startedAt/duration/distance/rate/fare values; legacy schemas 1–3 preserve existing Taxi Meter prefs. No V1 data, credentials or broad storage permission are included.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.exportHomeBackupJson",
+        "HomeActivity.exportTaxiMeterBackup",
+        "HomeActivity.validatedTaxiHistoryForBackup",
         "HomeActivity.writeHomeBackup",
         "HomeActivity.readHomeBackup",
         "HomeActivity.importHomeBackupJson",
-        "HomeBackupRules.requiresVehicleState",
-        "HomeActivity.validatedQuickSlotsForBackup",
-        "QuickSlotRules.isValidPersistedAssignment",
-        "HomeActivity.validatedHomeConfigurationForBackup",
-        "HomeBackupRules.exactBoolean",
-        "HomeBackupRules.exactString",
-        "HomeBackupRules.exactInt"
+        "HomeBackupRules.requiresTaxiMeterState",
+        "TaxiMeterRules.validRateVndPerKm"
       ],
       "permissions": []
     },
@@ -506,12 +504,14 @@
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeBackupRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TaxiMeterRules.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/RecoveryActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/RecoveryRules.kt"
       ],
-      "gap": "Local migration/recovery and backup source exist. Recovery now reports the current signing identity correctly after certificate rotation and includes all current APK signers for multi-signer packages. Actual signed release provenance, downgrade/rollback execution and real-device recovery acceptance remain open.",
-      "actual": "V2 has an independent package, lifecycle/UVC cleanup, versioned local Home-state migration, bounded backup recovery, and a RecoveryActivity that reads real installed package/version/current signing identity. For a single signer with rotation history it uses the last certificate as current; for multiple signers it fingerprints the full current APK signer set deterministically. It does not perform downgrade or bypass Android installer protections; rollback remains gated on a verified APK, backup and authorized device QA.",
+      "gap": "Local migration/recovery and schema-v4 backup source now preserve bounded V2 Taxi Meter history as well as Home state while keeping schemas 1–3 backward compatible. Recovery reports current signing identity correctly, but actual signed release provenance, downgrade/rollback execution and real-device recovery acceptance remain open.",
+      "actual": "V2 has an independent package, lifecycle/UVC cleanup, versioned Home-state migration and a bounded SAF backup envelope that can restore validated V2 Taxi Meter rate/history without touching legacy Taxi state when reading older schemas. RecoveryActivity reads real installed package/version/current signing identity; no installer protections are bypassed.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "AndroidManifest.xml",
