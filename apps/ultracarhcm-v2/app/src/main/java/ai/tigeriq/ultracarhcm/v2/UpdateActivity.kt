@@ -1,10 +1,8 @@
 package ai.tigeriq.ultracarhcm.v2
 
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -17,12 +15,13 @@ import androidx.activity.ComponentActivity
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 
 class UpdateActivity : ComponentActivity() {
     private lateinit var status: TextView
     private lateinit var checkButton: Button
     private lateinit var downloadButton: Button
-    private var verifiedDownloadUrl: String? = null
+    private var pendingUpdate: UpdateMetadata? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,7 +43,9 @@ class UpdateActivity : ComponentActivity() {
             setTextColor(Color.WHITE)
         })
         body.addView(TextView(this).apply {
-            text = "Kiểm tra cập nhật chạy độc lập với thông báo. Chỉ chấp nhận metadata và đường tải HTTPS."
+            text =
+                "Kiểm tra cập nhật chạy độc lập với thông báo. " +
+                "Metadata và gói tải phải dùng HTTPS; SHA-256 của bytes tải về phải khớp metadata."
             textSize = 14f
             setTextColor(Color.LTGRAY)
             setPadding(0, dp(8), 0, dp(16))
@@ -71,11 +72,11 @@ class UpdateActivity : ComponentActivity() {
         )
 
         downloadButton = Button(this).apply {
-            text = "TẢI CẬP NHẬT"
+            text = "TẢI & KIỂM TRA SHA-256"
             visibility = View.GONE
             setOnClickListener {
-                val url = verifiedDownloadUrl ?: return@setOnClickListener
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                val metadata = pendingUpdate ?: return@setOnClickListener
+                downloadAndVerify(metadata)
             }
         }
         body.addView(
@@ -90,7 +91,7 @@ class UpdateActivity : ComponentActivity() {
     }
 
     private fun checkForUpdate() {
-        verifiedDownloadUrl = null
+        pendingUpdate = null
         downloadButton.visibility = View.GONE
 
         val endpoint = getString(R.string.v2_update_metadata_url).trim()
@@ -170,7 +171,7 @@ class UpdateActivity : ComponentActivity() {
         }
 
         recordUpdateNotice(metadata)
-        verifiedDownloadUrl = metadata.apkUrl
+        pendingUpdate = metadata
         status.text = buildString {
             append("Có bản mới: ")
             append(metadata.latestVersionName)
@@ -181,11 +182,90 @@ class UpdateActivity : ComponentActivity() {
                 append("\n\n")
                 append(metadata.releaseNotes)
             }
-            append("\n\nSHA-256: ")
+            append("\n\nSHA-256 mong đợi: ")
             append(metadata.sha256)
+            append("\nGói chưa được tin cậy cho đến khi bytes tải về được kiểm SHA-256.")
             if (metadata.mandatory) append("\nBản cập nhật được đánh dấu bắt buộc bởi metadata.")
         }
         downloadButton.visibility = View.VISIBLE
+    }
+
+    private fun downloadAndVerify(metadata: UpdateMetadata) {
+        checkButton.isEnabled = false
+        downloadButton.isEnabled = false
+        status.text =
+            "Đang tải và kiểm SHA-256 cho ${metadata.latestVersionName} " +
+            "(build ${metadata.latestVersionCode})…"
+
+        Thread {
+            val result = runCatching { fetchAndVerifyPayload(metadata) }
+            runOnUiThread {
+                checkButton.isEnabled = true
+                downloadButton.isEnabled = true
+                result.fold(
+                    onSuccess = { byteCount ->
+                        status.text =
+                            "SHA-256 khớp metadata cho ${metadata.latestVersionName} " +
+                            "(build ${metadata.latestVersionCode}), ${byteCount} bytes.\n" +
+                            "Gói chỉ được xác minh tính toàn vẹn; V2 chưa tự cài đặt vì " +
+                            "kênh cài đặt/phát hành chưa được nghiệm thu."
+                    },
+                    onFailure = {
+                        status.text =
+                            "Từ chối gói cập nhật: ${it.message ?: "không xác minh được SHA-256"}"
+                    },
+                )
+            }
+        }.start()
+    }
+
+    private fun fetchAndVerifyPayload(metadata: UpdateMetadata): Long {
+        val connection = (URL(metadata.apkUrl).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 12_000
+            readTimeout = 20_000
+            instanceFollowRedirects = false
+            setRequestProperty(
+                "Accept",
+                "application/vnd.android.package-archive,application/octet-stream",
+            )
+        }
+        try {
+            if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+                throw IllegalStateException("HTTP ${connection.responseCode}")
+            }
+            val declaredLength = connection.contentLengthLong
+            if (declaredLength > MAX_APK_BYTES) {
+                throw IllegalArgumentException("gói cập nhật vượt giới hạn kích thước")
+            }
+
+            val digest = MessageDigest.getInstance("SHA-256")
+            var total = 0L
+            connection.inputStream.use { input ->
+                val buffer = ByteArray(16 * 1024)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    if (count == 0) continue
+                    total += count
+                    if (total > MAX_APK_BYTES) {
+                        throw IllegalArgumentException("gói cập nhật vượt giới hạn kích thước")
+                    }
+                    digest.update(buffer, 0, count)
+                }
+            }
+            if (total <= 0L) throw IllegalArgumentException("gói cập nhật rỗng")
+
+            val observedSha256 = digest.digest().joinToString("") { byte ->
+                "%02X".format(byte.toInt() and 0xFF)
+            }
+            if (!UpdateRules.matchesExpectedSha256(metadata.sha256, observedSha256)) {
+                throw SecurityException("SHA-256 không khớp metadata")
+            }
+            return total
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun recordUpdateNotice(metadata: UpdateMetadata) {
@@ -224,5 +304,6 @@ class UpdateActivity : ComponentActivity() {
 
     companion object {
         private const val MAX_METADATA_CHARS = 128 * 1024
+        private const val MAX_APK_BYTES = 256L * 1024L * 1024L
     }
 }

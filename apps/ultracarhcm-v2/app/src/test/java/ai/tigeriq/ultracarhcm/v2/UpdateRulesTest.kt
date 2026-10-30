@@ -36,6 +36,13 @@ class UpdateRulesTest {
         assertNull(UpdateRules.validateMetadata(10L, "2.0", "https://example.com/app.apk", "1234", "", false))
     }
 
+    @Test fun matchesOnlyWellFormedExpectedSha256() {
+        assertTrue(UpdateRules.matchesExpectedSha256("A".repeat(64), "a".repeat(64)))
+        assertFalse(UpdateRules.matchesExpectedSha256("A".repeat(64), "B".repeat(64)))
+        assertFalse(UpdateRules.matchesExpectedSha256("1234", "1234"))
+        assertFalse(UpdateRules.matchesExpectedSha256("A".repeat(64), "1234"))
+    }
+
     @Test fun comparesVersionCodesWithoutTreatingEqualAsUpdate() {
         val metadata = UpdateRules.validateMetadata(
             10L,

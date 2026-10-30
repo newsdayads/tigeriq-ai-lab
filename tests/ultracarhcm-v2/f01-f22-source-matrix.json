@@ -327,8 +327,8 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/NotificationActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/NotificationRules.kt"
       ],
-      "gap": "Independent update-check source remains fail-closed until a verified V2 endpoint exists. Device-local update notices now self-expire when the installed build reaches the notice version; remote push/backend delivery and exact V1 notification parity remain unverified.",
-      "actual": "ProfileActivity exposes separate CẬP NHẬT and THÔNG BÁO actions. UpdateActivity validates bounded HTTPS V2 metadata and records only a newer-version notice into device-local V2 preferences. NotificationActivity clears a resolved notice once the installed build is at or above that notice, preserves notices for genuinely newer builds, and still supports read/clear actions. No V1 channel or push backend is inferred.",
+      "gap": "Independent update-check source remains fail-closed until a verified V2 endpoint exists. Downloaded update bytes are now bounded and SHA-256 verified against metadata before being treated as integrity-checked; remote push/backend delivery, installation channel and exact V1 notification parity remain unverified.",
+      "actual": "ProfileActivity exposes separate CẬP NHẬT and THÔNG BÁO actions. UpdateActivity validates bounded HTTPS V2 metadata, records only newer-version notices, downloads a candidate package without redirects, enforces a 256 MiB bound, computes SHA-256 over the received bytes and rejects mismatches. It does not auto-install or open the package. NotificationActivity clears resolved notices after upgrade. No V1 channel or push backend is inferred.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "ProfileActivity.buildContent",
@@ -340,7 +340,10 @@
         "NotificationActivity.onResume",
         "NotificationActivity.refresh",
         "NotificationRules.shouldReplaceNotice",
-        "NotificationRules.isResolvedNotice"
+        "NotificationRules.isResolvedNotice",
+        "UpdateActivity.downloadAndVerify",
+        "UpdateActivity.fetchAndVerifyPayload",
+        "UpdateRules.matchesExpectedSha256"
       ],
       "permissions": [
         "android.permission.INTERNET"
@@ -430,8 +433,8 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/PrivacyActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/PrivacyRules.kt"
       ],
-      "gap": "Runtime source now includes a user-visible status surface for camera, location, Bluetooth-connect and overlay permissions plus direct OS settings links; update-install/privacy-policy parity and real-device validation remain incomplete.",
-      "actual": "PrivacyActivity reads current runtime permission state without auto-granting anything, links to Android app/overlay settings, documents per-device USB permission behavior and the V2 manual SAF backup boundary. Existing camera/USB/location/Bluetooth recovery paths remain source-covered.",
+      "gap": "Runtime source includes user-visible camera/location/Bluetooth/overlay permission status and direct OS settings links. Update payload integrity is fail-closed with bounded SHA-256 verification, but package installation permission/channel, privacy-policy parity and real-device validation remain incomplete.",
+      "actual": "PrivacyActivity reports runtime permission state without auto-granting. Existing camera/USB/location/Bluetooth recovery remains source-covered. UpdateActivity now verifies downloaded candidate bytes against metadata SHA-256 without redirects and without invoking an installer; no REQUEST_INSTALL_PACKAGES permission or automatic install path is added.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "AndroidManifest.xml",
@@ -440,7 +443,9 @@
         "PrivacyRules.statusLabel",
         "UsbUvcController.start",
         "TelemetryActivity.refreshLocation",
-        "ObdActivity.requestDeviceSelection"
+        "ObdActivity.requestDeviceSelection",
+        "UpdateActivity.fetchAndVerifyPayload",
+        "UpdateRules.matchesExpectedSha256"
       ],
       "permissions": [
         "android.permission.CAMERA",
