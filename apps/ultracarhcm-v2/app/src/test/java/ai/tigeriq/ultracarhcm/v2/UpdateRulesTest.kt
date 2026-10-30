@@ -8,6 +8,8 @@ import org.junit.Test
 
 class UpdateRulesTest {
     private val sha = "A".repeat(64)
+    private val releaseUrl =
+        "https://github.com/newsdayads/tigeriq-ai-lab/releases/download/ultracarhcm-v2-test.12/app.apk"
 
     @Test fun acceptsOnlyHttpsUrlsWithoutEmbeddedCredentials() {
         assertTrue(UpdateRules.isSecureHttpsUrl("https://example.com/version.json"))
@@ -16,12 +18,13 @@ class UpdateRulesTest {
         assertFalse(UpdateRules.isSecureHttpsUrl("not-a-url"))
     }
 
-    @Test fun validatesCanonicalMetadataShape() {
+    @Test fun validatesTrustedReleaseMetadataShape() {
         assertNotNull(
             UpdateRules.validateMetadata(
-                10L,
-                "2.0.0-test.10",
-                "https://example.com/app.apk",
+                12L,
+                "2.0.0-test.12",
+                true,
+                releaseUrl,
                 sha,
                 "Release notes",
                 false,
@@ -29,33 +32,51 @@ class UpdateRulesTest {
         )
     }
 
-    @Test fun rejectsUnsafeOrIncompleteMetadata() {
-        assertNull(UpdateRules.validateMetadata(0L, "2.0", "https://example.com/app.apk", sha, "", false))
-        assertNull(UpdateRules.validateMetadata(10L, "", "https://example.com/app.apk", sha, "", false))
-        assertNull(UpdateRules.validateMetadata(10L, "2.0", "http://example.com/app.apk", sha, "", false))
-        assertNull(UpdateRules.validateMetadata(10L, "2.0", "https://example.com/app.apk", "1234", "", false))
+    @Test fun validatesExplicitNoReleaseMetadataShape() {
+        assertNotNull(
+            UpdateRules.validateMetadata(
+                11L,
+                "2.0.0-dev.11",
+                false,
+                "",
+                "",
+                "No signed V2 TEST release yet",
+                false,
+            ),
+        )
     }
 
+    @Test fun rejectsUnsafeOrIncompleteReleaseMetadata() {
+        assertNull(UpdateRules.validateMetadata(0L, "2.0", true, releaseUrl, sha, "", false))
+        assertNull(UpdateRules.validateMetadata(12L, "", true, releaseUrl, sha, "", false))
+        assertNull(UpdateRules.validateMetadata(12L, "2.0", true, "http://example.com/app.apk", sha, "", false))
+        assertNull(UpdateRules.validateMetadata(12L, "2.0", true, "https://example.com/app.apk", sha, "", false))
+        assertNull(UpdateRules.validateMetadata(12L, "2.0", true, releaseUrl, "1234", "", false))
+        assertNull(UpdateRules.validateMetadata(11L, "2.0", false, releaseUrl, sha, "", false))
+        assertNull(UpdateRules.validateMetadata(11L, "2.0", false, "", "", "", true))
+    }
 
     @Test fun acceptsOnlyExactJsonScalarTypes() {
         assertNotNull(
             UpdateRules.validateJsonMetadataScalars(
-                10,
-                "2.0.0-test.10",
-                "https://example.com/app.apk",
-                sha,
+                11,
+                "2.0.0-dev.11",
+                false,
+                null,
+                null,
                 null,
                 null,
             ),
         )
         assertNotNull(
             UpdateRules.validateJsonMetadataScalars(
-                11L,
-                "2.0.0-test.11",
-                "https://example.com/app.apk",
+                12L,
+                "2.0.0-test.12",
+                true,
+                releaseUrl,
                 sha,
                 "Notes",
-                true,
+                false,
             ),
         )
     }
@@ -63,9 +84,10 @@ class UpdateRulesTest {
     @Test fun rejectsJsonScalarTypeCoercion() {
         assertNull(
             UpdateRules.validateJsonMetadataScalars(
-                "10",
-                "2.0.0-test.10",
-                "https://example.com/app.apk",
+                "12",
+                "2.0.0-test.12",
+                true,
+                releaseUrl,
                 sha,
                 "",
                 false,
@@ -73,9 +95,10 @@ class UpdateRulesTest {
         )
         assertNull(
             UpdateRules.validateJsonMetadataScalars(
-                10.0,
-                "2.0.0-test.10",
-                "https://example.com/app.apk",
+                12.0,
+                "2.0.0-test.12",
+                true,
+                releaseUrl,
                 sha,
                 "",
                 false,
@@ -83,9 +106,10 @@ class UpdateRulesTest {
         )
         assertNull(
             UpdateRules.validateJsonMetadataScalars(
-                10,
+                12,
                 200,
-                "https://example.com/app.apk",
+                true,
+                releaseUrl,
                 sha,
                 "",
                 false,
@@ -93,9 +117,43 @@ class UpdateRulesTest {
         )
         assertNull(
             UpdateRules.validateJsonMetadataScalars(
-                10,
-                "2.0.0-test.10",
-                "https://example.com/app.apk",
+                12,
+                "2.0.0-test.12",
+                "true",
+                releaseUrl,
+                sha,
+                "",
+                false,
+            ),
+        )
+        assertNull(
+            UpdateRules.validateJsonMetadataScalars(
+                12,
+                "2.0.0-test.12",
+                true,
+                123,
+                sha,
+                "",
+                false,
+            ),
+        )
+        assertNull(
+            UpdateRules.validateJsonMetadataScalars(
+                12,
+                "2.0.0-test.12",
+                true,
+                releaseUrl,
+                123,
+                "",
+                false,
+            ),
+        )
+        assertNull(
+            UpdateRules.validateJsonMetadataScalars(
+                12,
+                "2.0.0-test.12",
+                true,
+                releaseUrl,
                 sha,
                 123,
                 false,
@@ -103,9 +161,10 @@ class UpdateRulesTest {
         )
         assertNull(
             UpdateRules.validateJsonMetadataScalars(
-                10,
-                "2.0.0-test.10",
-                "https://example.com/app.apk",
+                12,
+                "2.0.0-test.12",
+                true,
+                releaseUrl,
                 sha,
                 "",
                 "false",
@@ -120,17 +179,29 @@ class UpdateRulesTest {
         assertFalse(UpdateRules.matchesExpectedSha256("A".repeat(64), "1234"))
     }
 
-    @Test fun comparesVersionCodesWithoutTreatingEqualAsUpdate() {
-        val metadata = UpdateRules.validateMetadata(
-            10L,
-            "2.0.0-test.10",
-            "https://example.com/app.apk",
+    @Test fun comparesVersionCodesOnlyWhenReleaseIsAvailable() {
+        val release = UpdateRules.validateMetadata(
+            12L,
+            "2.0.0-test.12",
+            true,
+            releaseUrl,
             sha,
             "",
             false,
         )!!
-        assertTrue(UpdateRules.hasNewerVersion(9L, metadata))
-        assertFalse(UpdateRules.hasNewerVersion(10L, metadata))
-        assertFalse(UpdateRules.hasNewerVersion(11L, metadata))
+        assertTrue(UpdateRules.hasNewerVersion(11L, release))
+        assertFalse(UpdateRules.hasNewerVersion(12L, release))
+        assertFalse(UpdateRules.hasNewerVersion(13L, release))
+
+        val noRelease = UpdateRules.validateMetadata(
+            13L,
+            "2.0.0-dev.13",
+            false,
+            "",
+            "",
+            "",
+            false,
+        )!!
+        assertFalse(UpdateRules.hasNewerVersion(11L, noRelease))
     }
 }
