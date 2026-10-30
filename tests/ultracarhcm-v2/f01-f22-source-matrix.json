@@ -216,7 +216,7 @@
       ],
       "gap": "Nine assignable/launchable slots exist. Device QA found that a cleared Camera USB assignment could later reappear after force-stop/relaunch, so quick-slot writes are now synchronously committed and surfaced as failure if persistence fails. Full V1 bottom-zone behavior/parity remains open.",
       "actual": "QuickBarGrid renders exactly nine slots in three rows; long press assigns/removes supported presets or package targets and click launches package/camera targets. saveQuickSlot now synchronously commits the bounded nine-slot JSON before rendering success, preventing a UI-only clear/assignment from being presented as durable when disk persistence failed.",
-      "testStatus": "SOURCE_IMPLEMENTED_DEVICE_REQUIRED",
+      "testStatus": "DEVICE_QA_NOT_TESTED",
       "entryPoints": [
         "HomeActivity.saveQuickSlot",
         "HomeActivity.renderQuickBar",
