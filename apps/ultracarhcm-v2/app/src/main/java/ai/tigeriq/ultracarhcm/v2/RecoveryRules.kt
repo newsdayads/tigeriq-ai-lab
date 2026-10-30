@@ -9,6 +9,14 @@ internal object RecoveryRules {
     fun isExpectedPackageName(packageName: String): Boolean =
         packageName == EXPECTED_PACKAGE
 
+    fun formatSigningSha256(digests: List<ByteArray>): String? {
+        val values = digests
+            .map(::hex)
+            .distinct()
+            .sorted()
+        return values.takeIf { it.isNotEmpty() }?.joinToString("\n")
+    }
+
     fun versionLabel(versionName: String?, versionCode: Long): String {
         val name = versionName?.trim().orEmpty().ifBlank { "không rõ" }
         return "$name (build $versionCode)"

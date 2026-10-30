@@ -495,8 +495,8 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/RecoveryActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/RecoveryRules.kt"
       ],
-      "gap": "Local migration/recovery and backup source exist. A recovery surface now reads the installed V2 package/version and signing-certificate SHA-256 without exposing secrets, and states rollback prerequisites. Actual signed release provenance, downgrade/rollback execution and real-device recovery acceptance remain open.",
-      "actual": "V2 has an independent package, lifecycle/UVC cleanup, versioned local Home-state migration, bounded backup recovery, and a RecoveryActivity that reads real installed package/version/signing identity. It does not perform downgrade or bypass Android installer protections; rollback remains gated on a verified APK, backup and authorized device QA.",
+      "gap": "Local migration/recovery and backup source exist. Recovery now reports the current signing identity correctly after certificate rotation and includes all current APK signers for multi-signer packages. Actual signed release provenance, downgrade/rollback execution and real-device recovery acceptance remain open.",
+      "actual": "V2 has an independent package, lifecycle/UVC cleanup, versioned local Home-state migration, bounded backup recovery, and a RecoveryActivity that reads real installed package/version/current signing identity. For a single signer with rotation history it uses the last certificate as current; for multiple signers it fingerprints the full current APK signer set deterministically. It does not perform downgrade or bypass Android installer protections; rollback remains gated on a verified APK, backup and authorized device QA.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "AndroidManifest.xml",
@@ -507,7 +507,8 @@
         "RecoveryActivity.installedIdentity",
         "RecoveryActivity.signingSha256",
         "RecoveryRules.hex",
-        "RecoveryRules.isExpectedPackageName"
+        "RecoveryRules.isExpectedPackageName",
+        "RecoveryRules.formatSigningSha256"
       ],
       "permissions": []
     }
