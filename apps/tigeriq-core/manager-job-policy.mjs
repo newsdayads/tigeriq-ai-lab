@@ -23,16 +23,25 @@ export function failedCampaignRuntimeRearmDecision({
   runtimeUpdatedAt='',
   hasCampaign=false,
   routingProfile='',
+  promptRepairEligible=false,
+  promptRepairCap=4,
 }={}) {
   if(String(objectiveStatus).trim().toLowerCase()!=='blocked')return {action:'keep',reason:'objective_not_blocked'};
   if(![FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY].includes(String(objectiveSummary)))return {action:'keep',reason:'not_failed_campaign_rearm_guard'};
   if(String(jobStatus).trim().toLowerCase()!=='failed')return {action:'keep',reason:'job_not_failed'};
   if(!hasCampaign||String(routingProfile).trim().toUpperCase()!=='LOCAL')return {action:'keep',reason:'not_local_campaign'};
   const used=Math.max(0,Number(attempts)||0),limit=Math.max(0,Number(maxAttempts)||0);
-  if(limit<=0||used>=limit)return {action:'keep',reason:'retry_budget_exhausted'};
   const failedAt=Date.parse(String(jobCompletedAt||'')),runtimeAt=Date.parse(String(runtimeUpdatedAt||''));
   if(!Number.isFinite(failedAt)||!Number.isFinite(runtimeAt)||runtimeAt<=failedAt)return {action:'keep',reason:'runtime_not_newer_than_failure'};
-  return {action:'requeue',reason:'runtime_source_newer_than_failed_campaign_job'};
+  if(limit<=0)return {action:'keep',reason:'retry_budget_exhausted'};
+  if(used>=limit){
+    const cap=Math.max(1,Math.min(4,Number(promptRepairCap)||4));
+    if(promptRepairEligible===true&&used===limit&&limit<cap){
+      return {action:'requeue_prompt_repair',reason:'runtime_source_newer_with_prompt_repair_credit',nextMaxAttempts:limit+1};
+    }
+    return {action:'keep',reason:'retry_budget_exhausted'};
+  }
+  return {action:'requeue',reason:'runtime_source_newer_than_failed_campaign_job',nextMaxAttempts:limit};
 }
 
 export function managerJobMaterializationDecision(existingStatus='') {
