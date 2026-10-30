@@ -25,7 +25,7 @@ import { NV09_EMPLOYEE_ID, NV09_MODEL, NV09_ENDPOINT, nv09ModelAvailability, reg
 import { appendSkillContextToPrompt, focusedSkillRoutingText, matchAndLoadSkills } from './skill-loader.mjs';
 import { summarizeCoreJobEvidence } from './job-outcome-summary.mjs';
 import { compileTaskPrompt, executionPacketFromPrompt, executionResultGate, assertExecutionResultAccepted, strictExecutionRetryPrompt } from './task-prompt-compiler.mjs';
-import { invokeNativeStructuredExecution } from './ollama-native-structured.mjs';
+import { invokeNativeStructuredExecution, structuredExecutionSchema } from './ollama-native-structured.mjs';
 import { buildSkillRoutingPreflight, finalizeSkillRoutingPreflight } from './skill-preflight.mjs';
 import { buildSkillOutcomeObservation, recordSkillOutcome, skillFailureLoopDecision } from './skill-effectiveness.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
@@ -427,7 +427,18 @@ async function invokeProvider(r, prompt, providerContext={}) {
   switch (r.provider) {
     case 'ollama': {
       return withPc01LocalInferenceSlot(pool,async()=>{
-      if(r.id===NV09_EMPLOYEE_ID){const out=await runBoundedInferenceNv09(prompt,{timeoutMs:NV09_TIMEOUT_MS,numCtx:1024,numPredict:96,keepAlive:'30s'});return out.text;}
+      if(r.id===NV09_EMPLOYEE_ID){
+        const packet=providerContext?.compiledPacket||null;
+        const out=await runBoundedInferenceNv09(prompt,{
+          timeoutMs:NV09_TIMEOUT_MS,
+          numCtx:packet?4096:1024,
+          numPredict:packet?256:96,
+          maxPromptChars:packet?12000:4000,
+          ...(packet?{format:structuredExecutionSchema(packet)}:{}),
+          keepAlive:'30s',
+        });
+        return out.text;
+      }
       // Bounded opt-in for compiled LOCAL packets. No generic request mutation.
       if(process.env.TIGERIQ_NV10_NATIVE_STRUCTURED==='enabled'
         &&r.id===OLLAMA_EMPLOYEE_ID&&r.model==='gemma3:4b'
