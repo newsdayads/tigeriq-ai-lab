@@ -38,7 +38,7 @@ describe('#777 Core Smart Router integration',()=>{
     expect(core).toContain("kind='github_api_autowork' and status='failed'");
     expect(core).toContain("o.metadata->>'admissionMode'='SAFE_P1_P5_POLICY'");
     expect(core).toContain("o.metadata->>'dispatchLane' in ('CORE_REASONING','CORE_REVIEW')");
-    expect(core).toContain("await recoverStale();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;");
+    expect(core).toContain("await recoverStale();await recoverFailedCampaignJobsAfterRuntimeSourceChange();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;");
     expect(core).toContain("reconciliation:'periodic_failed_safe_autowork'");
   });
 
