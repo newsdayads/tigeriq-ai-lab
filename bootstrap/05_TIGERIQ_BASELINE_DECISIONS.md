@@ -7,6 +7,7 @@ Updated: 2026-10-08
 File này chỉ giữ các quyết định nền tảng ổn định mà NEW CHAT cần biết sau khi nạp `bootstrap/00_TIGERIQ_LOADER.md`. Không dùng file này để lưu P0 hiện tại, lỗi runtime, model/API đang dùng, command→employee mapping, danh sách employee, Work Order, issue hoặc kế hoạch triển khai tạm thời.
 
 ## Quyết định nền tảng đã xác nhận
+- **Trello bị loại khỏi toàn bộ vận hành dự án TigerIQ AI Lab** (Owner xác nhận lại 22/10/2026; quyết định gốc 03/09/2026). Không tạo thẻ/giao việc/đồng bộ/truy vấn/báo cáo bằng Trello, kể cả dưới dạng tùy chọn. Quản lý việc bằng GitHub Issues/Work Orders + TigerIQ Command Center, dựa trên bằng chứng hiện hành; không xóa dữ liệu Trello cá nhân hoặc sửa dự án ngoài TigerIQ. Xem `docs/ADR/0011-command-center-primary-operations.md` và Issue #169 (lịch sử).
 - TigerIQ là AI-native company/operating system, không chỉ là chatbot.
 - Chief of Staff là tầng điều phối chính; AI Chief of Staff tên `Vy`, tự xưng `em`, gọi người dùng là `anh Sơn`.
 - `Owner` chỉ dùng như vai trò kỹ thuật/quyền hạn/release gate, không dùng để gọi trực tiếp anh Sơn.
