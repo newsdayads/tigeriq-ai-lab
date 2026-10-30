@@ -25,6 +25,7 @@ function harness({enabled='',model='gemma3:4b',profile='LOCAL',packet={packet_ve
     CORE_MANAGER_EMPLOYEE_ID:'NV08',OLLAMA_TIMEOUT_MS:90000,NV09_TIMEOUT_MS:240000,CORE_MANAGER_TIMEOUT_MS:150000,
     runBoundedInferenceNv09:async(_prompt,options)=>{calls.push({route:'nv09',options});return {text:'nv09'};},
     structuredExecutionSchema:packet=>({type:'object',packet}),
+    compactStructuredExecutionSchema:packet=>({type:'compact',packet}),
     // The atomic admission behavior is tested separately; this VM harness
     // isolates only native-vs-compatible NV10 request selection.
     pool:{},
@@ -43,7 +44,7 @@ function harness({enabled='',model='gemma3:4b',profile='LOCAL',packet={packet_ve
     runNv09:(compiledPacket=packet)=>fn({id:'NV09',provider:'ollama',model:'qwen3.5:9b'},'synthetic prompt',{profile,compiledPacket}),
   };
 }
-test('NV09 compiled packet gets bounded large context and exact execution schema',async()=>{
+test('NV09 compiled packet gets bounded large context and compact execution schema',async()=>{
   const packet={packet_version:'EXECUTION_PACKET_V1',task_id:'SYNTH'};
   const h=harness({packet});
   assert.equal(await h.runNv09(),'nv09');
@@ -52,7 +53,7 @@ test('NV09 compiled packet gets bounded large context and exact execution schema
   assert.equal(h.calls[0].options.numCtx,4096);
   assert.equal(h.calls[0].options.numPredict,256);
   assert.equal(h.calls[0].options.maxPromptChars,12000);
-  assert.deepEqual(h.calls[0].options.format,{type:'object',packet});
+  assert.deepEqual(h.calls[0].options.format,{type:'compact',packet});
 });
 test('NV09 generic request keeps prior small bounded defaults',async()=>{
   const h=harness({packet:null});
