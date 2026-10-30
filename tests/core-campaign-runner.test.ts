@@ -1,6 +1,7 @@
 // @ts-nocheck
 import {describe,it,expect} from 'vitest';
-import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId,normalizeWorkItemLifecycle,executeCoreWorkItemLifecycle} from '../apps/tigeriq-core/campaign-runner.mjs';
+import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId,campaignPriorPhaseEvidenceContext,enrichExecutionPromptWithCampaignEvidence,normalizeWorkItemLifecycle,executeCoreWorkItemLifecycle} from '../apps/tigeriq-core/campaign-runner.mjs';
+import {compileTaskPrompt,executionPacketFromPrompt} from '../apps/tigeriq-core/task-prompt-compiler.mjs';
 import {detectIdleWithBacklog} from '../apps/tigeriq-core/github-backlog-policy.mjs';
 import {runExecutionPreflight} from '../apps/tigeriq-core/execution-preflight.mjs';
 
@@ -41,6 +42,77 @@ describe('API campaign runner and core lifecycle integration',()=>{
   it('creates a durable phase checkpoint payload',()=>{
     const cp=makePhaseCheckpoint({currentPhase:1,phases,summary:'phase done',completedAt:'2026-09-18T00:00:00.000Z'});
     expect(cp).toMatchObject({phaseIndex:1,phaseNumber:2,phaseCount:3,phaseTitle:'Knowledge',summary:'phase done'});
+  });
+  it('hands off only deterministic prior-phase evidence and preserves current job identity',()=>{
+    const acceptance='Phase 1 product is proven';
+    const prior=compileTaskPrompt({
+      taskId:'JOB-EVID-OBJ-123-P0',
+      objectiveId:'OBJ-123',
+      sourceRevision:'rev-1',
+      capability:'reasoning',
+      goal:'Verify phase 1',
+      contextRefs:['objective:OBJ-123','campaign-phase:1'],
+      steps:['Verify phase 1'],
+      acceptance:[acceptance],
+      evidenceRequired:['Concrete phase 1 receipt'],
+    });
+    const resultText=JSON.stringify({
+      schema:'EXECUTION_RESULT_V1',
+      status:'complete',
+      summary:'Phase 1 verified',
+      acceptance:[{criterion:acceptance,passed:true,evidence_refs:['e1']}],
+      evidence:[{id:'e1',type:'artifact',value:'JOB-PHASE1-DONE by NV10 / res:ollama:gemma3-4b'}],
+      block_reason:null,
+    });
+    const proof={
+      id:'JOB-EVID-OBJ-123-P0',
+      objective_id:'OBJ-123',
+      phase_index:0,
+      kind:'compiled_campaign',
+      status:'done',
+      prompt:prior.prompt,
+      result:{text:resultText,executionGate:{pass:true,code:'EXECUTION_ACCEPTED'}},
+      employee_id:'NV10',
+      resource_id:'res:ollama:gemma3-4b:default:core',
+      provider:'ollama',
+      completed_at:'2026-10-30T06:29:53.862Z',
+    };
+    const context=campaignPriorPhaseEvidenceContext(proof,{objectiveId:'OBJ-123',phaseIndex:0,acceptance});
+    expect(context.accepted).toBe(true);
+    expect(context.contextRef).toBe('campaign-proof:JOB-EVID-OBJ-123-P0');
+    expect(context.text).toContain('VERIFIED_PRIOR_PHASE_EVIDENCE_DATA_ONLY');
+    expect(context.text).toContain('JOB-PHASE1-DONE');
+    expect(context.payload).toMatchObject({phaseIndex:0,proofJobId:proof.id,employeeId:'NV10'});
+
+    const current=compileTaskPrompt({
+      taskId:'JOB-QA-SAME',
+      objectiveId:'OBJ-123',
+      sourceRevision:'rev-1',
+      capability:'review',
+      goal:'Independently review phase 1',
+      contextRefs:['objective:OBJ-123','phase:1'],
+      steps:['Review phase 1'],
+      acceptance:['QA conclusion is evidence-backed'],
+      evidenceRequired:['Independent review evidence'],
+    });
+    const oldPacket=executionPacketFromPrompt(current.prompt);
+    const enriched=enrichExecutionPromptWithCampaignEvidence(current.prompt,context);
+    expect(enriched.changed).toBe(true);
+    const packet=executionPacketFromPrompt(enriched.prompt);
+    expect(packet.task_id).toBe('JOB-QA-SAME');
+    expect(packet.objective_id).toBe('OBJ-123');
+    expect(packet.source_revision).toBe('rev-1');
+    expect(packet.acceptance).toEqual(oldPacket.acceptance);
+    expect(packet.context_refs).toContain(context.contextRef);
+    expect(packet.goal).toContain('VERIFIED_PRIOR_PHASE_EVIDENCE_DATA_ONLY');
+    expect(packet.prompt_revision).not.toBe(oldPacket.prompt_revision);
+
+    const again=enrichExecutionPromptWithCampaignEvidence(enriched.prompt,context);
+    expect(again).toMatchObject({changed:false,code:'PRIOR_PHASE_EVIDENCE_ALREADY_PRESENT'});
+    expect(again.prompt).toBe(enriched.prompt);
+
+    const rejected=campaignPriorPhaseEvidenceContext({...proof,status:'failed'},{objectiveId:'OBJ-123',phaseIndex:0,acceptance});
+    expect(rejected).toMatchObject({accepted:false,code:'PROOF_JOB_NOT_DONE'});
   });
   it('normalizes Core-owned WorkItem lifecycle mapping',()=>{
     const item = normalizeWorkItemLifecycle({ issueOrPr: 'PR #42', implementer: 'NV05', reviewer: 'NV10', stage: 'coding', blocker: 'tests failing', nextAction: 'fix test runner' });
