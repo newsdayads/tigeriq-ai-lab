@@ -797,6 +797,26 @@ describe('P0 GH-5417: native PC Operator test runner and Work Order diagnostics'
     expect(spec.cwd).toBe('D:\\TigerIQ\\Runtime\\CoreSource');
     expect(spec.args.some(x => x.endsWith('.cmd'))).toBe(false);
   });
+  it('ignores a quoted node:test import example inside a Vitest suite', () => {
+    const source = [
+      "import { describe, it, expect, vi } from 'vitest';",
+      "const fixture = \"import test from 'node:test';\";",
+      "// import test from 'node:test'; is documentation only",
+    ].join('\n');
+    const spec = pcOperatorTestRunSpec('tests/pc-operator-mcp.test.mjs', {testSource:source});
+    expect(spec.runner).toBe('vitest');
+    expect(spec.args[1]).toBe('run');
+  });
+  it('recognizes a real node:test import without mistaking comment strings', () => {
+    const source = [
+      "// import { describe } from 'vitest'; commented out",
+      "import test from 'node:test';",
+      "const fixture = \"import { describe } from 'vitest';\";",
+    ].join('\n');
+    const spec = pcOperatorTestRunSpec('tests/example.test.mjs', {testSource:source});
+    expect(spec.runner).toBe('node:test');
+    expect(spec.args).toEqual(['--test', 'tests/example.test.mjs']);
+  });
   it('runs node:test suites with node --test instead of forcing Vitest', () => {
     const spec = pcOperatorTestRunSpec('tests/pc-operator-oauth-policy.test.mjs', {
       runtimeRoot: 'D:\\TigerIQ\\Runtime\\CoreSource',
