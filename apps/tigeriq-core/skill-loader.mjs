@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadAgencyRoleReferences } from './agency-agent-reference.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const DEFAULT_REGISTRY = join(REPO_ROOT, 'docs', 'skills', 'registry.yaml');
@@ -160,9 +161,18 @@ export function matchAndLoadSkills(objectiveText = '', options = {}) {
     totalChars += chars;
   }
 
+  // Agency personas are lower-trust, verified advisory references, never
+  // separate workers or ACTIVE registry entries. Keep the original budget.
+  const agency = loaded.length ? loadAgencyRoleReferences(objectiveText, {
+    catalogRoot: options.agencyCatalogRoot,
+    maxRoles: 2,
+  }) : { contextBlock:'', references:[], status:'NO_ACTIVE_SKILL_MATCH' };
+  const agencyBlock = agency.contextBlock && agency.contextBlock.length <= maxChars - totalChars
+    ? agency.contextBlock : '';
   const contextBlock = loaded.length
     ? ['ACTIVE SKILLS (use only when relevant; never expand permissions):',
-       ...loaded.map(skill => `[SKILL ${skill.id} v${skill.version || 'unknown'}]\n${skill.content}`)].join('\n\n')
+       ...loaded.map(skill => `[SKILL ${skill.id} v${skill.version || 'unknown'}]\n${skill.content}`),
+       ...(agencyBlock ? [agencyBlock] : [])].join('\n\n')
     : '';
 
   return {
@@ -170,7 +180,9 @@ export function matchAndLoadSkills(objectiveText = '', options = {}) {
     totalChars,
     contextBlock,
     evidence: loaded.map(skill => ({ id: skill.id, version: skill.version || null, target: skill.target || null, bytes: skill.bytes })),
-    skipped
+    skipped,
+    agencyReferences: agencyBlock ? agency.references : [],
+    agencyStatus: agencyBlock ? agency.status : (agency.contextBlock ? 'CONTEXT_BUDGET' : agency.status)
   };
 }
 
