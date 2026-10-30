@@ -19,7 +19,7 @@ const managerProviderBodyForHost = (provider, ...args) => {
 import { MANAGER_PENDING_JOB_STATUSES } from './manager-batch-policy.mjs';
 import { normalizeObjectiveRoutingProfile, objectiveJobRoutingProfile, mayWaitAfterLocalFailure, effectiveCoreJobRoutingProfile, githubAutoworkEmployeeAllowlist, githubAutoworkZeroCostResource } from './objective-local-routing.mjs';
 import { parseOwnerBacklogOrder, objectiveBacklogRank } from './owner-backlog-order.mjs';
-import { FAILED_LOGICAL_JOB_BLOCK_SUMMARY, failedCampaignRuntimeRearmDecision, managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
+import { FAILED_LOGICAL_JOB_BLOCK_SUMMARY, MANAGER_NO_PROGRESS_BLOCK_SUMMARY, failedCampaignRuntimeRearmDecision, managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, NV09_ENDPOINT, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 // NV09_CANARY_MARKER
 import { appendSkillContextToPrompt, focusedSkillRoutingText, matchAndLoadSkills } from './skill-loader.mjs';
@@ -35,7 +35,7 @@ import { CONTINUOUS_VERIFY_CADENCE_MS, cadenceContinuousVerifyDue, githubContinu
 import { planContinuousVerifyRecovery, CONTINUOUS_VERIFY_RECOVERY_EVENT_LIMIT } from './continuous-verify-recovery.mjs';
 import { assessMainCiGate } from './main-ci-health.mjs';
 import { autonomousRcaCanonicalAction, autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
-import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt } from './campaign-runner.mjs';
+import { normalizeCampaignPhases, currentCampaignGoal, campaignPriorEvidenceContext, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt } from './campaign-runner.mjs';
 import { buildAutonomousCodingHandoffWorkOrder, normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, functionalReprobeCandidates, functionalRoutingReadiness, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
@@ -779,11 +779,11 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
     where j.status='failed'
       and j.kind='compiled_ai'
       and o.status='blocked'
-      and o.summary=$1
+      and o.summary=any($1::text[])
       and o.metadata ? 'campaign'
       and upper(coalesce(o.metadata->>'routingProfile',''))='LOCAL'
     order by j.completed_at desc nulls last
-    limit 20`,[FAILED_LOGICAL_JOB_BLOCK_SUMMARY])).rows;
+    limit 20`,[[FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY]])).rows;
   let recovered=0;
   for(const row of rows){
     const decision=failedCampaignRuntimeRearmDecision({
@@ -810,7 +810,7 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
           select 1 from tigeriq_objectives o
           where o.id=j.objective_id
             and o.status='blocked'
-            and o.summary=$3
+            and o.summary=any($3::text[])
             and o.metadata ? 'campaign'
             and upper(coalesce(o.metadata->>'routingProfile',''))='LOCAL'
         )
@@ -824,7 +824,7 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
         metadata=jsonb_set(coalesce(o.metadata,'{}'::jsonb),'{runtimeRearmSha}',to_jsonb($4::text),true)
     from requeued r
     where o.id=r.objective_id
-    returning o.id`,[row.id,runtimeUpdatedAt,FAILED_LOGICAL_JOB_BLOCK_SUMMARY,runtimeSha]);
+    returning o.id`,[row.id,runtimeUpdatedAt,[FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY],runtimeSha]);
     if(out.rowCount!==1)continue;
     recovered++;
     await event('CAMPAIGN_FAILED_JOB_REARMED_AFTER_RUNTIME_SOURCE_CHANGE',{
@@ -2952,13 +2952,22 @@ async function managerTick() {
     if(idlePlan.action==='block'){
       const stopped=await pool.query(
         "update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1 and status='active' and (metadata->>'sourceRevision') is not distinct from $3::text and not exists(select 1 from tigeriq_jobs j where j.objective_id=$1 and j.phase_index=$4 and j.status not in ('done','failed'))",
-        [o.id,'Manager attempt stopped: two decisions without accepted child progress; awaiting material change',o.metadata?.sourceRevision??null,currentPhase],
+        [o.id,MANAGER_NO_PROGRESS_BLOCK_SUMMARY,o.metadata?.sourceRevision??null,currentPhase],
       );
       if(stopped.rowCount===1)await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase,reason:'no_progress_decision_budget_exhausted',maxCycles:2});
       return;
     }
   }
   const history=(await pool.query("select title,status,employee_id,resource_id,provider,result,failure from tigeriq_jobs where objective_id=$1 and phase_index=$2 order by created_at desc limit 8",[o.id,currentPhase])).rows;
+  const priorCampaignJobs=currentPhase>0?(await pool.query(
+    "select id,title,phase_index,kind,status,employee_id,resource_id,provider,completed_at,result from tigeriq_jobs where objective_id=$1 and phase_index=$2 and status='done' order by case when kind='compiled_campaign' then 0 else 1 end,completed_at desc nulls last limit 6",
+    [o.id,currentPhase-1],
+  )).rows:[];
+  const campaignPriorContext=campaignPriorEvidenceContext({
+    currentPhase,
+    checkpoints:campaign?.checkpoints||[],
+    jobs:priorCampaignJobs,
+  });
   const goal=currentCampaignGoal(o.objective,phases,currentPhase);
   let historyContext={text:'[]',metrics:{itemsIn:0,itemsOut:0,bytesBefore:0,bytesAfter:2,budgetBytes:8000,headroomBytes:2000,effectiveBudgetBytes:6000,droppedCount:0,truncatedCount:0,reductionBytes:0}};
   try{historyContext=buildManagerHistoryContext(history);}catch(error){await event('CONTEXT_GATEWAY_FAIL_SAFE',{objectiveId:o.id,phaseIndex:currentPhase,error:String(error?.message||error).slice(0,180)});}
@@ -2979,7 +2988,7 @@ async function managerTick() {
   const handoffContext=o.metadata?.handoff?.state==='children_completed'?`Completed autonomous child work: ${JSON.stringify(o.metadata.handoff.childResults||[]).slice(0,6000)}`:'';
   const isFinalCampaignPhase=phases.length>0&&currentPhase===phases.length-1;
   const terminalHandoffInstruction=isFinalCampaignPhase?'FINAL CAMPAIGN PHASE: when status=complete, jobs must contain ONLY additional NEXT work still required to satisfy the overall goal. Use [CODING] prefix in the title only for repository/source mutation; other next work is API/research/review/general. Every next-work prompt must include SCOPE: <resource-or-domain> and ACCEPTANCE: <observable completion>. If no further work is required, return jobs: [].':'';
-  const basePrompt=`You are TigerIQ AI Manager. Goal: ${goal}\nRecent work for this phase: ${historyContext.text}\n${handoffContext}\n${terminalHandoffInstruction}\nDecide the next useful work. Return ONLY JSON: {"status":"continue|complete|blocked","summary":"short","jobs":[{"title":"short","prompt":"standalone task instruction","capability":"general|reasoning|review|pc_operator","acceptance":["observable criterion"],"evidence_required":["required proof"],"scope":["authorized resource/domain"]}]}. On the CPU-local Manager, plan at most ONE job per decision; use compact JSON with short fields, then plan more only after real terminal evidence. The safety and independent-review requirements are unchanged. Return at most one job. Every non-pc_operator job MUST include at least one concrete acceptance criterion and one evidence_required item. Prefer independent useful work. Read-only constraints such as NO_CODE_CHANGE, NO_PC01_SHELL, NO_DIRECT_MAIN, and NO_PRODUCTION_RELEASE do not forbid normal Core general/reasoning/review jobs; they only forbid the named mutation or execution surface. When the Goal explicitly requests live Core AI validation, create bounded read-only AI jobs when eligible healthy resources exist. Use status=blocked only for a real unsatisfied dependency, resource, or safety gate. Repository implementation/coding is GitHub-only; never create coding jobs for PC01 Core. If the next useful work requires repository/source mutation, return that job with a title beginning exactly [CODING], put SCOPE: <comma-separated repository path prefixes> and ACCEPTANCE: <observable result> in its prompt; Core will materialize a GitHub child instead of running it as compiled AI. Never request paid services, Production/Main release, credential/security changes, destructive actions or reboot. For a campaign, status=complete means the CURRENT PHASE acceptance is achieved; Core will automatically advance to the next phase. Do not wait for Owner/chat between phases.`;
+  const basePrompt=`You are TigerIQ AI Manager. Goal: ${goal}\nRecent work for this phase: ${historyContext.text}\nPrior verified campaign handoff: ${campaignPriorContext||'none'}\n${handoffContext}\n${terminalHandoffInstruction}\nDecide the next useful work. Return ONLY JSON: {"status":"continue|complete|blocked","summary":"short","jobs":[{"title":"short","prompt":"standalone task instruction","capability":"general|reasoning|review|pc_operator","acceptance":["observable criterion"],"evidence_required":["required proof"],"scope":["authorized resource/domain"]}]}. On the CPU-local Manager, plan at most ONE job per decision; use compact JSON with short fields, then plan more only after real terminal evidence. The safety and independent-review requirements are unchanged. Return at most one job. Every non-pc_operator job MUST include at least one concrete acceptance criterion and one evidence_required item. Prefer independent useful work. Read-only constraints such as NO_CODE_CHANGE, NO_PC01_SHELL, NO_DIRECT_MAIN, and NO_PRODUCTION_RELEASE do not forbid normal Core general/reasoning/review jobs; they only forbid the named mutation or execution surface. When the Goal explicitly requests live Core AI validation, create bounded read-only AI jobs when eligible healthy resources exist. Use status=blocked only for a real unsatisfied dependency, resource, or safety gate. Repository implementation/coding is GitHub-only; never create coding jobs for PC01 Core. If the next useful work requires repository/source mutation, return that job with a title beginning exactly [CODING], put SCOPE: <comma-separated repository path prefixes> and ACCEPTANCE: <observable result> in its prompt; Core will materialize a GitHub child instead of running it as compiled AI. Never request paid services, Production/Main release, credential/security changes, destructive actions or reboot. When prior verified campaign handoff is present, review or verification work must carry its concrete receipt/evidence into the standalone job prompt; current-phase history being empty is not proof that prior evidence is missing. For a campaign, status=complete means the CURRENT PHASE acceptance is achieved; Core will automatically advance to the next phase. Do not wait for Owner/chat between phases.`;
   const prompt=appendSkillContextToPrompt(basePrompt,skillContext.contextBlock);
   // Read before the async Manager call. A GitHub evidence/revision update
   // during inference must invalidate any later terminal decision or evidence park.
@@ -3127,6 +3136,9 @@ async function managerTick() {
       const capability=['general','reasoning','review','pc_operator'].includes(spec.capability)?spec.capability:'general';
       const title=String(spec.title).slice(0,200);
       const rawPrompt=String(spec.prompt).slice(0,12000);
+      const campaignReviewPrompt=capability==='review'&&campaignPriorContext
+        ? `${rawPrompt.slice(0,1800)}\n\nAUTHORIZED PRIOR CAMPAIGN HANDOFF:\n${campaignPriorContext}`.slice(0,4200)
+        : rawPrompt;
       const id=capability==='pc_operator'?pcOperatorJobId(o.id,currentPhase,pcOperatorOrdinal++):`JOB-${randomUUID()}`;
       const promptText=capability==='pc_operator'?rawPrompt:compileTaskPrompt({
         taskId:id,
@@ -3134,10 +3146,10 @@ async function managerTick() {
         sourceRevision:String(o.metadata?.sourceRevision||o.metadata?.source_revision||o.updated_at||o.id),
         capability,
         skillIds:skillContext.evidence.map(x=>x.id),
-        goal:rawPrompt,
-        contextRefs:[`objective:${o.id}`,`phase:${currentPhase}`],
+        goal:campaignReviewPrompt,
+        contextRefs:[`objective:${o.id}`,`phase:${currentPhase}`,...(currentPhase>0?[`campaign-prior-phase:${currentPhase-1}`]:[])],
         allowedScope:Array.isArray(spec.scope)?spec.scope:(spec.scope?[String(spec.scope)]:['Only the resource/domain explicitly described by this task.']),
-        steps:[rawPrompt],
+        steps:[campaignReviewPrompt],
         acceptance:Array.isArray(spec.acceptance)&&spec.acceptance.length?spec.acceptance:(spec.acceptance?[String(spec.acceptance)]:[`Complete task "${title}" with an observable, evidence-backed result.`]),
         evidenceRequired:Array.isArray(spec.evidence_required)&&spec.evidence_required.length?spec.evidence_required:(spec.evidence_required?[String(spec.evidence_required)]:['At least one concrete evidence item supporting the claimed result.']),
       }).prompt.slice(0,12000);
