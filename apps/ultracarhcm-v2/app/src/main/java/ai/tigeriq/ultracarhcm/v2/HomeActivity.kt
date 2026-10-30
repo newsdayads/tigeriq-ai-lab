@@ -532,6 +532,34 @@ class HomeActivity : ComponentActivity() {
         return normalized
     }
 
+    private fun validatedHomeConfigurationForBackup(item: JSONObject): JSONObject? {
+        val schema = if (item.has("schemaVersion")) {
+            HomeBackupRules.exactInt(item.opt("schemaVersion")) ?: return null
+        } else {
+            0
+        }
+        if (!HomeConfigRules.canReadSchema(schema)) return null
+
+        if (item.has("name") && HomeBackupRules.exactString(item.opt("name")) == null) return null
+        if (item.has("driver") && HomeBackupRules.exactString(item.opt("driver")) == null) return null
+        if (item.has("night") && HomeBackupRules.exactBoolean(item.opt("night")) == null) return null
+        if (item.has("limo") && HomeBackupRules.exactBoolean(item.opt("limo")) == null) return null
+        if (item.has("vehicleModel") &&
+            HomeBackupRules.exactString(item.opt("vehicleModel")) == null
+        ) return null
+        if (item.has("licensePlate") &&
+            HomeBackupRules.exactString(item.opt("licensePlate")) == null
+        ) return null
+        if (schema >= HomeConfigRules.CURRENT_SCHEMA_VERSION &&
+            (!item.has("vehicleModel") || !item.has("licensePlate"))
+        ) return null
+        if (item.has("quickSlots") &&
+            validatedQuickSlotsForBackup(item.optJSONArray("quickSlots")) == null
+        ) return null
+
+        return normalizeHomeConfiguration(item)
+    }
+
     private fun normalizeHomeConfiguration(item: JSONObject): JSONObject? {
         val schema = item.optInt("schemaVersion", 0)
         if (!HomeConfigRules.canReadSchema(schema)) {
@@ -825,28 +853,30 @@ class HomeActivity : ComponentActivity() {
     private fun importHomeBackupJson(text: String): Boolean {
         if (!HomeBackupRules.withinSize(text.toByteArray(Charsets.UTF_8).size)) return false
         val root = try { JSONObject(text) } catch (_: Exception) { return false }
-        val backupSchema = root.optInt("backupSchemaVersion", -1)
+        val backupSchema =
+            HomeBackupRules.exactInt(root.opt("backupSchemaVersion")) ?: return false
         if (!HomeBackupRules.canReadBackupSchema(backupSchema)) return false
-        if (!root.has("night") || !root.has("limo") || !root.has("driver")) return false
-
-        val driver = HomeConfigRules.normalizeName(root.optString("driver", ""))
+        val night = HomeBackupRules.exactBoolean(root.opt("night")) ?: return false
+        val legacyLimo = HomeBackupRules.exactBoolean(root.opt("limo")) ?: return false
+        val rawDriver = HomeBackupRules.exactString(root.opt("driver")) ?: return false
+        val driver = HomeConfigRules.normalizeName(rawDriver)
         if (driver.isEmpty()) return false
 
         val requiresVehicleState = HomeBackupRules.requiresVehicleState(backupSchema)
         val safeVehicleModel: String
         val safeLicensePlate: String
         if (requiresVehicleState) {
-            if (!root.has("vehicleModel") || !root.has("licensePlate")) return false
-            val rawModel = root.optString("vehicleModel", "")
+            val rawModel =
+                HomeBackupRules.exactString(root.opt("vehicleModel")) ?: return false
+            val rawLicensePlate =
+                HomeBackupRules.exactString(root.opt("licensePlate")) ?: return false
             if (!VehicleRules.isSupportedModel(rawModel)) return false
             safeVehicleModel = rawModel
-            safeLicensePlate = VehicleRules.normalizeLicensePlate(
-                root.optString("licensePlate", ""),
-            )
+            safeLicensePlate = VehicleRules.normalizeLicensePlate(rawLicensePlate)
         } else {
             safeVehicleModel = VehicleRules.currentModel(
                 null,
-                root.optBoolean("limo", false),
+                legacyLimo,
             )
             safeLicensePlate = ""
         }
@@ -859,10 +889,7 @@ class HomeActivity : ComponentActivity() {
         val safeConfigs = JSONArray()
         for (index in 0 until rawConfigs.length()) {
             val item = rawConfigs.optJSONObject(index) ?: return false
-            if (item.has("quickSlots") &&
-                validatedQuickSlotsForBackup(item.optJSONArray("quickSlots")) == null
-            ) return false
-            val safe = normalizeHomeConfiguration(item) ?: return false
+            val safe = validatedHomeConfigurationForBackup(item) ?: return false
             safeConfigs.put(safe)
         }
 
@@ -870,10 +897,7 @@ class HomeActivity : ComponentActivity() {
             null
         } else {
             val item = root.optJSONObject("defaultHomeConfiguration") ?: return false
-            if (item.has("quickSlots") &&
-                validatedQuickSlotsForBackup(item.optJSONArray("quickSlots")) == null
-            ) return false
-            normalizeHomeConfiguration(item) ?: return false
+            validatedHomeConfigurationForBackup(item) ?: return false
         }
 
         val replaceOverlayPositions = HomeBackupRules.requiresOverlayPositions(backupSchema)
@@ -884,9 +908,10 @@ class HomeActivity : ComponentActivity() {
             val seenDisplays = mutableSetOf<Int>()
             for (index in 0 until rawOverlayPositions.length()) {
                 val item = rawOverlayPositions.optJSONObject(index) ?: return false
-                val displayId = item.optInt("displayId", -1)
-                val x = item.optInt("x", -1)
-                val y = item.optInt("y", -1)
+                val displayId =
+                    HomeBackupRules.exactInt(item.opt("displayId")) ?: return false
+                val x = HomeBackupRules.exactInt(item.opt("x")) ?: return false
+                val y = HomeBackupRules.exactInt(item.opt("y")) ?: return false
                 if (!HomeBackupRules.validOverlayDisplayId(displayId) ||
                     !HomeBackupRules.validOverlayCoordinate(x) ||
                     !HomeBackupRules.validOverlayCoordinate(y) ||
@@ -896,7 +921,7 @@ class HomeActivity : ComponentActivity() {
         }
 
         val editor = prefs.edit()
-            .putBoolean("night", root.optBoolean("night", false))
+            .putBoolean("night", night)
             .putBoolean("limo", safeVehicleModel == VehicleRules.MODEL_LIMO_RED)
             .putString(VehicleRules.PREF_MODEL, safeVehicleModel)
             .putString(VehicleRules.PREF_LICENSE_PLATE, safeLicensePlate)
