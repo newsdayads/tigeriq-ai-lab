@@ -83,6 +83,9 @@ test('owner invitation requires same-origin HTTPS and grants a signed device coo
   await pairHandler({method:'GET',headers:{}},response);
   assert.equal(response.statusCode,200);
   assert.match(response.body,/history.replaceState/);
+  assert.match(response.body,/new URLSearchParams\\(location\\.search\\)/);
+  assert.match(response.body,/query\\.get\\('invite'\\)/);
+  assert.match(response.body,/fragment\\.get\\('token'\\)/);
  }finally{
   if(old===undefined)delete process.env.TIGERIQ_LIVE_DEVICE_KEY;
   else process.env.TIGERIQ_LIVE_DEVICE_KEY=old;
