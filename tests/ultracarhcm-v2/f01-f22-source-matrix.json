@@ -53,15 +53,19 @@
       "expected": "Real USB Host UVC streaming, image controls and USB permission lifecycle",
       "status": "SOURCE_IMPLEMENTED_DEVICE_REQUIRED",
       "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbCameraActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
         "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UvcRecoveryRules.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UvcRecoveryRules.kt",
+        "tests/ultracarhcm-v2/camera-runtime-permission-source.test.ts"
       ],
-      "gap": "USB-host UVC source lifecycle, hot-plug handling and bounded transient-loss reselect exist; real USB camera permission/preview/reconnect behavior is not device-accepted.",
-      "actual": "UsbUvcController discovers USB video-class devices, waits for hot-plug, auto-selects an attached UVC device, opens preview, and after transient camera/device close or UVC error performs at most two delayed reselect attempts only while the same UVC device remains attached. Permission denial stays terminal and manual retry remains available.",
+      "gap": "Runtime CAMERA permission is now a fail-visible gate before any UVC controller start; USB-device permission remains device-scoped in the UVC library. Real USB camera grant/preview/reconnect behavior still requires physical-device acceptance.",
+      "actual": "UsbCameraActivity checks android.permission.CAMERA before calling UsbUvcController.start(), requests the Android runtime permission through the system prompt only, keeps denial visible, and allows the user to retry. UsbUvcController separately discovers USB video-class devices, requests device permission through the UVC library, opens preview, and performs bounded recovery for a still-attached device.",
       "testStatus": "DEVICE_QA_NOT_TESTED",
       "entryPoints": [
         "UsbCameraActivity.onCreate",
+        "UsbCameraActivity.openCamera",
+        "UsbCameraActivity.onRequestPermissionsResult",
         "UsbUvcController.start",
         "UsbUvcController.beginPreview",
         "UsbUvcController.scheduleRecovery",
@@ -431,19 +435,23 @@
       "expected": "Permissions for camera/USB/geolocation/overlay/update package/privacy/error recovery",
       "status": "PARTIAL_SOURCE",
       "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbCameraActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TelemetryActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ObdActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/PrivacyActivity.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/PrivacyRules.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/PrivacyRules.kt",
+        "tests/ultracarhcm-v2/camera-runtime-permission-source.test.ts"
       ],
-      "gap": "Runtime source includes user-visible camera/location/Bluetooth/overlay permission status and direct OS settings links. Update payload integrity is fail-closed with bounded SHA-256 verification, but package installation permission/channel, privacy-policy parity and real-device validation remain incomplete.",
-      "actual": "PrivacyActivity reports runtime permission state without auto-granting. Existing camera/USB/location/Bluetooth recovery remains source-covered. UpdateActivity now verifies downloaded candidate bytes against metadata SHA-256 without redirects and without invoking an installer; no REQUEST_INSTALL_PACKAGES permission or automatic install path is added.",
+      "gap": "Runtime source now includes a fail-visible CAMERA gate before UVC startup plus user-visible location/Bluetooth/overlay permission state and OS settings links. USB device permission stays separate. Package installation permission/channel, privacy-policy parity and full real-device validation remain incomplete.",
+      "actual": "UsbCameraActivity requests CAMERA only through the Android runtime prompt and never starts UVC before grant; denial remains visible and user-retryable. PrivacyActivity reports runtime permission state without auto-granting. Existing USB/location/Bluetooth recovery remains source-covered. UpdateActivity verifies downloaded candidate bytes against metadata SHA-256 without redirects and without invoking an installer; no REQUEST_INSTALL_PACKAGES permission or automatic install path is added.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "AndroidManifest.xml",
+        "UsbCameraActivity.openCamera",
+        "UsbCameraActivity.onRequestPermissionsResult",
         "PrivacyActivity.onResume",
         "PrivacyActivity.refreshStatus",
         "PrivacyRules.statusLabel",
