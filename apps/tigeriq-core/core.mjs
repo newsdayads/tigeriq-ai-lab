@@ -19,7 +19,7 @@ const managerProviderBodyForHost = (provider, ...args) => {
 import { MANAGER_PENDING_JOB_STATUSES } from './manager-batch-policy.mjs';
 import { normalizeObjectiveRoutingProfile, objectiveJobRoutingProfile, mayWaitAfterLocalFailure, effectiveCoreJobRoutingProfile, githubAutoworkEmployeeAllowlist, githubAutoworkZeroCostResource } from './objective-local-routing.mjs';
 import { parseOwnerBacklogOrder, objectiveBacklogRank } from './owner-backlog-order.mjs';
-import { FAILED_LOGICAL_JOB_BLOCK_SUMMARY, failedCampaignRuntimeRearmDecision, managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
+import { CAMPAIGN_RUNTIME_REARM_BLOCK_SUMMARIES, FAILED_LOGICAL_JOB_BLOCK_SUMMARY, failedCampaignRuntimeRearmDecision, managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, NV09_ENDPOINT, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 // NV09_CANARY_MARKER
 import { appendSkillContextToPrompt, focusedSkillRoutingText, matchAndLoadSkills } from './skill-loader.mjs';
@@ -35,7 +35,7 @@ import { CONTINUOUS_VERIFY_CADENCE_MS, cadenceContinuousVerifyDue, githubContinu
 import { planContinuousVerifyRecovery, CONTINUOUS_VERIFY_RECOVERY_EVENT_LIMIT } from './continuous-verify-recovery.mjs';
 import { assessMainCiGate } from './main-ci-health.mjs';
 import { autonomousRcaCanonicalAction, autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
-import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt } from './campaign-runner.mjs';
+import { normalizeCampaignPhases, currentCampaignGoal, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt, campaignPriorPhaseEvidenceContext, enrichExecutionPromptWithCampaignEvidence } from './campaign-runner.mjs';
 import { buildAutonomousCodingHandoffWorkOrder, normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, functionalReprobeCandidates, functionalRoutingReadiness, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
@@ -772,18 +772,18 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
   const runtimeSha=String(runtime?.currentSha||'').trim();
   const runtimeUpdatedAt=String(runtime?.updatedAt||'').trim();
   if(!runtimeSha||!Number.isFinite(Date.parse(runtimeUpdatedAt)))return 0;
-  const rows=(await pool.query(`select j.id,j.objective_id,j.status,j.attempts,j.max_attempts,j.completed_at,
+  const rows=(await pool.query(`select j.id,j.objective_id,j.status,j.attempts,j.max_attempts,j.completed_at,j.prompt,j.phase_index,
       o.status as objective_status,o.summary as objective_summary,o.metadata as objective_metadata
     from tigeriq_jobs j
     join tigeriq_objectives o on o.id=j.objective_id
     where j.status='failed'
       and j.kind='compiled_ai'
       and o.status='blocked'
-      and o.summary=$1
+      and o.summary=any($1::text[])
       and o.metadata ? 'campaign'
       and upper(coalesce(o.metadata->>'routingProfile',''))='LOCAL'
     order by j.completed_at desc nulls last
-    limit 20`,[FAILED_LOGICAL_JOB_BLOCK_SUMMARY])).rows;
+    limit 20`,[CAMPAIGN_RUNTIME_REARM_BLOCK_SUMMARIES])).rows;
   let recovered=0;
   for(const row of rows){
     const decision=failedCampaignRuntimeRearmDecision({
@@ -798,10 +798,42 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
       routingProfile:row.objective_metadata?.routingProfile,
     });
     if(decision.action!=='requeue')continue;
+    let refreshedPrompt=String(row.prompt||'');
+    let promptRevision=null;
+    let priorEvidenceCode='NOT_REQUIRED';
+    const phaseIndex=Math.max(0,Number(row.phase_index)||0);
+    if(phaseIndex>0){
+      const phases=Array.isArray(row.objective_metadata?.campaign?.phases)?row.objective_metadata.campaign.phases:[];
+      const priorPhaseIndex=phaseIndex-1;
+      const priorPhase=phases[priorPhaseIndex];
+      const priorProofId=campaignEvidenceJobId(row.objective_id,priorPhaseIndex);
+      const priorProof=(await pool.query(
+        "select id,objective_id,phase_index,kind,status,prompt,result,employee_id,resource_id,provider,completed_at,attempts,max_attempts from tigeriq_jobs where id=$1 and objective_id=$2",
+        [priorProofId,row.objective_id],
+      )).rows[0]||null;
+      const priorEvidence=campaignPriorPhaseEvidenceContext(priorProof,{
+        objectiveId:row.objective_id,
+        phaseIndex:priorPhaseIndex,
+        acceptance:priorPhase?.acceptance||`Produce concrete evidence that phase ${priorPhaseIndex+1} is complete.`,
+      });
+      priorEvidenceCode=priorEvidence.code;
+      if(!priorEvidence.accepted){
+        await event('CAMPAIGN_FAILED_JOB_REARM_SKIPPED_PRIOR_EVIDENCE',{objectiveId:row.objective_id,jobId:row.id,phaseIndex,reason:priorEvidence.code,runtimeSha});
+        continue;
+      }
+      const enriched=enrichExecutionPromptWithCampaignEvidence(refreshedPrompt,priorEvidence);
+      priorEvidenceCode=enriched.code;
+      if(!enriched.changed&&enriched.code!=='PRIOR_PHASE_EVIDENCE_ALREADY_PRESENT'){
+        await event('CAMPAIGN_FAILED_JOB_REARM_SKIPPED_PRIOR_EVIDENCE',{objectiveId:row.objective_id,jobId:row.id,phaseIndex,reason:enriched.code,runtimeSha});
+        continue;
+      }
+      refreshedPrompt=enriched.prompt;
+      promptRevision=enriched.promptRevision||null;
+    }
     const out=await pool.query(`with requeued as (
       update tigeriq_jobs j
       set status='queued',employee_id=null,resource_id=null,provider=null,routing_decision=null,
-          result=null,failure=null,lease_until=null,started_at=null,completed_at=null,next_attempt_at=null
+          result=null,failure=null,lease_until=null,started_at=null,completed_at=null,next_attempt_at=null,prompt=$5
       where j.id=$1
         and j.status='failed'
         and j.attempts<j.max_attempts
@@ -810,7 +842,7 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
           select 1 from tigeriq_objectives o
           where o.id=j.objective_id
             and o.status='blocked'
-            and o.summary=$3
+            and o.summary=any($3::text[])
             and o.metadata ? 'campaign'
             and upper(coalesce(o.metadata->>'routingProfile',''))='LOCAL'
         )
@@ -824,13 +856,13 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
         metadata=jsonb_set(coalesce(o.metadata,'{}'::jsonb),'{runtimeRearmSha}',to_jsonb($4::text),true)
     from requeued r
     where o.id=r.objective_id
-    returning o.id`,[row.id,runtimeUpdatedAt,FAILED_LOGICAL_JOB_BLOCK_SUMMARY,runtimeSha]);
+    returning o.id`,[row.id,runtimeUpdatedAt,CAMPAIGN_RUNTIME_REARM_BLOCK_SUMMARIES,runtimeSha,refreshedPrompt]);
     if(out.rowCount!==1)continue;
     recovered++;
     await event('CAMPAIGN_FAILED_JOB_REARMED_AFTER_RUNTIME_SOURCE_CHANGE',{
       objectiveId:row.objective_id,jobId:row.id,runtimeSha,runtimeUpdatedAt,
       attempts:Number(row.attempts)||0,maxAttempts:Number(row.max_attempts)||0,
-      reason:decision.reason,
+      reason:decision.reason,priorEvidenceCode,promptRevision,
     });
   }
   return recovered;
@@ -1030,7 +1062,75 @@ async function stabilityV2PeerExclusions(jobId,store=pool){
   };
 }
 async function invokeRouted(prompt,capability,jobId,maxAttempts=3,options={}){
-  if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const failures=[],excluded=[...new Set((Array.isArray(options.excludedResourceIds)?options.excludedResourceIds:[]).map(x=>String(x||'').trim()).filter(Boolean))],requestedExcludedProviders=[...new Set((Array.isArray(options.excludeProviders)?options.excludeProviders:Array.isArray(options.excludedProviders)?options.excludedProviders:[]).map(x=>String(x||'').trim().toLowerCase()).filter(Boolean))];for(let i=0;i<maxAttempts;i++){const peerExclusions=await stabilityV2PeerExclusions(jobId);for(const resourceId of peerExclusions.resourceIds)if(!excluded.includes(resourceId))excluded.push(resourceId);const attemptedProviders=[...new Set(failures.map(f=>String(f?.provider||'').trim().toLowerCase()).filter(Boolean))];const excludedProviders=[...new Set([...requestedExcludedProviders,...peerExclusions.providers,...attemptedProviders])];const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind,excludedProviders});if(!row)break;excluded.push(row.resource_id);const r=resources.find(x=>x.resourceId===row.resource_id);if(!r)continue;await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);const started=Date.now();try{const text=validateRoutedOutput(await invokeProvider(r,prompt,{profile,compiledPacket:options.compiledPacket||null}),{jobId,prompt});if(typeof options.validateText==='function')options.validateText(text);const latency=Date.now()-started;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(error){if(localInferenceBusy(error)){await releaseLocalInferenceContention(r,jobId,taskKind);const busy=new Error('PC01_LOCAL_INFERENCE_BUSY');busy.code='PC01_LOCAL_INFERENCE_BUSY';busy.failures=[];throw busy;}let finalError=error,policy=failurePolicy(error?.kind||'outage');if(policy.retrySameResource){await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});try{const retryStarted=Date.now(),text=validateRoutedOutput(await invokeProvider(r,prompt,{profile,compiledPacket:options.compiledPacket||null}),{jobId,prompt});if(typeof options.validateText==='function')options.validateText(text);const latency=Date.now()-retryStarted;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(retryError){finalError=retryError;policy=failurePolicy(retryError?.kind||policy.kind);}}const kind=finalError?.kind||'outage';failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.code||finalError?.message||finalError)});await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});if(policy.stop)break;}}const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
+  if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}
+  const taskKind=String(options.taskKind||'general');
+  const profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});
+  const failures=[];
+  const excluded=[...new Set((Array.isArray(options.excludedResourceIds)?options.excludedResourceIds:[]).map(x=>String(x||'').trim()).filter(Boolean))];
+  const requestedExcludedProviders=[...new Set((Array.isArray(options.excludeProviders)?options.excludeProviders:Array.isArray(options.excludedProviders)?options.excludedProviders:[]).map(x=>String(x||'').trim().toLowerCase()).filter(Boolean))];
+  for(let i=0;i<maxAttempts;i++){
+    const peerExclusions=await stabilityV2PeerExclusions(jobId);
+    for(const resourceId of peerExclusions.resourceIds)if(!excluded.includes(resourceId))excluded.push(resourceId);
+    const attemptedProviders=[...new Set(failures.map(f=>String(f?.provider||'').trim().toLowerCase()).filter(Boolean))];
+    const excludedProviders=[...new Set([...requestedExcludedProviders,...peerExclusions.providers,...attemptedProviders])];
+    const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind,excludedProviders});
+    if(!row)break;
+    excluded.push(row.resource_id);
+    const r=resources.find(x=>x.resourceId===row.resource_id);
+    if(!r)continue;
+    await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);
+    const started=Date.now();
+    let validationRetryUsed=false;
+    const invokeAndValidate=async requestPrompt=>{
+      const text=validateRoutedOutput(await invokeProvider(r,requestPrompt,{profile,compiledPacket:options.compiledPacket||null}),{jobId,prompt:requestPrompt});
+      if(typeof options.validateText==='function')options.validateText(text);
+      return text;
+    };
+    try{
+      let text;
+      try{
+        text=await invokeAndValidate(prompt);
+      }catch(firstError){
+        const correctionPrompt=typeof options.validationRetryPrompt==='function'?options.validationRetryPrompt(prompt,firstError):null;
+        if(!correctionPrompt)throw firstError;
+        validationRetryUsed=true;
+        await event('ROUTING_VALIDATION_RETRY',{
+          jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,
+          kind:String(firstError?.kind||'invalid_response'),
+          code:String(firstError?.executionGate?.code||firstError?.code||firstError?.message||'EXECUTION_RESULT_INVALID').slice(0,120),
+        });
+        text=await invokeAndValidate(correctionPrompt);
+      }
+      const latency=Date.now()-started;
+      await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});
+      return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};
+    }catch(error){
+      if(localInferenceBusy(error)){
+        await releaseLocalInferenceContention(r,jobId,taskKind);
+        const busy=new Error('PC01_LOCAL_INFERENCE_BUSY');busy.code='PC01_LOCAL_INFERENCE_BUSY';busy.failures=[];throw busy;
+      }
+      let finalError=error,policy=failurePolicy(error?.kind||'outage');
+      if(policy.retrySameResource&&!validationRetryUsed){
+        await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});
+        try{
+          const retryStarted=Date.now();
+          const text=await invokeAndValidate(prompt);
+          const latency=Date.now()-retryStarted;
+          await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});
+          return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};
+        }catch(retryError){
+          finalError=retryError;
+          policy=failurePolicy(retryError?.kind||policy.kind);
+        }
+      }
+      const kind=finalError?.kind||'outage';
+      failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.code||finalError?.message||finalError)});
+      await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});
+      if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});
+      if(policy.stop)break;
+    }
+  }
+  const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
 }
 function buildNv09CanaryPrompt(inputPrompt='',marker='NV09_CORE_CANARY_OK'){
   const diagnostic=String(inputPrompt||'').trim().slice(0,700);
@@ -2142,9 +2242,13 @@ async function runJob(j) {
     });
     const compiledPacket=String(j.kind||'').startsWith('compiled_')?executionPacketFromPrompt(j.prompt):null;
     const validateText=compiledPacket?(text)=>assertExecutionResultAccepted(text,compiledPacket):null;
+    const validationRetryPrompt=compiledPacket?(basePrompt,error)=>{
+      const gate=error?.executionGate;
+      return gate&&gate.pass===false?strictExecutionRetryPrompt(basePrompt,gate):null;
+    }:null;
     const stabilityAllowlist=stabilityV2EmployeeAllowlist(j.objective_metadata);
     const employeeAllowlist=j.kind==='github_api_autowork'?githubAutoworkEmployeeAllowlist(j,CORE_AUTOWORK_EMPLOYEES):stabilityAllowlist;
-    let routed=await invokeRouted(routedPrompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:effectiveCoreJobRoutingProfile(j),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist,validateText,compiledPacket});
+    let routed=await invokeRouted(routedPrompt,j.capability,j.id,j.max_attempts-j.attempts,{taskKind:j.kind||'ai',profile:effectiveCoreJobRoutingProfile(j),reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist,validateText,validationRetryPrompt,compiledPacket});
     let autoworkOutput=evaluateGithubAutoworkOutput({
       kind:j.kind,text:routed.text,resourceScope:j.objective_metadata?.resourceScope||'',
       employeeId:routed.resource?.id,resourceId:routed.resource?.resourceId,
@@ -2797,6 +2901,20 @@ async function managerTick() {
   const campaign=o.metadata?.campaign||null;
   const phases=Array.isArray(campaign?.phases)?campaign.phases:[];
   const currentPhase=Math.min(Math.max(Number(campaign?.currentPhase)||0,0),Math.max(0,phases.length-1));
+  let priorPhaseEvidence=null;
+  if(phases.length&&currentPhase>0){
+    const priorPhaseIndex=currentPhase-1;
+    const priorProofId=campaignEvidenceJobId(o.id,priorPhaseIndex);
+    const priorProof=(await pool.query(
+      "select id,objective_id,phase_index,kind,status,prompt,result,employee_id,resource_id,provider,completed_at,attempts,max_attempts from tigeriq_jobs where id=$1 and objective_id=$2",
+      [priorProofId,o.id],
+    )).rows[0]||null;
+    priorPhaseEvidence=campaignPriorPhaseEvidenceContext(priorProof,{
+      objectiveId:o.id,
+      phaseIndex:priorPhaseIndex,
+      acceptance:phases[priorPhaseIndex]?.acceptance||`Produce concrete evidence that phase ${priorPhaseIndex+1} is complete.`,
+    });
+  }
   const latestManagerProgress=(await pool.query("select max(completed_at) as latest_terminal_at from tigeriq_jobs where objective_id=$1 and phase_index=$2 and status='done'",[o.id,currentPhase])).rows[0]?.latest_terminal_at||null;
   const terminalProgress=managerTerminalProgressPlan({
     latestTerminalAt:latestManagerProgress,
@@ -2959,7 +3077,10 @@ async function managerTick() {
     }
   }
   const history=(await pool.query("select title,status,employee_id,resource_id,provider,result,failure from tigeriq_jobs where objective_id=$1 and phase_index=$2 order by created_at desc limit 8",[o.id,currentPhase])).rows;
-  const goal=currentCampaignGoal(o.objective,phases,currentPhase);
+  const goal=[
+    currentCampaignGoal(o.objective,phases,currentPhase),
+    priorPhaseEvidence?.accepted?priorPhaseEvidence.text:(currentPhase>0?'PRIOR PHASE EVIDENCE UNAVAILABLE — do not claim completion that depends on prior-phase facts.':''),
+  ].filter(Boolean).join('\n\n');
   let historyContext={text:'[]',metrics:{itemsIn:0,itemsOut:0,bytesBefore:0,bytesAfter:2,budgetBytes:8000,headroomBytes:2000,effectiveBudgetBytes:6000,droppedCount:0,truncatedCount:0,reductionBytes:0}};
   try{historyContext=buildManagerHistoryContext(history);}catch(error){await event('CONTEXT_GATEWAY_FAIL_SAFE',{objectiveId:o.id,phaseIndex:currentPhase,error:String(error?.message||error).slice(0,180)});}
   await event('CONTEXT_GATEWAY_BUILT',{objectiveId:o.id,phaseIndex:currentPhase,...historyContext.metrics});
@@ -3128,18 +3249,21 @@ async function managerTick() {
       const title=String(spec.title).slice(0,200);
       const rawPrompt=String(spec.prompt).slice(0,12000);
       const id=capability==='pc_operator'?pcOperatorJobId(o.id,currentPhase,pcOperatorOrdinal++):`JOB-${randomUUID()}`;
+      const priorEvidenceText=priorPhaseEvidence?.accepted?priorPhaseEvidence.text:'';
+      const executionGoal=[rawPrompt,priorEvidenceText].filter(Boolean).join('\n\n');
+      const baseEvidenceRequired=Array.isArray(spec.evidence_required)&&spec.evidence_required.length?spec.evidence_required:(spec.evidence_required?[String(spec.evidence_required)]:['At least one concrete evidence item supporting the claimed result.']);
       const promptText=capability==='pc_operator'?rawPrompt:compileTaskPrompt({
         taskId:id,
         objectiveId:o.id,
         sourceRevision:String(o.metadata?.sourceRevision||o.metadata?.source_revision||o.updated_at||o.id),
         capability,
         skillIds:skillContext.evidence.map(x=>x.id),
-        goal:rawPrompt,
-        contextRefs:[`objective:${o.id}`,`phase:${currentPhase}`],
+        goal:executionGoal,
+        contextRefs:[`objective:${o.id}`,`phase:${currentPhase}`,...(priorPhaseEvidence?.accepted?[priorPhaseEvidence.contextRef]:[])],
         allowedScope:Array.isArray(spec.scope)?spec.scope:(spec.scope?[String(spec.scope)]:['Only the resource/domain explicitly described by this task.']),
         steps:[rawPrompt],
         acceptance:Array.isArray(spec.acceptance)&&spec.acceptance.length?spec.acceptance:(spec.acceptance?[String(spec.acceptance)]:[`Complete task "${title}" with an observable, evidence-backed result.`]),
-        evidenceRequired:Array.isArray(spec.evidence_required)&&spec.evidence_required.length?spec.evidence_required:(spec.evidence_required?[String(spec.evidence_required)]:['At least one concrete evidence item supporting the claimed result.']),
+        evidenceRequired:[...baseEvidenceRequired,...(priorPhaseEvidence?.accepted?[`Use verified prior-phase receipt ${priorPhaseEvidence.contextRef} for claims that depend on the previous phase.`]:[])],
       }).prompt.slice(0,12000);
       if(capability==='pc_operator'&&objectiveJobRoutingProfile(o.metadata)==='LOCAL'){
         await event('MANAGER_LOCAL_OBJECTIVE_PC_OPERATOR_DENIED',{objectiveId:o.id,phaseIndex:currentPhase,title});
