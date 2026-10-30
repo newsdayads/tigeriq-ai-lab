@@ -994,3 +994,11 @@ body.api-health #workList.tiq-work-center>.tiq-work-card .stepper-node{
   }
 }
 
+
+/* OWNER_WORK_CARDS_FOUR_WIDE_CAP_20261030: prevent giant cards on QHD / 4K. */
+@media(min-width:1450px){
+  body.api-health #workList.wo-list.work-list.tiq-work-center{max-width:min(100%,1490px)!important}
+}
+@media(min-width:1200px){
+  body:not(.api-health) #workList.tiq-work-center{max-width:min(100%,1490px)!important}
+}
