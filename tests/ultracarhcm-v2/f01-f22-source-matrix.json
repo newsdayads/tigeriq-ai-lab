@@ -359,15 +359,17 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayPositionRules.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleRules.kt"
       ],
-      "gap": "Backup schema v3 now includes V2-owned Home state, quick slots, saved/default configs, per-display DeX positions, day/night, driver, vehicle model and license plate. User-selected SAF background bytes/URI grants remain intentionally non-portable; V1 images/sound/other unimplemented feature data and real-device acceptance remain open.",
-      "actual": "HomeActivity exports schema v3 and restores vehicle model/license plate while preserving backward compatibility with schema 1/2 and legacy limo state. Overlay positions remain portable with validated bounds. Device/provider-bound custom background SAF grants are not exported as if portable.",
+      "gap": "Backup schema v3 includes V2-owned Home state, quick slots, saved/default configs, per-display DeX positions, day/night, driver, vehicle model and license plate. Restore now rejects malformed quick-slot objects/targets across root, saved configs and default config before any preference write. User-selected SAF background bytes/URI grants remain intentionally non-portable; V1 images/sound/other unimplemented feature data and real-device acceptance remain open.",
+      "actual": "HomeActivity exports schema v3 and restores vehicle model/license plate while preserving schema 1/2 compatibility. Backup import validates all nine root quick slots plus any saved/default configuration quick slots as explicit string label/target pairs; only empty slots, Camera target or valid Android package targets are accepted. Malformed slot data fails the whole restore before prefs are mutated. Overlay positions remain portable with validated bounds; device/provider-bound custom background grants are not exported.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.exportHomeBackupJson",
         "HomeActivity.writeHomeBackup",
         "HomeActivity.readHomeBackup",
         "HomeActivity.importHomeBackupJson",
-        "HomeBackupRules.requiresVehicleState"
+        "HomeBackupRules.requiresVehicleState",
+        "HomeActivity.validatedQuickSlotsForBackup",
+        "QuickSlotRules.isValidPersistedAssignment"
       ],
       "permissions": []
     },
