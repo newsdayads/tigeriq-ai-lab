@@ -14,7 +14,7 @@ function mockRes() {
 const deviceHeader = { cookie:DEVICE_COOKIE+'='+createDeviceSession('x'.repeat(64)) };
 test('Vercel facade is owner-login protected and only reads PC01 allowlist', async () => {
   const prev = {};
-  for (const k of ['TIGERIQ_LIVE_DEVICE_KEY','TIGERIQ_HEALTH_VIEW_ORIGIN','TIGERIQ_HEALTH_VIEW_KEY']) {
+  for (const k of ['TIGERIQ_LIVE_DEVICE_KEY','TIGERIQ_HEALTH_VIEW_ORIGIN','TIGERIQ_HEALTH_VIEW_KEY','TIGERIQ_HEALTH_VIEW_PATH_PREFIX']) {
     prev[k] = process.env[k];
   }
   const oldFetch = global.fetch;
@@ -45,6 +45,17 @@ test('Vercel facade is owner-login protected and only reads PC01 allowlist', asy
     assert.equal(res.statusCode,200);
     assert.equal(lastUrl,'https://pc01.tail35d2f3.ts.net/');
     assert.equal(lastHeader,'Bearer ' + 'a'.repeat(48));
+    process.env.TIGERIQ_HEALTH_VIEW_PATH_PREFIX='/health-view';
+    res=mockRes();
+    await handler({method:'GET',headers:{...deviceHeader},query:{resource:'api/status'}},res);
+    assert.equal(res.statusCode,200);
+    assert.equal(lastUrl,'https://pc01.tail35d2f3.ts.net/health-view/api/status');
+    process.env.TIGERIQ_HEALTH_VIEW_PATH_PREFIX='/../mcp';
+    res=mockRes();
+    await handler({method:'GET',headers:{...deviceHeader},query:{resource:''}},res);
+    assert.equal(res.statusCode,503);
+    assert.equal(res.body,'HEALTH_VIEW_PATH_INVALID');
+    delete process.env.TIGERIQ_HEALTH_VIEW_PATH_PREFIX;
     assert.match(String(res.body), /\/pc01\/work-center\.js/);
     assert.match(String(res.body), /\/pc01\/api\/status/);
     assert.match(String(res.body), /tiq-proxy-mobile-reload-bootstrap/);
