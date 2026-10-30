@@ -151,6 +151,26 @@ export function repairCompactExecutionPrompt(prompt,{maxChars=12000}={}) {
   return {changed:true,prompt:base+hint,reason:'compact_contract_appended'};
 }
 
+
+export function compactLocalExecutionPrompt(prompt,packetInput) {
+  const source=String(prompt||'').trim();
+  const packet=validateExecutionPacket(packetInput?.packet_version ? packetInput : buildExecutionPacket(packetInput));
+  const retryMarker='\n\nSTRICT RETRY:';
+  const retryIndex=source.lastIndexOf(retryMarker);
+  const retry=retryIndex>=0?source.slice(retryIndex+2).trim():'';
+  return [
+    'You are a TigerIQ execution worker. Execute exactly the authorized task packet below.',
+    'Do not broaden scope. Do not infer permission from missing fields. Evidence is mandatory.',
+    `PACKET_JSON: ${JSON.stringify(packet)}`,
+    'OUTPUT REQUIREMENT:',
+    `Return exactly one ${EXECUTION_RESULT_VERSION} JSON object and nothing else. No markdown fences.`,
+    'Use criterion_index as the zero-based packet acceptance order when requested by the provider schema.',
+    'Every passed criterion must cite evidence_refs present in evidence[].',
+    'If any criterion cannot be proven, return status=blocked with the exact block_reason.',
+    ...(retry?[retry]:[]),
+  ].join('\n');
+}
+
 export function executionPacketFromPrompt(prompt) {
   const match = String(prompt || '').match(/^PACKET_JSON:\s*(\{.*\})$/m);
   if (!match) throw Object.assign(new Error('EXECUTION_PACKET_PROMPT_MISSING'), { kind:'invalid_response' });

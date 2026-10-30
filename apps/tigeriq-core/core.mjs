@@ -24,7 +24,7 @@ import { NV09_EMPLOYEE_ID, NV09_MODEL, NV09_ENDPOINT, nv09ModelAvailability, reg
 // NV09_CANARY_MARKER
 import { appendSkillContextToPrompt, focusedSkillRoutingText, matchAndLoadSkills } from './skill-loader.mjs';
 import { summarizeCoreJobEvidence } from './job-outcome-summary.mjs';
-import { compileTaskPrompt, executionPacketFromPrompt, executionResultGate, assertExecutionResultAccepted, strictExecutionRetryPrompt, repairCompactExecutionPrompt } from './task-prompt-compiler.mjs';
+import { compileTaskPrompt, executionPacketFromPrompt, executionResultGate, assertExecutionResultAccepted, strictExecutionRetryPrompt, repairCompactExecutionPrompt, compactLocalExecutionPrompt } from './task-prompt-compiler.mjs';
 import { invokeNativeStructuredExecution, structuredExecutionSchema, compactStructuredExecutionSchema } from './ollama-native-structured.mjs';
 import { buildSkillRoutingPreflight, finalizeSkillRoutingPreflight } from './skill-preflight.mjs';
 import { buildSkillOutcomeObservation, recordSkillOutcome, skillFailureLoopDecision } from './skill-effectiveness.mjs';
@@ -429,7 +429,8 @@ async function invokeProvider(r, prompt, providerContext={}) {
       return withPc01LocalInferenceSlot(pool,async()=>{
       if(r.id===NV09_EMPLOYEE_ID){
         const packet=providerContext?.compiledPacket||null;
-        const out=await runBoundedInferenceNv09(prompt,{
+        const providerPrompt=packet?compactLocalExecutionPrompt(prompt,packet):prompt;
+        const out=await runBoundedInferenceNv09(providerPrompt,{
           timeoutMs:NV09_TIMEOUT_MS,
           numCtx:packet?8192:1024,
           numPredict:packet?768:96,
@@ -813,11 +814,15 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
       });
       promptRepair=repairCampaignReviewPrompt(row.prompt,priorContext);
     }
-    const compactRepair=(String(row.capability||'')==='review'&&Number(row.phase_index)>0)
+    const isReviewPhase=String(row.capability||'')==='review'&&Number(row.phase_index)>0;
+    const compactRepair=isReviewPhase
       ? repairCompactExecutionPrompt(promptRepair.prompt)
       : {changed:false,prompt:promptRepair.prompt,reason:'not_review_phase'};
-    const repairEligible=promptRepair.changed||compactRepair.changed;
-    const repairCap=compactRepair.changed?5:4;
+    const providerPromptCompactionEligible=isReviewPhase
+      &&String(compactRepair.prompt||'').length>12000
+      &&compactRepair.reason==='compact_contract_already_present';
+    const repairEligible=promptRepair.changed||compactRepair.changed||providerPromptCompactionEligible;
+    const repairCap=providerPromptCompactionEligible?6:(compactRepair.changed?5:4);
     const decision=failedCampaignRuntimeRearmDecision({
       objectiveStatus:row.objective_status,
       objectiveSummary:row.objective_summary,
@@ -868,7 +873,7 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
       objectiveId:row.objective_id,jobId:row.id,runtimeSha,runtimeUpdatedAt,
       attempts:Number(row.attempts)||0,maxAttempts:Number(row.max_attempts)||0,
       maxAttemptsAfter:repairCredit?Math.min(repairCap,Number(row.max_attempts)+1):Number(row.max_attempts)||0,
-      promptRepaired:promptRepair.changed,compactPromptRepaired:compactRepair.changed,repairCreditGranted:repairCredit,
+      promptRepaired:promptRepair.changed,compactPromptRepaired:compactRepair.changed,providerPromptCompactionEligible,repairCreditGranted:repairCredit,
       promptRepairReason:promptRepair.reason,compactPromptRepairReason:compactRepair.reason,repairCap,
       reason:decision.reason,
     });

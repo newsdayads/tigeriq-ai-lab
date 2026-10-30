@@ -23,9 +23,10 @@ function harness({enabled='',model='gemma3:4b',profile='LOCAL',packet={packet_ve
     process:{env:{TIGERIQ_NV10_NATIVE_STRUCTURED:enabled}},
     OLLAMA_EMPLOYEE_ID:'NV10',NV09_EMPLOYEE_ID:'NV09',
     CORE_MANAGER_EMPLOYEE_ID:'NV08',OLLAMA_TIMEOUT_MS:90000,NV09_TIMEOUT_MS:240000,CORE_MANAGER_TIMEOUT_MS:150000,
-    runBoundedInferenceNv09:async(_prompt,options)=>{calls.push({route:'nv09',options});return {text:'nv09'};},
+    runBoundedInferenceNv09:async(prompt,options)=>{calls.push({route:'nv09',prompt,options});return {text:'nv09'};},
     structuredExecutionSchema:packet=>({type:'object',packet}),
     compactStructuredExecutionSchema:packet=>({type:'compact',packet}),
+    compactLocalExecutionPrompt:(prompt,packet)=>`COMPACT:${packet.task_id}:${prompt}`,
     // The atomic admission behavior is tested separately; this VM harness
     // isolates only native-vs-compatible NV10 request selection.
     pool:{},
@@ -50,6 +51,7 @@ test('NV09 compiled packet gets bounded large context and compact execution sche
   assert.equal(await h.runNv09(),'nv09');
   assert.equal(h.calls.length,1);
   assert.equal(h.calls[0].route,'nv09');
+  assert.equal(h.calls[0].prompt,'COMPACT:SYNTH:synthetic prompt');
   assert.equal(h.calls[0].options.numCtx,8192);
   assert.equal(h.calls[0].options.numPredict,768);
   assert.equal(h.calls[0].options.maxPromptChars,12000);
@@ -58,6 +60,7 @@ test('NV09 compiled packet gets bounded large context and compact execution sche
 test('NV09 generic request keeps prior small bounded defaults',async()=>{
   const h=harness({packet:null});
   assert.equal(await h.runNv09(null),'nv09');
+  assert.equal(h.calls[0].prompt,'synthetic prompt');
   assert.equal(h.calls[0].options.numCtx,1024);
   assert.equal(h.calls[0].options.numPredict,96);
   assert.equal(h.calls[0].options.maxPromptChars,4000);
