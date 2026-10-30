@@ -47,6 +47,21 @@ test('bounded inference sends small deterministic Ollama request and returns tel
   assert.strictEqual(out.evalCount,3);
 });
 
+test('compiled bounded inference preserves larger prompt and deterministic JSON schema', async()=>{
+  let request;
+  const format={type:'object',required:['schema','acceptance','evidence']};
+  const prompt='x'.repeat(6000);
+  const fake=async(url,init)=>{
+    request={url,body:JSON.parse(init.body)};
+    return {ok:true,status:200,json:async()=>({model:'qwen3.5:9b',response:'{"schema":"EXECUTION_RESULT_V1"}',done:true})};
+  };
+  await runBoundedInferenceNv09(prompt,{fetchImpl:fake,timeoutMs:2000,numCtx:4096,numPredict:256,maxPromptChars:12000,format,keepAlive:'5s'});
+  assert.strictEqual(request.body.prompt.length,6000);
+  assert.strictEqual(request.body.options.num_ctx,4096);
+  assert.strictEqual(request.body.options.num_predict,256);
+  assert.deepStrictEqual(request.body.format,format);
+});
+
 test('bounded inference preserves real Ollama 5xx evidence', async()=>{
   const fake=async()=>({ok:false,status:500,text:async()=>JSON.stringify({error:'llama-server binary not found'})});
   await assert.rejects(
