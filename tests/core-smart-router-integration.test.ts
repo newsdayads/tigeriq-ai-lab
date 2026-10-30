@@ -24,13 +24,24 @@ describe('#777 Core Smart Router integration',()=>{
   it('uses task-kind performance and bounded failure-aware failover without paid fallback',()=>{expect(core).toContain('avg_latency_ms');expect(core).toContain('failurePolicy(kind)');expect(core).toContain('if(policy.stop)break');expect(router).toContain('paid_fallback_forbidden');expect(router).toContain("'security','credential','paid','production','irreversible'");});
   it('recovers a blocked LOCAL campaign by requeueing the same failed job only after runtime source change',()=>{
     expect(core).toContain('async function recoverFailedCampaignJobsAfterRuntimeSourceChange()');
-    expect(core).toContain("o.summary=$1");
+    expect(core).toContain("o.summary=any($1::text[])");
+    expect(core).toContain('MANAGER_NO_PROGRESS_BLOCK_SUMMARY');
     expect(core).toContain("j.id=$1");
     expect(core).toContain("j.attempts<j.max_attempts");
     expect(core).toContain("j.completed_at<$2::timestamptz");
     expect(core).toContain("status='active'");
     expect(core).toContain("CAMPAIGN_FAILED_JOB_REARMED_AFTER_RUNTIME_SOURCE_CHANGE");
     expect(core).toContain("await recoverStale();await recoverFailedCampaignJobsAfterRuntimeSourceChange();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;");
+  });
+
+  it('carries prior verified campaign receipts into later-phase Manager and review prompts',()=>{
+    expect(core).toContain('campaignPriorEvidenceContext');
+    expect(core).toContain('priorCampaignJobs');
+    expect(core).toContain("status='done' order by case when kind='compiled_campaign' then 0 else 1 end");
+    expect(core).toContain("Prior verified campaign handoff: ${campaignPriorContext||'none'}");
+    expect(core).toContain('AUTHORIZED PRIOR CAMPAIGN HANDOFF:');
+    expect(core).toContain("capability==='review'&&campaignPriorContext");
+    expect(core).toContain('campaign-prior-phase:');
   });
 
   it('reconciles failed safe GitHub autowork independently of manager priority',()=>{
