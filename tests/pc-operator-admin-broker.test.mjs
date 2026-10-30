@@ -43,6 +43,7 @@ test('bridge is one-shot highest-runlevel, fixed-runner, and self-cleaning', () 
   assert.match(source, /RunLevel Highest/);
   assert.match(source, /pc01\\wdragons12x/);
   assert.match(source, /pc-operator-admin-verify\.ps1/);
+  assert.match(source, /Register-ScheduledTask[^\r\n]+-ErrorAction Stop/);
   assert.match(source, /Unregister-ScheduledTask/);
   assert.match(source, /ADMIN_VERIFY_TASK_CLEANUP_UNVERIFIED/);
   assert.doesNotMatch(source, /-Verb\s+RunAs/i);
