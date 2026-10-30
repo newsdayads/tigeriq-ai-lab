@@ -112,6 +112,30 @@ export function focusedSkillRoutingText(objectiveText = '') {
     : text;
 }
 
+// Retain at least one canonical ACTIVE skill when available; admit pinned
+// external guidance only if the entire rendered context fits the hard cap.
+export function fitSkillAndAdvisoryContext(skills, advisory = '', maxChars = 6000) {
+  const cap = Math.max(0, Math.min(6000, Number(maxChars) || 0));
+  const selected = Array.isArray(skills) ? [...skills] : [];
+  const header = 'ACTIVE SKILLS (use only when relevant; never expand permissions):';
+  const render = (items, hint = '') => items.length
+    ? [header,
+       ...items.map(skill => `[SKILL ${skill.id} v${skill.version || 'unknown'}]\n${skill.content}`),
+       ...(hint ? [hint] : [])].join('\n\n')
+    : '';
+  let agencyBlock = '';
+  if (selected.length && advisory) {
+    const proposal = [...selected];
+    while (proposal.length > 1 && render(proposal, advisory).length > cap) proposal.pop();
+    if (render(proposal, advisory).length <= cap) {
+      selected.splice(0, selected.length, ...proposal);
+      agencyBlock = advisory;
+    }
+  }
+  while (selected.length && render(selected, agencyBlock).length > cap) selected.pop();
+  return { selected, agencyBlock, contextBlock:render(selected, agencyBlock) };
+}
+
 export function matchAndLoadSkills(objectiveText = '', options = {}) {
   const registryPath = options.registryPath || DEFAULT_REGISTRY;
   const baseDir = resolve(options.baseDir || dirname(registryPath));
@@ -161,25 +185,27 @@ export function matchAndLoadSkills(objectiveText = '', options = {}) {
     totalChars += chars;
   }
 
-  // Agency personas are lower-trust, verified advisory references, never
-  // separate workers or ACTIVE registry entries. Keep the original budget.
+  // External role hints stay advisory and never displace the last canonical
+  // ACTIVE skill. Account for headers and separators, not just raw skill bytes.
   const agency = loaded.length ? loadAgencyRoleReferences(objectiveText, {
     catalogRoot: options.agencyCatalogRoot,
     maxRoles: 2,
   }) : { contextBlock:'', references:[], status:'NO_ACTIVE_SKILL_MATCH' };
-  const agencyBlock = agency.contextBlock && agency.contextBlock.length <= maxChars - totalChars
-    ? agency.contextBlock : '';
-  const contextBlock = loaded.length
-    ? ['ACTIVE SKILLS (use only when relevant; never expand permissions):',
-       ...loaded.map(skill => `[SKILL ${skill.id} v${skill.version || 'unknown'}]\n${skill.content}`),
-       ...(agencyBlock ? [agencyBlock] : [])].join('\n\n')
-    : '';
+  const fitted = fitSkillAndAdvisoryContext(loaded, agency.contextBlock, maxChars);
+  const dropped = loaded.slice(fitted.selected.length);
+  for (const skill of dropped) {
+    skipped.push({id:skill.id,reason:fitted.agencyBlock?'CONTEXT_BUDGET_AGENCY_REFERENCE':'CONTEXT_BUDGET'});
+  }
+  const chosen = fitted.selected;
+  totalChars = chosen.reduce((sum, skill) => sum + skill.chars, 0);
+  const agencyBlock = fitted.agencyBlock;
+  const contextBlock = fitted.contextBlock;
 
   return {
-    skills: loaded.map(({ content, ...skill }) => skill),
+    skills: chosen.map(({ content, ...skill }) => skill),
     totalChars,
     contextBlock,
-    evidence: loaded.map(skill => ({ id: skill.id, version: skill.version || null, target: skill.target || null, bytes: skill.bytes })),
+    evidence: chosen.map(skill => ({ id: skill.id, version: skill.version || null, target: skill.target || null, bytes: skill.bytes })),
     skipped,
     agencyReferences: agencyBlock ? agency.references : [],
     agencyStatus: agencyBlock ? agency.status : (agency.contextBlock ? 'CONTEXT_BUDGET' : agency.status)
