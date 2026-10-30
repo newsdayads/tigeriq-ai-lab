@@ -1,6 +1,6 @@
 import { describe,expect,it } from 'vitest';
 import {managerIdleStepStopPlan} from '../apps/tigeriq-core/manager-cycle-policy.mjs';
-import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,failedCampaignRuntimeRearmDecision,managerJobMaterializationDecision} from '../apps/tigeriq-core/manager-job-policy.mjs';
+import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY,failedCampaignRuntimeRearmDecision,managerJobMaterializationDecision} from '../apps/tigeriq-core/manager-job-policy.mjs';
 import {apiDoctorAutoworkPriority} from '../apps/tigeriq-core/api-doctor.mjs';
 
 describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
@@ -47,6 +47,8 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
       routingProfile:'LOCAL',
     };
     expect(failedCampaignRuntimeRearmDecision(base))
+      .toEqual({action:'requeue',reason:'runtime_source_newer_than_failed_campaign_job'});
+    expect(failedCampaignRuntimeRearmDecision({...base,objectiveSummary:MANAGER_NO_PROGRESS_BLOCK_SUMMARY}))
       .toEqual({action:'requeue',reason:'runtime_source_newer_than_failed_campaign_job'});
     expect(failedCampaignRuntimeRearmDecision({...base,runtimeUpdatedAt:'2026-10-30T06:32:42Z'}).action).toBe('keep');
     expect(failedCampaignRuntimeRearmDecision({...base,attempts:2}).reason).toBe('retry_budget_exhausted');
