@@ -163,6 +163,25 @@ class ProfileActivity : ComponentActivity() {
         ))
         addCard(identityCard, 2)
 
+        val reportCard = card("Báo cáo dữ liệu V2")
+        reportCard.addView(text(
+            "Tổng hợp lịch sử Taxi Meter V2 và xuất CSV qua vị trí người dùng chọn.",
+            14f,
+            Color.LTGRAY,
+        ))
+        reportCard.addView(Button(this).apply {
+            text = "MỞ BÁO CÁO CHUYẾN"
+            setOnClickListener {
+                startActivity(Intent(this@ProfileActivity, ReportActivity::class.java))
+            }
+        })
+        reportCard.addView(text(
+            "Không đọc dữ liệu V1 và chưa tuyên bố tương đương mẫu XLS/dashboard của V1.",
+            13f,
+            Color.LTGRAY,
+        ))
+        addCard(reportCard, 3)
+
         body.addView(
             grid,
             LinearLayout.LayoutParams(
