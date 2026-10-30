@@ -1,6 +1,7 @@
 import { describe,expect,it } from 'vitest';
 import {managerIdleStepStopPlan} from '../apps/tigeriq-core/manager-cycle-policy.mjs';
-import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,failedCampaignRuntimeRearmDecision,managerJobMaterializationDecision} from '../apps/tigeriq-core/manager-job-policy.mjs';
+import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY,failedCampaignRuntimeRearmDecision,managerJobMaterializationDecision} from '../apps/tigeriq-core/manager-job-policy.mjs';
+import {campaignPriorEvidenceContext} from '../apps/tigeriq-core/campaign-runner.mjs';
 import {apiDoctorAutoworkPriority} from '../apps/tigeriq-core/api-doctor.mjs';
 
 describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
@@ -51,7 +52,28 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
     expect(failedCampaignRuntimeRearmDecision({...base,runtimeUpdatedAt:'2026-10-30T06:32:42Z'}).action).toBe('keep');
     expect(failedCampaignRuntimeRearmDecision({...base,attempts:2}).reason).toBe('retry_budget_exhausted');
     expect(failedCampaignRuntimeRearmDecision({...base,routingProfile:'AUTO'}).reason).toBe('not_local_campaign');
-    expect(failedCampaignRuntimeRearmDecision({...base,objectiveSummary:'other'}).reason).toBe('not_failed_logical_job_guard');
+    expect(failedCampaignRuntimeRearmDecision({...base,objectiveSummary:MANAGER_NO_PROGRESS_BLOCK_SUMMARY}).action).toBe('requeue');
+    expect(failedCampaignRuntimeRearmDecision({...base,objectiveSummary:'other'}).reason).toBe('not_failed_campaign_rearm_guard');
+  });
+  it('hands the immediately previous verified campaign evidence to the next phase without unbounded payloads',()=>{
+    const text=campaignPriorEvidenceContext({
+      currentPhase:1,
+      checkpoints:[{phaseIndex:0,phaseNumber:1,phaseTitle:'Build',summary:'Verified by JOB-EVID-1',jobId:'JOB-EVID-1',employeeId:'NV10',resourceId:'res:nv10',completedAt:'2026-10-30T06:30:00Z'}],
+      jobs:[
+        {id:'JOB-EVID-1',title:'Phase 1 verification',phase_index:0,kind:'compiled_campaign',status:'done',employee_id:'NV10',resource_id:'res:nv10',provider:'ollama',completed_at:'2026-10-30T06:30:00Z',result:{text:'{"schema":"EXECUTION_RESULT_V1","status":"complete","evidence":[{"id":"e1","value":"phase1 proof"}]}',executionGate:{pass:true,code:'EXECUTION_ACCEPTED',evidenceIds:['e1']}}},
+        {id:'JOB-WORK-1',title:'Implement phase 1',phase_index:0,kind:'compiled_ai',status:'done',employee_id:'NV10',resource_id:'res:nv10',provider:'ollama',completed_at:'2026-10-30T06:29:00Z',result:{text:'observable phase 1 result'}},
+        {id:'JOB-FUTURE',title:'Wrong phase',phase_index:1,kind:'compiled_ai',status:'done',result:{text:'must not leak'}},
+      ],
+    });
+    expect(text).toContain('PRIOR_CAMPAIGN_HANDOFF_V1');
+    expect(text).toContain('JOB-EVID-1');
+    expect(text).toContain('phase1 proof');
+    expect(text).toContain('EXECUTION_ACCEPTED');
+    expect(text).not.toContain('JOB-FUTURE');
+    expect(text.length).toBeLessThanOrEqual(2600);
+  });
+  it('does not invent prior campaign evidence on phase zero',()=>{
+    expect(campaignPriorEvidenceContext({currentPhase:0,checkpoints:[],jobs:[]})).toBe('');
   });
 });
 
