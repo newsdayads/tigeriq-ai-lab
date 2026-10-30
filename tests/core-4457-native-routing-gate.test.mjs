@@ -22,7 +22,7 @@ function harness({enabled='',model='gemma3:4b',profile='LOCAL',packet={packet_ve
   const ctx={
     process:{env:{TIGERIQ_NV10_NATIVE_STRUCTURED:enabled}},
     OLLAMA_EMPLOYEE_ID:'NV10',NV09_EMPLOYEE_ID:'NV09',
-    CORE_MANAGER_EMPLOYEE_ID:'NV08',OLLAMA_TIMEOUT_MS:90000,CORE_MANAGER_TIMEOUT_MS:150000,
+    CORE_MANAGER_EMPLOYEE_ID:'NV08',OLLAMA_TIMEOUT_MS:90000,NV09_TIMEOUT_MS:240000,CORE_MANAGER_TIMEOUT_MS:150000,
     runBoundedInferenceNv09:async(_prompt,options)=>{calls.push({route:'nv09',options});return {text:'nv09'};},
     structuredExecutionSchema:packet=>({type:'object',packet}),
     // The atomic admission behavior is tested separately; this VM harness
