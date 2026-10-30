@@ -24,7 +24,7 @@ import { NV09_EMPLOYEE_ID, NV09_MODEL, NV09_ENDPOINT, nv09ModelAvailability, reg
 // NV09_CANARY_MARKER
 import { appendSkillContextToPrompt, focusedSkillRoutingText, matchAndLoadSkills } from './skill-loader.mjs';
 import { summarizeCoreJobEvidence } from './job-outcome-summary.mjs';
-import { compileTaskPrompt, executionPacketFromPrompt, executionResultGate, assertExecutionResultAccepted, strictExecutionRetryPrompt } from './task-prompt-compiler.mjs';
+import { compileTaskPrompt, executionPacketFromPrompt, executionResultGate, assertExecutionResultAccepted, strictExecutionRetryPrompt, repairCompactExecutionPrompt } from './task-prompt-compiler.mjs';
 import { invokeNativeStructuredExecution, structuredExecutionSchema, compactStructuredExecutionSchema } from './ollama-native-structured.mjs';
 import { buildSkillRoutingPreflight, finalizeSkillRoutingPreflight } from './skill-preflight.mjs';
 import { buildSkillOutcomeObservation, recordSkillOutcome, skillFailureLoopDecision } from './skill-effectiveness.mjs';
@@ -799,6 +799,11 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
       });
       promptRepair=repairCampaignReviewPrompt(row.prompt,priorContext);
     }
+    const compactRepair=(String(row.capability||'')==='review'&&Number(row.phase_index)>0)
+      ? repairCompactExecutionPrompt(promptRepair.prompt)
+      : {changed:false,prompt:promptRepair.prompt,reason:'not_review_phase'};
+    const repairEligible=promptRepair.changed||compactRepair.changed;
+    const repairCap=compactRepair.changed?5:4;
     const decision=failedCampaignRuntimeRearmDecision({
       objectiveStatus:row.objective_status,
       objectiveSummary:row.objective_summary,
@@ -809,8 +814,8 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
       runtimeUpdatedAt,
       hasCampaign:Boolean(row.objective_metadata?.campaign),
       routingProfile:row.objective_metadata?.routingProfile,
-      promptRepairEligible:promptRepair.changed,
-      promptRepairCap:4,
+      promptRepairEligible:repairEligible,
+      promptRepairCap:repairCap,
     });
     if(!['requeue','requeue_prompt_repair'].includes(decision.action))continue;
     const repairCredit=decision.action==='requeue_prompt_repair';
@@ -822,7 +827,7 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
           max_attempts=case when $5::boolean then greatest(j.max_attempts,j.attempts+1) else j.max_attempts end
       where j.id=$1
         and j.status='failed'
-        and (j.attempts<j.max_attempts or ($5::boolean and j.attempts=j.max_attempts and j.max_attempts<4))
+        and (j.attempts<j.max_attempts or ($5::boolean and j.attempts=j.max_attempts and j.max_attempts<$7))
         and j.completed_at<$2::timestamptz
         and exists(
           select 1 from tigeriq_objectives o
@@ -842,15 +847,15 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
         metadata=jsonb_set(coalesce(o.metadata,'{}'::jsonb),'{runtimeRearmSha}',to_jsonb($6::text),true)
     from requeued r
     where o.id=r.objective_id
-    returning o.id`,[row.id,runtimeUpdatedAt,[FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY],promptRepair.prompt,repairCredit,runtimeSha]);
+    returning o.id`,[row.id,runtimeUpdatedAt,[FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY],compactRepair.prompt,repairCredit,runtimeSha,repairCap]);
     if(out.rowCount!==1)continue;
     recovered++;
     await event('CAMPAIGN_FAILED_JOB_REARMED_AFTER_RUNTIME_SOURCE_CHANGE',{
       objectiveId:row.objective_id,jobId:row.id,runtimeSha,runtimeUpdatedAt,
       attempts:Number(row.attempts)||0,maxAttempts:Number(row.max_attempts)||0,
-      maxAttemptsAfter:repairCredit?Number(row.max_attempts)+1:Number(row.max_attempts)||0,
-      promptRepaired:promptRepair.changed,repairCreditGranted:repairCredit,
-      promptRepairReason:promptRepair.reason,
+      maxAttemptsAfter:repairCredit?Math.min(repairCap,Number(row.max_attempts)+1):Number(row.max_attempts)||0,
+      promptRepaired:promptRepair.changed,compactPromptRepaired:compactRepair.changed,repairCreditGranted:repairCredit,
+      promptRepairReason:promptRepair.reason,compactPromptRepairReason:compactRepair.reason,repairCap,
       reason:decision.reason,
     });
   }
