@@ -359,8 +359,8 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayPositionRules.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleRules.kt"
       ],
-      "gap": "Backup schema v3 includes V2-owned Home state, quick slots, saved/default configs, per-display DeX positions, day/night, driver, vehicle model and license plate. Restore now rejects malformed quick-slot objects/targets across root, saved configs and default config before any preference write. User-selected SAF background bytes/URI grants remain intentionally non-portable; V1 images/sound/other unimplemented feature data and real-device acceptance remain open.",
-      "actual": "HomeActivity exports schema v3 and restores vehicle model/license plate while preserving schema 1/2 compatibility. Backup import validates all nine root quick slots plus any saved/default configuration quick slots as explicit string label/target pairs; only empty slots, Camera target or valid Android package targets are accepted. Malformed slot data fails the whole restore before prefs are mutated. Overlay positions remain portable with validated bounds; device/provider-bound custom background grants are not exported.",
+      "gap": "Backup schema v3 includes V2-owned Home state, quick slots, saved/default configs, per-display DeX positions, day/night, driver, vehicle model and license plate. Restore now fails closed on malformed quick-slot payloads and on JSON scalar type coercion across root fields, saved/default configs and overlay coordinates before any preference write. User-selected SAF background bytes/URI grants remain intentionally non-portable; V1 images/sound/other unimplemented feature data and real-device acceptance remain open.",
+      "actual": "HomeActivity exports schema v3 and preserves schema 1/2 compatibility. Backup import requires exact JSON boolean/string/integer scalar types instead of relying on coercing optBoolean/optString/optInt reads, strictly validates nested saved/default Home configuration scalars, validates all quick slots, and validates overlay display/x/y integers before mutating prefs. Malformed payloads fail the whole restore. Device/provider-bound custom background grants remain intentionally excluded.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.exportHomeBackupJson",
@@ -369,7 +369,11 @@
         "HomeActivity.importHomeBackupJson",
         "HomeBackupRules.requiresVehicleState",
         "HomeActivity.validatedQuickSlotsForBackup",
-        "QuickSlotRules.isValidPersistedAssignment"
+        "QuickSlotRules.isValidPersistedAssignment",
+        "HomeActivity.validatedHomeConfigurationForBackup",
+        "HomeBackupRules.exactBoolean",
+        "HomeBackupRules.exactString",
+        "HomeBackupRules.exactInt"
       ],
       "permissions": []
     },
