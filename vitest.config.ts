@@ -55,6 +55,7 @@ export default defineConfig({
       'tests/routing-fault-recovery.test.mjs',
       'tests/continuous-capability-verify.test.mjs',
       'tests/manager-evidence-pause.test.mjs',
+      'tests/core-manager-stop-next.test.mjs',
       'tests/core-vnext-shadow.test.mjs',
       'tests/world-model-contract.test.mjs',
       'tests/core-vnext-checkpoint-store.test.mjs',
