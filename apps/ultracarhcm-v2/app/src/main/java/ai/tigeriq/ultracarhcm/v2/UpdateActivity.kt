@@ -148,13 +148,13 @@ class UpdateActivity : ComponentActivity() {
                 out.toString()
             }
             val json = JSONObject(payload)
-            return UpdateRules.validateMetadata(
-                latestVersionCode = json.optLong("latestVersionCode", -1L),
-                latestVersionName = json.optString("latestVersionName", ""),
-                apkUrl = json.optString("apkUrl", ""),
-                sha256 = json.optString("sha256", ""),
-                releaseNotes = json.optString("releaseNotes", ""),
-                mandatory = json.optBoolean("mandatory", false),
+            return UpdateRules.validateJsonMetadataScalars(
+                latestVersionCode = json.opt("latestVersionCode"),
+                latestVersionName = json.opt("latestVersionName"),
+                apkUrl = json.opt("apkUrl"),
+                sha256 = json.opt("sha256"),
+                releaseNotes = if (json.has("releaseNotes")) json.opt("releaseNotes") else null,
+                mandatory = if (json.has("mandatory")) json.opt("mandatory") else null,
             ) ?: throw IllegalArgumentException("metadata cập nhật không hợp lệ")
         } finally {
             connection.disconnect()
