@@ -54,6 +54,22 @@ test('normal MCP bridge uses only a preinstalled persistent highest task', () =>
   assert.doesNotMatch(source, /cmd\.exe/i);
 });
 
+test('admin principal validation compares Windows SIDs, not local account text', () => {
+  const runner = readFileSync(repoRoot + '/scripts/pc-worker/run-pc-operator-admin-verify-task.ps1', 'utf8');
+  const installer = readFileSync(repoRoot + '/scripts/pc-worker/install-pc-operator-admin-verify-task.ps1', 'utf8');
+  for (const source of [runner, installer]) {
+    assert.match(source, /\$ExpectedSid=.*SecurityIdentifier/);
+    assert.match(source, /\$TaskSid=.*SecurityIdentifier/);
+    assert.match(source, /\$TaskSid -ne \$ExpectedSid/);
+    assert.doesNotMatch(source, /\$Task\.Principal\.UserId -ine \$ExpectedUser/);
+  }
+  assert.match(runner, /GetCurrent\(\)\.User\.Value -ne \$ExpectedSid/);
+  assert.match(installer, /\$Identity\.User\.Value -ne \$ExpectedSid/);
+  assert.match(installer, /\$ExistingSid -eq \$ExpectedSid/);
+  assert.match(installer, /ADMIN_VERIFY_INSTALL_UAC_REQUIRED/);
+  assert.match(runner, /ADMIN_VERIFY_TASK_RUNLEVEL_MISMATCH/);
+});
+
 test('one-time installer requires real UAC and installs only the fixed broker task', () => {
   const source = readFileSync(repoRoot + '/scripts/pc-worker/install-pc-operator-admin-verify-task.ps1', 'utf8');
   assert.match(source, /ADMIN_VERIFY_INSTALL_UAC_REQUIRED/);
