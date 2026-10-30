@@ -101,8 +101,8 @@ class UpdateActivity : ComponentActivity() {
                 "Không dùng nhầm version.json của V1."
             return
         }
-        if (!UpdateRules.isSecureHttpsUrl(endpoint)) {
-            status.text = "Từ chối endpoint cập nhật không phải HTTPS hợp lệ."
+        if (!UpdateRules.isTrustedMetadataUrl(endpoint)) {
+            status.text = "Từ chối endpoint không thuộc kênh V2 TEST đã xác minh."
             return
         }
 
@@ -151,8 +151,9 @@ class UpdateActivity : ComponentActivity() {
             return UpdateRules.validateJsonMetadataScalars(
                 latestVersionCode = json.opt("latestVersionCode"),
                 latestVersionName = json.opt("latestVersionName"),
-                apkUrl = json.opt("apkUrl"),
-                sha256 = json.opt("sha256"),
+                releaseAvailable = json.opt("releaseAvailable"),
+                apkUrl = if (json.has("apkUrl")) json.opt("apkUrl") else null,
+                sha256 = if (json.has("sha256")) json.opt("sha256") else null,
                 releaseNotes = if (json.has("releaseNotes")) json.opt("releaseNotes") else null,
                 mandatory = if (json.has("mandatory")) json.opt("mandatory") else null,
             ) ?: throw IllegalArgumentException("metadata cập nhật không hợp lệ")
@@ -163,6 +164,12 @@ class UpdateActivity : ComponentActivity() {
 
     private fun renderMetadata(metadata: UpdateMetadata) {
         val current = currentVersionCode()
+        if (!metadata.releaseAvailable) {
+            status.text =
+                "Kênh V2 TEST đã xác minh; hiện chưa có APK V2 TEST ký số được phát hành. " +
+                "Build kênh: ${metadata.latestVersionName} (${metadata.latestVersionCode})."
+            return
+        }
         if (!UpdateRules.hasNewerVersion(current, metadata)) {
             status.text =
                 "Đang dùng bản mới nhất theo kênh V2 đã cấu hình. " +
