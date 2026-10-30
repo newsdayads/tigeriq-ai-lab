@@ -8,12 +8,18 @@ import kotlin.math.sqrt
 
 internal object TaxiMeterRules {
     private const val EARTH_RADIUS_METERS = 6_371_000.0
+    const val PREFS_NAME = "ultracar_v2_taxi_meter"
+    const val KEY_RATE = "rate_vnd_per_km"
+    const val KEY_HISTORY = "trip_history_json"
     const val MAX_HISTORY = 100
 
     fun parseRateVndPerKm(raw: String): Double? {
         val value = raw.trim().replace(',', '.').toDoubleOrNull() ?: return null
-        return value.takeIf { it.isFinite() && it > 0.0 && it <= 1_000_000.0 }
+        return value.takeIf(::validRateVndPerKm)
     }
+
+    fun validRateVndPerKm(value: Double): Boolean =
+        value.isFinite() && value > 0.0 && value <= 1_000_000.0
 
     fun validCoordinates(latitude: Double, longitude: Double): Boolean =
         latitude.isFinite() &&
