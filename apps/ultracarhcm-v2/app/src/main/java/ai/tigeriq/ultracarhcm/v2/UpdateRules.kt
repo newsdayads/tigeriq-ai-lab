@@ -50,6 +50,13 @@ internal object UpdateRules {
         )
     }
 
+    fun matchesExpectedSha256(expectedSha256: String, observedSha256: String): Boolean {
+        val expected = expectedSha256.trim()
+        val observed = observedSha256.trim()
+        if (!sha256Pattern.matches(expected) || !sha256Pattern.matches(observed)) return false
+        return expected.equals(observed, ignoreCase = true)
+    }
+
     fun hasNewerVersion(currentVersionCode: Long, metadata: UpdateMetadata): Boolean =
         metadata.latestVersionCode > currentVersionCode
 }
