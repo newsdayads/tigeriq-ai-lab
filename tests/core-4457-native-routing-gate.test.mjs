@@ -49,8 +49,8 @@ test('NV09 compiled packet gets bounded large context and exact execution schema
   assert.equal(await h.runNv09(),'nv09');
   assert.equal(h.calls.length,1);
   assert.equal(h.calls[0].route,'nv09');
-  assert.equal(h.calls[0].options.numCtx,4096);
-  assert.equal(h.calls[0].options.numPredict,256);
+  assert.equal(h.calls[0].options.numCtx,8192);
+  assert.equal(h.calls[0].options.numPredict,768);
   assert.equal(h.calls[0].options.maxPromptChars,12000);
   assert.deepEqual(h.calls[0].options.format,{type:'object',packet});
 });
