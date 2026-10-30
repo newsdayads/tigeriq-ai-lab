@@ -97,7 +97,7 @@ describe('GH-5135 native Android compile gate (synthetic fixtures, not a release
       expect(existsSync(apk),'Debug APK missing after Gradle passed').toBe(true);
       const junitSuites = [
         ['HomeConfigRulesTest', 3],
-        ['HomeBackupRulesTest', 4],
+        ['HomeBackupRulesTest', 5],
         ['QuickSlotRulesTest', 5],
         ['GuideTrackModelTest', 5],
         ['OverlayPositionRulesTest', 4],
