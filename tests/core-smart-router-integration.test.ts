@@ -20,6 +20,14 @@ describe('#777 Core Smart Router integration',()=>{
   });
   it('integrates AUTO task profiles and reviewer independence into real job routing',()=>{expect(core).toContain('reviewerResourceIdsForJob');expect(core).toContain("capability<>'review'");expect(core).toContain('reviewerResourceIds:options.reviewerResourceIds||[]');expect(core).toContain('reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist,validateText,compiledPacket});');expect(core.split('employeeAllowlist,validateText,compiledPacket});').length-1).toBe(2);expect(core).toContain('preferredEmployeeId=String(options.preferredEmployeeId');expect(router).toContain("normalizedRequested!=='AUTO'");expect(router).toContain('reviewerExclusions');});
   it('persists quota/rate-limit telemetry only from real provider signals or bounded cooldown evidence',()=>{expect(core).toContain('quota_state');expect(core).toContain('last_429_at');expect(core).toContain('syncQuotaFromHeaders');expect(core).toContain('x-ratelimit-limit-requests');expect(core).toContain('x-ratelimit-remaining-tokens');expect(core).toContain("kind==='rate_limit'");expect(core).toContain('rateLimitFailureState(currentQuota,policy.cooldownMs)');expect(core).toContain("select quota_state from tigeriq_ai_resources where resource_id=$1");});
+  it('keeps NV09 job-local prompt overflow from poisoning the shared reviewer',()=>{
+    expect(router).toContain("k==='job_contract'");
+    expect(core).toContain("kind==='job_contract'?'READY'");
+    expect(core).toContain("policy.cooldownMs>0?new Date(Date.now()+policy.cooldownMs).toISOString():null");
+    expect(core).toContain("NV09_COMPILED_PROMPT_BUDGET_EXCEEDED");
+    expect(core).toContain("NV09_JOB_CONTRACT_COOLDOWN_RECONCILED");
+    expect(core).toContain("type='RESOURCE_FAILURE' order by seq desc limit 1");
+  });
   it('parses compound provider reset durations such as current Groq headers',()=>{const start=core.indexOf('function quotaResetDurationMs');const end=core.indexOf('\nfunction quotaResetAt',start);expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);const fn=new Function(`${core.slice(start,end)}; return quotaResetDurationMs;`)();expect(fn('2m59.56s')).toBeCloseTo(179560,5);expect(fn('7.66s')).toBeCloseTo(7660,5);expect(fn('n/a')).toBeNull();});
   it('uses task-kind performance and bounded failure-aware failover without paid fallback',()=>{expect(core).toContain('avg_latency_ms');expect(core).toContain('failurePolicy(kind)');expect(core).toContain('if(policy.stop)break');expect(router).toContain('paid_fallback_forbidden');expect(router).toContain("'security','credential','paid','production','irreversible'");});
   it('recovers a blocked LOCAL campaign by requeueing the same failed job only after runtime source change',()=>{
