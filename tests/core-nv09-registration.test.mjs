@@ -62,6 +62,53 @@ test('compiled bounded inference preserves larger prompt and deterministic JSON 
   assert.deepStrictEqual(request.body.format,format);
 });
 
+test('structured QA has a finite expanded budget and does not relax generic canary caps',async()=>{
+  let received;
+  const format={type:'object',properties:{schema:{const:'EXECUTION_RESULT_V1'}}};
+  const fake=async (_url,init)=>{
+    received=JSON.parse(init.body);
+    return {ok:true,json:async()=>({response:'{"schema":"EXECUTION_RESULT_V1"}',done:true,done_reason:'stop'})};
+  };
+  await runBoundedInferenceNv09('bounded QA',{fetchImpl:fake,timeoutMs:2000,numCtx:8192,numPredict:768,maxPromptChars:12000,format});
+  assert.equal(received.options.num_ctx,8192);
+  assert.equal(received.options.num_predict,768);
+  assert.deepStrictEqual(received.format,format);
+  await runBoundedInferenceNv09('bounded QA',{fetchImpl:fake,timeoutMs:2000,numCtx:999999,numPredict:999999,format});
+  assert.equal(received.options.num_ctx,8192);
+  assert.equal(received.options.num_predict,1024);
+  await runBoundedInferenceNv09('generic',{fetchImpl:fake,timeoutMs:2000,numCtx:999999,numPredict:999999});
+  assert.equal(received.options.num_ctx,4096);
+  assert.equal(received.options.num_predict,256);
+});
+
+test('compiled QA refuses prompt truncation before any Ollama call',async()=>{
+  let called=false;
+  await assert.rejects(
+    ()=>runBoundedInferenceNv09('x'.repeat(12001),{
+      fetchImpl:async()=>{called=true;throw new Error('must not call provider');},
+      timeoutMs:2000,maxPromptChars:12000,
+      format:{type:'object',required:['schema']}
+    }),
+    error=>error?.message==='NV09_COMPILED_PROMPT_BUDGET_EXCEEDED'&&error?.kind==='configuration'
+  );
+  assert.equal(called,false);
+});
+
+test('NV09 rejects incomplete/length-limited structured QA without crediting success',async()=>{
+  for(const response of [
+    {response:'{"schema":',done:false,done_reason:'length'},
+    {response:'{"schema":',done:true,done_reason:'length'},
+  ]){
+    await assert.rejects(
+      ()=>runBoundedInferenceNv09('QA',{
+        fetchImpl:async()=>({ok:true,json:async()=>response}),timeoutMs:2000,
+        format:{type:'object',required:['schema']}
+      }),
+      error=>error?.message==='NV09_INFERENCE_INCOMPLETE'&&error?.kind==='invalid_response'
+    );
+  }
+});
+
 test('bounded inference preserves real Ollama 5xx evidence', async()=>{
   const fake=async()=>({ok:false,status:500,text:async()=>JSON.stringify({error:'llama-server binary not found'})});
   await assert.rejects(
