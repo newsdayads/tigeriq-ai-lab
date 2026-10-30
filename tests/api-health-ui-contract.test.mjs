@@ -285,4 +285,18 @@ describe('#3918 API Health shared Work UI contract',()=>{
     expect(dashboard).toContain('class="work-detail-step-source"');
   });
 
+  it('renders four desktop work cards, hides duplicate project breadcrumbs and wraps steps on iPhone',()=>{
+    expect(visual).toContain('OWNER_WORK_CARDS_4COL_IPHONE_20261030');
+    expect(visual).toContain('grid-template-columns:repeat(4,minmax(0,1fr))!important');
+    expect(visual).toContain('body.api-health #workList.tiq-work-center>.tiq-work-card[data-project-theme] .work-hierarchy');
+    expect(visual).toContain('display:none!important;');
+    expect(visual).toContain('.card-live-action-box>div:not(.action-header):not(.card-stepper-strip)');
+    expect(visual).toContain('overflow-wrap:anywhere!important;word-break:break-word!important');
+    expect(visual).toContain('@media(max-width:599px)');
+    expect(visual).toContain('grid-template-columns:minmax(0,1fr)!important');
+    expect(visual).toContain('@media(orientation:landscape) and (min-width:640px) and (max-width:1199px)');
+    expect(live).toContain('name="viewport"');
+    expect(dashboard).toContain('name="viewport"');
+  });
+
 });
