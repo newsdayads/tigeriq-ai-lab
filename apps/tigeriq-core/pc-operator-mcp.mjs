@@ -394,7 +394,8 @@ async function runPcOperatorAdminVerify() {
   } catch {
     throw new Error('MCP_SCOPED_ADMIN_BROKER_RECEIPT_INVALID');
   }
-  if (receipt?.accepted !== true || receipt?.taskDeleted !== true
+  if (receipt?.accepted !== true || receipt?.taskPersistent !== true
+      || receipt?.requestDeleted !== true
       || receipt?.receipt?.schema !== 'TIGERIQ_PC_OPERATOR_ADMIN_VERIFY_V1'
       || receipt?.receipt?.action !== 'verify_elevation'
       || receipt?.receipt?.elevated !== true || receipt?.receipt?.isSystem !== false
@@ -409,7 +410,8 @@ async function runPcOperatorAdminVerify() {
     elevated: true,
     isSystem: false,
     fltmcExitCode: 0,
-    taskDeleted: true,
+    taskPersistent: true,
+    requestDeleted: true,
   };
 }
 
