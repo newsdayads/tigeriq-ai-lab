@@ -1,5 +1,5 @@
 // Owner-controlled device enrollment. A 10-minute, high-entropy invitation
-// lives only in the URL fragment and is sent via same-origin HTTPS POST.
+// uses fragment or a 10-minute ?invite= HTTPS fallback for iPhone in-app links; credentials are scrubbed before same-origin POST.
 // No public API can mint a new invitation.
 import { createDeviceSession, verifyPairLinkToken, sessionCookie } from './live-device-auth.mjs';
 
@@ -14,10 +14,14 @@ h1{font-size:22px;margin:0 0 14px}p{line-height:1.5}small{color:#a5b9cc}a{color:
 <small>Chỉ anh Sơn được cấp quyền xem dữ liệu PC01. Không cần nhập mật khẩu trên thiết bị đã kết nối.</small></main>
 <script>
 (async function(){
- const raw=location.hash.slice(1);
+ // Some in-app browsers rewrite '#' into '%23', producing a Vercel NOT_FOUND.
+ // Support the one-tap ?invite= link and the original fragment-only flow.
+ // Read then immediately scrub BOTH credentials from browser history before POST.
+ const fragment=new URLSearchParams(location.hash.slice(1));
+ const query=new URLSearchParams(location.search);
+ const token=fragment.get('token')||query.get('invite')||'';
  history.replaceState(null,'',location.pathname);
  const state=document.getElementById('state');
- const token=raw.startsWith('token=')?raw.slice(6):'';
  if(!/^[A-Za-z0-9_-]{50,1400}\\.[A-Za-z0-9_-]{40,90}$/.test(token)){
   state.textContent='Thiếu liên kết kích hoạt hợp lệ. Vui lòng mở lại liên kết riêng được cấp.';return;
  }
