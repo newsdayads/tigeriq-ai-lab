@@ -86,13 +86,12 @@ jobs:
           source_dir="$RUNNER_TEMP/ultracar"
           sdk="$ANDROID_HOME/build-tools/35.0.0"
           manifest="apps/ultracarhcm-v1/release/test-release-manifest.json"
-          eval "$(python3 - "$manifest" <<'PY'
-import json,sys,shlex
-m=json.load(open(sys.argv[1]))
-for key,name in (("alignedName","ALIGNED"),("signedName","SIGNED"),("versionCode","VERSION_CODE"),("versionName","VERSION_NAME"),("packageName","PACKAGE"),("certificateSHA256","CERT")):
- print(name+"="+shlex.quote(str(m[key])))
-PY
-)"
+          ALIGNED=$(python3 -c 'import json; print(json.load(open("apps/ultracarhcm-v1/release/test-release-manifest.json"))["alignedName"])')
+          SIGNED=$(python3 -c 'import json; print(json.load(open("apps/ultracarhcm-v1/release/test-release-manifest.json"))["signedName"])')
+          VERSION_CODE=$(python3 -c 'import json; print(json.load(open("apps/ultracarhcm-v1/release/test-release-manifest.json"))["versionCode"])')
+          VERSION_NAME=$(python3 -c 'import json; print(json.load(open("apps/ultracarhcm-v1/release/test-release-manifest.json"))["versionName"])')
+          PACKAGE=$(python3 -c 'import json; print(json.load(open("apps/ultracarhcm-v1/release/test-release-manifest.json"))["packageName"])')
+          CERT=$(python3 -c 'import json; print(json.load(open("apps/ultracarhcm-v1/release/test-release-manifest.json"))["certificateSHA256"])')
           "$sdk/zipalign" -c -p 4 "$source_dir/$ALIGNED"
           "$sdk/aapt2" dump badging "$source_dir/$ALIGNED" > "$RUNNER_TEMP/ultracar/badging.txt"
           grep -F "name='$PACKAGE'" "$RUNNER_TEMP/ultracar/badging.txt" >/dev/null
