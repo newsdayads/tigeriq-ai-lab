@@ -514,6 +514,24 @@ class HomeActivity : ComponentActivity() {
         return normalized
     }
 
+    private fun validatedQuickSlotsForBackup(source: JSONArray?): JSONArray? {
+        if (source == null || source.length() != QuickSlotRules.SLOT_COUNT) return null
+        val normalized = JSONArray()
+        for (index in 0 until QuickSlotRules.SLOT_COUNT) {
+            val item = source.optJSONObject(index) ?: return null
+            val rawLabel = item.opt("label")
+            val rawTarget = item.opt("target")
+            if (rawLabel !is String || rawTarget !is String) return null
+            if (!QuickSlotRules.isValidPersistedAssignment(rawLabel, rawTarget)) return null
+            normalized.put(
+                JSONObject()
+                    .put("label", QuickSlotRules.normalizeLabel(rawLabel))
+                    .put("target", QuickSlotRules.normalizeTarget(rawTarget)),
+            )
+        }
+        return normalized
+    }
+
     private fun normalizeHomeConfiguration(item: JSONObject): JSONObject? {
         val schema = item.optInt("schemaVersion", 0)
         if (!HomeConfigRules.canReadSchema(schema)) {
@@ -834,14 +852,16 @@ class HomeActivity : ComponentActivity() {
         }
 
         val rawSlots = root.optJSONArray("quickSlots") ?: return false
-        if (rawSlots.length() != QuickSlotRules.SLOT_COUNT) return false
-        val safeSlots = normalizedQuickSlotsForStorage(rawSlots)
+        val safeSlots = validatedQuickSlotsForBackup(rawSlots) ?: return false
 
         val rawConfigs = root.optJSONArray("savedConfigurations") ?: return false
         if (rawConfigs.length() > HomeConfigRules.MAX_SAVED) return false
         val safeConfigs = JSONArray()
         for (index in 0 until rawConfigs.length()) {
             val item = rawConfigs.optJSONObject(index) ?: return false
+            if (item.has("quickSlots") &&
+                validatedQuickSlotsForBackup(item.optJSONArray("quickSlots")) == null
+            ) return false
             val safe = normalizeHomeConfiguration(item) ?: return false
             safeConfigs.put(safe)
         }
@@ -850,6 +870,9 @@ class HomeActivity : ComponentActivity() {
             null
         } else {
             val item = root.optJSONObject("defaultHomeConfiguration") ?: return false
+            if (item.has("quickSlots") &&
+                validatedQuickSlotsForBackup(item.optJSONArray("quickSlots")) == null
+            ) return false
             normalizeHomeConfiguration(item) ?: return false
         }
 
