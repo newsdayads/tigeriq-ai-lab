@@ -420,15 +420,20 @@
       "status": "PARTIAL_SOURCE",
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TaxiMeterActivity.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ReportRules.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ReportActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ReportRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt"
       ],
-      "gap": "V2-owned Taxi Meter trip data can be exported through Storage Access Framework as explicit CSV; exact V1 XLS/report templates, dashboards and other feature-domain exports remain unverified and are not claimed.",
-      "actual": "TaxiMeterActivity exports only its bounded local V2 trip history through the user-selected SAF destination, with stable CSV columns and escaping. It requests no broad storage permission and does not export credentials or V1 data.",
+      "gap": "A dedicated V2 report hub now summarizes V2-owned Taxi Meter trip count, distance, duration and recorded revenue and exports CSV through Storage Access Framework. Exact V1 XLS/report templates, dashboards and other feature-domain exports remain unverified and are not claimed.",
+      "actual": "ProfileActivity opens ReportActivity, which reads only bounded local V2 Taxi Meter history, shows aggregate trip/revenue/distance/time plus recent trips, and exports stable UTF-8 BOM CSV through a user-selected SAF destination. It requests no broad storage permission and does not export credentials or V1 data.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
-        "TaxiMeterActivity.writeTripReport",
-        "ReportRules.csvCell",
-        "ReportRules.header"
+        "ProfileActivity.buildContent",
+        "ReportActivity.refresh",
+        "ReportActivity.writeCsv",
+        "ReportRules.summary",
+        "ReportRules.buildCsv",
+        "TaxiMeterActivity.writeTripReport"
       ],
       "permissions": []
     },
@@ -484,7 +489,7 @@
         "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml"
       ],
       "gap": "Profile source now reflows one/two/three columns by width for compact phone, landscape/tablet and wide DeX, but exact V1 card styling and real-device clipping acceptance are still open.",
-      "actual": "ProfileActivity groups local profile, runtime version/update and fail-closed identity/license status into responsive cards. ProfileLayoutRules uses 1 column below 600dp, 2 columns at 600–959dp and 3 columns at 960dp+; Android recreation on configuration changes rebuilds the layout.",
+      "actual": "ProfileActivity groups local profile, runtime version/update, fail-closed identity/license status, and V2 trip reporting into responsive cards. ProfileLayoutRules uses 1 column below 600dp, 2 columns at 600–959dp and 3 columns at 960dp+; Android recreation on configuration changes rebuilds the layout.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.onConfigurationChanged",
