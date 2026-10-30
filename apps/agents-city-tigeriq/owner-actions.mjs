@@ -7,6 +7,44 @@ const CORE_OBJECTIVES='http://127.0.0.1:8795/api/objectives';
 const ERR_MAX=100;
 const truncate=(s,n)=>typeof s==='string'?s.trim().slice(0,n):'';
 
+function compactEvidence(value,limit=320){
+  if(value==null)return '';
+  let v=value;
+  if(typeof v==='string'){
+    const s=v.trim();
+    if(!s)return '';
+    try{v=JSON.parse(s)}catch{return truncate(s,limit)}
+  }
+  if(v&&typeof v==='object'&&!Array.isArray(v)){
+    const preferred=[v.summary,v.text,v.message,v.evidence?.summary,v.evidence?.text]
+      .find(x=>typeof x==='string'&&x.trim());
+    if(preferred)return truncate(preferred,limit);
+  }
+  try{return truncate(JSON.stringify(v),limit)}catch{return ''}
+}
+
+export function ownerCampaignPhases(objective=''){
+  const goal=truncate(objective,2000);
+  if(goal.length<12)throw new Error('OBJECTIVE_TOO_SHORT');
+  return [
+    {
+      title:'Thực thi và tạo sản phẩm',
+      prompt:`Thực thi mục tiêu Owner: ${goal}. Tạo một kết quả/sản phẩm cụ thể có thể kiểm chứng trong phạm vi LOCAL/P2. Phải có ít nhất một job không phải review hoàn tất với worker/resource thực, kết quả và bằng chứng quan sát được. Không tự nhận QA độc lập trong giai đoạn này.`,
+      acceptance:'Có ít nhất một job không phải review hoàn tất cho đúng mục tiêu, có employee/resource thật, kết quả cụ thể và bằng chứng kiểm chứng được.'
+    },
+    {
+      title:'QA độc lập',
+      prompt:'Rà soát độc lập kết quả giai đoạn trước. Tạo job capability review. Reviewer phải khác employee và resource của mọi job không phải review đã hoàn tất trong objective. Kiểm tra tiêu chí, nêu lỗi nếu có; không tự sửa bằng cùng reviewer.',
+      acceptance:'Có job review hoàn tất bằng employee/resource khác implementer, kết luận rõ ĐẠT hoặc chỉ ra lỗi có bằng chứng.'
+    },
+    {
+      title:'Nghiệm thu đầu-cuối',
+      prompt:'Đối chiếu lịch sử objective: sản phẩm thật, job/worker binding, lease khi chạy, QA độc lập và kết quả cuối. Chỉ hoàn tất khi các bằng chứng khớp; không tạo lại việc đã xong và không suy đoán DONE.',
+      acceptance:'Có bằng chứng đầu-cuối cho sản phẩm, worker/job, lease lúc chạy, QA độc lập và trạng thái Core cuối không còn job trùng đang chạy.'
+    }
+  ];
+}
+
 export function createOwnerActions({fetchImpl=fetch, now=Date.now}={}) {
   const token=randomBytes(32).toString('hex');
   const requests=new Map();
@@ -38,8 +76,9 @@ export function createOwnerActions({fetchImpl=fetch, now=Date.now}={}) {
        input.routingProfile!=='LOCAL'||input.priority!=='P2'||
        Object.keys(input).some(k=>!['objective','priority','routingProfile'].includes(k)))
       return {status:400,body:{ok:false,reason:'LOCAL_P2_OBJECTIVE_ONLY'}};
+    const phases=ownerCampaignPhases(input.objective);
     const body=JSON.stringify({objective:input.objective.trim(),priority:'P2',
-      routingProfile:'LOCAL',source:'animal-city-local'});
+      routingProfile:'LOCAL',source:'animal-city-local',phases});
     if(requests.has(key)){
       const prior=requests.get(key);
       if(prior.payload!==body)return {status:409,body:{ok:false,reason:'IDEMPOTENCY_CONFLICT'}};
@@ -54,11 +93,11 @@ export function createOwnerActions({fetchImpl=fetch, now=Date.now}={}) {
         });
         if(r.status!==201)return {status:502,body:{ok:false,reason:'CORE_OBJECTIVE_REJECTED',coreHttp:r.status}};
         const result=await r.json();
-        if(result?.ok!==true||!/^OBJ-[a-f0-9-]{36}$/i.test(result.id||''))
+        if(result?.ok!==true||!/^OBJ-[a-f0-9-]{36}$/i.test(result.id||'')||result.campaign!==true||result.phaseCount!==3)
           return {status:502,body:{ok:false,reason:'CORE_RECEIPT_UNVERIFIED'}};
         return {status:201,body:{ok:true,objectiveId:result.id,priority:'P2',routingProfile:'LOCAL',
-          source:'TigerIQ Core /api/objectives',receiptVerified:true,
-          note:'Core đã NHẬN mục tiêu; chưa khẳng định AI đã bắt đầu hoặc đã hoàn tất.'}};
+          source:'TigerIQ Core /api/objectives',receiptVerified:true,campaign:true,phaseCount:3,currentPhase:0,
+          note:'Core đã NHẬN campaign 3 giai đoạn; chưa khẳng định AI đã bắt đầu hoặc đã hoàn tất.'}};
       }catch{return {status:503,body:{ok:false,reason:'CORE_UNAVAILABLE'}}}
     })();
     requests.set(key,{payload:body,task});
@@ -79,15 +118,39 @@ export function createOwnerActions({fetchImpl=fetch, now=Date.now}={}) {
         throw Error('UNVERIFIED');
       const objectives=data.objectives.filter(x=>x?.metadata?.source==='animal-city-local')
         .slice(0,12).map(x=>{
-          const jobs=data.jobs.filter(j=>j?.objective_id===x.id).slice(0,8);
+          const jobs=data.jobs.filter(j=>j?.objective_id===x.id).slice(0,12);
+          const campaign=x?.metadata?.campaign||null;
           return {
             id:truncate(x.id,55),
             objective:truncate(x.objective,220),
             priority:truncate(x.priority,4),
             state:truncate(x.status,50)||'UNKNOWN',
             summary:truncate(x.summary,240),
-            jobs:jobs.map(j=>({id:truncate(j.id,70),status:truncate(j.status,50),
-              employeeId:truncate(j.employee_id,30),capability:truncate(j.capability,60)})),
+            campaign:campaign&&Array.isArray(campaign.phases)?{
+              phaseCount:campaign.phases.length,
+              currentPhase:Math.max(0,Number(campaign.currentPhase)||0),
+              checkpoints:Array.isArray(campaign.checkpoints)?campaign.checkpoints.slice(-6).map(c=>({
+                phaseNumber:Number(c?.phaseNumber)||null,
+                phaseTitle:truncate(c?.phaseTitle,120),
+                jobId:truncate(c?.jobId,90),
+                employeeId:truncate(c?.employeeId,30),
+                resourceId:truncate(c?.resourceId,180),
+                completedAt:c?.completedAt||null,
+              })):[]
+            }:null,
+            jobs:jobs.map(j=>{
+              const leaseMs=Date.parse(j?.lease_until||'');
+              return {
+                id:truncate(j.id,70),status:truncate(j.status,50),
+                employeeId:truncate(j.employee_id,30),resourceId:truncate(j.resource_id,180),
+                provider:truncate(j.provider,60),capability:truncate(j.capability,60),
+                leaseUntil:Number.isFinite(leaseMs)?new Date(leaseMs).toISOString():null,
+                leaseActive:Number.isFinite(leaseMs)&&leaseMs>now(),
+                resultSummary:compactEvidence(j.result,320),
+                failureSummary:compactEvidence(j.failure,220),
+                completedAt:j.completed_at||null,
+              };
+            }),
             updatedAt:x.updated_at,
           };
         });
