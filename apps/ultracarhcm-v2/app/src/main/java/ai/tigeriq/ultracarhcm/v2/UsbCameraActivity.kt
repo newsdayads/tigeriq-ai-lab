@@ -1,9 +1,11 @@
 package ai.tigeriq.ultracarhcm.v2
 
+import android.Manifest
 import android.app.Activity
 import android.app.ActivityOptions
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
@@ -21,6 +23,7 @@ class UsbCameraActivity : Activity() {
     companion object {
         const val EXTRA_REVERSE_ACTIVE = "ai.tigeriq.ultracarhcm.v2.extra.REVERSE_ACTIVE"
         const val EXTRA_STEERING_DEGREES = "ai.tigeriq.ultracarhcm.v2.extra.STEERING_DEGREES"
+        private const val CAMERA_PERMISSION_REQUEST = 4403
         private var visible = WeakReference<UsbCameraActivity>(null)
 
         fun toggleFromShortcut(context: Context, displayId: Int) {
@@ -67,6 +70,7 @@ class UsbCameraActivity : Activity() {
     private lateinit var openClose: Button
     private lateinit var guide: DynamicGuideView
     private var cameraFrameActive = false
+    private var awaitingCameraPermission = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -182,12 +186,47 @@ class UsbCameraActivity : Activity() {
     private fun updateCameraButton() {
         openClose.text = "CAM"
         openClose.contentDescription =
-            if (camera.requested) "ĐÓNG CAMERA USB" else "MỞ CAMERA USB"
+            when {
+                camera.requested -> "ĐÓNG CAMERA USB"
+                awaitingCameraPermission -> "ĐANG CHỜ QUYỀN CAMERA"
+                else -> "MỞ CAMERA USB"
+            }
     }
 
     private fun openCamera() {
-        camera.start()
+        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            awaitingCameraPermission = false
+            camera.start()
+            updateCameraButton()
+            return
+        }
+        if (awaitingCameraPermission) return
+
+        awaitingCameraPermission = true
+        status.text = "Cần quyền CAMERA để mở Camera USB UVC"
+        status.setTextColor(Color.WHITE)
+        status.visibility = View.VISIBLE
+        requestPermissions(arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_REQUEST)
         updateCameraButton()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != CAMERA_PERMISSION_REQUEST) return
+
+        awaitingCameraPermission = false
+        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            openCamera()
+        } else {
+            status.text = "Quyền CAMERA bị từ chối — Camera USB chưa mở"
+            status.setTextColor(Color.WHITE)
+            status.visibility = View.VISIBLE
+            updateCameraButton()
+        }
     }
 
     private fun toggle() {
