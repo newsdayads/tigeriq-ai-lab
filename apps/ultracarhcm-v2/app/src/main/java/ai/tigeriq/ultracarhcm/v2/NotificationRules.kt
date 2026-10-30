@@ -14,6 +14,11 @@ internal object NotificationRules {
     fun shouldReplaceNotice(previousVersionCode: Long, latestVersionCode: Long): Boolean =
         latestVersionCode > 0L && latestVersionCode > previousVersionCode
 
+    fun isResolvedNotice(currentVersionCode: Long, noticeVersionCode: Long): Boolean =
+        currentVersionCode > 0L &&
+            noticeVersionCode > 0L &&
+            noticeVersionCode <= currentVersionCode
+
     fun unreadCount(versionCode: Long, read: Boolean): Int =
         if (versionCode > 0L && !read) 1 else 0
 

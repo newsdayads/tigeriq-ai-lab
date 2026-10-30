@@ -1,7 +1,9 @@
 package ai.tigeriq.ultracarhcm.v2
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.view.ViewGroup
 import android.widget.Button
@@ -96,10 +98,13 @@ class NotificationActivity : ComponentActivity() {
 
     private fun refresh() {
         val versionCode = prefs.getLong(NotificationRules.KEY_VERSION_CODE, 0L)
+        if (NotificationRules.isResolvedNotice(currentVersionCode(), versionCode)) {
+            prefs.edit().clear().apply()
+            renderEmpty()
+            return
+        }
         if (versionCode <= 0L) {
-            status.text = "Chưa có thông báo cập nhật V2 trên thiết bị."
-            markReadButton.isEnabled = false
-            clearButton.isEnabled = false
+            renderEmpty()
             return
         }
 
@@ -126,5 +131,25 @@ class NotificationActivity : ComponentActivity() {
         }
         markReadButton.isEnabled = NotificationRules.unreadCount(versionCode, read) > 0
         clearButton.isEnabled = true
+    }
+
+    private fun renderEmpty() {
+        status.text = "Chưa có thông báo cập nhật V2 trên thiết bị."
+        markReadButton.isEnabled = false
+        clearButton.isEnabled = false
+    }
+
+    private fun currentVersionCode(): Long {
+        val info = try {
+            packageManager.getPackageInfo(packageName, 0)
+        } catch (_: PackageManager.NameNotFoundException) {
+            return 0L
+        }
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            info.versionCode.toLong()
+        }
     }
 }

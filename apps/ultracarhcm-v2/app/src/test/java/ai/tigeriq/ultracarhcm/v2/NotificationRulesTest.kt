@@ -13,6 +13,15 @@ class NotificationRulesTest {
         assertFalse(NotificationRules.shouldReplaceNotice(0L, 0L))
     }
 
+
+    @Test fun resolvesOnlyNoticesAtOrBelowInstalledVersion() {
+        assertTrue(NotificationRules.isResolvedNotice(10L, 10L))
+        assertTrue(NotificationRules.isResolvedNotice(11L, 10L))
+        assertFalse(NotificationRules.isResolvedNotice(9L, 10L))
+        assertFalse(NotificationRules.isResolvedNotice(0L, 10L))
+        assertFalse(NotificationRules.isResolvedNotice(10L, 0L))
+    }
+
     @Test fun unreadCountRequiresExistingUnreadNotice() {
         assertEquals(1, NotificationRules.unreadCount(10L, false))
         assertEquals(0, NotificationRules.unreadCount(10L, true))
