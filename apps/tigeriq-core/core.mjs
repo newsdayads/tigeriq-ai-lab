@@ -19,7 +19,7 @@ const managerProviderBodyForHost = (provider, ...args) => {
 import { MANAGER_PENDING_JOB_STATUSES } from './manager-batch-policy.mjs';
 import { normalizeObjectiveRoutingProfile, objectiveJobRoutingProfile, mayWaitAfterLocalFailure, effectiveCoreJobRoutingProfile, githubAutoworkEmployeeAllowlist, githubAutoworkZeroCostResource } from './objective-local-routing.mjs';
 import { parseOwnerBacklogOrder, objectiveBacklogRank } from './owner-backlog-order.mjs';
-import { managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
+import { FAILED_LOGICAL_JOB_BLOCK_SUMMARY, failedCampaignRuntimeRearmDecision, managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, NV09_ENDPOINT, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 // NV09_CANARY_MARKER
 import { appendSkillContextToPrompt, focusedSkillRoutingText, matchAndLoadSkills } from './skill-loader.mjs';
@@ -766,6 +766,74 @@ async function reconcileExhaustedQueuedJobs(){
     await event('JOB_EXHAUSTED_QUEUE_RECONCILED',{jobId:j.id,objectiveId:j.objective_id,employeeId:j.employee_id,resourceId:j.resource_id,attempts:Number(j.attempts)||0,maxAttempts:Number(j.max_attempts)||0});
   }
   return q.rowCount||0;
+}
+async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
+  const runtime=readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE);
+  const runtimeSha=String(runtime?.currentSha||'').trim();
+  const runtimeUpdatedAt=String(runtime?.updatedAt||'').trim();
+  if(!runtimeSha||!Number.isFinite(Date.parse(runtimeUpdatedAt)))return 0;
+  const rows=(await pool.query(`select j.id,j.objective_id,j.status,j.attempts,j.max_attempts,j.completed_at,
+      o.status as objective_status,o.summary as objective_summary,o.metadata as objective_metadata
+    from tigeriq_jobs j
+    join tigeriq_objectives o on o.id=j.objective_id
+    where j.status='failed'
+      and j.kind='compiled_ai'
+      and o.status='blocked'
+      and o.summary=$1
+      and o.metadata ? 'campaign'
+      and upper(coalesce(o.metadata->>'routingProfile',''))='LOCAL'
+    order by j.completed_at desc nulls last
+    limit 20`,[FAILED_LOGICAL_JOB_BLOCK_SUMMARY])).rows;
+  let recovered=0;
+  for(const row of rows){
+    const decision=failedCampaignRuntimeRearmDecision({
+      objectiveStatus:row.objective_status,
+      objectiveSummary:row.objective_summary,
+      jobStatus:row.status,
+      attempts:row.attempts,
+      maxAttempts:row.max_attempts,
+      jobCompletedAt:row.completed_at,
+      runtimeUpdatedAt,
+      hasCampaign:Boolean(row.objective_metadata?.campaign),
+      routingProfile:row.objective_metadata?.routingProfile,
+    });
+    if(decision.action!=='requeue')continue;
+    const out=await pool.query(`with requeued as (
+      update tigeriq_jobs j
+      set status='queued',employee_id=null,resource_id=null,provider=null,routing_decision=null,
+          result=null,failure=null,lease_until=null,started_at=null,completed_at=null,next_attempt_at=null
+      where j.id=$1
+        and j.status='failed'
+        and j.attempts<j.max_attempts
+        and j.completed_at<$2::timestamptz
+        and exists(
+          select 1 from tigeriq_objectives o
+          where o.id=j.objective_id
+            and o.status='blocked'
+            and o.summary=$3
+            and o.metadata ? 'campaign'
+            and upper(coalesce(o.metadata->>'routingProfile',''))='LOCAL'
+        )
+      returning j.objective_id
+    )
+    update tigeriq_objectives o
+    set status='active',
+        summary='Runtime source changed; retrying the same logical campaign job',
+        next_check_at=now(),
+        updated_at=now(),
+        metadata=jsonb_set(coalesce(o.metadata,'{}'::jsonb),'{runtimeRearmSha}',to_jsonb($4::text),true)
+    from requeued r
+    where o.id=r.objective_id
+    returning o.id`,[row.id,runtimeUpdatedAt,FAILED_LOGICAL_JOB_BLOCK_SUMMARY,runtimeSha]);
+    if(out.rowCount!==1)continue;
+    recovered++;
+    await event('CAMPAIGN_FAILED_JOB_REARMED_AFTER_RUNTIME_SOURCE_CHANGE',{
+      objectiveId:row.objective_id,jobId:row.id,runtimeSha,runtimeUpdatedAt,
+      attempts:Number(row.attempts)||0,maxAttempts:Number(row.max_attempts)||0,
+      reason:decision.reason,
+    });
+  }
+  return recovered;
 }
 async function recoverStale() {
   const recoveredSharedLeases=await recoverExpiredSharedResourceLeases(pool);
@@ -3098,7 +3166,7 @@ async function managerTick() {
         if(disposition.action==='block'){
           const stopped=await pool.query(
             "update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1 and status='active' and (metadata->>'sourceRevision') is not distinct from $3::text",
-            [o.id,'Same logical job has already failed; no new random job on unchanged work',o.metadata?.sourceRevision??null],
+            [o.id,FAILED_LOGICAL_JOB_BLOCK_SUMMARY,o.metadata?.sourceRevision??null],
           );
           if(stopped.rowCount===1)await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,jobId:existing.id,phaseIndex:currentPhase,reason:disposition.reason});
           return;
@@ -4465,7 +4533,7 @@ async function loop(){
         console.error(JSON.stringify({ event: 'PREFLIGHT_CHECK_FAILED', errors: preflightCheck.errors }));
       }
       if(t-lastRefresh>5000){await refreshResources();lastRefresh=t;}
-      if(t-lastRecover>10000){await recoverStale();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;}
+      if(t-lastRecover>10000){await recoverStale();await recoverFailedCampaignJobsAfterRuntimeSourceChange();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;}
       if(t-lastR04IndependentReview>5000){lastR04IndependentReview=t;await reconcileNativeR04IndependentReview();}
       if(t-lastOpenClawObjectiveReconcile>3000){await reconcileCoreDirectPcOperatorObjectives();await reconcileCoreOpenClawBoundedObjectives();lastOpenClawObjectiveReconcile=t;}
       if(!managerTickRunning&&t-lastManager>MANAGER_IDLE_MS){lastManager=t;managerTickRunning=true;void managerTick().catch(error=>console.error(JSON.stringify({event:'MANAGER_TICK_ERROR',error:String(error?.message||error)}))).finally(()=>{managerTickRunning=false;});}
