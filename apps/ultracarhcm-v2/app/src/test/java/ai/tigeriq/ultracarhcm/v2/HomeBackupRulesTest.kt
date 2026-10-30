@@ -11,14 +11,17 @@ class HomeBackupRulesTest {
         assertTrue(HomeBackupRules.canReadBackupSchema(1))
         assertTrue(HomeBackupRules.canReadBackupSchema(2))
         assertTrue(HomeBackupRules.canReadBackupSchema(3))
+        assertTrue(HomeBackupRules.canReadBackupSchema(4))
         assertFalse(HomeBackupRules.canReadBackupSchema(0))
-        assertFalse(HomeBackupRules.canReadBackupSchema(4))
+        assertFalse(HomeBackupRules.canReadBackupSchema(5))
         assertFalse(HomeBackupRules.requiresOverlayPositions(1))
         assertTrue(HomeBackupRules.requiresOverlayPositions(2))
         assertTrue(HomeBackupRules.requiresOverlayPositions(3))
         assertFalse(HomeBackupRules.requiresVehicleState(1))
         assertFalse(HomeBackupRules.requiresVehicleState(2))
         assertTrue(HomeBackupRules.requiresVehicleState(3))
+        assertFalse(HomeBackupRules.requiresTaxiMeterState(3))
+        assertTrue(HomeBackupRules.requiresTaxiMeterState(4))
     }
 
     @Test fun boundsImportedBackupSize() {
@@ -51,6 +54,11 @@ class HomeBackupRulesTest {
         assertNull(HomeBackupRules.exactInt("3"))
         assertNull(HomeBackupRules.exactInt(3.5))
         assertNull(HomeBackupRules.exactInt(Long.MAX_VALUE))
+        assertEquals(9L, HomeBackupRules.exactLong(9))
+        assertEquals(9L, HomeBackupRules.exactLong(9.0))
+        assertNull(HomeBackupRules.exactLong(9.5))
+        assertEquals(9.5, HomeBackupRules.exactDouble(9.5)!!, 0.0)
+        assertNull(HomeBackupRules.exactDouble("9.5"))
     }
 
     @Test fun usesStableJsonExportName() {

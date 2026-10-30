@@ -21,12 +21,16 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
     expect(home).not.toContain('MANAGE_EXTERNAL_STORAGE');
   });
 
-  it('exports only bounded V2-owned HOME state with an explicit schema', () => {
+  it('exports bounded V2-owned Home and Taxi Meter state with an explicit schema', () => {
     expect(home).toContain('private fun exportHomeBackupJson(): JSONObject');
     expect(home).toContain('.put("backupSchemaVersion", HomeBackupRules.CURRENT_BACKUP_SCHEMA_VERSION)');
     expect(home).toContain('.put("quickSlots", normalizedQuickSlotsForStorage(quickSlots()))');
     expect(home).toContain('.put("savedConfigurations", savedConfigurations())');
     expect(home).toContain('.put("defaultHomeConfiguration", defaultSafe ?: JSONObject.NULL)');
+    expect(home).toContain('.put("taxiMeter", exportTaxiMeterBackup())');
+    expect(home).toContain('getSharedPreferences(TaxiMeterRules.PREFS_NAME, Context.MODE_PRIVATE)');
+    expect(home).toContain('TaxiMeterRules.KEY_HISTORY');
+    expect(home).toContain('TaxiMeterRules.KEY_RATE');
     expect(rules).toContain('const val MAX_BACKUP_BYTES = 256 * 1024');
   });
 
@@ -41,6 +45,10 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
     expect(home).toContain('QuickSlotRules.isValidPersistedAssignment(rawLabel, rawTarget)');
     expect(block).toContain('rawConfigs.length() > HomeConfigRules.MAX_SAVED');
     expect(block).toContain('validatedHomeConfigurationForBackup(item) ?: return false');
+    expect(block).toContain('HomeBackupRules.requiresTaxiMeterState(backupSchema)');
+    expect(block).toContain('validatedTaxiHistoryForBackup(rawHistory) ?: return false');
+    expect(home).toContain('private fun validatedTaxiHistoryForBackup(source: JSONArray?): JSONArray?');
+    expect(home).toContain('source.length() > TaxiMeterRules.MAX_HISTORY');
     expect(home).toContain('private fun validatedHomeConfigurationForBackup(item: JSONObject): JSONObject?');
     expect(block).toContain('val editor = prefs.edit()');
     expect(block.indexOf('val editor = prefs.edit()')).toBeGreaterThan(block.indexOf('validatedHomeConfigurationForBackup(item) ?: return false'));
@@ -60,6 +68,9 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
     expect(home).toContain('HomeBackupRules.exactInt(item.opt("displayId")) ?: return false');
     expect(home).toContain('HomeBackupRules.exactInt(item.opt("x")) ?: return false');
     expect(home).toContain('HomeBackupRules.exactInt(item.opt("y")) ?: return false');
+    expect(home).toContain('HomeBackupRules.exactLong(item.opt("startedAt")) ?: return null');
+    expect(home).toContain('HomeBackupRules.exactDouble(item.opt("distanceMeters")) ?: return null');
+    expect(home).toContain('TaxiMeterRules.validRateVndPerKm(rate)');
   });
 
   it('backs up and restores bounded DeX camera overlay positions without changing legacy v1 backups', () => {
@@ -73,13 +84,22 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
     expect(home).toContain('OverlayPositionRules.xKey(displayId)');
     expect(home).toContain('OverlayPositionRules.yKey(displayId)');
     expect(rules).toContain('const val LEGACY_BACKUP_SCHEMA_VERSION = 1');
-    expect(rules).toContain('const val CURRENT_BACKUP_SCHEMA_VERSION = 3');
+    expect(rules).toContain('const val CURRENT_BACKUP_SCHEMA_VERSION = 4');
     expect(rules).toContain('version in LEGACY_BACKUP_SCHEMA_VERSION..CURRENT_BACKUP_SCHEMA_VERSION');
     expect(rules).toContain('fun requiresVehicleState(version: Int): Boolean');
     expect(home).toContain('"vehicleModel"');
     expect(home).toContain('"licensePlate"');
     expect(home).toContain('VehicleRules.PREF_MODEL');
     expect(home).toContain('VehicleRules.PREF_LICENSE_PLATE');
+  });
+
+  it('preserves Taxi Meter state only in schema v4 and leaves legacy backups non-destructive', () => {
+    expect(rules).toContain('fun requiresTaxiMeterState(version: Int): Boolean');
+    expect(rules).toContain('version >= 4');
+    expect(home).toContain('val replaceTaxiMeterState = HomeBackupRules.requiresTaxiMeterState(backupSchema)');
+    expect(home).toContain('if (replaceTaxiMeterState)');
+    expect(home).toContain('.putString(TaxiMeterRules.KEY_HISTORY, safeTaxiHistory.toString())');
+    expect(home).toContain('taxiEditor.remove(TaxiMeterRules.KEY_RATE)');
   });
 
   it('refreshes an active DeX overlay immediately after a successful restore', () => {
@@ -89,8 +109,8 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
   });
 
   it('exposes explicit backup and restore actions without touching V1 data', () => {
-    expect(home).toContain('"Sao lưu cấu hình V2"');
-    expect(home).toContain('"Khôi phục cấu hình V2"');
+    expect(home).toContain('"Sao lưu dữ liệu V2"');
+    expect(home).toContain('"Khôi phục dữ liệu V2"');
     expect(home).toContain('exportBackupLauncher.launch(HomeBackupRules.exportFileName())');
     expect(home).toContain('importBackupLauncher.launch(arrayOf("application/json", "text/plain"))');
     expect(home).toContain('getSharedPreferences("ultracar_v2_home", Context.MODE_PRIVATE)');

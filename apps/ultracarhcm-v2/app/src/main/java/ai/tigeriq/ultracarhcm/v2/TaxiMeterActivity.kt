@@ -30,7 +30,7 @@ import java.util.Date
 import java.util.Locale
 
 class TaxiMeterActivity : ComponentActivity(), LocationListener {
-    private val prefs by lazy { getSharedPreferences("ultracar_v2_taxi_meter", Context.MODE_PRIVATE) }
+    private val prefs by lazy { getSharedPreferences(TaxiMeterRules.PREFS_NAME, Context.MODE_PRIVATE) }
     private val handler = Handler(Looper.getMainLooper())
 
     private lateinit var rateInput: EditText
@@ -68,7 +68,7 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildContent())
-        prefs.getString(KEY_RATE, null)?.let { rateInput.setText(it) }
+        prefs.getString(TaxiMeterRules.KEY_RATE, null)?.let { rateInput.setText(it) }
         renderHistory()
         updateMeterUi()
     }
@@ -134,7 +134,7 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
         body.addView(Button(this).apply {
             text = "Xóa lịch sử Taxi Meter V2"
             setOnClickListener {
-                prefs.edit().remove(KEY_HISTORY).apply()
+                prefs.edit().remove(TaxiMeterRules.KEY_HISTORY).apply()
                 renderHistory()
             }
         })
@@ -164,7 +164,7 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
         }
 
         rateVndPerKm = parsedRate
-        prefs.edit().putString(KEY_RATE, parsedRate.toString()).apply()
+        prefs.edit().putString(TaxiMeterRules.KEY_RATE, parsedRate.toString()).apply()
         running = true
         distanceMeters = 0.0
         activeElapsedMs = 0L
@@ -292,7 +292,7 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
     }
 
     private fun history(): JSONArray = try {
-        JSONArray(prefs.getString(KEY_HISTORY, "[]") ?: "[]")
+        JSONArray(prefs.getString(TaxiMeterRules.KEY_HISTORY, "[]") ?: "[]")
     } catch (_: Exception) {
         JSONArray()
     }
@@ -304,7 +304,7 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
         for (index in 0 until limit) {
             old.optJSONObject(index)?.let(next::put)
         }
-        prefs.edit().putString(KEY_HISTORY, next.toString()).apply()
+        prefs.edit().putString(TaxiMeterRules.KEY_HISTORY, next.toString()).apply()
     }
 
     private fun writeTripReport(uri: Uri) {
@@ -395,8 +395,6 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
         android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
 
     companion object {
-        private const val KEY_RATE = "rate_vnd_per_km"
-        private const val KEY_HISTORY = "trip_history_json"
         private const val MAX_SINGLE_SEGMENT_METERS = 2_000.0
     }
 }

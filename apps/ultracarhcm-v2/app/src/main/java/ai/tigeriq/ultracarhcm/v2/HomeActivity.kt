@@ -759,6 +759,57 @@ class HomeActivity : ComponentActivity() {
         return result
     }
 
+    private fun validatedTaxiHistoryForBackup(source: JSONArray?): JSONArray? {
+        if (source == null || source.length() > TaxiMeterRules.MAX_HISTORY) return null
+        val safe = JSONArray()
+        for (index in 0 until source.length()) {
+            val item = source.optJSONObject(index) ?: return null
+            val startedAt =
+                HomeBackupRules.exactLong(item.opt("startedAt")) ?: return null
+            val duration =
+                HomeBackupRules.exactLong(item.opt("durationSeconds")) ?: return null
+            val distance =
+                HomeBackupRules.exactDouble(item.opt("distanceMeters")) ?: return null
+            val rate =
+                HomeBackupRules.exactDouble(item.opt("rateVndPerKm")) ?: return null
+            val fare =
+                HomeBackupRules.exactLong(item.opt("fareVnd")) ?: return null
+            if (startedAt < 0L ||
+                duration < 0L ||
+                distance < 0.0 ||
+                !TaxiMeterRules.validRateVndPerKm(rate) ||
+                fare < 0L
+            ) return null
+            safe.put(
+                JSONObject()
+                    .put("startedAt", startedAt)
+                    .put("durationSeconds", duration)
+                    .put("distanceMeters", distance)
+                    .put("rateVndPerKm", rate)
+                    .put("fareVnd", fare),
+            )
+        }
+        return safe
+    }
+
+    private fun exportTaxiMeterBackup(): JSONObject {
+        val taxiPrefs = getSharedPreferences(TaxiMeterRules.PREFS_NAME, Context.MODE_PRIVATE)
+        val configuredRate = taxiPrefs.getString(TaxiMeterRules.KEY_RATE, null)?.let { raw ->
+            TaxiMeterRules.parseRateVndPerKm(raw)?.toString()
+                ?: throw IllegalStateException("Taxi Meter rate không hợp lệ")
+        }
+        val rawHistory = try {
+            JSONArray(taxiPrefs.getString(TaxiMeterRules.KEY_HISTORY, "[]") ?: "[]")
+        } catch (error: Exception) {
+            throw IllegalStateException("Taxi Meter history bị hỏng", error)
+        }
+        val safeHistory = validatedTaxiHistoryForBackup(rawHistory)
+            ?: throw IllegalStateException("Taxi Meter history không hợp lệ")
+        return JSONObject()
+            .put("configuredRate", configuredRate ?: JSONObject.NULL)
+            .put("history", safeHistory)
+    }
+
     private fun exportHomeBackupJson(): JSONObject {
         val defaultRaw = prefs.getString("v2_default_home_config", null)
         val defaultSafe = try {
@@ -794,6 +845,7 @@ class HomeActivity : ComponentActivity() {
             .put("savedConfigurations", savedConfigurations())
             .put("defaultHomeConfiguration", defaultSafe ?: JSONObject.NULL)
             .put("overlayPositions", exportOverlayPositions())
+            .put("taxiMeter", exportTaxiMeterBackup())
     }
 
     private fun writeHomeBackup(uri: Uri) {
@@ -806,10 +858,10 @@ class HomeActivity : ComponentActivity() {
             val stream = contentResolver.openOutputStream(uri, "wt")
                 ?: throw IllegalStateException("Không mở được tệp đích")
             stream.bufferedWriter(Charsets.UTF_8).use { it.write(payload) }
-            toast("Đã sao lưu cấu hình V2")
+            toast("Đã sao lưu dữ liệu V2")
         } catch (e: Exception) {
             android.util.Log.e("UltraCarV2", "HOME backup export failed", e)
-            toast("Không thể sao lưu cấu hình V2")
+            toast("Không thể sao lưu dữ liệu V2")
         }
     }
 
@@ -836,10 +888,10 @@ class HomeActivity : ComponentActivity() {
             }
             render()
             refreshOverlayAfterRestore()
-            toast("Đã khôi phục cấu hình V2")
+            toast("Đã khôi phục dữ liệu V2")
         } catch (e: Exception) {
             android.util.Log.e("UltraCarV2", "HOME backup import failed", e)
-            toast("Không thể khôi phục cấu hình V2")
+            toast("Không thể khôi phục dữ liệu V2")
         }
     }
 
@@ -926,6 +978,22 @@ class HomeActivity : ComponentActivity() {
             }
         }
 
+        val replaceTaxiMeterState = HomeBackupRules.requiresTaxiMeterState(backupSchema)
+        var safeTaxiRate: String? = null
+        var safeTaxiHistory = JSONArray()
+        if (replaceTaxiMeterState) {
+            val taxi = root.optJSONObject("taxiMeter") ?: return false
+            safeTaxiRate = if (taxi.isNull("configuredRate")) {
+                null
+            } else {
+                val rawRate =
+                    HomeBackupRules.exactString(taxi.opt("configuredRate")) ?: return false
+                TaxiMeterRules.parseRateVndPerKm(rawRate)?.toString() ?: return false
+            }
+            val rawHistory = taxi.optJSONArray("history") ?: return false
+            safeTaxiHistory = validatedTaxiHistoryForBackup(rawHistory) ?: return false
+        }
+
         val editor = prefs.edit()
             .putBoolean("night", night)
             .putBoolean("limo", safeVehicleModel == VehicleRules.MODEL_LIMO_RED)
@@ -954,6 +1022,18 @@ class HomeActivity : ComponentActivity() {
                     .putInt(OverlayPositionRules.PORTABLE_Y_KEY, y)
             }
             overlayEditor.apply()
+        }
+
+        if (replaceTaxiMeterState) {
+            val taxiEditor = getSharedPreferences(
+                TaxiMeterRules.PREFS_NAME,
+                Context.MODE_PRIVATE,
+            ).edit()
+            if (safeTaxiRate == null) taxiEditor.remove(TaxiMeterRules.KEY_RATE)
+            else taxiEditor.putString(TaxiMeterRules.KEY_RATE, safeTaxiRate)
+            taxiEditor
+                .putString(TaxiMeterRules.KEY_HISTORY, safeTaxiHistory.toString())
+                .apply()
         }
         return true
     }
@@ -986,8 +1066,8 @@ class HomeActivity : ComponentActivity() {
             "Trạng thái tương đương APP gốc",
             "GPS / Pin / Chẩn đoán",
             "Đổi tên tài xế hiển thị Home",
-            "Sao lưu cấu hình V2",
-            "Khôi phục cấu hình V2",
+            "Sao lưu dữ liệu V2",
+            "Khôi phục dữ liệu V2",
             "Hồ sơ người lái",
             "Quyền & riêng tư",
             "Phục hồi / định danh bản cài"
