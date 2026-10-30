@@ -294,7 +294,13 @@ class HomeActivity : ComponentActivity() {
                 .put("label", QuickSlotRules.normalizeLabel(label))
                 .put("target", QuickSlotRules.normalizeTarget(target)),
         )
-        prefs.edit().putString("v2_quick_slots", slots.toString()).apply()
+        val saved = prefs.edit()
+            .putString("v2_quick_slots", slots.toString())
+            .commit()
+        if (!saved) {
+            toast("Không thể lưu phím tắt trên thiết bị")
+            return
+        }
         render()
     }
 
