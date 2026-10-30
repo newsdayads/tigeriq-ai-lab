@@ -1,5 +1,12 @@
 # UltraCarHCM — APK build, release TEST, QA, backup (Owner-locked)
 
+## 2026-10-30 — QUY TRÌNH KÝ TEST HIỆN HÀNH (ghi đè ví dụ cũ)
+
+- PC01 đã sửa **hai script hiện có**, không tạo runner/task thứ hai: `D:\TigerIQ\Tools\sign_latest.ps1` và `sync_latest_ultracar_to_drive.ps1`. `sign_latest.cmd` vẫn là entrypoint cũ. Thay vì tự chọn APK mới nhất hoặc khóa V65, cả hai đọc `D:\TigerIQ\Tools\ultracar_test_release.json` với tên input, SHA-256 đã căn chỉnh, package, versionCode/versionName, tên signed và tên Drive chính xác.
+- Runner phải **fail closed** khi manifest không hợp lệ, sai SHA-256/phiên bản, sai chữ ký v2/v3/chứng chỉ, thiếu biên nhận ký; từ chối ghi đè signed APK hoặc tệp Drive đã tồn tại. Task `TigerIQ_UltraCar_Sync_Drive` và identity tương tác giữ nguyên. Khi sang phiên bản kế tiếp, cập nhật **manifest** đã xác minh, không sửa tên phiên bản trong script.
+- Kiểm thử PowerShell Parser 0 lỗi trên 2 script; SHA của manifest V68 khớp aligned APK; bản gốc được backup ngay tại PC01. **Đã chuẩn hóa và kiểm thử tĩnh, CHƯA thử chạy ký/đồng bộ**. V68 code309 aligned SHA256 `A92956A16133B234024C0C85680204CB35CD090B942332A235C01216E4F185E5`; **SIGN_BLOCKED bởi cổng host của lần ký trước, Drive chưa xuất V68**. Không gọi script để né hành động ký đã bị từ chối; chỉ ký khi hệ thống cho phép thực sự.
+- Không truyền mật khẩu qua lệnh `apksigner` trực tiếp từ ChatGPT, không mở quyền Admin mặc định, không ghi đè Production/V65–V67. Hiện tại **V67 là bản TEST trên Drive, V68 chưa phát hành**. Việc build/ký/phát hành không thay thế nghiệm thu thực tế Z Fold 2.
+
 > Canonical task tracking: [Issue #5129](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129). Owner interface/policy: [Issue #504](https://github.com/newsdayads/tigeriq-ai-lab/issues/504). This file is an operational runbook, **not** an automatic task scheduler, elevated permission or release approval. Last verified: 2026-10-25 (Asia/Ho_Chi_Minh).
 
 <!-- ULTRACARHCM_PUBLISHED_APK_RELEASE_SUCCESS_20261025 -->
@@ -30,7 +37,7 @@
      D:\TigerIQ\Tools\sign_latest.cmd
      ```
    - Runner này là quy chuẩn phát hành chính thức của hệ thống do Owner phê duyệt:
-     1. Tự động tìm file `*_aligned_TEST.apk` mới nhất và ký bằng `debug.keystore` (ẩn tham số mật khẩu khỏi command-line để ngăn ngừa OpenAI Safety Guardrails chặn lệnh).
+     1. Đọc manifest `D:\TigerIQ\Tools\ultracar_test_release.json`, kiểm tên APK aligned và SHA-256 chính xác, rồi mới ký bằng chứng chỉ cũ trên PC01; không tự chọn tên phiên bản hoặc file mới nhất.
      2. Tự động kiểm chứng chứng chỉ SHA-256 (`71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558`) và thông số package `com.tigeriq.dexsplit`.
      3. Tự động đồng bộ sang Google Drive (`G:\Drive của tôi\TigerIQ UltraCar\UltraCar_v..._TEST.apk`) thông qua task interactive cố định `TigerIQ_UltraCar_Sync_Drive`.
      4. Tự động ghi biên nhận kết quả tại `C:\Users\wdragons12x\AppData\Local\Temp\tigeriq-drive-sync-result.txt`.
