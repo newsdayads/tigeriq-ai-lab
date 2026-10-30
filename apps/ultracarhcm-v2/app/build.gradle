@@ -13,8 +13,8 @@ android {
         applicationId 'ai.tigeriq.ultracarhcm.v2'
         minSdk 26
         targetSdk 33
-        versionCode 10
-        versionName '2.0.0-dev.10'
+        versionCode 11
+        versionName '2.0.0-dev.11'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
 
