@@ -23,6 +23,42 @@ internal object UpdateRules {
         false
     }
 
+    fun validateJsonMetadataScalars(
+        latestVersionCode: Any?,
+        latestVersionName: Any?,
+        apkUrl: Any?,
+        sha256: Any?,
+        releaseNotes: Any?,
+        mandatory: Any?,
+    ): UpdateMetadata? {
+        val versionCode = when (latestVersionCode) {
+            is Int -> latestVersionCode.toLong()
+            is Long -> latestVersionCode
+            else -> return null
+        }
+        val versionName = latestVersionName as? String ?: return null
+        val url = apkUrl as? String ?: return null
+        val sha = sha256 as? String ?: return null
+        val notes = when (releaseNotes) {
+            null -> ""
+            is String -> releaseNotes
+            else -> return null
+        }
+        val mandatoryFlag = when (mandatory) {
+            null -> false
+            is Boolean -> mandatory
+            else -> return null
+        }
+        return validateMetadata(
+            latestVersionCode = versionCode,
+            latestVersionName = versionName,
+            apkUrl = url,
+            sha256 = sha,
+            releaseNotes = notes,
+            mandatory = mandatoryFlag,
+        )
+    }
+
     fun validateMetadata(
         latestVersionCode: Long,
         latestVersionName: String,
