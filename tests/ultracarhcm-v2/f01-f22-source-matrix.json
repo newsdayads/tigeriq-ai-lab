@@ -327,8 +327,8 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/NotificationActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/NotificationRules.kt"
       ],
-      "gap": "Independent update-check source remains fail-closed until a verified V2 endpoint exists. A bounded device-local notification tab now records only newer V2 update metadata; remote push/backend delivery and exact V1 notification parity remain unverified.",
-      "actual": "ProfileActivity exposes separate CẬP NHẬT and THÔNG BÁO actions. UpdateActivity validates bounded HTTPS V2 metadata and records a newer-version notice into device-local V2 preferences without credentials or background push. NotificationActivity shows one bounded update notice, marks it read or clears it. No V1 channel or push backend is inferred.",
+      "gap": "Independent update-check source remains fail-closed until a verified V2 endpoint exists. Device-local update notices now self-expire when the installed build reaches the notice version; remote push/backend delivery and exact V1 notification parity remain unverified.",
+      "actual": "ProfileActivity exposes separate CẬP NHẬT and THÔNG BÁO actions. UpdateActivity validates bounded HTTPS V2 metadata and records only a newer-version notice into device-local V2 preferences. NotificationActivity clears a resolved notice once the installed build is at or above that notice, preserves notices for genuinely newer builds, and still supports read/clear actions. No V1 channel or push backend is inferred.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "ProfileActivity.buildContent",
@@ -339,7 +339,8 @@
         "UpdateActivity.recordUpdateNotice",
         "NotificationActivity.onResume",
         "NotificationActivity.refresh",
-        "NotificationRules.shouldReplaceNotice"
+        "NotificationRules.shouldReplaceNotice",
+        "NotificationRules.isResolvedNotice"
       ],
       "permissions": [
         "android.permission.INTERNET"
