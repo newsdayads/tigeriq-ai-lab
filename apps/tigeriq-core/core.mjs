@@ -431,8 +431,8 @@ async function invokeProvider(r, prompt, providerContext={}) {
         const packet=providerContext?.compiledPacket||null;
         const out=await runBoundedInferenceNv09(prompt,{
           timeoutMs:NV09_TIMEOUT_MS,
-          numCtx:packet?4096:1024,
-          numPredict:packet?256:96,
+          numCtx:packet?8192:1024,
+          numPredict:packet?768:96,
           maxPromptChars:packet?12000:4000,
           ...(packet?{format:compactStructuredExecutionSchema(packet)}:{}),
           keepAlive:'30s',
