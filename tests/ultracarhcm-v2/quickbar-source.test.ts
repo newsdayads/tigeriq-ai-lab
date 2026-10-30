@@ -35,7 +35,11 @@ describe('GH-5135 V1.0.64 QuickBar source contract', () => {
     expect(home).toContain('onLongClick = { index -> showQuickSlotEditor(index) }');
     expect(home).toContain('— Bỏ gán ô này —');
     expect(home).toContain('clearQuickSlot(index)');
-    expect(home).toContain('putString("v2_quick_slots", slots.toString()).apply()');
+    expect(home).toContain('.putString("v2_quick_slots", slots.toString())');
+    expect(home).toContain('.commit()');
+    expect(home).toContain('if (!saved)');
+    expect(home).toContain('Không thể lưu phím tắt trên thiết bị');
+    expect(home).not.toContain('putString("v2_quick_slots", slots.toString()).apply()');
   });
 
   it('maps V1.0.64 app families to real Material Compose icons', () => {
