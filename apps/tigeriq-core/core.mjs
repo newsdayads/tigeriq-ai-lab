@@ -35,7 +35,7 @@ import { CONTINUOUS_VERIFY_CADENCE_MS, cadenceContinuousVerifyDue, githubContinu
 import { planContinuousVerifyRecovery, CONTINUOUS_VERIFY_RECOVERY_EVENT_LIMIT } from './continuous-verify-recovery.mjs';
 import { assessMainCiGate } from './main-ci-health.mjs';
 import { autonomousRcaCanonicalAction, autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
-import { normalizeCampaignPhases, currentCampaignGoal, campaignPriorEvidenceContext, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt } from './campaign-runner.mjs';
+import { normalizeCampaignPhases, currentCampaignGoal, campaignPriorEvidenceContext, repairCampaignReviewPrompt, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt } from './campaign-runner.mjs';
 import { buildAutonomousCodingHandoffWorkOrder, normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, functionalReprobeCandidates, functionalRoutingReadiness, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
@@ -772,7 +772,7 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
   const runtimeSha=String(runtime?.currentSha||'').trim();
   const runtimeUpdatedAt=String(runtime?.updatedAt||'').trim();
   if(!runtimeSha||!Number.isFinite(Date.parse(runtimeUpdatedAt)))return 0;
-  const rows=(await pool.query(`select j.id,j.objective_id,j.status,j.attempts,j.max_attempts,j.completed_at,
+  const rows=(await pool.query(`select j.id,j.objective_id,j.title,j.capability,j.phase_index,j.prompt,j.status,j.attempts,j.max_attempts,j.completed_at,
       o.status as objective_status,o.summary as objective_summary,o.metadata as objective_metadata
     from tigeriq_jobs j
     join tigeriq_objectives o on o.id=j.objective_id
@@ -786,6 +786,19 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
     limit 20`,[[FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY]])).rows;
   let recovered=0;
   for(const row of rows){
+    let promptRepair={changed:false,prompt:String(row.prompt||''),reason:'not_review_phase'};
+    if(String(row.capability||'')==='review'&&Number(row.phase_index)>0){
+      const priorJobs=(await pool.query(
+        "select id,title,phase_index,kind,status,employee_id,resource_id,provider,completed_at,result from tigeriq_jobs where objective_id=$1 and phase_index=$2 and status='done' order by case when kind='compiled_campaign' then 0 else 1 end,completed_at desc nulls last limit 6",
+        [row.objective_id,Number(row.phase_index)-1],
+      )).rows;
+      const priorContext=campaignPriorEvidenceContext({
+        currentPhase:Number(row.phase_index),
+        checkpoints:row.objective_metadata?.campaign?.checkpoints||[],
+        jobs:priorJobs,
+      });
+      promptRepair=repairCampaignReviewPrompt(row.prompt,priorContext);
+    }
     const decision=failedCampaignRuntimeRearmDecision({
       objectiveStatus:row.objective_status,
       objectiveSummary:row.objective_summary,
@@ -796,15 +809,20 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
       runtimeUpdatedAt,
       hasCampaign:Boolean(row.objective_metadata?.campaign),
       routingProfile:row.objective_metadata?.routingProfile,
+      promptRepairEligible:promptRepair.changed,
+      promptRepairCap:4,
     });
-    if(decision.action!=='requeue')continue;
+    if(!['requeue','requeue_prompt_repair'].includes(decision.action))continue;
+    const repairCredit=decision.action==='requeue_prompt_repair';
     const out=await pool.query(`with requeued as (
       update tigeriq_jobs j
       set status='queued',employee_id=null,resource_id=null,provider=null,routing_decision=null,
-          result=null,failure=null,lease_until=null,started_at=null,completed_at=null,next_attempt_at=null
+          result=null,failure=null,lease_until=null,started_at=null,completed_at=null,next_attempt_at=null,
+          prompt=$4,
+          max_attempts=case when $5::boolean then greatest(j.max_attempts,j.attempts+1) else j.max_attempts end
       where j.id=$1
         and j.status='failed'
-        and j.attempts<j.max_attempts
+        and (j.attempts<j.max_attempts or ($5::boolean and j.attempts=j.max_attempts and j.max_attempts<4))
         and j.completed_at<$2::timestamptz
         and exists(
           select 1 from tigeriq_objectives o
@@ -821,15 +839,18 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
         summary='Runtime source changed; retrying the same logical campaign job',
         next_check_at=now(),
         updated_at=now(),
-        metadata=jsonb_set(coalesce(o.metadata,'{}'::jsonb),'{runtimeRearmSha}',to_jsonb($4::text),true)
+        metadata=jsonb_set(coalesce(o.metadata,'{}'::jsonb),'{runtimeRearmSha}',to_jsonb($6::text),true)
     from requeued r
     where o.id=r.objective_id
-    returning o.id`,[row.id,runtimeUpdatedAt,[FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY],runtimeSha]);
+    returning o.id`,[row.id,runtimeUpdatedAt,[FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY],promptRepair.prompt,repairCredit,runtimeSha]);
     if(out.rowCount!==1)continue;
     recovered++;
     await event('CAMPAIGN_FAILED_JOB_REARMED_AFTER_RUNTIME_SOURCE_CHANGE',{
       objectiveId:row.objective_id,jobId:row.id,runtimeSha,runtimeUpdatedAt,
       attempts:Number(row.attempts)||0,maxAttempts:Number(row.max_attempts)||0,
+      maxAttemptsAfter:repairCredit?Number(row.max_attempts)+1:Number(row.max_attempts)||0,
+      promptRepaired:promptRepair.changed,repairCreditGranted:repairCredit,
+      promptRepairReason:promptRepair.reason,
       reason:decision.reason,
     });
   }
