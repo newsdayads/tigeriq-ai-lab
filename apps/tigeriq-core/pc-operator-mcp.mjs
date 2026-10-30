@@ -352,6 +352,67 @@ export async function pcOperatorWorkOrderResponse(res, workOrder) {
   }
 }
 
+const PC_OPERATOR_ADMIN_VERIFY_TASK = 'TigerIQ PC Operator Admin Verify';
+
+export function pcOperatorAdminVerifySpec({
+  runtimeRoot = 'D:\\TigerIQ\\Runtime\\CoreSource',
+  evidenceRoot = 'D:\\TigerIQ\\Evidence',
+  nonce = randomUUID(),
+} = {}) {
+  const safeNonce = String(nonce || '').trim();
+  if (!/^[A-Za-z0-9-]{16,64}$/.test(safeNonce)) throw new Error('MCP_SCOPED_ADMIN_NONCE_INVALID');
+  const root = normalizePath(runtimeRoot);
+  const evidence = normalizePath(evidenceRoot);
+  if (!root.toLowerCase().startsWith(normalizePath(DEFAULT_ROOT).toLowerCase() + '\\')) {
+    throw new Error('MCP_SCOPED_ADMIN_RUNTIME_ROOT_INVALID');
+  }
+  if (evidence.toLowerCase() !== normalizePath('D:\\TigerIQ\\Evidence').toLowerCase()) {
+    throw new Error('MCP_SCOPED_ADMIN_EVIDENCE_ROOT_INVALID');
+  }
+  return Object.freeze({
+    action: 'verify_admin',
+    taskName: PC_OPERATOR_ADMIN_VERIFY_TASK,
+    bridgePath: win.join(root, 'scripts', 'pc-worker', 'run-pc-operator-admin-verify-task.ps1'),
+    receiptPath: win.join(evidence, `gh5365-admin-verify-${safeNonce}.json`),
+    runtimeRoot: root,
+  });
+}
+
+async function runPcOperatorAdminVerify() {
+  if (process.platform !== 'win32') throw new Error('MCP_SCOPED_ADMIN_WINDOWS_REQUIRED');
+  const spec = pcOperatorAdminVerifySpec();
+  if (!existsSync(spec.bridgePath)) throw new Error('MCP_SCOPED_ADMIN_BROKER_SCRIPT_MISSING');
+  const result = await spawnProcess('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'RemoteSigned',
+    '-File', spec.bridgePath, '-ReceiptPath', spec.receiptPath,
+  ], { cwd: spec.runtimeRoot, timeoutSec: 90 });
+  if (result.timedOut) throw new Error('MCP_SCOPED_ADMIN_BROKER_TIMEOUT');
+  if (result.exitCode !== 0) throw new Error('MCP_SCOPED_ADMIN_BROKER_FAILED');
+  let receipt;
+  try {
+    receipt = JSON.parse(String(result.stdout || '').trim());
+  } catch {
+    throw new Error('MCP_SCOPED_ADMIN_BROKER_RECEIPT_INVALID');
+  }
+  if (receipt?.accepted !== true || receipt?.taskDeleted !== true
+      || receipt?.receipt?.schema !== 'TIGERIQ_PC_OPERATOR_ADMIN_VERIFY_V1'
+      || receipt?.receipt?.action !== 'verify_elevation'
+      || receipt?.receipt?.elevated !== true || receipt?.receipt?.isSystem !== false
+      || Number(receipt?.receipt?.fltmcExitCode) !== 0) {
+    throw new Error('MCP_SCOPED_ADMIN_BROKER_NOT_ACCEPTED');
+  }
+  return {
+    action: 'verify_admin',
+    scope: 'pc01:admin',
+    taskName: spec.taskName,
+    receiptPath: spec.receiptPath,
+    elevated: true,
+    isSystem: false,
+    fltmcExitCode: 0,
+    taskDeleted: true,
+  };
+}
+
 export function registerPcOperatorTools(server, executePcActionImpl = executePcAction, {
   allowMutation = false, leaseDb, leaseApi = leaseApiDefault, now = () => Date.now(),
   verifiedPrincipal = null, issuerUrl, resourceUrl,
@@ -777,13 +838,19 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
   wrapTool(
     authorizedTools,
     'task_action',
-    'Thực hiện hành động (status, start, stop, restart) trên tác vụ theo lịch của Windows.',
+    'Thực hiện tác vụ Windows đã giới hạn; verify_admin chỉ chạy canary quản trị one-shot cố định.',
     {
-      action: z.enum(['status', 'start', 'stop', 'restart']).describe('Hành động cần thực hiện'),
-      taskName: z.string().describe('Tên tác vụ (ví dụ: TigerIQ Core 24x7)'),
+      action: z.enum(['status', 'start', 'stop', 'restart', 'verify_admin']).describe('Hành động cần thực hiện'),
+      taskName: z.string().optional().describe('Tên tác vụ; bỏ trống khi action=verify_admin'),
     },
     async ({ action, taskName }) => {
+      if (action === 'verify_admin') {
+        if (!verifiedPrincipal) throw new Error('MCP_OAUTH_ADMIN_PRINCIPAL_REQUIRED');
+        if (taskName) throw new Error('MCP_SCOPED_ADMIN_TASKNAME_NOT_ALLOWED');
+        return await runPcOperatorAdminVerify();
+      }
       const name = String(taskName || '').trim();
+      if (!name) throw new Error('MCP_TASK_NAME_REQUIRED');
       if (action === 'status') {
         const res = await spawnProcess('schtasks.exe', ['/Query', '/TN', name, '/FO', 'LIST', '/V'], { timeoutSec: 15 });
         return { taskName: name, action, output: res.stdout };
