@@ -59,6 +59,9 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
       .toEqual({action:'requeue_prompt_repair',reason:'runtime_source_newer_with_prompt_repair_credit',nextMaxAttempts:4});
     expect(failedCampaignRuntimeRearmDecision({...exhausted,promptRepairEligible:false}).reason).toBe('retry_budget_exhausted');
     expect(failedCampaignRuntimeRearmDecision({...exhausted,maxAttempts:4,attempts:4,promptRepairEligible:true}).reason).toBe('retry_budget_exhausted');
+    expect(failedCampaignRuntimeRearmDecision({...exhausted,maxAttempts:4,attempts:4,promptRepairEligible:true,promptRepairCap:5}))
+      .toEqual({action:'requeue_prompt_repair',reason:'runtime_source_newer_with_prompt_repair_credit',nextMaxAttempts:5});
+    expect(failedCampaignRuntimeRearmDecision({...exhausted,maxAttempts:5,attempts:5,promptRepairEligible:true,promptRepairCap:5}).reason).toBe('retry_budget_exhausted');
   });
   it('hands the immediately previous verified campaign evidence to the next phase without unbounded payloads',()=>{
     const text=campaignPriorEvidenceContext({
