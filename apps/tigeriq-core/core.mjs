@@ -25,7 +25,7 @@ import { NV09_EMPLOYEE_ID, NV09_MODEL, NV09_ENDPOINT, nv09ModelAvailability, reg
 import { appendSkillContextToPrompt, focusedSkillRoutingText, matchAndLoadSkills } from './skill-loader.mjs';
 import { summarizeCoreJobEvidence } from './job-outcome-summary.mjs';
 import { compileTaskPrompt, executionPacketFromPrompt, executionResultGate, assertExecutionResultAccepted, strictExecutionRetryPrompt } from './task-prompt-compiler.mjs';
-import { invokeNativeStructuredExecution, structuredExecutionSchema } from './ollama-native-structured.mjs';
+import { invokeNativeStructuredExecution, structuredExecutionSchema, compactStructuredExecutionSchema } from './ollama-native-structured.mjs';
 import { buildSkillRoutingPreflight, finalizeSkillRoutingPreflight } from './skill-preflight.mjs';
 import { buildSkillOutcomeObservation, recordSkillOutcome, skillFailureLoopDecision } from './skill-effectiveness.mjs';
 import { buildManagerHistoryContext } from './context-gateway.mjs';
@@ -434,7 +434,7 @@ async function invokeProvider(r, prompt, providerContext={}) {
           numCtx:packet?4096:1024,
           numPredict:packet?256:96,
           maxPromptChars:packet?12000:4000,
-          ...(packet?{format:structuredExecutionSchema(packet)}:{}),
+          ...(packet?{format:compactStructuredExecutionSchema(packet)}:{}),
           keepAlive:'30s',
         });
         return out.text;
