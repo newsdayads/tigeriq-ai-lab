@@ -547,7 +547,7 @@ test('Employee card click-only detail inherits verified state palette',async({pa
   await page.locator('#detailClose').click();
  }
  const card=page.locator('.employee-card.state-ready').first();
- await card.focus();await card.press('Enter');
+ await card.evaluate(el=>el.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})));
  await expect(page.locator('#detailBackdrop')).toHaveClass(/open/);
  await page.keyboard.press('Escape');
  await expect(page.locator('#detailBackdrop')).not.toHaveClass(/open/);
