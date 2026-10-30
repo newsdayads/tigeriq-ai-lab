@@ -37,27 +37,49 @@ test('task_action still requires the cryptographically verified pc01:admin scope
   assert.equal(call(['mcp:read', 'pc01:execute']).ok, false);
 });
 
-test('bridge is one-shot highest-runlevel, fixed-runner, and self-cleaning', () => {
+test('normal MCP bridge uses only a preinstalled persistent highest task', () => {
   const source = readFileSync(repoRoot + '/scripts/pc-worker/run-pc-operator-admin-verify-task.ps1', 'utf8');
   assert.match(source, /TigerIQ PC Operator Admin Verify/);
-  assert.match(source, /RunLevel Highest/);
-  assert.match(source, /pc01\\wdragons12x/);
-  assert.match(source, /pc-operator-admin-verify\.ps1/);
-  assert.match(source, /Register-ScheduledTask[^\r\n]+-ErrorAction Stop/);
-  assert.match(source, /Unregister-ScheduledTask/);
-  assert.match(source, /ADMIN_VERIFY_TASK_CLEANUP_UNVERIFIED/);
+  assert.match(source, /ADMIN_VERIFY_BROKER_NOT_INSTALLED/);
+  assert.match(source, /Get-ScheduledTask/);
+  assert.match(source, /Start-ScheduledTask/);
+  assert.match(source, /TIGERIQ_PC_OPERATOR_ADMIN_REQUEST_V1/);
+  assert.match(source, /verify-request\.json/);
+  assert.match(source, /taskPersistent=\$TaskPersistent/);
+  assert.match(source, /requestDeleted=\$RequestDeleted/);
+  assert.doesNotMatch(source, /Register-ScheduledTask/);
+  assert.doesNotMatch(source, /Unregister-ScheduledTask/);
   assert.doesNotMatch(source, /-Verb\s+RunAs/i);
   assert.doesNotMatch(source, /Invoke-Expression/i);
   assert.doesNotMatch(source, /cmd\.exe/i);
 });
 
-test('elevated worker is read-only and refuses SYSTEM acceptance', () => {
-  const source = readFileSync(repoRoot + '/scripts/pc-worker/pc-operator-admin-verify.ps1', 'utf8');
+test('one-time installer requires real UAC and installs only the fixed broker task', () => {
+  const source = readFileSync(repoRoot + '/scripts/pc-worker/install-pc-operator-admin-verify-task.ps1', 'utf8');
+  assert.match(source, /ADMIN_VERIFY_INSTALL_UAC_REQUIRED/);
+  assert.match(source, /WindowsBuiltInRole\]::Administrator/);
+  assert.match(source, /ADMIN_VERIFY_INSTALL_SYSTEM_NOT_ALLOWED/);
+  assert.match(source, /pc-operator-admin-verify-broker\.ps1/);
+  assert.match(source, /New-ScheduledTaskPrincipal[^\r\n]+RunLevel Highest/);
+  assert.match(source, /Register-ScheduledTask[^\r\n]+-ErrorAction Stop/);
+  assert.match(source, /TIGERIQ_PC_OPERATOR_ADMIN_BROKER_INSTALL_V1/);
+  assert.doesNotMatch(source, /-UserId\s+['"]SYSTEM['"]/i);
+  assert.doesNotMatch(source, /-Verb\s+RunAs/i);
+  assert.doesNotMatch(source, /Invoke-Expression/i);
+  assert.doesNotMatch(source, /cmd\.exe/i);
+});
+
+test('elevated persistent broker accepts only fresh verify_elevation requests and refuses SYSTEM', () => {
+  const source = readFileSync(repoRoot + '/scripts/pc-worker/pc-operator-admin-verify-broker.ps1', 'utf8');
+  assert.match(source, /TIGERIQ_PC_OPERATOR_ADMIN_REQUEST_V1/);
+  assert.match(source, /verify_elevation/);
+  assert.match(source, /ADMIN_VERIFY_REQUEST_STALE/);
+  assert.match(source, /verify-request\.json/);
   assert.match(source, /fltmc\.exe/);
   assert.match(source, /WindowsBuiltInRole\]::Administrator/);
   assert.match(source, /S-1-5-18/);
-  assert.match(source, /isSystem=\$IsSystem/);
-  assert.match(source, /accepted=\$Accepted/);
-  assert.doesNotMatch(source, /Remove-Item|Set-ExecutionPolicy|net\s+user|sc\.exe\s+(?:create|delete)|reg\.exe\s+(?:add|delete)/i);
-  assert.doesNotMatch(source, /Invoke-Expression|-Verb\s+RunAs/i);
+  assert.match(source, /ADMIN_VERIFY_BROKER_SYSTEM_NOT_ALLOWED/);
+  assert.match(source, /Remove-Item -LiteralPath \$RequestPath/);
+  assert.doesNotMatch(source, /Invoke-Expression|-Verb\s+RunAs|Start-Process|cmd\.exe/i);
+  assert.doesNotMatch(source, /Set-ExecutionPolicy|net\s+user|sc\.exe\s+(?:create|delete)|reg\.exe\s+(?:add|delete)/i);
 });
