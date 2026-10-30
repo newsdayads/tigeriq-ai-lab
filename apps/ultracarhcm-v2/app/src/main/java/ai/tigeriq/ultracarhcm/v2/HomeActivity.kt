@@ -405,10 +405,82 @@ class HomeActivity : ComponentActivity() {
         place(quickBar, .045f, liftedTop, .91f, .145f)
     }
 
+    private fun renderNarrowDexPanel() {
+        val night = prefs.getBoolean("night", false)
+        renderBackground(night)
+
+        val shade = label("", 10f)
+        shade.background = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(0x10000000, 0x26000000, 0x90000000.toInt()),
+        )
+        place(shade, 0f, 0f, 1f, 1f)
+
+        image(R.drawable.v2_logo_ultracar, .08f, .025f, .84f, .12f)
+
+        clock = label("", 13f, Color.WHITE, true).apply {
+            background = shape(0x800c1a22.toInt(), radius = 8f)
+        }
+        place(clock!!, .08f, .17f, .84f, .09f)
+        clock?.text = SimpleDateFormat("EEEE\ndd/MM\nHH:mm", Locale("vi", "VN")).format(Date())
+
+        button("GOOGLE MAPS", .08f, .285f, .84f, .065f) {
+            launchQuickSlot(
+                JSONObject()
+                    .put("label", "Google Maps")
+                    .put("target", "com.google.android.apps.maps"),
+            )
+        }
+        button("CAMERA USB", .08f, .37f, .84f, .065f) {
+            startActivity(Intent(this, UsbCameraActivity::class.java))
+        }
+        button("CÀI ĐẶT", .08f, .455f, .84f, .065f) {
+            showSettings()
+        }
+
+        val vehicleModel = VehicleRules.currentModel(
+            prefs.getString(VehicleRules.PREF_MODEL, null),
+            prefs.getBoolean("limo", false),
+        )
+        image(
+            if (vehicleModel == VehicleRules.MODEL_LIMO_RED) R.drawable.v2_car_limo_do_parked
+            else R.drawable.v2_car_lambogini_trang_parked,
+            .18f, .56f, .64f, .20f,
+        )
+
+        val plate = prefs.getString(VehicleRules.PREF_LICENSE_PLATE, "")
+            ?.takeIf { it.isNotBlank() }
+        if (plate != null) {
+            place(
+                label(plate, 12f, Color.WHITE, true).apply {
+                    background = shape(0xb8101a20.toInt(), radius = 8f)
+                },
+                .20f, .755f, .60f, .038f,
+            )
+        }
+
+        button("LÀM MỚI", .08f, .825f, .84f, .06f) { render() }
+        place(
+            label("DeX panel • V2 • chưa tự sắp cửa sổ", 8f, 0xffbbbbbb.toInt()),
+            .04f, .93f, .92f, .025f,
+        )
+    }
+
     private fun render() {
         if (root.width == 0 || root.height == 0) return
         releaseHomeVideo()
         root.removeAllViews()
+        if (
+            HomeLayoutRules.useNarrowDexPanel(
+                widthPx = root.width,
+                heightPx = root.height,
+                density = resources.displayMetrics.density,
+                isDesktop = DexUtils.isDesktop(this),
+            )
+        ) {
+            renderNarrowDexPanel()
+            return
+        }
         val night = prefs.getBoolean("night", false)
         renderBackground(night)
         val bg = label("", 10f)
