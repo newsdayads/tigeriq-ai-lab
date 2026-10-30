@@ -7,7 +7,7 @@
 
 export const MCP_RESOURCE_PATH = '/mcp';
 export const OAUTH_SCOPES = Object.freeze([
-  'mcp:read', 'pc01:write', 'pc01:execute', 'pc01:ui', 'pc01:admin',
+  'mcp:read', 'pc01:write', 'pc01:execute', 'pc01:ui', 'pc01:admin', 'offline_access',
 ]);
 
 const readTools = [

@@ -1,4 +1,6 @@
-import { existsSync, lstatSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, openSync, closeSync, fsyncSync, renameSync, statSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { createPc01AuthorizationServer } from './pc01-authorization-server.mjs';
 import path from 'node:path';
 import { createServer } from 'node:http';
@@ -30,11 +32,223 @@ const [
   import(pathToFileURL(dependencyPaths.oauthRuntime).href),
 ]);
 
-export function createOAuthSessionStore(filePath = process.env.TIGERIQ_OAUTH_SESSION_STORE || 'C:\\ProgramData\\TigerIQMcpAuth\\sessions.json') {
-  const load = () => { try { const value = JSON.parse(readFileSync(filePath, 'utf8')); return Array.isArray(value) ? value : []; } catch (error) { if (error.code === 'ENOENT') return []; throw error; } };
-  const save = sessions => { mkdirSync(path.dirname(filePath), {recursive:true}); writeFileSync(filePath, JSON.stringify(sessions), {encoding:'utf8', mode:0o600}); };
-  const revoke = hash => { const next = load().filter(item => item.hash !== hash); save(next); };
-  return {load, save, revoke};
+export function verifyWindowsAcl(targetPath) {
+  if (process.platform !== 'win32') return { secure: true, platform: process.platform };
+  try {
+    const out = execFileSync('icacls', [targetPath], { encoding: 'utf8', timeout: 3000 });
+    const insecure = /(?:Everyone|BUILTIN\\Users|Users|Authenticated Users):(?:\(I\))?(?:\([A-Z]+\))*(?:\(F\)|\(M\)|\(W\))/i.test(out);
+    return { secure: !insecure, acl: out.trim() };
+  } catch (error) {
+    return { secure: false, error: error.message };
+  }
+}
+
+export function ensureSecureWindowsAcl(targetPath) {
+  if (process.platform !== 'win32') return false;
+  try {
+    const isDir = existsSync(targetPath) && statSync(targetPath).isDirectory();
+    const perm = isDir ? '(OI)(CI)F' : 'F';
+    const user = process.env.USERNAME || 'PC01\\wdragons12x';
+    execFileSync('icacls', [
+      targetPath,
+      '/inheritance:r',
+      '/grant:r', `*S-1-5-18:${perm}`,
+      '/grant:r', `*S-1-5-32-544:${perm}`,
+      '/grant:r', `${user}:${perm}`,
+    ], { encoding: 'utf8', timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+let activeLockPath = null;
+export function withFileLock(lockPath, fn, { timeoutMs = 5000, retryMs = 25 } = {}) {
+  if (activeLockPath === lockPath) {
+    return fn();
+  }
+  const start = Date.now();
+  let fd = null;
+  while (true) {
+    try {
+      fd = openSync(lockPath, 'wx');
+      writeFileSync(fd, `${process.pid}\n${Date.now()}`);
+      break;
+    } catch (err) {
+      if (err.code === 'EEXIST') {
+        try {
+          const stat = statSync(lockPath);
+          if (Date.now() - stat.mtimeMs > 10000) {
+            unlinkSync(lockPath);
+            continue;
+          }
+        } catch {
+          continue;
+        }
+        if (Date.now() - start >= timeoutMs) {
+          throw new Error('SESSION_STORE_LOCK_TIMEOUT');
+        }
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, retryMs);
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  activeLockPath = lockPath;
+  try {
+    return fn();
+  } finally {
+    activeLockPath = null;
+    if (fd !== null) {
+      try { closeSync(fd); } catch {}
+    }
+    try { unlinkSync(lockPath); } catch {}
+  }
+}
+
+export function atomicWriteFile(filePath, content, mode = 0o600) {
+  const dir = path.dirname(filePath);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    ensureSecureWindowsAcl(dir);
+  }
+  const tmpPath = `${filePath}.${randomUUID()}.tmp`;
+  let fd = null;
+  try {
+    fd = openSync(tmpPath, 'w', mode);
+    writeFileSync(fd, content, { encoding: 'utf8' });
+    fsyncSync(fd);
+    closeSync(fd);
+    fd = null;
+    ensureSecureWindowsAcl(tmpPath);
+    renameSync(tmpPath, filePath);
+  } finally {
+    if (fd !== null) {
+      try { closeSync(fd); } catch {}
+    }
+    if (existsSync(tmpPath)) {
+      try { unlinkSync(tmpPath); } catch {}
+    }
+  }
+}
+
+export function resolveDefaultStorePath(envPath = process.env.TIGERIQ_OAUTH_SESSION_STORE) {
+  if (envPath) return envPath;
+  const preferredDir = 'C:\\ProgramData\\TigerIQMcpSessions';
+  try {
+    if (!existsSync(preferredDir)) {
+      mkdirSync(preferredDir, { recursive: true });
+      ensureSecureWindowsAcl(preferredDir);
+    }
+    return path.join(preferredDir, 'sessions.json');
+  } catch {
+    try {
+      const authDir = 'C:\\ProgramData\\TigerIQMcpAuth';
+      if (existsSync(authDir)) return path.join(authDir, 'sessions.json');
+    } catch {}
+    return 'D:\\TigerIQ\\State\\mcp-oauth-sessions.json';
+  }
+}
+
+export function createOAuthSessionStore(filePath = resolveDefaultStorePath()) {
+  const lockPath = filePath + '.lock';
+
+  const load = () => {
+    try {
+      if (!existsSync(filePath)) return [];
+      const content = readFileSync(filePath, 'utf8').trim();
+      if (!content) return [];
+      const value = JSON.parse(content);
+      return Array.isArray(value) ? value : [];
+    } catch (error) {
+      if (error.code === 'ENOENT') return [];
+      const bakPath = filePath + '.bak';
+      try {
+        if (existsSync(bakPath)) {
+          const bakContent = readFileSync(bakPath, 'utf8').trim();
+          if (bakContent) {
+            const bakValue = JSON.parse(bakContent);
+            if (Array.isArray(bakValue)) return bakValue;
+          }
+        }
+      } catch {}
+      return [];
+    }
+  };
+
+  const saveInternal = sessions => {
+    atomicWriteFile(filePath, JSON.stringify(sessions, null, 2));
+    try {
+      atomicWriteFile(filePath + '.bak', JSON.stringify(sessions));
+    } catch {}
+  };
+
+  const save = sessions => {
+    withFileLock(lockPath, () => {
+      saveInternal(sessions);
+    });
+  };
+
+  const rotate = (oldHash, newHash, nextGrant = null) => {
+    return withFileLock(lockPath, () => {
+      const sessions = load();
+      for (const s of sessions) {
+        if (Array.isArray(s.spentHashes) && s.spentHashes.includes(oldHash)) {
+          s.revoked = true;
+          s.revokedReason = 'replay_detected';
+          s.revokedAt = Date.now();
+          saveInternal(sessions);
+          return { replay: true, session: s };
+        }
+      }
+
+      const target = sessions.find(s => (s.activeHash === oldHash || s.hash === oldHash) && !s.revoked);
+      if (!target) return { notFound: true };
+
+      target.spentHashes = target.spentHashes || [];
+      if (!target.spentHashes.includes(oldHash)) {
+        target.spentHashes.push(oldHash);
+      }
+      target.activeHash = newHash;
+      target.hash = newHash;
+      target.updatedAt = Date.now();
+      if (nextGrant && nextGrant.scopes) target.scopes = nextGrant.scopes;
+
+      saveInternal(sessions);
+      return { success: true, session: target };
+    });
+  };
+
+  const revoke = (hashOrTokenHash, reason = 'explicit_revocation') => {
+    return withFileLock(lockPath, () => {
+      const sessions = load();
+      let matched = false;
+      for (const s of sessions) {
+        const matchesActive = s.activeHash === hashOrTokenHash || s.hash === hashOrTokenHash;
+        const matchesSpent = Array.isArray(s.spentHashes) && s.spentHashes.includes(hashOrTokenHash);
+        if (matchesActive || matchesSpent) {
+          s.revoked = true;
+          s.revokedReason = reason;
+          s.revokedAt = Date.now();
+          matched = true;
+        }
+      }
+      if (matched) {
+        saveInternal(sessions);
+      }
+      return matched;
+    });
+  };
+
+  return {
+    filePath,
+    lockPath,
+    load,
+    save,
+    rotate,
+    revoke,
+  };
 }
 
 function json(res, status, body, headers = {}) {
