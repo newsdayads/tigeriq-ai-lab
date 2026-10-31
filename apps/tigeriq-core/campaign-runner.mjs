@@ -80,6 +80,24 @@ export function referencedJobEvidenceContext({jobIds=[],jobs=[]}={}){
   return `PRIOR_CAMPAIGN_HANDOFF_V1 ${JSON.stringify(payload)}`.slice(0,2600);
 }
 
+export function referencedJobReviewExclusions({jobIds=[],jobs=[]}={}){
+  const refs=new Set((Array.isArray(jobIds)?jobIds:[])
+    .map(item=>String(item||'').trim())
+    .filter(Boolean)
+    .slice(0,4));
+  if(!refs.size)return {employeeIds:[],resourceIds:[]};
+  const employeeIds=new Set(),resourceIds=new Set();
+  for(const job of (Array.isArray(jobs)?jobs:[])){
+    const id=String(job?.id||'').trim();
+    if(!id||!refs.has(id)||job?.status!=='done')continue;
+    const employeeId=String(job?.employee_id||'').trim().toUpperCase();
+    const resourceId=String(job?.resource_id||'').trim();
+    if(employeeId)employeeIds.add(employeeId);
+    if(resourceId)resourceIds.add(resourceId);
+  }
+  return {employeeIds:[...employeeIds],resourceIds:[...resourceIds]};
+}
+
 export function campaignPriorEvidenceContext({currentPhase=0,checkpoints=[],jobs=[]}={}){
   const phaseIndex=Math.max(0,Number(currentPhase)||0);
   if(phaseIndex<=0)return '';
