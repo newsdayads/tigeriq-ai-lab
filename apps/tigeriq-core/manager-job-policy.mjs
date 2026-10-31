@@ -13,6 +13,23 @@ export function managerLogicalJobIdentity({objectiveId='', phaseIndex=0, title='
 export const FAILED_LOGICAL_JOB_BLOCK_SUMMARY='Same logical job has already failed; no new random job on unchanged work';
 export const MANAGER_NO_PROGRESS_BLOCK_SUMMARY='Manager attempt stopped: two decisions without accepted child progress; awaiting material change';
 
+export function providerPromptCompactionRecoveryEligible({
+  capability='',
+  phaseIndex=0,
+  maxAttempts=0,
+  compactRepairReason='',
+  failure=null,
+}={}) {
+  if(String(capability).trim().toLowerCase()!=='review'||Number(phaseIndex)<=0)return false;
+  if(Number(maxAttempts)!==5)return false;
+  if(String(compactRepairReason||'')!=='compact_contract_already_present')return false;
+  const failures=Array.isArray(failure?.failures)?failure.failures:[];
+  return failures.some(item=>
+    String(item?.kind||'').trim().toLowerCase()==='job_contract'
+    &&String(item?.message||'').trim()==='NV09_COMPILED_PROMPT_BUDGET_EXCEEDED'
+  );
+}
+
 export function failedCampaignRuntimeRearmDecision({
   objectiveStatus='',
   objectiveSummary='',
