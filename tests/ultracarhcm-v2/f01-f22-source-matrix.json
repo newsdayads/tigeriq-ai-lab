@@ -173,10 +173,12 @@
       "status": "PARTIAL_SOURCE",
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeConfigRules.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeConfigRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/SavedLayoutShortcutRules.kt",
+        "tests/ultracarhcm-v2/saved-layout-shortcuts-source.test.ts"
       ],
-      "gap": "Local saved/default Home state is versioned and recovered safely, now including canonical V2 vehicle model and license plate. Saved configurations can be reordered deterministically with evidence-backed Up/Down controls that avoid the unreliable drag hit-test seen in V1 TEST history; full V1 multi-zone orchestration and device acceptance remain open.",
-      "actual": "HomeActivity saves/applies/removes versioned local Home configurations containing theme, canonical vehicle model, license plate, driver and nine quick slots; schema v3 reads legacy schemas 0–2, normalizes the legacy limo flag into the canonical model, and restores the default on app creation with corrupt/future-state cleanup. The saved-layout screen now exposes a separate SẮP XẾP BỐ CỤC flow with bounded adjacent Up/Down moves persisted synchronously before reporting success.",
+      "gap": "Local saved/default Home state is versioned and recovered safely. Saved configurations now have stable V2 config IDs, deterministic Up/Down ordering, and five V1-evidenced HOME shortcut slots with tap-to-apply and long-press-to-reassign. Exact V1 shortcut icon artwork, full multi-zone orchestration, backup/restore of these new slot assignments, and real-device DeX acceptance remain open.",
+      "actual": "HomeActivity saves/applies/removes versioned local Home configurations and assigns/migrates unique stable config IDs. Reordering swaps array position without changing IDs. Five equal HOME shortcut controls persist config IDs synchronously, resolve the current saved layout by ID on tap, open the assignment picker on empty tap/long press, and clear stale/deleted references instead of falling through to another layout.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.saveHomeConfiguration",
@@ -185,7 +187,13 @@
         "HomeActivity.applyDefaultHomeConfiguration",
         "HomeActivity.showSavedOrderEditor",
         "HomeActivity.moveSavedConfiguration",
-        "HomeConfigRules.reorderTarget"
+        "HomeConfigRules.reorderTarget",
+        "HomeActivity.renderSavedLayoutShortcuts",
+        "HomeActivity.openSavedLayoutShortcut",
+        "HomeActivity.showSavedLayoutShortcutEditor",
+        "HomeActivity.savedConfigurationById",
+        "SavedLayoutShortcutRules.slotKey",
+        "SavedLayoutShortcutRules.validConfigId"
       ],
       "permissions": []
     },

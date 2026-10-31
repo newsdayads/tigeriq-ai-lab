@@ -66,7 +66,9 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(home).toContain('VehicleRules.normalizeLicensePlate(');
     expect(home).toContain('.put("schemaVersion", HomeConfigRules.CURRENT_SCHEMA_VERSION)');
     expect(home).toContain('val limit = minOf(raw.length(), HomeConfigRules.MAX_SAVED)');
-    expect(home).toContain('normalizeHomeConfiguration(item)?.let(normalized::put)');
+    expect(home).toContain('val safe = normalizeHomeConfiguration(item) ?: continue');
+    expect(home).toContain('val seenIds = mutableSetOf<String>()');
+    expect(home).toContain('safe.put("configId", configId)');
     expect(home).toContain('prefs.edit().remove("v2_home_configs").apply()');
     expect(home).toContain('Unsupported HOME config schema');
   });

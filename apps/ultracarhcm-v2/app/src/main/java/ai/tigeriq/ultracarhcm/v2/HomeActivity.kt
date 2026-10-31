@@ -372,7 +372,7 @@ class HomeActivity : ComponentActivity() {
             .show()
     }
 
-    private fun renderQuickBar() {
+    private fun renderQuickBar(): Float {
         val slots = quickSlots()
         val models = (0 until QuickSlotRules.SLOT_COUNT).map { index ->
             val slot = slots.optJSONObject(index) ?: JSONObject()
@@ -402,7 +402,9 @@ class HomeActivity : ComponentActivity() {
                 }
             }
         }
-        place(quickBar, .045f, liftedTop, .91f, .145f)
+        val quickBarHeight = .145f
+        place(quickBar, .045f, liftedTop, .91f, quickBarHeight)
+        return liftedTop + quickBarHeight
     }
 
     private fun renderNarrowDexPanel() {
@@ -528,19 +530,23 @@ class HomeActivity : ComponentActivity() {
             )
         }
 
-        renderQuickBar()
+        val quickBarBottom = renderQuickBar()
+        val startTop = maxOf(.73f, quickBarBottom + .006f).coerceAtMost(.80f)
 
-        button("KHỞI ĐỘNG", .028f, .78f, .79f, .063f) {
+        button("KHỞI ĐỘNG", .028f, startTop, .79f, .043f) {
             AlertDialog.Builder(this).setTitle("Chưa nghiệm thu chức năng Khởi động")
                 .setMessage("V2 đang được tái dựng từ ứng dụng chuẩn. Tính năng Khởi động và bố cục đa cửa sổ chưa tương đương. Không chuyển sang giao diện demo.")
                 .setPositiveButton("Đóng", null).show()
         }
-        button("⟳", .835f, .78f, .137f, .063f) { render() }
+        button("⟳", .835f, startTop, .137f, .043f) { render() }
+        val shortcutTop = (startTop + .049f).coerceAtMost(.849f)
+        renderSavedLayoutShortcuts(shortcutTop)
+
         val bottomShade = label("", 10f)
         bottomShade.background = shape(0x7d000000, radius=12f)
-        place(bottomShade, .028f, .855f, .944f, .087f)
-        button("▣\nCấu hình đã lưu", .045f, .863f, .29f, .065f, false) { showSaved() }
-        button("+\nLưu cấu hình", .357f, .863f, .29f, .065f, false) { saveHomeConfiguration() }
+        place(bottomShade, .028f, .883f, .944f, .074f)
+        button("▣\nCấu hình đã lưu", .045f, .890f, .29f, .055f, false) { showSaved() }
+        button("+\nLưu cấu hình", .357f, .890f, .29f, .055f, false) { saveHomeConfiguration() }
         val bot = VideoView(this)
         homeVideo = bot
         bot.setVideoURI(Uri.parse("android.resource://$packageName/${R.raw.ultrabot_glow_packed}"))
@@ -552,10 +558,10 @@ class HomeActivity : ComponentActivity() {
             }
         }
         bot.setOnErrorListener { _, _, _ -> true }
-        place(bot, .675f, .857f, .278f, .078f)
+        place(bot, .675f, .887f, .278f, .062f)
         bot.setOnClickListener { toast("Ultrabot V2 chưa tích hợp — không đổi nút này thành Camera") }
         val footer = label("UltraCarHCM V2 • DEVELOPMENT • CHƯA NGHIỆM THU", 9f, 0xffbbbbbb.toInt())
-        place(footer, .02f, .954f, .96f, .018f)
+        place(footer, .02f, .972f, .96f, .016f)
     }
 
     // Real, device-local HOME snapshots only. These are not V1 layout parity.
@@ -568,15 +574,159 @@ class HomeActivity : ComponentActivity() {
             return JSONArray()
         }
         val normalized = JSONArray()
+        val seenIds = mutableSetOf<String>()
         val limit = minOf(raw.length(), HomeConfigRules.MAX_SAVED)
         for (index in 0 until limit) {
             val item = raw.optJSONObject(index) ?: continue
-            normalizeHomeConfiguration(item)?.let(normalized::put)
+            val safe = normalizeHomeConfiguration(item) ?: continue
+            var configId = SavedLayoutShortcutRules.normalizeConfigId(
+                safe.optString("configId", ""),
+            )
+            if (!SavedLayoutShortcutRules.validConfigId(configId) || !seenIds.add(configId)) {
+                do {
+                    configId = SavedLayoutShortcutRules.freshConfigId()
+                } while (!seenIds.add(configId))
+            }
+            safe.put("configId", configId)
+            normalized.put(safe)
         }
         if (normalized.toString() != raw.toString()) {
             prefs.edit().putString("v2_home_configs", normalized.toString()).apply()
         }
         return normalized
+    }
+
+    private fun savedLayoutShortcutPrefs() =
+        getSharedPreferences(SavedLayoutShortcutRules.PREFS_NAME, Context.MODE_PRIVATE)
+
+    private fun savedLayoutShortcutConfigId(index: Int): String? {
+        val key = SavedLayoutShortcutRules.slotKey(index) ?: return null
+        val prefs = savedLayoutShortcutPrefs()
+        val raw = prefs.getString(key, null) ?: return null
+        val configId = SavedLayoutShortcutRules.normalizeConfigId(raw)
+        if (!SavedLayoutShortcutRules.validConfigId(configId)) {
+            prefs.edit().remove(key).commit()
+            return null
+        }
+        return configId
+    }
+
+    private fun saveSavedLayoutShortcut(index: Int, configId: String?): Boolean {
+        val key = SavedLayoutShortcutRules.slotKey(index) ?: return false
+        val editor = savedLayoutShortcutPrefs().edit()
+        if (configId == null) {
+            editor.remove(key)
+        } else {
+            val safeId = SavedLayoutShortcutRules.normalizeConfigId(configId)
+            if (!SavedLayoutShortcutRules.validConfigId(safeId)) return false
+            editor.putString(key, safeId)
+        }
+        return editor.commit()
+    }
+
+    private fun clearSavedLayoutShortcutReferences(configId: String) {
+        val safeId = SavedLayoutShortcutRules.normalizeConfigId(configId)
+        if (!SavedLayoutShortcutRules.validConfigId(safeId)) return
+        val shortcutPrefs = savedLayoutShortcutPrefs()
+        val editor = shortcutPrefs.edit()
+        var changed = false
+        for (index in 0 until SavedLayoutShortcutRules.SLOT_COUNT) {
+            val key = SavedLayoutShortcutRules.slotKey(index) ?: continue
+            if (shortcutPrefs.getString(key, null) == safeId) {
+                editor.remove(key)
+                changed = true
+            }
+        }
+        if (changed) editor.commit()
+    }
+
+    private fun savedConfigurationById(entries: JSONArray, configId: String): JSONObject? {
+        for (index in 0 until entries.length()) {
+            val item = entries.optJSONObject(index) ?: continue
+            if (item.optString("configId", "") == configId) return item
+        }
+        return null
+    }
+
+    private fun showSavedLayoutShortcutEditor(index: Int) {
+        if (SavedLayoutShortcutRules.slotKey(index) == null) return
+        val entries = savedConfigurations()
+        if (entries.length() == 0) {
+            toast("Chưa có cấu hình Home để gán")
+            return
+        }
+        val names = Array(entries.length()) { position ->
+            entries.optJSONObject(position)?.optString("name", "Home ${position + 1}")
+                ?: "Home ${position + 1}"
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Gán phím bố cục ${index + 1}")
+            .setItems(names) { _, position ->
+                val item = entries.optJSONObject(position) ?: return@setItems
+                val configId = item.optString("configId", "")
+                if (saveSavedLayoutShortcut(index, configId)) {
+                    toast("Đã gán ${names[position]}")
+                    render()
+                } else {
+                    toast("Không thể lưu phím bố cục")
+                }
+            }
+            .setNeutralButton("Bỏ gán") { _, _ ->
+                if (saveSavedLayoutShortcut(index, null)) {
+                    toast("Đã bỏ gán phím bố cục")
+                    render()
+                } else {
+                    toast("Không thể bỏ gán phím bố cục")
+                }
+            }
+            .setNegativeButton("Đóng", null)
+            .show()
+    }
+
+    private fun openSavedLayoutShortcut(index: Int) {
+        val configId = savedLayoutShortcutConfigId(index)
+        if (configId == null) {
+            showSavedLayoutShortcutEditor(index)
+            return
+        }
+        val entries = savedConfigurations()
+        val item = savedConfigurationById(entries, configId)
+        if (item == null) {
+            saveSavedLayoutShortcut(index, null)
+            toast("Bố cục đã gán không còn tồn tại")
+            render()
+            return
+        }
+        if (applyHomeConfiguration(item, true)) {
+            toast("Đã mở ${item.optString("name", "Home")}")
+        } else {
+            toast("Cấu hình Home không tương thích")
+        }
+    }
+
+    private fun renderSavedLayoutShortcuts(top: Float) {
+        val entries = savedConfigurations()
+        for (index in 0 until SavedLayoutShortcutRules.SLOT_COUNT) {
+            val configId = savedLayoutShortcutConfigId(index)
+            val item = configId?.let { savedConfigurationById(entries, it) }
+            if (configId != null && item == null) saveSavedLayoutShortcut(index, null)
+            val title = item?.optString("name", "")
+                ?.takeIf { it.isNotBlank() }
+                ?.take(12)
+                ?: String.format(Locale.US, "+%02d", index + 1)
+            val left = .05f + index * .1825f
+            button(
+                title,
+                left,
+                top,
+                .17f,
+                .036f,
+                outline = false,
+                onLongClick = { showSavedLayoutShortcutEditor(index) },
+            ) {
+                openSavedLayoutShortcut(index)
+            }
+        }
     }
 
     private fun normalizedQuickSlotsForStorage(source: JSONArray?): JSONArray {
@@ -619,6 +769,10 @@ class HomeActivity : ComponentActivity() {
         if (!HomeConfigRules.canReadSchema(schema)) return null
 
         if (item.has("name") && HomeBackupRules.exactString(item.opt("name")) == null) return null
+        if (item.has("configId")) {
+            val rawConfigId = HomeBackupRules.exactString(item.opt("configId")) ?: return null
+            if (!SavedLayoutShortcutRules.validConfigId(rawConfigId)) return null
+        }
         if (item.has("driver") && HomeBackupRules.exactString(item.opt("driver")) == null) return null
         if (item.has("night") && HomeBackupRules.exactBoolean(item.opt("night")) == null) return null
         if (item.has("limo") && HomeBackupRules.exactBoolean(item.opt("limo")) == null) return null
@@ -654,9 +808,17 @@ class HomeActivity : ComponentActivity() {
         val licensePlate = VehicleRules.normalizeLicensePlate(
             item.optString("licensePlate", ""),
         )
+        val configId = SavedLayoutShortcutRules.normalizeConfigId(
+            item.optString("configId", ""),
+        )
         return JSONObject()
             .put("schemaVersion", HomeConfigRules.CURRENT_SCHEMA_VERSION)
             .put("name", name)
+            .also { normalized ->
+                if (SavedLayoutShortcutRules.validConfigId(configId)) {
+                    normalized.put("configId", configId)
+                }
+            }
             .put("night", item.optBoolean("night", false))
             .put("limo", vehicleModel == VehicleRules.MODEL_LIMO_RED)
             .put("vehicleModel", vehicleModel)
@@ -743,6 +905,7 @@ class HomeActivity : ComponentActivity() {
                     )
                     current.put(JSONObject()
                         .put("schemaVersion", HomeConfigRules.CURRENT_SCHEMA_VERSION)
+                        .put("configId", SavedLayoutShortcutRules.freshConfigId())
                         .put("name", name)
                         .put("night", prefs.getBoolean("night", false))
                         .put("limo", selectedModel == VehicleRules.MODEL_LIMO_RED)
@@ -850,6 +1013,7 @@ class HomeActivity : ComponentActivity() {
                                     editor.remove("v2_default_home_config")
                                 }
                                 editor.apply()
+                                clearSavedLayoutShortcutReferences(item.optString("configId", ""))
                                 toast("Đã xóa cấu hình khỏi thiết bị")
                             }
                         }
