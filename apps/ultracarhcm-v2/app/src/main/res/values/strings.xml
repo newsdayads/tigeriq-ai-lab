@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- V2-owned brand string. Original V1 visual assets remain unresolved. -->
+    <string name="app_name">UltraCarHCM V2</string>
+    <string name="v2_update_metadata_url" translatable="false">https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/main/apps/ultracarhcm-v2/release/update-channel.json</string>
+</resources>

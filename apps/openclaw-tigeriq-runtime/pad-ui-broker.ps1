@@ -11,6 +11,7 @@ public static class TigerIQPadNative {
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
   [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr extraInfo);
   [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+  [DllImport("user32.dll", EntryPoint = "SendMessage", CharSet = CharSet.Auto)] public static extern IntPtr SendMessageText(IntPtr hWnd, uint Msg, IntPtr wParam, string lParam);
 }
 "@
 
@@ -42,12 +43,55 @@ function Convert-FiniteUiNumber($Value) {
   } catch { return $null }
 }
 
+function Test-SensitiveWindow($Window) {
+  try {
+    $proc = (Get-ProcessName $Window.Current.ProcessId).ToLower()
+    $name = [string]$Window.Current.Name
+    $blocked = @('keepass', 'bitwarden', '1password', 'sechealthui', 'credentialuibroker')
+    if ($blocked -contains $proc) { return $true }
+    if ($name -match '(?i)keepass|bitwarden|credential\s*manager|windows\s*security') { return $true }
+    return $false
+  } catch { return $false }
+}
+
 function Test-PadWindow($Window) {
   try {
+    if (Test-SensitiveWindow $Window) { return $false }
     $name = [string]$Window.Current.Name
     $proc = Get-ProcessName $Window.Current.ProcessId
+    if (-not $proc) { return $false }
     if ($proc -like 'PAD.*' -or $proc -eq 'Microsoft.Flow.RPA.Desktop') { return $true }
-    return ($proc -eq 'msedgewebview2' -and $name -match 'Power Automate')
+    if ($proc -eq 'msedgewebview2' -and $name -match 'Power Automate') { return $true }
+    if ([string]::IsNullOrWhiteSpace($name)) { return $false }
+    if ($name -in @('Program Manager', 'Task Switching', 'Task View')) { return $false }
+    return $true
+  } catch { return $false }
+}
+
+function Match-WindowTarget($Window, $Request) {
+  try {
+    $name = [string]$Window.Current.Name
+    $pidVal = [int]$Window.Current.ProcessId
+    $proc = Get-ProcessName $pidVal
+    $autoId = [string]$Window.Current.AutomationId
+
+    if ($Request.processId -and $pidVal -ne [int]$Request.processId) { return $false }
+    if ($Request.pid -and $pidVal -ne [int]$Request.pid) { return $false }
+    if ($Request.processName -and $proc -notlike "*$($Request.processName)*") { return $false }
+    if ($Request.windowAutomationId -and $autoId -ne [string]$Request.windowAutomationId) { return $false }
+
+    $targetName = if ($Request.windowName) { [string]$Request.windowName } elseif ($Request.windowTitle) { [string]$Request.windowTitle } else { $null }
+    if ($targetName) {
+      $mode = if ($Request.match) { [string]$Request.match } else { 'auto' }
+      if ($mode -eq 'exact') {
+        if ($name -ne $targetName) { return $false }
+      } elseif ($mode -eq 'contains') {
+        if ($name -notlike "*$targetName*") { return $false }
+      } else {
+        if ($name -ne $targetName -and $name -notlike "*$targetName*") { return $false }
+      }
+    }
+    return $true
   } catch { return $false }
 }
 
@@ -72,12 +116,18 @@ function Get-PadWindows {
 }
 
 function Find-PadWindow($Request) {
+  $targetName = if ($Request.windowName) { [string]$Request.windowName } elseif ($Request.windowTitle) { [string]$Request.windowTitle } else { $null }
   $windows = @(Get-PadWindows)
-  if ($Request.windowName) {
-    $windows = @($windows | Where-Object { $_.Name -eq [string]$Request.windowName })
+  if ($targetName -or $Request.processId -or $Request.pid -or $Request.processName -or $Request.windowAutomationId) {
+    $filtered = @()
+    foreach ($w in $windows) {
+      $targetObj = [pscustomobject]@{ Current = [pscustomobject]@{ Name=$w.Name; ProcessId=$w.ProcessId; AutomationId=$w.AutomationId } }
+      if (Match-WindowTarget $targetObj $Request) { $filtered += $w }
+    }
+    $windows = $filtered
   }
   if ($windows.Count -eq 0) { throw 'TIGERIQ_PAD_UI_WINDOW_NOT_FOUND' }
-  if ($windows.Count -gt 1 -and -not $Request.windowName) {
+  if ($windows.Count -gt 1 -and -not $targetName) {
     $named = @($windows | Where-Object { $_.Name -match 'Power Automate' })
     if ($named.Count -eq 1) { $windows = $named }
   }
@@ -117,13 +167,16 @@ function Get-TopWindowElement($Request) {
   $root = [System.Windows.Automation.AutomationElement]::RootElement
   $all = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
   $matches = @()
+  $targetName = if ($Request.windowName) { [string]$Request.windowName } elseif ($Request.windowTitle) { [string]$Request.windowTitle } else { $null }
   foreach ($w in $all) {
     if (-not (Test-PadWindow $w)) { continue }
-    if ($Request.windowName -and [string]$w.Current.Name -ne [string]$Request.windowName) { continue }
+    if ($targetName -or $Request.processId -or $Request.pid -or $Request.processName -or $Request.windowAutomationId) {
+      if (-not (Match-WindowTarget $w $Request)) { continue }
+    }
     $matches += $w
   }
   if ($matches.Count -eq 0) { throw 'TIGERIQ_PAD_UI_WINDOW_NOT_FOUND' }
-  if ($matches.Count -gt 1 -and -not $Request.windowName) {
+  if ($matches.Count -gt 1 -and -not $targetName) {
     $named = @($matches | Where-Object { $_.Current.Name -match 'Power Automate' })
     if ($named.Count -eq 1) { $matches = $named }
   }
@@ -209,11 +262,16 @@ function Invoke-PadElement($Request, [bool]$AllowClickFallback) {
 function Set-PadValue($Request) {
   $found = Find-PadElement $Request
   $p = $null
-  if (-not $found.Element.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$p)) {
-    throw 'TIGERIQ_PAD_UI_VALUE_PATTERN_UNAVAILABLE'
+  if ($found.Element.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$p)) {
+    $p.SetValue([string]$Request.value)
+    return [pscustomobject]@{ Method='ValuePattern'; MatchCount=$found.Count; Element=(Element-ToObject $found.Element) }
   }
-  $p.SetValue([string]$Request.value)
-  return [pscustomobject]@{ Method='ValuePattern'; MatchCount=$found.Count; Element=(Element-ToObject $found.Element) }
+  $hWnd = [IntPtr][int64]$found.Element.Current.NativeWindowHandle
+  if ($hWnd -ne [IntPtr]::Zero) {
+    [TigerIQPadNative]::SendMessageText($hWnd, 0x000C, [IntPtr]::Zero, [string]$Request.value) | Out-Null
+    return [pscustomobject]@{ Method='Win32SetText'; MatchCount=$found.Count; Element=(Element-ToObject $found.Element) }
+  }
+  throw 'TIGERIQ_PAD_UI_VALUE_PATTERN_UNAVAILABLE'
 }
 
 function Send-PadKey($Request) {
@@ -225,7 +283,7 @@ function Send-PadKey($Request) {
   }
   $map = @{
     'ENTER'=@(0x0D); 'ESC'=@(0x1B); 'TAB'=@(0x09); 'F5'=@(0x74)
-    'CTRL+A'=@(0x11,0x41); 'CTRL+F'=@(0x11,0x46); 'CTRL+N'=@(0x11,0x4E)
+    'CTRL+A'=@(0x11,0x41); 'CTRL+F'=@(0x11,0x46); 'CTRL+N'=@(0x11,0x4E); 'CTRL+S'=@(0x11,0x53)
   }
   $keys = $map[[string]$Request.key]
   if (-not $keys) { throw 'TIGERIQ_PAD_UI_KEY_NOT_ALLOWED' }

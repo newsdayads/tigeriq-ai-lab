@@ -14,7 +14,7 @@ it('preserves single updater loop and small isolated release gate',()=>{
   expect(source.match(/while\(\$true\)\{/g)).toHaveLength(1);
   expect(guard.match(/function Get-ReleaseApproval/g)).toHaveLength(1);
   expect(guard.match(/function Save-ReleaseAttempt/g)).toHaveLength(1);
-  expect(source.length).toBeLessThan(62000);
+  expect(source.length).toBeLessThan(68000); // Bounded growth for supervised MCP Funnel lifecycle reconciliation.
 });
 it('fails closed when local release guard or approval is missing',()=>{
   const guardLoad=source.indexOf('. $releaseGuardScript');

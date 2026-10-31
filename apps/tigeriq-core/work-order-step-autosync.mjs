@@ -16,21 +16,40 @@ export function planAcceptedChecklistStep({issue,stepId,evidenceUrl,resourceScop
  const selected=parsed.steps.filter(s=>s.id===id);
  if(selected.length!==1)return {ok:false,reason:'STEP_NOT_DECLARED'};
  const step=selected[0];
+ // The checked-step counter is part of the SAME GitHub write. Never patch a
+ // drifting source counter to make an invalid receipt look accepted.
+ const strictProgress=/^PROGRESS_SOURCE=STRUCTURED_PROGRESS_CHECKLIST$/m.test(issue.body);
+ let completedBefore=null;
+ if(strictProgress){
+  const declaredCompleted=[...issue.body.matchAll(/^PROGRESS_COMPLETED=(\d+)$/gm)];
+  const declaredTotal=[...issue.body.matchAll(/^PROGRESS_TOTAL=(\d+)$/gm)];
+  const checkedBefore=parsed.steps.filter(s=>s.checked).length;
+  if(declaredCompleted.length!==1||declaredTotal.length!==1||
+     Number(declaredCompleted[0][1])!==checkedBefore||
+     Number(declaredTotal[0][1])!==parsed.steps.length)
+   return {ok:false,reason:'CHECKLIST_PROGRESS_COUNTER_MISMATCH'};
+  completedBefore=checkedBefore;
+ }
  if(step.checked){
   const good=step.evidenceUrls.includes(url);
   return good?{ok:true,alreadyChecked:true,newBody:issue.body,stepId:id,evidenceUrl:url}
    :{ok:false,reason:'STEP_ALREADY_CHECKED_DIFFERENT_EVIDENCE'};
  }
- if(step.evidenceUrls.length)return {ok:false,reason:'UNCHECKED_WITH_EXISTING_EVIDENCE_REVIEW_REQUIRED'};
+ // Earlier links can document partial work. A new independently verified
+ // receipt may accept the step without erasing that provenance.
+ const receiptAlreadyLinked=step.evidenceUrls.includes(url);
  const lines=issue.body.split(/\r?\n/);
  let hits=0;
  const result=lines.map(line=>{
   if(line!==step.line)return line;
   hits++;
-  return line.replace('[ ]','[x]')+' — [Biên nhận nghiệm thu]('+url+')';
+  return line.replace('[ ]','[x]')+(receiptAlreadyLinked?'':' — [Biên nhận nghiệm thu]('+url+')');
  });
  if(hits!==1)return {ok:false,reason:'STEP_LINE_AMBIGUOUS'};
- const newBody=result.join('\n');
+ let newBody=result.join('\n');
+ if(strictProgress){
+  newBody=newBody.replace(/^PROGRESS_COMPLETED=\d+$/m,'PROGRESS_COMPLETED='+(completedBefore+1));
+ }
  const check=workOrderChecklistGate({...issue,body:newBody},{stepId:id,expectedEvidenceUrl:url,requireAll:false});
  if(!check.ok)return {ok:false,reason:'CHECKLIST_PATCH_INVALID_'+check.reason};
  return {ok:true,alreadyChecked:false,newBody,stepId:id,evidenceUrl:url};

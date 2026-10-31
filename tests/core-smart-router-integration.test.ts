@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
+// @ts-expect-error smart-router.mjs is runtime JavaScript without a declaration file
+import { rankCandidates } from '../apps/tigeriq-core/smart-router.mjs';
 
 const core=readFileSync('apps/tigeriq-core/core.mjs','utf8');
 const router=readFileSync('apps/tigeriq-core/smart-router.mjs','utf8');
@@ -8,16 +10,101 @@ describe('#777 Core Smart Router integration',()=>{
   it('separates AI resource identity from employee identity without rewriting historical jobs/events',()=>{expect(core).toContain('create table if not exists tigeriq_ai_resources');expect(core).toContain('resource_id text primary key');expect(core).toContain('employee_id text');expect(core).toContain("alter table tigeriq_jobs add column if not exists resource_id text");expect(core).toContain("alter table tigeriq_events add column if not exists resource_id text");expect(core).toContain("createResourceId(provider,model,'default','core')");expect(core).toContain('RESOURCE_IDENTITY_SUPERSEDED');});
   it('keeps NV10 general Ollama identity and isolated NV09 local-coder identity while migrating stale NV02 rows safely',()=>{expect(core).toContain("const OLLAMA_EMPLOYEE_ID = 'NV10';");expect(core).toContain("R(OLLAMA_EMPLOYEE_ID,'Core API Doctor · Ollama Qwen3 4B','ollama'");expect(core).toContain("R(NV09_EMPLOYEE_ID,'Core AI Coder · Ollama Qwen3.5 9B','ollama',NV09_MODEL");expect(core).not.toContain("R('NV02','Ollama','ollama'");expect(core).not.toContain("employeeId:'NV02',provider:'ollama'");expect(core).toContain("where provider='ollama' and employee_id not in ($1,$2,$3)");expect(core).toContain('STALE_OLLAMA_IDENTITY_BUSY');expect(core).toContain("event('RESOURCE_IDENTITY_MIGRATED'");});
   it('routes by profile/capability with explainable decision evidence',()=>{expect(core).toContain('deriveRoutingProfile');expect(core).toContain('rankCandidates');expect(core).toContain("event('ROUTING_DECISION'");expect(core).toContain('routing_profile');expect(core).toContain('routing_decision');});
-  it('integrates AUTO task profiles and reviewer independence into real job routing',()=>{expect(core).toContain('reviewerResourceIdsForJob');expect(core).toContain("capability<>'review'");expect(core).toContain('reviewerResourceIds:options.reviewerResourceIds||[]');expect(core).toContain('reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist,validateText,compiledPacket});');expect(core.split('employeeAllowlist,validateText,compiledPacket});').length-1).toBe(2);expect(core).toContain('preferredEmployeeId=String(options.preferredEmployeeId');expect(router).toContain("normalizedRequested!=='AUTO'");expect(router).toContain('reviewerExclusions');});
+  it('routes independent LOCAL review to NV09 when NV10 implemented',()=>{
+    expect(core).toContain("nv09Resource.capabilities = ['coding_local','review']");
+    const nv10={resource_id:'res:ollama:gemma3-4b:default:core',employee_id:'NV10',provider:'ollama',model:'gemma3:4b',enabled:true,health_state:'ONLINE',work_state:'IDLE',credential_state:'LOCAL',cost_tier:'LOCAL',zero_out_of_pocket:true,capabilities:['general','reasoning','review'],rank:90,quota_state:{known:false,usable:true}};
+    const nv09={resource_id:'res:ollama:qwen3-5-9b:default:core',employee_id:'NV09',provider:'ollama',model:'qwen3.5:9b',enabled:true,health_state:'ONLINE',work_state:'ON_DEMAND',credential_state:'LOCAL',cost_tier:'LOCAL',zero_out_of_pocket:true,capabilities:['coding_local','review'],rank:98,quota_state:{known:false,usable:true}};
+    const out=rankCandidates([nv10,nv09],{profile:'LOCAL',capability:'review',taskKind:'review',reviewerResourceIds:[nv10.resource_id]});
+    expect(out.chosen?.employeeId).toBe('NV09');
+    expect(out.candidates.find((x:any)=>x.resourceId===nv10.resource_id)?.reasons).toContain('reviewer_independence');
+  });
+  it('integrates AUTO task profiles and reviewer independence into real job routing',()=>{expect(core).toContain('reviewerResourceIdsForJob');expect(core).toContain("capability<>'review'");expect(core).toContain("explicitJobRefsFromText(j.prompt,{maxRefs:8})");expect(core).toContain('referencedJobReviewExclusions({jobIds:referencedJobIds,jobs:referenced})');expect(core).toContain('reviewerResourceIds:options.reviewerResourceIds||[]');expect(core).toContain('reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist,validateText,compiledPacket});');expect(core.split('employeeAllowlist,validateText,compiledPacket});').length-1).toBe(2);expect(core).toContain('preferredEmployeeId=String(options.preferredEmployeeId');expect(router).toContain("normalizedRequested!=='AUTO'");expect(router).toContain('reviewerExclusions');});
   it('persists quota/rate-limit telemetry only from real provider signals or bounded cooldown evidence',()=>{expect(core).toContain('quota_state');expect(core).toContain('last_429_at');expect(core).toContain('syncQuotaFromHeaders');expect(core).toContain('x-ratelimit-limit-requests');expect(core).toContain('x-ratelimit-remaining-tokens');expect(core).toContain("kind==='rate_limit'");expect(core).toContain('rateLimitFailureState(currentQuota,policy.cooldownMs)');expect(core).toContain("select quota_state from tigeriq_ai_resources where resource_id=$1");});
+  it('keeps NV09 job-local prompt overflow from poisoning the shared reviewer',()=>{
+    expect(router).toContain("k==='job_contract'");
+    expect(core).toContain("kind==='job_contract'?'READY'");
+    expect(core).toContain("policy.cooldownMs>0?new Date(Date.now()+policy.cooldownMs).toISOString():null");
+    expect(core).toContain("NV09_COMPILED_PROMPT_BUDGET_EXCEEDED");
+    expect(core).toContain("NV09_JOB_CONTRACT_COOLDOWN_RECONCILED");
+    expect(core).toContain("type='RESOURCE_FAILURE' order by seq desc limit 1");
+  });
   it('parses compound provider reset durations such as current Groq headers',()=>{const start=core.indexOf('function quotaResetDurationMs');const end=core.indexOf('\nfunction quotaResetAt',start);expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);const fn=new Function(`${core.slice(start,end)}; return quotaResetDurationMs;`)();expect(fn('2m59.56s')).toBeCloseTo(179560,5);expect(fn('7.66s')).toBeCloseTo(7660,5);expect(fn('n/a')).toBeNull();});
   it('uses task-kind performance and bounded failure-aware failover without paid fallback',()=>{expect(core).toContain('avg_latency_ms');expect(core).toContain('failurePolicy(kind)');expect(core).toContain('if(policy.stop)break');expect(router).toContain('paid_fallback_forbidden');expect(router).toContain("'security','credential','paid','production','irreversible'");});
+  it('recovers a blocked LOCAL campaign by requeueing the same failed job only after runtime source change',()=>{
+    expect(core).toContain('async function recoverFailedCampaignJobsAfterRuntimeSourceChange()');
+    expect(core).toContain("j.kind in ('compiled_ai','compiled_campaign')");
+    expect(core).toContain("campaign verification failed after bounded attempts: '||j.id");
+    expect(core).toContain("o.summary=any($1::text[])");
+    expect(core).toContain('MANAGER_NO_PROGRESS_BLOCK_SUMMARY');
+    expect(core).toContain("j.id=$1");
+    expect(core).toContain("j.attempts<j.max_attempts");
+    expect(core).toContain("j.attempts>=j.max_attempts");
+    expect(core).toContain("j.attempts<$7");
+    expect(core).toContain("j.completed_at<$2::timestamptz");
+    expect(core).toContain("status='active'");
+    expect(core).toContain("CAMPAIGN_FAILED_JOB_REARMED_AFTER_RUNTIME_SOURCE_CHANGE");
+    expect(core).toContain("if(!priorContext){");
+    expect(core).toContain("o.objective as objective_text");
+    expect(core).toContain("[row.prompt,row.objective_text].filter(Boolean).join('\\n')");
+    expect(core).toContain("referencedJobEvidenceContext({jobIds:referencedJobIds,jobs:referencedJobs})");
+    expect(core).toContain("await recoverStale();await recoverFailedCampaignJobsAfterRuntimeSourceChange();await recoverManagerExhaustionStallAfterRuntimeSourceChange();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;");
+  });
+
+  it('carries prior verified campaign receipts into later-phase Manager and review prompts',()=>{
+    expect(core).toContain('campaignPriorEvidenceContext');
+    expect(core).toContain('proofReferencedJobIds');
+    expect(core).toContain('CAMPAIGN_PHASE_REFERENCED_EVIDENCE_ATTACHED');
+    expect(core).toContain('proofPrompt=repairCampaignReviewPrompt(packet.prompt,proofContext).prompt');
+    expect(core).toContain('priorCampaignJobs');
+    expect(core).toContain("status='done' order by case when kind='compiled_campaign' then 0 else 1 end");
+    expect(core).toContain("Prior verified campaign handoff: ${campaignPriorContext||'none'}");
+    expect(core).toContain('AUTHORIZED PRIOR CAMPAIGN HANDOFF:');
+    expect(core).toContain('const trustedReviewContext=campaignPriorContext||referencedReviewContext');
+    expect(core).toContain("capability==='review'&&trustedReviewContext");
+    expect(core).toContain('REFERENCED_JOB_EVIDENCE_ATTACHED');
+    expect(core).toContain('campaign-prior-phase:');
+  });
+
+  it('refreshes the same failed review prompt and grants at most one bounded repair credit',()=>{
+    expect(core).toContain('repairCampaignReviewPrompt');
+    expect(core).toContain("decision.action==='requeue_prompt_repair'");
+    expect(core).toContain('prompt=$4');
+    expect(core).toContain('j.max_attempts<$7');
+    expect(core).toContain('greatest(j.max_attempts,j.attempts+1)');
+    expect(core).toContain('promptRepaired:promptRepair.changed');
+    expect(core).toContain('compactPromptRepaired:compactRepair.changed');
+    expect(core).toContain('providerPromptCompactionRecoveryEligible({');
+    expect(core).toContain('maxAttempts:row.max_attempts');
+    expect(core).toContain('compactRepairReason:compactRepair.reason');
+    expect(core).toContain('failure:row.failure');
+    expect(core).not.toContain("String(compactRepair.prompt||'').length>12000");
+    expect(core).toContain('providerPriorCampaignEvidenceRecoveryEligible({');
+    expect(core).toContain('persistedPhaseZeroReviewRepairRecoveryEligible({');
+    expect(core).toContain('phaseZeroReviewStrictAcceptanceRecoveryEligible({');
+    expect(core).toContain('phaseZeroReviewHandoffTransportRecoveryEligible({');
+    expect(core).toContain('phaseZeroHandoffTransportEligible');
+    expect(core).toContain('maxAttemptsAfter:repairCredit?(Number(decision.nextMaxAttempts)');
+    expect(core).toContain('persistedPhaseZeroRepairEligible');
+    expect(core).toContain('campaignPromptRepairRetryCap({');
+    expect(core).toContain('compactLocalExecutionPrompt(prompt,packet)');
+    expect(core).toContain("const deterministicCampaignVerifier=j.kind==='compiled_campaign'");
+    expect(core).toContain("const compactCampaign=providerContext.taskKind==='compiled_campaign'");
+    expect(core).toContain('compact:compactCampaign');
+    expect(core).toContain('campaignVerifierCompactTransportEligible');
+    expect(core).toContain('repairCreditGranted:repairCredit');
+    expect(core).toContain('assertExecutionResultRoutable(text,compiledPacket)');
+    expect(core).toContain("EXECUTION_ACCEPTANCE_RETRY");
+    expect(core).toContain("CAMPAIGN_FAILED_JOB_RECOVERY_SKIPPED");
+    expect(core).toContain("await recoverAfterCoreRestart();\nawait refreshResources();\nawait recoverFailedCampaignJobsAfterRuntimeSourceChange();");
+    expect(core).not.toContain('max_attempts=max_attempts+10');
+  });
+
   it('reconciles failed safe GitHub autowork independently of manager priority',()=>{
     expect(core).toContain('async function reconcileFailedSafeAutoworkObjectives()');
     expect(core).toContain("kind='github_api_autowork' and status='failed'");
     expect(core).toContain("o.metadata->>'admissionMode'='SAFE_P1_P5_POLICY'");
     expect(core).toContain("o.metadata->>'dispatchLane' in ('CORE_REASONING','CORE_REVIEW')");
-    expect(core).toContain("await recoverStale();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;");
+    expect(core).toContain("await recoverStale();await recoverFailedCampaignJobsAfterRuntimeSourceChange();await recoverManagerExhaustionStallAfterRuntimeSourceChange();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;");
     expect(core).toContain("reconciliation:'periodic_failed_safe_autowork'");
   });
 

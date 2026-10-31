@@ -1,0 +1,122 @@
+name: UltraCarHCM V1 TEST Release (gated)
+
+on:
+  pull_request:
+    paths:
+      - 'apps/ultracarhcm-v1/release/**'
+      - '.github/workflows/ultracar-v1-test-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ultracar-test-release
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    name: Validate release manifest without secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate version, filenames, certificate and SHA format
+        run: python3 apps/ultracarhcm-v1/release/verify_test_release.py
+      - name: Guard against accidental release keys in the manifest
+        run: |
+          ! grep -Eiq '(BEGIN PRIVATE KEY|storePassword|keyPassword|keystoreBase64)' apps/ultracarhcm-v1/release/test-release-manifest.json
+
+  sign-test:
+    name: Sign TEST candidate only with provisioned GitHub environment secrets
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: contract
+    runs-on: ubuntu-latest
+    environment: ultracar-test-release
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      KS_B64: ${{ secrets.ULTRACAR_TEST_KEYSTORE_BASE64 }}
+      KS_ALIAS: ${{ secrets.ULTRACAR_TEST_KEY_ALIAS }}
+      KS_PASSWORD: ${{ secrets.ULTRACAR_TEST_KEYSTORE_PASSWORD }}
+      KEY_PASSWORD: ${{ secrets.ULTRACAR_TEST_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Check signing credentials exist without exposing values
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in KS_B64 KS_ALIAS KS_PASSWORD KEY_PASSWORD; do
+            if [ -z "${!key:-}" ]; then
+              echo "SIGN_BLOCKED_MISSING_APPROVED_SECRET:$key"
+              exit 31
+            fi
+          done
+      - name: Verify unsigned candidate comes from a nonpublic draft release
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 apps/ultracarhcm-v1/release/verify_test_release.py
+          TAG=$(python3 -c 'import json;print(json.load(open("apps/ultracarhcm-v1/release/test-release-manifest.json"))["candidateDraftTag"])')
+          NAME=$(python3 -c 'import json;print(json.load(open("apps/ultracarhcm-v1/release/test-release-manifest.json"))["alignedName"])')
+          DRAFT=$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)
+          test "$DRAFT" = true || { echo "CANDIDATE_RELEASE_MUST_BE_DRAFT"; exit 32; }
+          mkdir -p "$RUNNER_TEMP/ultracar"
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "$NAME" -D "$RUNNER_TEMP/ultracar"
+          python3 apps/ultracarhcm-v1/release/verify_test_release.py "$RUNNER_TEMP/ultracar/$NAME"
+      - name: Install Android build tools 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" "build-tools;35.0.0" >/dev/null || test -x "$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          test -x "$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          test -x "$ANDROID_HOME/build-tools/35.0.0/zipalign"
+          test -x "$ANDROID_HOME/build-tools/35.0.0/aapt2"
+      - name: Sign with installed matching key; validate package, schemes and pinned certificate
+        id: sign
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_dir="$RUNNER_TEMP/ultracar"
+          sdk="$ANDROID_HOME/build-tools/35.0.0"
+          manifest="apps/ultracarhcm-v1/release/test-release-manifest.json"
+          ALIGNED=$(python3 -c 'import json; print(json.load(open("apps/ultracarhcm-v1/release/test-release-manifest.json"))["alignedName"])')
+          SIGNED=$(python3 -c 'import json; print(json.load(open("apps/ultracarhcm-v1/release/test-release-manifest.json"))["signedName"])')
+          VERSION_CODE=$(python3 -c 'import json; print(json.load(open("apps/ultracarhcm-v1/release/test-release-manifest.json"))["versionCode"])')
+          VERSION_NAME=$(python3 -c 'import json; print(json.load(open("apps/ultracarhcm-v1/release/test-release-manifest.json"))["versionName"])')
+          PACKAGE=$(python3 -c 'import json; print(json.load(open("apps/ultracarhcm-v1/release/test-release-manifest.json"))["packageName"])')
+          CERT=$(python3 -c 'import json; print(json.load(open("apps/ultracarhcm-v1/release/test-release-manifest.json"))["certificateSHA256"])')
+          "$sdk/zipalign" -c -p 4 "$source_dir/$ALIGNED"
+          "$sdk/aapt2" dump badging "$source_dir/$ALIGNED" > "$RUNNER_TEMP/ultracar/badging.txt"
+          grep -F "name='$PACKAGE'" "$RUNNER_TEMP/ultracar/badging.txt" >/dev/null
+          grep -F "versionCode='$VERSION_CODE'" "$RUNNER_TEMP/ultracar/badging.txt" >/dev/null
+          grep -F "versionName='$VERSION_NAME'" "$RUNNER_TEMP/ultracar/badging.txt" >/dev/null
+          umask 077
+          keyfile="$RUNNER_TEMP/ultracar/signing.keystore"
+          printf "%s" "$KS_B64" | base64 --decode > "$keyfile"
+          trap 'rm -f "$keyfile"' EXIT
+          "$sdk/apksigner" sign --ks "$keyfile" --ks-key-alias "$KS_ALIAS" --ks-pass env:KS_PASSWORD --key-pass env:KEY_PASSWORD --v2-signing-enabled true --v3-signing-enabled true --out "$source_dir/$SIGNED" "$source_dir/$ALIGNED"
+          "$sdk/apksigner" verify --verbose --print-certs "$source_dir/$SIGNED" > "$RUNNER_TEMP/ultracar/signer-report.txt"
+          grep -E "Verified using v2 scheme.*true" "$RUNNER_TEMP/ultracar/signer-report.txt" >/dev/null
+          grep -E "Verified using v3 scheme.*true" "$RUNNER_TEMP/ultracar/signer-report.txt" >/dev/null
+          grep -Fi "Signer #1 certificate SHA-256 digest: $CERT" "$RUNNER_TEMP/ultracar/signer-report.txt" >/dev/null
+          sha256sum "$source_dir/$SIGNED" > "$source_dir/$SIGNED.sha256"
+          echo "SIGN_PASS_ARTIFACT_ONLY_DRIVE_NOT_VERIFIED"
+      - uses: actions/upload-artifact@v4
+        if: steps.sign.outcome == 'success'
+        with:
+          name: ultracar-v1-test-signed-candidate
+          path: |
+            ${{ runner.temp }}/ultracar/*_signed_TEST.apk
+            ${{ runner.temp }}/ultracar/*_signed_TEST.apk.sha256
+          retention-days: 7
+          if-no-files-found: error
+
+# The workflow deliberately never publishes Production or claims Drive verification.
+# Drive upload is a separate authorized stage requiring Google Drive credentials and independent readback.

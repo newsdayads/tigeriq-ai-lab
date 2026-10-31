@@ -315,7 +315,7 @@ function mountFloatingReload(){
  if(!old)button.addEventListener('click',()=>root.location.reload());
  document.body.append(button);return button;
 }
-const API=Object.freeze({version:'1.0.0',visibleProjectRows,status,viewStatus,completion,priority,title,person,progress,rowsFor,renderCards,renderAudit,openModal,mountFloatingReload,fmt,readableText});
+const API=Object.freeze({version:'1.0.0',visibleProjectRows,status,viewStatus,completion,priority,title,person,progress,rowsFor,renderCards,renderAudit,openModal,mountFloatingReload,fmt,readableText,esc});
 root.TigerIQWorkCenter=API;
 // The same module is loaded by LIVE and API Health; only LIVE explicitly
 // called mountFloatingReload before. Initialize once on both surfaces.

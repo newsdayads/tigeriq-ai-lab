@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {DEFAULT_CODING_URL,classifyCodingBlocker,codingScopesOverlap,codingSourceReconcileGate,codingSourceRevision,codingSourceTruthRevision,codingRetryEpochState,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,parseCodingTargetRepository,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
+import {DEFAULT_CODING_URL,classifyCodingBlocker,codingScopesOverlap,codingSourceReconcileGate,codingSourceRevision,codingSourceTruthRevision,codingMaterialSourceSignature,codingWorkOrderFailureBudget,codingRetryEpochState,extractCodingDependencies,materializeGithubCodingIssues,parseCodingIssue,parseCodingRouteMetadata,parseCodingTargetRepository,reconcileGithubCodingEvent,relevantRecoveryMainChange,relevantRecoveryMainChangeEvidence,shouldRearmRecoverableFinal,syncGithubCodingOutcomes} from '../apps/tigeriq-core/github-coding-intake.mjs';
 import {TERMINAL_BLOCKED_LABEL,addTerminalBlockedLabel,clearTerminalBlockedLabel,hasTerminalBlockedLabel} from '../apps/tigeriq-core/github-lifecycle-label.mjs';
 import {parseOpenWorkIssue,parseQueueIssue,rankQueueRows} from '../api/live-status.mjs';
 
@@ -391,7 +391,7 @@ describe('GitHub coding intake dependencies',()=>{
     const downstream=issue(`${SAFE}\nDEPENDS_ON=#677,681`,{number:702});
     const fetchImpl=async(url)=>{
       if(url.includes('/issues?'))return response([downstream]);
-      if(url.includes('/issues/677')||url.includes('/issues/681'))return response({state:'closed'});
+      if(url.includes('/issues/677')||url.includes('/issues/681'))return response({state:'closed',state_reason:'completed'});
       if(url.includes('/api/objectives')){posted++;return response({id:'obj-702'});}
       if(url.includes('/comments'))return response({});
       return response({});
@@ -1408,7 +1408,7 @@ describe('GitHub coding source revision completion guard',()=>{
       if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
       if(url.includes('/compare/old-main...new-main'))return response({files:[{filename:'docs/evidence/rev-dep.md'}]});
       if(url.includes('/issues/824/comments'))return response([]);
-      if(url.includes('/issues/900'))return response({number:900,state:depState});
+      if(url.includes('/issues/900'))return response({number:900,state:depState,state_reason:depState==='closed'?'completed':null});
       if(url.includes('/issues/824'))return response(current);
       if(url.includes('/api/objectives')){posted++;return response({id:'obj-824-recovery'});}
       if(url.includes('/comments'))return response({});
@@ -1562,7 +1562,7 @@ describe('GitHub coding source revision completion guard',()=>{
       if(url.includes('/git/ref/heads/main'))return response({object:{sha:'new-main'}});
       if(url.includes('/compare/old-main...new-main'))return response({files:[{filename:'tests/github-coding-intake.test.mjs'}]});
       if(url.includes('/issues/1605/comments'))return response([]);
-      if(url.includes('/issues/1935'))return response({number:1935,state:dependencyClosed?'closed':'open'});
+      if(url.includes('/issues/1935'))return response({number:1935,state:dependencyClosed?'closed':'open',state_reason:dependencyClosed?'completed':null});
       if(url.includes('/issues/1605'))return response(current);
       if(url.includes('/api/objectives')){
         posted++;
@@ -1731,7 +1731,12 @@ describe('Owner-authorized anti-loop: bounded Manager no-child stop',()=>{
     expect(finals).toHaveLength(1);
     expect(finals[0].data.reason).toBe('NO_PROGRESS_WAIT_MATERIAL_CHANGE');
     expect(shouldRearmRecoverableFinal(finals[0].data,'main-manager-v1',[],oldRevision,false)).toBe(false);
-    current={...current,body:body+'\nCURRENT_STEP=NEW_MATERIAL_SOURCE_REPAIR'};
+    // Progress-only edits must not revive an exhausted work-order cycle.
+    current={...current,body:body+'\nCURRENT_STEP=COLLECT_VERIFICATION_RECEIPT'};
+    await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
+    expect(posted).toBe(0);
+    // Only a genuinely changed task specification may rearm the source repair.
+    current={...current,body:body+'\n\n## GOAL\nImplement newly approved source-repair behavior.'};
     const newRevision=codingSourceTruthRevision({...current,repository_owner:'newsdayads'},[]);
     expect(newRevision).not.toBe(oldRevision);
     await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake'});
@@ -1825,5 +1830,106 @@ describe('P0: pause Coding Lane for external evidence',()=>{
     expect(parseCodingIssue(issue(base+'\nCURRENT_STATE=READY_SOURCE_RECONCILIATION'))).not.toBeNull();
     expect(parseCodingIssue(issue(base+'\nCURRENT_STATE=WORKING'))).not.toBeNull();
     expect(parseCodingIssue(issue(base+'\nCURRENT_STATE=READY_SOURCE_RECONCILIATION\n## HISTORICAL\nCURRENT_STATE=EXTERNAL_WAIT'))).not.toBeNull();
+  });
+});
+
+
+it('does not rearm completed-awaiting-acceptance for a status-only source edit',async()=>{
+  const pool=fakePool();
+  const prior=issue(`${SAFE}\nOWNER_DIRECT=true\nRESOURCE_SCOPE=EVENT_ACCEPTANCE_REARM\nALLOW_PATH_PREFIX=tests/github-coding-intake.test.mjs`,{
+    number:1701,title:'Event acceptance rearm',comments:0
+  });
+  const current={...prior,body:prior.body+'\nCURRENT_STATE=BLOCKED_R13H_S02_NATIVE_REARM_TERMINAL_CLASSIFICATION'};
+  const oldRevision=codingSourceTruthRevision({...prior,repository_owner:'newsdayads'},[]);
+  pool.events.push(
+    {type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:1701,codingObjectiveId:'obj-1701-old',sourceRevision:oldRevision,scopeLease:{resourceScope:'EVENT_ACCEPTANCE_REARM',paths:['tests/github-coding-intake.test.mjs'],ambiguous:false}}},
+    {type:'GITHUB_CODING_AWAITING_ACCEPTANCE',data:{issueNumber:1701,codingObjectiveId:'obj-1701-old',sourceRevision:oldRevision,missing:['COMPLETED_WITHOUT_VERIFIED_FINISH']}}
+  );
+  let posted=0,rearmed=null;
+  const fetchImpl=async(url,init={})=>{
+    if(url.includes('/api/status'))return response({objectives:[
+      {id:'obj-1701-old',status:'completed',summary:'Merged source result awaiting acceptance'},
+      ...(rearmed?[rearmed]:[])
+    ],jobs:[]});
+    if(url.includes('/git/ref/heads/main'))return response({object:{sha:'main-event-rearm'}});
+    if(url.includes('/issues/1701/timeline'))return response([]);
+    if(url.includes('/issues/1701/comments'))return response([]);
+    if(url.includes('/issues/1701/labels/')&&init.method==='DELETE')return new Response(null,{status:204});
+    if(url.includes('/issues/1701')&&!url.includes('/comments'))return response(current);
+    if(url.includes('/api/objectives')&&init.method==='POST'){
+      posted++;
+      const objective=JSON.parse(init.body).objective;
+      expect(objective).toContain('STALE_REARM_KEY=GITHUB-ISSUE-1701-STALE-');
+      rearmed={id:'obj-1701-current',status:'queued',objective};
+      return response({id:rearmed.id});
+    }
+    if(url.includes('/comments'))return response({});
+    return response({});
+  };
+
+  const first=await reconcileGithubCodingEvent({pool,fetchImpl,token:'fake',issue:current});
+  expect(first.results).toBe(0);
+  expect(posted).toBe(0);
+  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REJECTED')).toHaveLength(0);
+  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_STALE_RESULT_REARMED')).toHaveLength(0);
+  expect(pool.events.filter(e=>e.type==='GITHUB_CODING_DISPATCHED'&&e.data.issueNumber===1701).at(-1)?.data.codingObjectiveId).toBe('obj-1701-old');
+
+  const second=await reconcileGithubCodingEvent({pool,fetchImpl,token:'fake',issue:current});
+  expect(second.results).toBe(0);
+  expect(posted).toBe(0);
+});
+
+
+it('fallback outcome sync yields before issue reconciliation when an Owner event is pending',async()=>{
+  const pool=fakePool();
+  pool.events.push({type:'GITHUB_CODING_DISPATCHED',data:{issueNumber:1711,codingObjectiveId:'obj-yield'}});
+  const urls=[];
+  const fetchImpl=async(url)=>{
+    urls.push(String(url));
+    if(String(url).includes('/api/status'))return response({objectives:[{id:'obj-yield',status:'blocked',summary:'OUTPUT_CONTRACT_EXHAUSTED'}],jobs:[]});
+    if(String(url).includes('/git/ref/heads/main'))return response({object:{sha:'a'.repeat(40)}});
+    throw new Error('unexpected fetch after cooperative yield: '+url);
+  };
+  const out=await syncGithubCodingOutcomes({pool,fetchImpl,token:'fake',yieldIf:()=>true});
+  expect(out).toEqual({progress:0,results:0});
+  expect(urls.some(url=>url.includes('/issues/1711'))).toBe(false);
+});
+
+
+describe('GH-5417 work-order terminal and global retry invariants',()=>{
+  it('ignores operational receipts/checklist edits but detects a material coding contract change',()=>{
+    const prior=issue(`${SAFE}
+RESOURCE_SCOPE=GH5417_EXECUTION
+CURRENT_STATE=WORKING
+NEXT_ACTION=Wait for QA
+DONE=false
+
+## GOAL
+Repair the exact regression.
+
+## STRUCTURED_PROGRESS_CHECKLIST
+- [ ] S01 — Merge code
+- [ ] S02 — Verify runtime
+`,{title:'GH5417 regression'});
+    const operational={...prior,body:prior.body
+      .replace('CURRENT_STATE=WORKING','CURRENT_STATE=VERIFY')
+      .replace('NEXT_ACTION=Wait for QA','NEXT_ACTION=Collect receipt')
+      .replace('- [ ] S01 — Merge code','- [x] S01 — Merge code [proof](https://github.com/newsdayads/tigeriq-ai-lab/pull/5416)')};
+    expect(codingMaterialSourceSignature(prior)).toBe(codingMaterialSourceSignature(operational));
+    const newGoal={...operational,body:operational.body.replace('Repair the exact regression.','Repair the exact regression and add a new approved behavior.')};
+    expect(codingMaterialSourceSignature(prior)).not.toBe(codingMaterialSourceSignature(newGoal));
+  });
+
+  it('does not reset same-failure work-order budget on a new objective ID',()=>{
+    const spec='same-material-contract';
+    const prior=[
+      {codingObjectiveId:'attempt-A',reason:'OUTPUT_CONTRACT_EXHAUSTED',materialSignature:spec},
+      {codingObjectiveId:'attempt-B',reason:' OUTPUT_CONTRACT_EXHAUSTED ',materialSignature:spec},
+      {codingObjectiveId:'attempt-C',reason:'OUTPUT_CONTRACT_EXHAUSTED',materialSignature:'changed-material-contract'},
+    ];
+    expect(codingWorkOrderFailureBudget(prior,'OUTPUT_CONTRACT_EXHAUSTED',spec)).toBe(2);
+    expect(codingWorkOrderFailureBudget(prior,'OUTPUT_CONTRACT_EXHAUSTED','changed-material-contract')).toBe(1);
+    expect(codingWorkOrderFailureBudget(prior,'NEW_DISTINCT_FAILURE',spec)).toBe(0);
+    expect(codingWorkOrderFailureBudget(prior,'OUTPUT_CONTRACT_EXHAUSTED','')).toBe(0);
   });
 });

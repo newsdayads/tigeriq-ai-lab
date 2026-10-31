@@ -90,9 +90,19 @@ export async function runBoundedInferenceNv09(prompt, options = {}) {
   const opts = typeof options === 'number' ? { timeoutMs: options } : (options || {});
   const timeoutMs = Math.max(1000, Number(opts.timeoutMs || 240000));
   const keepAlive = String(opts.keepAlive || '10m');
-  const numCtx = Math.max(256, Math.min(4096, Number(opts.numCtx || 1024)));
-  const numPredict = Math.max(1, Math.min(256, Number(opts.numPredict || 96)));
+  const structured=Boolean(opts.format && typeof opts.format==='object' && !Array.isArray(opts.format));
+  const numCtx = Math.max(256, Math.min(structured?8192:4096, Number(opts.numCtx || 1024)));
+  const numPredict = Math.max(1, Math.min(structured?1024:256, Number(opts.numPredict || 96)));
+  const maxPromptChars = Math.max(1000, Math.min(12000, Number(opts.maxPromptChars || 4000)));
+  const format = opts.format && typeof opts.format === 'object' && !Array.isArray(opts.format) ? opts.format : null;
   const fetchImpl = opts.fetchImpl || fetch;
+  // Compiled packets carry exact evidence/acceptance text. Never silently
+  // truncate their tail (including the strict JSON output requirement).
+  if (format && String(prompt || '').length > maxPromptChars) {
+    const error = new Error('NV09_COMPILED_PROMPT_BUDGET_EXCEEDED');
+    error.kind = 'job_contract';
+    throw error;
+  }
   const entry = registeredModels.get(NV09_EMPLOYEE_ID) || registerNv09();
   setModelHealth(NV09_EMPLOYEE_ID, HEALTH_STATES.BUSY);
   const controller = new AbortController();
@@ -103,8 +113,9 @@ export async function runBoundedInferenceNv09(prompt, options = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: entry.model,
-        prompt: String(prompt || '').slice(0, 4000),
+        prompt: String(prompt || '').slice(0, maxPromptChars),
         stream: false,
+        ...(format ? { format } : {}),
         keep_alive: keepAlive,
         think: false,
         options: { temperature: 0, num_ctx: numCtx, num_predict: numPredict }
@@ -125,6 +136,13 @@ export async function runBoundedInferenceNv09(prompt, options = {}) {
       throw error;
     }
     const json = await res.json();
+    // Ollama may return a non-empty but truncated JSON fragment after
+    // reaching num_predict. Such output must not count as a valid QA result.
+    if(json?.done!==true || (json?.done_reason && json.done_reason!=='stop')){
+      const error=new Error('NV09_INFERENCE_INCOMPLETE');
+      error.kind='invalid_response';
+      throw error;
+    }
     const text = String(json?.response || json?.text || '').trim();
     if (!text) {
       const error = new Error('NV09_INFERENCE_EMPTY');

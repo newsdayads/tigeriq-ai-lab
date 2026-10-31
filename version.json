@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 258,
-  "latestVersionName": "TigerIQ_HCM_v1.0.17",
-  "apkUrl": "https://github.com/newsdayads/tigeriq-ai-lab/releases/latest/download/UltraCar_TigerIQ_HCM_latest.apk",
-  "sha256": "E912E8B14503F55405A2F5A0F304DBE0B64E9F7BE5EBBC0C8C4D9ED147C87F33",
-  "releaseNotes": "v1.0.17: Camera nổi chỉ chọn màn hình DeX/màn hình ngoài hợp lệ, không đặt lên màn hình điện thoại; cải thiện tự khởi động lại dịch vụ và ghi log lỗi. Nút cập nhật trong tab Thông báo kiểm tra versionCode trên luồng nền, chỉ tải APK khi có bản mới và hiển thị trạng thái. Nhãn phiên bản căn giữa phía dưới nhóm điều khiển. Giữ nguyên chức năng Camera lùi USB và các chức năng khác. Chưa nghiệm thu thực tế trên Samsung DeX.",
+  "latestVersionCode": 306,
+  "latestVersionName": "TigerIQ_HCM_v1.0.65",
+  "apkUrl": "https://drive.google.com/drive/folders/1QTOWvtgrdGIml15J55LttcyKa7rLkdva",
+  "sha256": "FA7FB76F9E9FF034E66FC134DEEE65690E2C9BCBB8D37C9E15C08BE8F1F7132B",
+  "releaseNotes": "v1.0.65 (BUILD 306): Hiển thị ICON đại diện thực tế của từng bố cục; khi bỏ gán trở về nút + cơ bản. Khôi phục 3 nút Bố cục đã lưu / Bố cục mới / Camera trên DeX. Kích hoạt nút Cập nhật trong Menu Cài đặt.",
   "mandatory": false
 }

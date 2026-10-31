@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="ai.tigeriq.ultracarhcm.v2" android:versionCode="11" android:versionName="2.0.0-dev.11">
+  <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="33"/>
+  <uses-feature android:name="android.hardware.usb.host" android:required="false"/>
+  <uses-feature android:name="android.hardware.camera" android:required="false"/>
+  <uses-feature android:name="android.software.freeform_window_management" android:required="false"/>
+  <uses-feature android:name="android.hardware.location.gps" android:required="false"/>
+  <uses-feature android:name="android.hardware.bluetooth" android:required="false"/>
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.CAMERA"/>
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+  <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+  <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
+  <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+  <application android:label="@string/app_name" android:allowBackup="false" android:extractNativeLibs="true" android:supportsRtl="true"
+       android:resizeableActivity="true"
+       android:icon="@android:drawable/ic_menu_camera" android:theme="@android:style/Theme.Material.NoActionBar">
+    <activity android:name=".HomeActivity" android:exported="true" android:resizeableActivity="true"
+              android:configChanges="density|screenSize|smallestScreenSize|orientation|uiMode"
+              android:launchMode="singleTop">
+      <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+    </activity>
+    <activity android:name=".UsbCameraActivity" android:exported="false" android:resizeableActivity="true" android:launchMode="singleTop"/>
+    <activity android:name=".TelemetryActivity" android:exported="false" android:resizeableActivity="true"/>
+    <activity android:name=".ObdActivity" android:exported="false" android:resizeableActivity="true"/>
+    <activity android:name=".TaxiMeterActivity" android:exported="false" android:resizeableActivity="true"/>
+    <activity android:name=".ReportActivity" android:exported="false" android:resizeableActivity="true"/>
+    <activity android:name=".ProfileActivity" android:exported="false" android:resizeableActivity="true"/>
+    <activity android:name=".AppearanceActivity" android:exported="false" android:resizeableActivity="true"/>
+    <activity android:name=".VehicleActivity" android:exported="false" android:resizeableActivity="true"/>
+    <activity android:name=".PrivacyActivity" android:exported="false" android:resizeableActivity="true"/>
+    <activity android:name=".NotificationActivity" android:exported="false" android:resizeableActivity="true"/>
+    <activity android:name=".RecoveryActivity" android:exported="false" android:resizeableActivity="true"/>
+    <activity android:name=".UpdateActivity" android:exported="false" android:resizeableActivity="true"/>
+    <service android:name=".OverlayService" android:exported="false"/>
+    <receiver android:name=".DexDockReceiver" android:exported="true">
+      <intent-filter>
+        <action android:name="android.app.action.ENTER_KNOX_DESKTOP_MODE"/>
+        <action android:name="android.app.action.EXIT_KNOX_DESKTOP_MODE"/>
+      </intent-filter>
+    </receiver>
+  </application>
+</manifest>

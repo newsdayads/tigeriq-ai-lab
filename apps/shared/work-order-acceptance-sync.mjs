@@ -43,3 +43,15 @@ export function sourceCompletionDiagnostic(issue={}){
     missing,
   };
 }
+
+/* Dependency handoff MUST use the canonical accepted outcome, not merely a
+ * GitHub "closed/completed" toggle. Legacy pre-V2 tickets keep their historical
+ * terminal semantics; V2 work requires all actual lifecycle receipts. */
+export function sourceTerminalDependencyAccepted(issue={}){
+ if(String(issue?.state||'').toLowerCase()!=='closed'
+   ||String(issue?.state_reason||'').toLowerCase()!=='completed')return false;
+ const proof=completionProof(issue);
+ const explicitlyV2=/^WORK_ORDER_LIFECYCLE=V2$/m.test(String(issue?.body||''));
+ if(explicitlyV2&&proof?.verified!==true)return false;
+ return proof?.contract?.required!==true||proof?.verified===true;
+}

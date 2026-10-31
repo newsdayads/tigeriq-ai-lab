@@ -8,7 +8,7 @@ import {addTerminalBlockedLabel,clearTerminalBlockedLabel} from './github-lifecy
 import {githubRequestJson} from './github-shared-client.mjs';
 import {githubEventIssue,subscribeGithubEvents} from './github-event-bus.mjs';
 import {localizeOwnerFacingText} from './owner-facing-vietnamese.mjs';
-import {codingIssueCompletionGate} from '../shared/work-order-acceptance-sync.mjs';
+import {codingIssueCompletionGate,sourceTerminalDependencyAccepted} from '../shared/work-order-acceptance-sync.mjs';
 const DEFAULT_OWNER='newsdayads';
 const DEFAULT_REPO='tigeriq-ai-lab';
 export const DEFAULT_CODING_URL='http://127.0.0.1:8797';
@@ -51,6 +51,23 @@ export function codingSourceTruthRevision(issue,comments=[]){
     .at(-1);
   const digest=createHash('sha256').update(title).update('\n').update(body).digest('hex').slice(0,20);
   return ownerDirective?.id?`body-${digest}:owner-${ownerDirective.id}`:`body-${digest}`;
+}
+
+// The execution contract must not change when an operator updates progress,
+// receipts or a checklist. Only substantive coding requirements can rearm a
+// completed objective that is waiting for product acceptance.
+export function codingMaterialSourceSignature(issue={}){
+  const volatile=/^(?:CURRENT_STATE|CURRENT_STEP|NEXT_ACTION|LAST_COMPLETED_STEP|BLOCKER|BLOCKED_BY|STARTED_AT|FINISHED_AT|ETA_STATUS|TARGET_FINISH_AT|CHECKPOINT_DUE_AT|DONE|ACTIVE_EXECUTION|PROGRESS_(?:SOURCE|TOTAL|COMPLETED|VERIFIED)|SAME_FAILURE_RETRY_(?:COUNT|MAX)|VERIFICATION_(?:COUNT_CURRENT_HEAD|MAX_PER_HEAD)|LAST_FAILURE_SIGNATURE|RETRY_RESUME_TRIGGER|SOURCE_BRANCH|SOURCE_WRITER_SCOPE|OWNER_APPROVAL|AUTO_QUEUE|MUTATION_OWNER|ASSIGNED_EXECUTOR|TARGET_EMPLOYEE|START_RECEIPT_URL|FINISH_RECEIPT_URL)=/;
+  let inChecklist=false;
+  const relevant=[];
+  for(const line of String(issue?.body||'').replace(/\r/g,'').split('\n')){
+    const heading=line.match(/^##\s+([^\r\n]+)/);
+    if(heading)inChecklist=/^STRUCTURED_PROGRESS_CHECKLIST\b/i.test(heading[1].trim());
+    if(inChecklist||volatile.test(line.trim()))continue;
+    relevant.push(line);
+  }
+  const normalized=relevant.join('\n').trim().replace(/\n{3,}/g,'\n\n');
+  return createHash('sha256').update(String(issue?.title||'')).update('\n').update(normalized).digest('hex').slice(0,24);
 }
 
 export async function codingSourceRevision(fetchImpl,owner,repo,token,issue){
@@ -260,7 +277,7 @@ async function reopenedCompletionKey(fetchImpl,owner,repo,token,issue){
   const reopenIdentity=String(latest?.id||latest?.created_at||'reopened').replace(/[^0-9A-Za-z]/g,'').slice(-32)||'reopened';
   return `${sourceRevision}:reopen-${reopenIdentity}`;
 }
-async function hasEffectiveBlockedFinal(pool,n,fallbackSummary='',currentObjectiveId=null,currentMainSha='',currentSourceRevision='',relevantMainChanged=false){
+async function hasEffectiveBlockedFinal(pool,n,fallbackSummary='',currentObjectiveId=null,currentMainSha='',currentSourceRevision='',relevantMainChanged=false,currentMaterialSignature=''){
   const finals=await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n);
   if(!finals.length)return false;
   const latest=finals[0]||{};
@@ -274,7 +291,7 @@ async function hasEffectiveBlockedFinal(pool,n,fallbackSummary='',currentObjecti
     return false;
   }
   const rearms=await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n);
-  if(shouldRearmRecoverableFinal({...latest,terminalReason:terminalSummary},currentMainSha,rearms,currentSourceRevision,relevantMainChanged))return false;
+  if(shouldRearmRecoverableFinal({...latest,terminalReason:terminalSummary},currentMainSha,rearms,currentSourceRevision,relevantMainChanged,currentMaterialSignature))return false;
   return true;
 }
 export function classifyCodingBlocker(summary){
@@ -287,7 +304,7 @@ export function classifyCodingBlocker(summary){
   if(recoverable)return {kind:'RECOVERABLE',transient,reason:raw||'RECOVERABLE_BLOCK'};
   return {kind:'RECOVERABLE',transient:false,reason:raw||'UNCLASSIFIED_RECOVERABLE'};
 }
-export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[],currentSourceRevision='',relevantMainChanged=false){
+export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[],currentSourceRevision='',relevantMainChanged=false,currentMaterialSignature=''){
   const mainSha=String(currentMainSha||'').trim();
   const sourceRevision=String(currentSourceRevision||'').trim();
   const finalReason=String(final?.reason||'').toUpperCase();
@@ -296,6 +313,7 @@ export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[],curre
   if(classifyCodingBlocker(terminalReason).kind!=='RECOVERABLE')return false;
   const sourceChanged=Boolean(sourceRevision)&&String(final?.sourceRevision||'').trim()!==sourceRevision;
   if(!sourceChanged&&!relevantMainChanged)return false;
+  if(final?.materialSignature&&currentMaterialSignature&&String(final.materialSignature)===String(currentMaterialSignature)&&!relevantMainChanged)return false;
   const priorObjectiveId=String(final?.codingObjectiveId||'');
   return !(rearms||[]).some(x=>
     String(x?.mainSha||'').trim()===mainSha&&
@@ -307,6 +325,17 @@ export function shouldRearmRecoverableFinal(final,currentMainSha,rearms=[],curre
 // The retry budget belongs to the CURRENT dispatched objective's recovery epoch.
 // Counting every retry ever dispatched for an issue makes a newly rearmed objective
 // immediately exhaust its inherited historical budget (even without a new retry).
+export function codingWorkOrderFailureBudget(retries=[],failure='',materialSignature=''){
+  const signature=String(failure||'').trim().replace(/\s+/g,' ').toUpperCase();
+  const material=String(materialSignature||'').trim();
+  if(!signature||!material)return 0;
+  return (Array.isArray(retries)?retries:[]).filter(row=>
+    String(row?.materialSignature||'')===material&&
+    String(row?.failureSignature||row?.reason||'').trim().replace(/\s+/g,' ').toUpperCase()===signature
+  ).length;
+}
+
+// Global work-order failure budget cannot reset merely by changing objective.
 export function codingRetryEpochState(retryEvents=[],recoveryEvents=[],objectiveId=''){
   const id=String(objectiveId||'');
   const byId=new Map();
@@ -443,6 +472,7 @@ async function dependencyGate(fetchImpl,owner,repo,token,dependsOn){
     let depIssue;
     try{depIssue=await gh(fetchImpl,owner,repo,`/issues/${depNum}`,token)}catch(error){if(githubRateLimitCooldownMs(error)>0)throw error;return {ok:false,reason:'DEPENDENCY_LOOKUP_FAILED',dependency:depNum,error:String(error?.message||error)}}
     if(!depIssue||depIssue.pull_request||depIssue.state!=='closed')return {ok:false,reason:'DEPENDENCY_OPEN',dependency:depNum,state:String(depIssue?.state||'unknown')};
+    if(!sourceTerminalDependencyAccepted(depIssue))return {ok:false,reason:'DEPENDENCY_NOT_TERMINAL_ACCEPTED',dependency:depNum,state:String(depIssue?.state||'unknown'),stateReason:String(depIssue?.state_reason||'')};
   }
   return {ok:true};
 }
@@ -536,7 +566,7 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
       const priorDispatchObjectiveId=String((await eventData(pool,'GITHUB_CODING_DISPATCHED',spec.number))[0]?.codingObjectiveId||'');
       await mark(pool,'GITHUB_CODING_COMPLETED_REARMED',{issueNumber:spec.number,priorObjectiveId:priorResultObjectiveId||priorDispatchObjectiveId,codingObjectiveId:out.id,reopenKey:completedReopenKey,dispatchKey});
     }
-    await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:spec.number,issueUrl:spec.url,codingObjectiveId:out.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,scopeLease:spec.scopeLease,dispatchKey,sourceRevision,recoveredExisting,reopenKey:completedReopenKey||null,routing:spec.routing||null});
+    await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:spec.number,issueUrl:spec.url,codingObjectiveId:out.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,scopeLease:spec.scopeLease,dispatchKey,sourceRevision,materialSignature:codingMaterialSourceSignature({title:spec.title,body:spec.body}),recoveredExisting,reopenKey:completedReopenKey||null,routing:spec.routing||null});
     await comment(fetchImpl,owner,repo,spec.number,token,completedReopenKey?`[REOPEN_REARMED] TigerIQ Coding Lane rearmed this reopened Work Order as ${out.id}. Dispatch: ${dispatchReason}.`:recoveredExisting?`[CLAIM_RECOVERED] TigerIQ Coding Lane already had this issue as ${out.id}; durable dispatch state was restored. Dispatch: ${dispatchReason}.`:`[CLAIM] TigerIQ Coding Lane accepted this issue as ${out.id}. Automatic coding pipeline is active. Dispatch: ${dispatchReason}.`);
     activeScopes.push(spec.scopeLease);
     if(recoveredExisting)recovered++;else created++;
@@ -546,9 +576,10 @@ export async function materializeGithubCodingIssues({pool,fetchImpl=fetch,owner=
   return {created,recovered,active:active.length,considered:specs.length,...counters,skipReason:counters.freeSlots===0?'CAPACITY_FULL':null};
 }
 
-export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,now=()=>Date.now()}){
+export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,now=()=>Date.now(),issueNumbers=null,yieldIf=null}){
   const rows=(await pool.query("select distinct on ((data->>'issueNumber')::int) data from tigeriq_events where type='GITHUB_CODING_DISPATCHED' and data ? 'issueNumber' order by ((data->>'issueNumber')::int), seq desc")).rows;
   if(!rows.length)return {progress:0,results:0};
+  const issueFilter=new Set((Array.isArray(issueNumbers)?issueNumbers:[]).map(Number).filter(n=>Number.isInteger(n)&&n>0));
   const status=await jsonFetch(fetchImpl,`${codingLaneUrl.replace(/\/$/,'')}/api/status`);
   let currentMainSha='';
   try{currentMainSha=String((await gh(fetchImpl,owner,repo,'/git/ref/heads/main',token))?.object?.sha||'').trim()}catch(error){if(githubRateLimitCooldownMs(error)>0)throw error}
@@ -557,8 +588,10 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
   const recoveryCompareCache=new Map();
   let retryCreatedThisTick=false;
   for(const row of rows){
+    if(typeof yieldIf==='function'&&yieldIf())break;
     const n=Number(row.data?.issueNumber),id=String(row.data?.codingObjectiveId||'');
     if(!n||!id||seenIssues.has(n))continue;
+    if(issueFilter.size&&!issueFilter.has(n))continue;
     seenIssues.add(n);
     const objective=(status.objectives||[]).find(x=>x.id===id);
     const completedResultReported=await hasCompletedCodingResult(pool,n);
@@ -602,7 +635,7 @@ export async function syncGithubCodingOutcomes({pool,fetchImpl=fetch,owner=DEFAU
       // used for a still-visible terminal objective.
       const historicalRearms=await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n);
       if(historicalSpec&&!issueSuperseded(historicalIssue)&&
-         shouldRearmRecoverableFinal(historicalFinal,currentMainSha,historicalRearms,historicalSourceRevision,historicalEvidence.relevantMainChanged)){
+         shouldRearmRecoverableFinal(historicalFinal,currentMainSha,historicalRearms,historicalSourceRevision,historicalEvidence.relevantMainChanged,codingMaterialSourceSignature(historicalIssue))){
         if(retryCreatedThisTick)continue;
         const dependency=await dependencyGate(fetchImpl,owner,repo,token,historicalSpec.dependsOn);
         if(!dependency.ok){
@@ -633,13 +666,13 @@ Continue only after the canonical source materially changed. Execute zero-cost r
         // then keep a single explicit recovery receipt per material revision.
         await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
         await mark(pool,'GITHUB_CODING_RECOVERY_REARMED',{issueNumber:n,priorObjectiveId:id,codingObjectiveId:recovered.id,mainSha:currentMainSha,sourceRevision:historicalSourceRevision||null,sourceChanged:String(historicalFinal.sourceRevision||'')!==String(historicalSourceRevision||''),recoveryKey,historical:true});
-        await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:historicalSpec.url,codingObjectiveId:recovered.id,ownerDirect:historicalSpec.ownerDirect,sourcePriority:historicalSpec.sourcePriority,dispatchPriority:historicalSpec.priority,dispatchReason:'ARCHIVED_MATERIAL_RECOVERY',recoveryKey,sourceRevision:historicalSourceRevision||null,priorObjectiveId:id,scopeLease:historicalSpec.scopeLease});
+        await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:historicalSpec.url,codingObjectiveId:recovered.id,ownerDirect:historicalSpec.ownerDirect,sourcePriority:historicalSpec.sourcePriority,dispatchPriority:historicalSpec.priority,dispatchReason:'ARCHIVED_MATERIAL_RECOVERY',recoveryKey,sourceRevision:historicalSourceRevision||null,materialSignature:codingMaterialSourceSignature(historicalIssue),priorObjectiveId:id,scopeLease:historicalSpec.scopeLease});
         await comment(fetchImpl,owner,repo,n,token,`[ARCHIVED_RECOVERY_REARMED] ${recovered.id} prior=${id} revision=${historicalSourceRevision||'unknown'}`);
         retryCreatedThisTick=true;
         results++;
         continue;
       }
-      if(!terminalLabelSynced&&await hasEffectiveBlockedFinal(pool,n,'',historicalObjectiveId,currentMainSha,historicalSourceRevision,historicalEvidence.relevantMainChanged)){
+      if(!terminalLabelSynced&&await hasEffectiveBlockedFinal(pool,n,'',historicalObjectiveId,currentMainSha,historicalSourceRevision,historicalEvidence.relevantMainChanged,codingMaterialSourceSignature(historicalIssue))){
         await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
         await mark(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',{issueNumber:n,codingObjectiveId:historicalObjectiveId,historical:true});
       }
@@ -666,7 +699,7 @@ Continue only after the canonical source materially changed. Execute zero-cost r
       ?await relevantRecoveryMainChangeEvidence(fetchImpl,owner,repo,token,recoveryFinal.mainSha,currentMainSha,recoverySpec.scopeLease,recoveryCompareCache)
       :{relevantMainChanged:false,relevantChangedPaths:[],compareAvailable:false};
     const relevantMainChanged=recoveryEvidence.relevantMainChanged;
-    if(await hasEffectiveBlockedFinal(pool,n,objective?.summary,id,currentMainSha,currentSourceRevision,relevantMainChanged)){
+    if(await hasEffectiveBlockedFinal(pool,n,objective?.summary,id,currentMainSha,currentSourceRevision,relevantMainChanged,codingMaterialSourceSignature(currentIssue))){
       if(!(await objectiveMarkerExists(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',n,id))){
         await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
         await mark(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',{issueNumber:n,codingObjectiveId:id});
@@ -683,7 +716,13 @@ Continue only after the canonical source materially changed. Execute zero-cost r
     if(!objectiveTerminal(objective))continue;
     if(String(objective.status).toLowerCase()==='completed'){
       const dispatchSourceRevision=String(row.data?.sourceRevision||'').trim();
-      if(!dispatchSourceRevision||dispatchSourceRevision!==currentSourceRevision){
+      const awaiting=(await eventData(pool,'GITHUB_CODING_AWAITING_ACCEPTANCE',n))
+        .find(e=>String(e.codingObjectiveId||'')===id);
+      const priorMaterial=String(row.data?.materialSignature||awaiting?.materialSignature||'').trim();
+      const materialStable=Boolean(awaiting)&&(!priorMaterial||priorMaterial===codingMaterialSourceSignature(currentIssue));
+      // An operational Issue update is not authorization to repeat completed
+      // coding. Continue to the product acceptance gate instead of rearming.
+      if((!dispatchSourceRevision||dispatchSourceRevision!==currentSourceRevision)&&!materialStable){
         const staleKey=`GITHUB-ISSUE-${n}-STALE-${createHash('sha256').update(currentSourceRevision||'unknown').digest('hex').slice(0,12)}`;
         const rejected=(await eventData(pool,'GITHUB_CODING_STALE_RESULT_REJECTED',n)).some(x=>
           String(x.codingObjectiveId||'')===id&&String(x.currentSourceRevision||'')===currentSourceRevision
@@ -715,7 +754,7 @@ Continue only after the canonical source materially changed. Execute zero-cost r
         await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
         await mark(pool,'GITHUB_CODING_STALE_RESULT_REARMED',{issueNumber:n,priorObjectiveId:id,codingObjectiveId:rearmObjective.id,dispatchSourceRevision:dispatchSourceRevision||null,sourceRevision:currentSourceRevision||null,staleKey});
         const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
-        await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:rearmObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,sourceRevision:currentSourceRevision||null,staleKey,priorObjectiveId:id,scopeLease:spec.scopeLease});
+        await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:rearmObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,sourceRevision:currentSourceRevision||null,materialSignature:codingMaterialSourceSignature(currentIssue),staleKey,priorObjectiveId:id,scopeLease:spec.scopeLease});
         await comment(fetchImpl,owner,repo,n,token,`[STALE_RESULT_REARMED] ${rearmObjective.id} currentSourceRevision=${currentSourceRevision||'unknown'} prior=${id}`);
         retryCreatedThisTick=true;
         results++;
@@ -729,7 +768,7 @@ Continue only after the canonical source materially changed. Execute zero-cost r
         if(!gate.canClose){
           if(!(await objectiveMarkerExists(pool,'GITHUB_CODING_AWAITING_ACCEPTANCE',n,id))){
             await comment(fetchImpl,owner,repo,n,token,`[CODE_COMPLETED_AWAITING_ACCEPTANCE] objective=${id} issue=#${n} coding_source_done=true product_done=false reason=${gate.missing.join(',').slice(0,900)}. Keep GitHub open; complete the canonical issue with real Lifecycle V2 start/finish/checklist receipts and downstream acceptance before closing.`);
-            await mark(pool,'GITHUB_CODING_AWAITING_ACCEPTANCE',{issueNumber:n,codingObjectiveId:id,sourceRevision:currentSourceRevision||null,missing:gate.missing});
+            await mark(pool,'GITHUB_CODING_AWAITING_ACCEPTANCE',{issueNumber:n,codingObjectiveId:id,sourceRevision:currentSourceRevision||null,materialSignature:codingMaterialSourceSignature(currentIssue),missing:gate.missing});
             results++;
           }
           continue;
@@ -744,8 +783,8 @@ Continue only after the canonical source materially changed. Execute zero-cost r
     }
 
     const finalize=async(reason,evidence={})=>{
-      if(await hasEffectiveBlockedFinal(pool,n,objective.summary,id,currentMainSha,currentSourceRevision,relevantMainChanged))return false;
-      await mark(pool,'GITHUB_CODING_BLOCKED_FINAL',{issueNumber:n,codingObjectiveId:id,status:'blocked',reason,mainSha:currentMainSha||null,sourceRevision:currentSourceRevision||null,...evidence});
+      if(await hasEffectiveBlockedFinal(pool,n,objective.summary,id,currentMainSha,currentSourceRevision,relevantMainChanged,codingMaterialSourceSignature(currentIssue)))return false;
+      await mark(pool,'GITHUB_CODING_BLOCKED_FINAL',{issueNumber:n,codingObjectiveId:id,status:'blocked',reason,mainSha:currentMainSha||null,sourceRevision:currentSourceRevision||null,materialSignature:codingMaterialSourceSignature(currentIssue),...evidence});
       await addTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
       await mark(pool,'GITHUB_CODING_TERMINAL_LABEL_SYNCED',{issueNumber:n,codingObjectiveId:id});
       await comment(fetchImpl,owner,repo,n,token,`[BLOCKED_FINAL] ${id} reason=${reason}. ${String(objective.summary||'').slice(0,2000)}`);
@@ -790,16 +829,18 @@ Continue only after the canonical source materially changed. Execute zero-cost r
       continue;
     }
     const retryCount=retryEpoch.retryCount;
+    const materialSignature=codingMaterialSourceSignature(currentIssue);
+    const effectiveRetryCount=Math.max(retryCount,codingWorkOrderFailureBudget(retryDispatched,classification.reason,materialSignature));
     // A Manager that twice failed to produce any accepted child has no useful
     // same-revision retry. Stop immediately; rearm only after a material
     // canonical source change, without burning F1/F2 or blocking other scopes.
     const noProgressStop=/manager attempt stopped:\s*two decisions without accepted child progress/i.test(String(objective.summary||''));
     const terminalReason=noProgressStop?'NO_PROGRESS_WAIT_MATERIAL_CHANGE':'RETRY_BUDGET_EXHAUSTED';
-    if(noProgressStop||retryCount>=MAX_AUTO_RETRIES){
+    if(noProgressStop||effectiveRetryCount>=MAX_AUTO_RETRIES){
       const finals=await eventData(pool,'GITHUB_CODING_BLOCKED_FINAL',n);
       const latestFinal=finals[0]||{issueNumber:n,codingObjectiveId:id,reason:terminalReason,terminalReason:classification.reason,mainSha:currentMainSha,sourceRevision:currentSourceRevision};
       const rearms=await eventData(pool,'GITHUB_CODING_RECOVERY_REARMED',n);
-      if(shouldRearmRecoverableFinal(latestFinal,currentMainSha,rearms,currentSourceRevision,relevantMainChanged)){
+      if(shouldRearmRecoverableFinal(latestFinal,currentMainSha,rearms,currentSourceRevision,relevantMainChanged,materialSignature)){
         if(retryCreatedThisTick)continue;
         const blockedByActiveOwner=await activeCodingOwnerBlocksRetry({pool,status,fetchImpl,owner,repo,token,excludeObjectiveIds:[id],targetScope:spec.scopeLease});
         if(blockedByActiveOwner)continue;
@@ -816,17 +857,17 @@ Continue only after the canonical source materially changed. Execute zero-cost r
         const sourceChanged=Boolean(currentSourceRevision)&&String(latestFinal?.sourceRevision||'').trim()!==String(currentSourceRevision||'').trim();
         await mark(pool,'GITHUB_CODING_RECOVERY_REARMED',{issueNumber:n,priorObjectiveId:id,codingObjectiveId:recoveryObjective.id,mainSha:currentMainSha,priorMainSha:String(latestFinal?.mainSha||'').trim()||null,currentMainSha:currentMainSha||null,sourceRevision:currentSourceRevision||null,sourceChanged,relevantChangedPaths:recoveryEvidence.relevantChangedPaths.slice(0,32),recoveryKey,reason:classification.reason});
         const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
-        await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:recoveryObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,recoveryKey,sourceRevision:currentSourceRevision||null,priorObjectiveId:id,scopeLease:spec.scopeLease});
+        await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:recoveryObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,recoveryKey,sourceRevision:currentSourceRevision||null,materialSignature:codingMaterialSourceSignature(currentIssue),priorObjectiveId:id,scopeLease:spec.scopeLease});
         await comment(fetchImpl,owner,repo,n,token,`[RECOVERY_REARMED] ${recoveryObjective.id} source=${currentMainSha.slice(0,12)} prior=${id} reason=${classification.reason.slice(0,500)}`);
         retryCreatedThisTick=true;
         results++;
         continue;
       }
-      await finalize(terminalReason,{terminalReason:classification.reason,retries:retryCount});
+      await finalize(terminalReason,{terminalReason:classification.reason,retries:effectiveRetryCount,materialSignature});
       continue;
     }
 
-    const retryAttempt=retryCount+1;
+    const retryAttempt=effectiveRetryCount+1;
     const recoveryTag=retryEpoch.recovered
       ?`-RECOVERY-${createHash('sha256').update(retryEpoch.epochRootId).digest('hex').slice(0,12)}`:'';
     const retryKey=`GITHUB-ISSUE-${n}${recoveryTag}-RETRY-${retryAttempt}`;
@@ -864,13 +905,26 @@ Continue only after the canonical source materially changed. Execute zero-cost r
     if(!alreadyDispatched){
       await clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:n,token});
       const dispatchReason=spec.ownerDirect?`OWNER_DIRECT>${spec.sourcePriority}`:`PRIORITY_${spec.sourcePriority}`;
-      await mark(pool,'GITHUB_CODING_RETRY_DISPATCHED',{issueNumber:n,codingObjectiveId:retryObjective.id,priorObjectiveId:id,retryAttempt,retryKey,reason:classification.reason,sourceRevision:currentSourceRevision||null});
-      await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:retryObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,retryAttempt,retryKey,sourceRevision:currentSourceRevision||null,priorObjectiveId:id,scopeLease:spec.scopeLease});
+      await mark(pool,'GITHUB_CODING_RETRY_DISPATCHED',{issueNumber:n,codingObjectiveId:retryObjective.id,priorObjectiveId:id,retryAttempt,retryKey,reason:classification.reason,failureSignature:String(classification.reason||'').trim().replace(/\s+/g,' ').toUpperCase(),materialSignature,sourceRevision:currentSourceRevision||null});
+      await mark(pool,'GITHUB_CODING_DISPATCHED',{issueNumber:n,issueUrl:spec.url,codingObjectiveId:retryObjective.id,ownerDirect:spec.ownerDirect,sourcePriority:spec.sourcePriority,dispatchPriority:spec.priority,dispatchReason,retryAttempt,retryKey,sourceRevision:currentSourceRevision||null,materialSignature,priorObjectiveId:id,scopeLease:spec.scopeLease});
       await comment(fetchImpl,owner,repo,n,token,`[RETRY_DISPATCHED] ${retryObjective.id} prior=${id} attempt=${retryAttempt}/${MAX_AUTO_RETRIES} reason=${classification.reason.slice(0,500)}`);
       results++;
     }
   }
   return {progress,results};
+}
+
+export async function reconcileGithubCodingEvent({pool,fetchImpl=fetch,owner=DEFAULT_OWNER,repo=DEFAULT_REPO,token='',codingLaneUrl=process.env.TIGERIQ_CODING_LANE_URL||DEFAULT_CODING_URL,issue}){
+  if(!pool)throw new Error('GITHUB_CODING_EVENT_POOL_REQUIRED');
+  const issueNumber=Number(issue?.number);
+  if(!Number.isInteger(issueNumber)||issueNumber<=0)throw new Error('GITHUB_CODING_EVENT_ISSUE_REQUIRED');
+  // Event-driven Owner/source changes must reconcile the current dispatched
+  // objective before materialization. Otherwise a completed source result that
+  // is still awaiting product/Lifecycle acceptance is hidden behind the durable
+  // dispatch marker until the five-minute fallback tick.
+  const b=await syncGithubCodingOutcomes({pool,fetchImpl,owner,repo,token,codingLaneUrl,issueNumbers:[issueNumber]});
+  const a=await materializeGithubCodingIssues({pool,fetchImpl,owner,repo,token,codingLaneUrl,openIssues:[issue]});
+  return {...a,progress:b.progress,results:b.results};
 }
 
 export function githubCodingEventIssue(payload){
@@ -903,8 +957,8 @@ export function startGithubCodingIntake({databaseUrl=process.env.DATABASE_URL,fe
     if(busy||githubCooldownUntil>Date.now()){pendingEvents.push(event);return}
     busy=true;
     try{
-      const a=await materializeGithubCodingIssues({pool,fetchImpl,owner,repo,token,codingLaneUrl,openIssues:[issue]});
-      console.log(JSON.stringify({event:'GITHUB_CODING_EVENT_INTAKE_SYNC',deliveryId:event.deliveryId,eventName:event.eventName,issueNumber:Number(issue.number),created:a.created,recovered:a.recovered||0,dependencyBlocked:a.dependencyBlocked||0,scopeBlocked:a.scopeBlocked||0,skipReason:a.skipReason||null}));
+      const a=await reconcileGithubCodingEvent({pool,fetchImpl,owner,repo,token,codingLaneUrl,issue});
+      console.log(JSON.stringify({event:'GITHUB_CODING_EVENT_INTAKE_SYNC',deliveryId:event.deliveryId,eventName:event.eventName,issueNumber:Number(issue.number),created:a.created,recovered:a.recovered||0,progress:a.progress||0,results:a.results||0,dependencyBlocked:a.dependencyBlocked||0,scopeBlocked:a.scopeBlocked||0,skipReason:a.skipReason||null}));
     }catch(e){applyError(e,'event')}
     finally{
       busy=false;
@@ -923,7 +977,11 @@ export function startGithubCodingIntake({databaseUrl=process.env.DATABASE_URL,fe
     if(githubCooldownUntil>Date.now())return;
     busy=true;
     try{
-      const b=await syncGithubCodingOutcomes({pool,fetchImpl,owner,repo,token,codingLaneUrl});
+      const b=await syncGithubCodingOutcomes({pool,fetchImpl,owner,repo,token,codingLaneUrl,yieldIf:()=>pendingEvents.length>0});
+      if(pendingEvents.length){
+        console.log(JSON.stringify({event:'GITHUB_CODING_INTAKE_YIELD_PENDING_EVENT',pendingEvents:pendingEvents.length,progress:b.progress,results:b.results}));
+        return;
+      }
       const a=await materializeGithubCodingIssues({pool,fetchImpl,owner,repo,token,codingLaneUrl});
       console.log(JSON.stringify({event:'GITHUB_CODING_INTAKE_SYNC',created:a.created,recovered:a.recovered||0,progress:b.progress,results:b.results,openIssues:a.openIssues||0,codingEligible:a.codingEligible||0,dependencyBlocked:a.dependencyBlocked||0,scopeBlocked:a.scopeBlocked||0,terminalOrDispatched:a.terminalOrDispatched||0,activeSlots:a.activeSlots||0,freeSlots:a.freeSlots||0,skipReason:a.skipReason||null,skipReasons:a.skipReasons||[]}));
     }catch(e){applyError(e,'fallback')}

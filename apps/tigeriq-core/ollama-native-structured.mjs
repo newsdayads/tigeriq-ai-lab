@@ -60,7 +60,59 @@ export function structuredExecutionSchema(packetInput) {
   };
 }
 
-export function buildNativeExecutionRequest({ packet, prompt, model = 'gemma3:4b', numPredict = 512 }) {
+
+export function compactStructuredExecutionSchema(packetInput) {
+  const packet = validateExecutionPacket(packetInput);
+  if (packet.output_schema !== RESULT_VERSION) throw contractError('LOCAL_SCHEMA_VERSION_UNSUPPORTED');
+  if (packet.acceptance.length < 1 || packet.acceptance.length > 8) throw contractError('LOCAL_ACCEPTANCE_COUNT_UNSUPPORTED');
+  if (new Set(packet.acceptance).size !== packet.acceptance.length) throw contractError('LOCAL_ACCEPTANCE_DUPLICATED');
+
+  const criterion = index => ({
+    type: 'object',
+    properties: {
+      criterion_index: { const: index },
+      passed: { type: 'boolean' },
+      evidence_refs: { type: 'array', items: { type: 'string', maxLength: 32 }, minItems: 1, maxItems: 4 },
+    },
+    required: ['criterion_index', 'passed', 'evidence_refs'],
+    additionalProperties: false,
+  });
+
+  return {
+    type: 'object',
+    properties: {
+      schema: { const: RESULT_VERSION },
+      status: { enum: ['complete', 'blocked'] },
+      summary: { type: 'string', maxLength: 180 },
+      acceptance: {
+        type: 'array',
+        prefixItems: packet.acceptance.map((_, index) => criterion(index)),
+        minItems: packet.acceptance.length,
+        maxItems: packet.acceptance.length,
+      },
+      evidence: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', maxLength: 32 },
+            type: { enum: ['observation', 'artifact', 'test', 'source'] },
+            value: { type: 'string', maxLength: 220 },
+          },
+          required: ['id', 'type', 'value'],
+          additionalProperties: false,
+        },
+        minItems: 1,
+        maxItems: 6,
+      },
+      block_reason: { type: ['null', 'string'], maxLength: 220 },
+    },
+    required: ['schema', 'status', 'summary', 'acceptance', 'evidence', 'block_reason'],
+    additionalProperties: false,
+  };
+}
+
+export function buildNativeExecutionRequest({ packet, prompt, model = 'gemma3:4b', numPredict = 512, compact = false }) {
   if (model !== 'gemma3:4b') throw contractError('LOCAL_MODEL_NOT_ALLOWLISTED', 'configuration');
   const parsed = executionPacketFromPrompt(prompt);
   // Verify binding to one exact source packet before sending text to the worker.
@@ -74,7 +126,7 @@ export function buildNativeExecutionRequest({ packet, prompt, model = 'gemma3:4b
     model,
     messages: [{ role: 'user', content: prompt }],
     stream: false,
-    format: structuredExecutionSchema(packet),
+    format: compact ? compactStructuredExecutionSchema(packet) : structuredExecutionSchema(packet),
     options: { temperature: 0, num_predict: numPredict },
   };
 }
@@ -82,13 +134,13 @@ export function buildNativeExecutionRequest({ packet, prompt, model = 'gemma3:4b
 // Call only on an approved isolated surface. Never create Core objectives or mark
 // workers successful here. Core's deterministic gate remains authoritative.
 export async function invokeNativeStructuredExecution({
-  packet, prompt, model = 'gemma3:4b', numPredict = 512,
+  packet, prompt, model = 'gemma3:4b', numPredict = 512, compact = false,
   timeoutMs = 85000, fetchImpl = fetch,
 } = {}) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 90000) {
     throw contractError('LOCAL_TIMEOUT_BUDGET_INVALID', 'configuration');
   }
-  const body = buildNativeExecutionRequest({ packet, prompt, model, numPredict });
+  const body = buildNativeExecutionRequest({ packet, prompt, model, numPredict, compact });
   const start = Date.now();
   let response;
   try {

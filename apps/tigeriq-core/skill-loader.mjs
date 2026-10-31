@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadAgencyRoleReferences } from './agency-agent-reference.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const DEFAULT_REGISTRY = join(REPO_ROOT, 'docs', 'skills', 'registry.yaml');
@@ -125,6 +126,15 @@ export function matchAndLoadSkills(objectiveText = '', options = {}) {
     .filter(item => item.score > 0)
     .sort((a, b) => b.score - a.score || a.skill.id.localeCompare(b.skill.id));
 
+  // Reserve a bounded slot for a verified reference before ACTIVE skills
+  // occupy the context. Without this, source installation never reaches jobs.
+  const agencyCandidate = ranked.length && maxSkills > 0 ? loadAgencyRoleReferences(objectiveText, {
+    catalogRoot: options.agencyCatalogRoot,
+    maxRoles: 1,
+  }) : { contextBlock:'', references:[], status:'NO_ACTIVE_SKILL_MATCH' };
+  const agencyReservedChars = agencyCandidate.contextBlock.length;
+  const skillBudget = agencyReservedChars && maxChars > agencyReservedChars + 256
+    ? maxChars - agencyReservedChars - 120 : maxChars;
   const loaded = [];
   let totalChars = 0;
 
@@ -152,7 +162,7 @@ export function matchAndLoadSkills(objectiveText = '', options = {}) {
     }
     const chars = content.length;
     const bytes = Buffer.byteLength(content, 'utf8');
-    if (chars > maxChars - totalChars) {
+    if (chars > skillBudget - totalChars) {
       skipped.push({ id: skill.id, reason: 'CONTEXT_BUDGET' });
       continue;
     }
@@ -160,9 +170,16 @@ export function matchAndLoadSkills(objectiveText = '', options = {}) {
     totalChars += chars;
   }
 
+  // Agency personas are lower-trust, verified advisory references, never
+  // separate workers or ACTIVE registry entries. Keep the original budget.
+  const agency = loaded.length ? agencyCandidate
+    : { contextBlock:'', references:[], status:'NO_ACTIVE_SKILL_MATCH' };
+  const agencyBlock = agency.contextBlock && agency.contextBlock.length <= maxChars - totalChars
+    ? agency.contextBlock : '';
   const contextBlock = loaded.length
     ? ['ACTIVE SKILLS (use only when relevant; never expand permissions):',
-       ...loaded.map(skill => `[SKILL ${skill.id} v${skill.version || 'unknown'}]\n${skill.content}`)].join('\n\n')
+       ...loaded.map(skill => `[SKILL ${skill.id} v${skill.version || 'unknown'}]\n${skill.content}`),
+       ...(agencyBlock ? [agencyBlock] : [])].join('\n\n')
     : '';
 
   return {
@@ -170,7 +187,9 @@ export function matchAndLoadSkills(objectiveText = '', options = {}) {
     totalChars,
     contextBlock,
     evidence: loaded.map(skill => ({ id: skill.id, version: skill.version || null, target: skill.target || null, bytes: skill.bytes })),
-    skipped
+    skipped,
+    agencyReferences: agencyBlock ? agency.references : [],
+    agencyStatus: agencyBlock ? agency.status : (agency.contextBlock ? 'CONTEXT_BUDGET' : agency.status)
   };
 }
 

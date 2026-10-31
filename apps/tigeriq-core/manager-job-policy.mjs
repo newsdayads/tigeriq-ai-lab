@@ -10,6 +10,149 @@ export function managerLogicalJobIdentity({objectiveId='', phaseIndex=0, title='
   };
 }
 
+export const FAILED_LOGICAL_JOB_BLOCK_SUMMARY='Same logical job has already failed; no new random job on unchanged work';
+export const MANAGER_NO_PROGRESS_BLOCK_SUMMARY='Manager attempt stopped: two decisions without accepted child progress; awaiting material change';
+
+export function providerPromptCompactionRecoveryEligible({
+  capability='',
+  phaseIndex=0,
+  maxAttempts=0,
+  compactRepairReason='',
+  failure=null,
+}={}) {
+  if(String(capability).trim().toLowerCase()!=='review'||Number(phaseIndex)<=0)return false;
+  if(Number(maxAttempts)!==5)return false;
+  if(String(compactRepairReason||'')!=='compact_contract_already_present')return false;
+  const failures=Array.isArray(failure?.failures)?failure.failures:[];
+  return failures.some(item=>
+    String(item?.kind||'').trim().toLowerCase()==='job_contract'
+    &&String(item?.message||'').trim()==='NV09_COMPILED_PROMPT_BUDGET_EXCEEDED'
+  );
+}
+
+export function providerPriorCampaignEvidenceRecoveryEligible({
+  capability='',
+  phaseIndex=0,
+  maxAttempts=0,
+  prompt='',
+  failure=null,
+}={}) {
+  if(String(capability).trim().toLowerCase()!=='review'||Number(phaseIndex)<=0)return false;
+  if(Number(maxAttempts)!==6)return false;
+  const stored=String(prompt||'');
+  if(!stored.includes('AUTHORIZED PRIOR CAMPAIGN HANDOFF:')||!stored.includes('PRIOR_CAMPAIGN_HANDOFF_V1 '))return false;
+  const failures=Array.isArray(failure?.failures)?failure.failures:[];
+  return failures.some(item=>
+    String(item?.kind||'').trim().toLowerCase()==='invalid_response'
+    &&String(item?.message||'').trim()==='EXECUTION_RESULT_BLOCKED'
+  );
+}
+
+export function persistedPhaseZeroReviewRepairRecoveryEligible({
+  capability='',
+  phaseIndex=0,
+  maxAttempts=0,
+  prompt='',
+  failure=null,
+}={}) {
+  if(String(capability).trim().toLowerCase()!=='review'||Number(phaseIndex)!==0)return false;
+  if(Number(maxAttempts)!==4)return false;
+  const stored=String(prompt||'');
+  if(!stored.includes('AUTHORIZED PRIOR CAMPAIGN HANDOFF:')||!stored.includes('PRIOR_CAMPAIGN_HANDOFF_V1 '))return false;
+  const failures=Array.isArray(failure?.failures)?failure.failures:[];
+  return failures.some(item=>
+    String(item?.kind||'').trim().toLowerCase()==='invalid_response'
+    &&String(item?.message||'').trim()==='EXECUTION_RESULT_BLOCKED'
+  );
+}
+
+export function phaseZeroReviewStrictAcceptanceRecoveryEligible({
+  capability='',
+  phaseIndex=0,
+  maxAttempts=0,
+  prompt='',
+  failure=null,
+}={}) {
+  if(String(capability).trim().toLowerCase()!=='review'||Number(phaseIndex)!==0)return false;
+  if(Number(maxAttempts)!==5)return false;
+  const stored=String(prompt||'');
+  if(!stored.includes('AUTHORIZED PRIOR CAMPAIGN HANDOFF:')||!stored.includes('PRIOR_CAMPAIGN_HANDOFF_V1 '))return false;
+  const failures=Array.isArray(failure?.failures)?failure.failures:[];
+  return failures.some(item=>
+    String(item?.kind||'').trim().toLowerCase()==='invalid_response'
+    &&String(item?.message||'').trim()==='EXECUTION_RESULT_BLOCKED'
+  );
+}
+
+export function phaseZeroReviewHandoffTransportRecoveryEligible({
+  capability='',
+  phaseIndex=0,
+  attempts=0,
+  maxAttempts=0,
+  prompt='',
+  failure=null,
+}={}) {
+  if(String(capability).trim().toLowerCase()!=='review'||Number(phaseIndex)!==0)return false;
+  if(Number(attempts)!==7||Number(maxAttempts)!==6)return false;
+  const stored=String(prompt||'');
+  if(!stored.includes('AUTHORIZED PRIOR CAMPAIGN HANDOFF:')||!stored.includes('PRIOR_CAMPAIGN_HANDOFF_V1 '))return false;
+  return String(failure?.message||'').trim()==='EXECUTION_RESULT_BLOCKED';
+}
+
+export function campaignPromptRepairRetryCap({
+  promptRepairChanged=false,
+  compactRepairChanged=false,
+  persistedPhaseZeroRepairEligible=false,
+  phaseZeroStrictAcceptanceEligible=false,
+  phaseZeroHandoffTransportEligible=false,
+  providerPromptCompactionEligible=false,
+  providerPriorCampaignEvidenceEligible=false,
+}={}) {
+  if(phaseZeroHandoffTransportEligible===true)return 8;
+  if(providerPriorCampaignEvidenceEligible===true)return 7;
+  if(providerPromptCompactionEligible===true||phaseZeroStrictAcceptanceEligible===true)return 6;
+  if(promptRepairChanged===true||compactRepairChanged===true||persistedPhaseZeroRepairEligible===true)return 5;
+  return 4;
+}
+
+export function failedCampaignRuntimeRearmDecision({
+  objectiveStatus='',
+  objectiveSummary='',
+  jobStatus='',
+  attempts=0,
+  maxAttempts=0,
+  jobCompletedAt='',
+  runtimeUpdatedAt='',
+  hasCampaign=false,
+  routingProfile='',
+  promptRepairEligible=false,
+  promptRepairCap=4,
+  campaignVerifierRepair=false,
+  campaignVerifierJobId='',
+}={}) {
+  if(String(objectiveStatus).trim().toLowerCase()!=='blocked')return {action:'keep',reason:'objective_not_blocked'};
+  const summary=String(objectiveSummary);
+  const verifierSummary=campaignVerifierRepair===true&&String(campaignVerifierJobId||'').trim()
+    ? `campaign verification failed after bounded attempts: ${String(campaignVerifierJobId).trim()}`
+    : '';
+  if(![FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY].includes(summary)&&summary!==verifierSummary)return {action:'keep',reason:'not_failed_campaign_rearm_guard'};
+  if(String(jobStatus).trim().toLowerCase()!=='failed')return {action:'keep',reason:'job_not_failed'};
+  if(!hasCampaign||String(routingProfile).trim().toUpperCase()!=='LOCAL')return {action:'keep',reason:'not_local_campaign'};
+  const used=Math.max(0,Number(attempts)||0),limit=Math.max(0,Number(maxAttempts)||0);
+  const failedAt=Date.parse(String(jobCompletedAt||'')),runtimeAt=Date.parse(String(runtimeUpdatedAt||''));
+  if(!Number.isFinite(failedAt)||!Number.isFinite(runtimeAt)||runtimeAt<=failedAt)return {action:'keep',reason:'runtime_not_newer_than_failure'};
+  if(limit<=0)return {action:'keep',reason:'retry_budget_exhausted'};
+  if(used>=limit){
+    const requestedCap=Number(promptRepairCap)||4;
+    const cap=requestedCap===8?8:Math.max(1,Math.min(7,requestedCap));
+    if(promptRepairEligible===true&&used>=limit&&used<cap&&limit<cap){
+      return {action:'requeue_prompt_repair',reason:'runtime_source_newer_with_prompt_repair_credit',nextMaxAttempts:Math.max(limit+1,used+1)};
+    }
+    return {action:'keep',reason:'retry_budget_exhausted'};
+  }
+  return {action:'requeue',reason:'runtime_source_newer_than_failed_campaign_job',nextMaxAttempts:limit};
+}
+
 export function managerJobMaterializationDecision(existingStatus='') {
   const status=String(existingStatus || '').trim().toLowerCase();
   if(!status)return {action:'create',reason:'no_existing_job'};

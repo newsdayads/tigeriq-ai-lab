@@ -7,7 +7,7 @@ test('recovery helper is unique and does not duplicate updater code',()=>{
   expect(source.match(/function Runtime-Source-Dirty/g)).toHaveLength(1);
   expect(source.match(/function Restart-Core/g)).toHaveLength(1);
   expect(source.match(/function Gates-Pass/g)).toHaveLength(1);
-  expect(source.length).toBeLessThan(62000); // Five-session guard adds bounded fail-closed topology checks.
+  expect(source.length).toBeLessThan(68000); // Includes bounded MCP Funnel gateway lifecycle checks without duplicating updater code.
 });
 test('installed metadata must match worktree and be a valid known commit',()=>{
   const block=source.slice(source.indexOf('function Resolve-DeployedSourceSha'),source.indexOf('function Runtime-Source-Dirty'));
@@ -33,3 +33,37 @@ test('old installed baseline uses existing guarded apply, restart and rollback p
   expect(source).toContain('Invoke-RuntimeRollback $previousRuntimeSha $remote $impact');
   expect(source).toContain("if(-not $gateSha){Save-State @{result='WAIT_GATES'");
 });
+test('reconciles standalone MCP Funnel gateway only through exact supervised topology',()=>{
+  expect(source.match(/function Get-McpFunnelGatewayTopology/g)).toHaveLength(1);
+  expect(source.match(/function Reconcile-McpFunnelGatewayRuntime/g)).toHaveLength(1);
+  expect(source).toContain("$mcpGatewayServerPath='D:\\TigerIQ\\Runtime\\McpFunnelGateway\\server.mjs'");
+  expect(source).toContain("$mcpGatewaySupervisorPaths=@('D:\\TigerIQ\\Runtime\\McpFunnelGateway\\run-mcp-gateway.cmd','D:\\TigerIQ\\Runtime\\McpFunnelGateway\\run-mcp-gateway.ps1')");
+  expect(source).toContain("reason='MCP_GATEWAY_TOPOLOGY_UNVERIFIED'");
+  expect(source).toContain("$supervisors.Count -ne 1 -or $children.Count -gt 1");
+  expect(source).toContain("$spawnDeadline=(Get-Date).AddSeconds(12)");
+  expect(source).toContain("Start-Sleep -Milliseconds 500");
+  expect(source).toContain("reason='MCP_GATEWAY_CHILD_RESPAWN_TIMEOUT'");
+  expect(source).toContain("Stop-Process -Id $oldPid -Force -ErrorAction Stop");
+  expect(source).toContain("[int]$new[0].ProcessId -ne $oldPid");
+  expect(source).toContain("Test-TcpPort '127.0.0.1' $mcpGatewayPort");
+  const reconcileBlock=source.slice(
+    source.indexOf('function Reconcile-McpFunnelGatewayRuntime'),
+    source.indexOf('function Get-CorePid'),
+  );
+  expect(reconcileBlock).not.toContain('Start-Process');
+  expect(reconcileBlock).not.toContain('Start-Job');
+  const noChangeSync=source.indexOf('$mcpGatewaySync=Sync-McpFunnelGatewayRuntime');
+  const noChangeReconcile=source.indexOf("else{Reconcile-McpFunnelGatewayRuntime $local}",noChangeSync);
+  expect(noChangeSync).toBeGreaterThan(0);
+  expect(noChangeReconcile).toBeGreaterThan(noChangeSync);
+  expect(source).toContain("$mcpGatewayReconcile=Reconcile-McpFunnelGatewayRuntime $remote");
+  expect(source).toContain("$mcpRollback=if(-not $CanaryMode){Reconcile-McpFunnelGatewayRuntime $previousRuntimeSha}");
+  expect(source.match(/function Sync-McpFunnelGatewayRuntime/g)).toHaveLength(1);
+  expect(source).toContain("$mcpGatewaySourcePath=(Join-Path $runtimeRepo 'scripts\\tigeriq-core\\mcp-funnel-gateway-runtime.mjs')");
+  expect(source).toContain("MCP_GATEWAY_SYNC_HASH_MISMATCH");
+  expect(source).toContain("MCP_GATEWAY_CANONICAL_SOURCE_AND_BACKUP_MISSING");
+  expect(source).toContain("$backup=$mcpGatewayServerPath+'.previous'");
+  expect(source).toContain("action='restored_previous'");
+  expect(source.indexOf('$mcpGatewaySync=Sync-McpFunnelGatewayRuntime')).toBeLessThan(source.indexOf('$mcpGatewayReconcile=Reconcile-McpFunnelGatewayRuntime $remote'));
+});
+

@@ -1,0 +1,45 @@
+// GH-5135 R01: source-only Android module configuration.
+// No claim of UVC, DeX or clean-clone APK acceptance.
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'ai.tigeriq.ultracarhcm.v2'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'ai.tigeriq.ultracarhcm.v2'
+        minSdk 26
+        targetSdk 33
+        versionCode 11
+        versionName '2.0.0-dev.11'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = '17' }
+
+    // Prepare the migration; existing Activity/USB code is NOT Compose parity.
+    buildFeatures { compose true }
+    composeOptions { kotlinCompilerExtensionVersion '1.5.4' }
+    testOptions { unitTests.returnDefaultValues = true }
+}
+
+dependencies {
+    // Supplies com.herohan.uvcapp.CameraHelper and UVCUtils from Maven Central.
+    implementation 'com.herohan:UVCAndroid:1.0.13'
+    implementation platform('androidx.compose:compose-bom:2024.02.00')
+    implementation 'androidx.activity:activity-compose:1.8.2'
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.foundation:foundation'
+    implementation 'androidx.compose.material:material-icons-extended'
+    implementation 'androidx.compose.material3:material3'
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test:runner:1.5.2'
+}

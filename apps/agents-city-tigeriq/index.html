@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark"><title>TigerIQ Animal City — vận hành thực tế</title>
+<style>
+:root{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#ecf7ff;background:#101c2f}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 65% 15%,#294966 0%,#142842 44%,#101c2f 100%);min-height:100vh}
+header{display:flex;justify-content:space-between;gap:20px;align-items:center;padding:20px 28px;border-bottom:1px solid #ffffff16;background:#101b2dcc;position:sticky;top:0;z-index:5}
+.logo{font-size:23px;font-weight:850;letter-spacing:-.7px;color:#fff}.logo strong{color:#ffbb64}.subtitle{font-size:12px;color:#9fb8cd;margin-top:3px}
+.tag{font-size:12px;padding:8px 12px;background:#233855;border:1px solid #52769c;border-radius:18px;color:#d0eaf9}
+main{max-width:1480px;margin:auto;display:grid;grid-template-columns:minmax(0,1fr) 390px;gap:20px;padding:25px}
+h1{font-size:27px;margin:0 0 8px}.lead{color:#aac3d5;font-size:14px;margin:0 0 17px;line-height:1.5}
+.city{position:relative;border:1px solid #4b729a70;border-radius:24px;padding:30px 18px 38px;background:radial-gradient(ellipse at 50% 100%,#446a59 0%,#294a52 51%,#213c55 100%);overflow:hidden}
+.city:before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,transparent 35%,#ffffff05 35% 37%,transparent 37%);pointer-events:none}
+.plaza{position:relative;margin:10px auto;max-width:850px;min-height:390px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;align-items:center}
+.room{font-family:inherit;position:relative;min-height:282px;border-radius:18px;border:2px solid #b5e8ff99;box-shadow:0 18px 0 #132e37,0 27px 35px #07182799,inset 0 0 0 3px #ffffff14;background:linear-gradient(160deg,#88bbab55 0%,#325b70 51%,#1d374f 100%);color:white;cursor:pointer;padding:13px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;transition:transform .22s ease,border-color .22s ease}
+.room:before{content:"";position:absolute;top:-12px;left:11px;right:11px;height:17px;background:#b3dae1;border-radius:8px 8px 4px 4px;transform:skewX(-27deg);opacity:.9}
+.room:hover,.room:focus-visible{transform:translateY(-8px);border-color:#ffcd78;outline:none}.room.selected{border-color:#ffb447;background:linear-gradient(160deg,#b6a26570,#395b67 55%,#1b3c4f)}
+.room-name{font-size:18px;font-weight:800;padding:8px 11px;background:#182c47bf;border-radius:12px}
+.animal{filter:drop-shadow(0 10px 5px #001b2a66);font-size:83px;line-height:1.2;transform:rotate(-5deg)}
+.desk{border:2px solid #d4b68f;min-width:77%;padding:10px;background:#ab8052;box-shadow:0 10px #67432e;border-radius:9px;color:#201b22;font-size:12px;font-weight:700}
+.room-count{background:#152c42e0;color:#d2edff;padding:6px 11px;border-radius:14px;font-size:12px}
+.banner{font-size:12px;position:relative;margin:8px auto 0;text-align:center;color:#c6e2e0}
+.panel{border:1px solid #456b8c70;border-radius:20px;background:#142b43d9;padding:19px;box-shadow:0 14px 26px #0003}
+.panel h2{font-size:17px;margin:0 0 16px}.section-title{font-size:14px!important;margin:19px 0 7px!important;color:#dcecff}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:10px 0 14px}
+.metric{background:#1e3854;border:1px solid #42617c;border-radius:12px;padding:12px;min-width:0}
+.metric label{display:block;font-size:11px;color:#bad3e7}.metric strong{font-size:25px;display:block;margin-top:4px}
+.source{font-size:12px;line-height:1.55;color:#b7d4e6;background:#0d2237;border-radius:12px;padding:11px;margin-top:8px}.source b{color:#fff}.error{color:#ffd49c}
+button.action{padding:11px 15px;background:#ffb859;border:none;border-radius:10px;color:#18263a;font-weight:800;cursor:pointer}button.action:disabled{opacity:.5;cursor:not-allowed}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.work,.worker{margin-top:10px;border:1px solid #46657e;border-radius:14px;background:#1a344b;padding:13px}.work h3,.worker h3{font-size:13px;margin:0 0 8px;line-height:1.5}.work .meta,.worker .meta{font-size:11px;color:#bdd1de;line-height:1.6}
+.work a{display:inline-block;font-size:12px;margin-top:9px;color:#ffc779;text-decoration:underline;text-underline-offset:3px}
+.worker{border-color:#5b856f;background:#173d3a}.worker-job{font-size:12px;margin-top:7px;color:#d7f5e6;line-height:1.45}
+#cards{max-height:390px;overflow-y:auto;padding-right:3px}#workers{max-height:240px;overflow-y:auto;padding-right:3px}.empty{padding:15px 8px;color:#b8c7d4;font-size:13px;line-height:1.5}
+.note{margin-top:15px;color:#c3d8e9;font-size:12px;line-height:1.6}
+@media(max-width:1000px){main{grid-template-columns:1fr}.plaza{min-height:270px;gap:14px}.room{min-height:225px}.animal{font-size:65px}}
+@media(max-width:570px){header{padding:14px}.logo{font-size:18px}main{padding:12px}h1{font-size:21px}.city{padding:20px 8px 27px}.plaza{gap:8px}.room{padding:7px;min-height:174px;border-radius:13px}.room-name{font-size:12px}.animal{font-size:47px}.desk{font-size:9px;padding:7px}.room-count{font-size:10px;padding:4px}.subtitle{font-size:10px}.metrics{grid-template-columns:1fr 1fr 1fr}.metric{padding:9px}.metric strong{font-size:21px}}
+
+/* Animal City 3D: model is the primary view, work controls remain accessible. */
+.animal-scene{position:relative;height:490px;border-radius:18px;overflow:hidden;
+ background:radial-gradient(circle at 52% 25%,#477a93,#142b45 75%);
+ border:1px solid #88b3bc80;box-shadow:inset 0 0 45px #09172866,0 18px 40px #0c283266}
+.animal-scene canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.animal-scene canvas:active{cursor:grabbing}
+.scene-info,.scene-footer{position:absolute;left:16px;z-index:1;pointer-events:none;
+ font-size:11px;letter-spacing:.07em;color:#e0eff6;background:#122b42e0;border-radius:9px;padding:8px 11px}
+.scene-info{top:13px;font-weight:750}.scene-footer{bottom:13px;letter-spacing:0;color:#c3dbe1}
+.scene-reset{position:absolute;right:13px;top:13px;z-index:1;padding:9px 12px;border:1px solid #88b5c7;
+ color:#eaf8fb;background:#173b54e6;border-radius:10px;font-weight:750;cursor:pointer}
+.scene-reset:hover,.scene-reset:focus-visible{background:#315c70}
+.plaza{min-height:unset;max-width:930px;margin:13px auto 3px;gap:10px;display:flex;align-items:stretch}
+.room{min-height:58px;flex:1;flex-direction:row;padding:10px 13px;box-shadow:none;border-radius:11px}
+.room:before,.room .animal,.room .desk{display:none}
+.room-name{font-size:13px;padding:3px;background:none}
+.room-count{font-size:11px;padding:5px 8px;white-space:nowrap}
+.room:hover,.room:focus-visible{transform:translateY(-2px)}
+@media(max-width:570px){.animal-scene{height:355px}.scene-info{font-size:9px;top:9px;left:8px;right:100px}
+.scene-footer{font-size:9px;bottom:9px;left:8px;right:8px}
+.scene-reset{font-size:10px;right:8px;top:9px;padding:8px}
+.plaza{gap:5px}.room{min-height:54px;padding:7px 4px;flex-direction:column;gap:5px}
+.room-name{font-size:11px}.room-count{font-size:10px;padding:3px 6px}}
+
+/* Product console — functional actions first, 3D subordinate to actual work. */
+main{max-width:1600px;grid-template-columns:minmax(0,1fr) minmax(390px,460px);gap:16px;padding:16px}
+.city{padding:10px 12px 16px}.animal-scene{height:360px}
+.panel{padding:15px}
+.owner-console{border:1px solid #628d9e;border-radius:16px;padding:15px;
+ background:linear-gradient(145deg,#1c4858,#142a44);margin-bottom:17px}
+.owner-console h2{font-size:18px;margin:0 0 6px}.owner-console p{font-size:12px;line-height:1.5;color:#c4d8eb;margin:0 0 11px}
+.owner-console textarea{display:block;width:100%;min-height:82px;resize:vertical;
+ background:#0c2437;color:#f4f9ff;border:1px solid #56809b;border-radius:10px;
+ padding:12px;font:inherit;font-size:13px}
+.owner-console textarea:focus-visible,.search:focus-visible,select:focus-visible{outline:2px solid #ffc56b}
+.owner-submit{width:100%;margin-top:9px;font-size:14px;min-height:45px}
+.owner-status{margin:8px 0 0;font-size:12px;line-height:1.55;min-height:18px;color:#c4e7da}
+.owner-status.error{color:#ffd1ae}
+.owner-links{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0 0}
+.owner-links a,.work a{color:#ffd28a;font-size:12px}
+.recent-item{padding:9px;border:1px solid #56778d;border-radius:9px;background:#112c40;margin-top:8px;font-size:12px;line-height:1.5}
+.recent-item strong{font-size:12px;display:block}.recent-item .meta{color:#b8d2e2}
+#recentGoals{max-height:220px;overflow-y:auto}
+.worktools{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}
+.worktools input,.worktools select{background:#0d2a3e;color:#f5f9ff;
+ border:1px solid #527b98;border-radius:9px;padding:9px;font-size:12px;min-width:0}
+.worktools input{flex:2 1 135px}.worktools select{flex:1 1 108px}
+.work{border-left:3px solid #6193ba}
+.work.is-open{border-left-color:#e9aa51}.work.is-done_verified{border-left-color:#65c8ab}
+.work .statusline{color:#d3e9fa;font-size:12px;margin-bottom:5px}
+.work .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+.work .actions a{margin-top:0;border-radius:8px;border:1px solid #527c97;padding:6px 10px;background:#16364a}
+#cards{max-height:550px}
+@media(max-width:1040px){main{grid-template-columns:1fr}.animal-scene{height:340px}}
+@media(max-width:570px){.animal-scene{height:310px}.owner-console{padding:12px}
+.worktools{flex-wrap:wrap}.worktools input{flex-basis:100%}main{padding:10px}}
+
+</style>
+</head>
+<body>
+<header>
+ <div><div class="logo">Tiger<strong>IQ</strong> · Animal City</div><div class="subtitle">Vận hành local · Work Order thật · worker/job thật khi Core xác minh</div></div>
+ <span class="tag">CORE LIVE · LOCAL</span>
+</header>
+<main>
+ <section>
+  <h1>Văn phòng AI TigerIQ</h1>
+  <p class="lead">Văn phòng 3D Animal gồm ba phòng có bàn làm việc, nội thất và nhân viên thú hoạt hình. Chọn phòng trên mô hình hoặc thanh điều hướng để xem Work Order và hoạt động worker thật từ TigerIQ Core. Worker chỉ hiện “đang làm” khi resource BUSY và job running khớp chính xác danh tính.</p>
+  <div class="city">
+   <div class="plaza" aria-label="Ba phòng của công ty">
+    <button class="room selected" data-room="coordination"><span class="room-name">Điều phối</span><span class="animal" aria-hidden="true">🐯</span><span class="desk">Phòng Vy · Giao việc</span><span class="room-count" id="count-coordination">Chưa tải</span></button>
+    <button class="room" data-room="engineering"><span class="room-name">Kỹ thuật</span><span class="animal" aria-hidden="true">🦊</span><span class="desk">Phòng lập trình</span><span class="room-count" id="count-engineering">Chưa tải</span></button>
+    <button class="room" data-room="quality"><span class="room-name">Kiểm thử</span><span class="animal" aria-hidden="true">🐼</span><span class="desk">Phòng QA</span><span class="room-count" id="count-quality">Chưa tải</span></button>
+   </div>
+   <p class="banner">Một nguồn Core · một binding worker/job thật · không tạo hàng đợi thứ hai · không suy đoán trạng thái</p>
+  </div>
+  <p class="note">Nhân vật là hình minh họa. Danh tính NVxx chỉ xuất hiện trong bảng runtime khi Core trả resource BUSY + job running trùng employee/resource. Không có bằng chứng thì hiển thị chưa xác minh.</p>
+ </section>
+ <aside class="panel">
+  <section class="owner-console" aria-label="Bàn điều hành của chủ công ty">
+    <h2><span aria-hidden="true">◉</span> Bàn điều hành — Giao việc thật</h2>
+    <p>Nhập mục tiêu để TigerIQ Core tiếp nhận và tự phân công AI theo chính sách. Chế độ <strong>LOCAL / P2</strong>, không chuyển sang API đám mây trả phí. Chỉ ghi việc sau khi anh bấm xác nhận.</p>
+    <form id="ownerForm">
+      <textarea id="ownerObjective" minlength="12" maxlength="2000" required
+        placeholder="VD: Phân tích 3 lỗi Core gần nhất, đề xuất bản sửa có test và xuất biên nhận nghiệm thu..."></textarea>
+      <button class="action owner-submit" type="submit" id="ownerSubmit">GIAO CHO AI — LOCAL</button>
+    </form>
+    <div id="ownerStatus" class="owner-status" role="status">Đang kiểm tra quyền giao việc...</div>
+    <div class="owner-links">
+      <a href="http://127.0.0.1:8795/" target="_blank" rel="noopener noreferrer">Mở TigerIQ Core</a>
+      <a href="https://github.com/newsdayads/tigeriq-ai-lab/issues" target="_blank" rel="noopener noreferrer">Danh sách Work Order</a>
+    </div>
+    <h3 class="section-title">Mục tiêu đã giao gần đây</h3>
+    <div id="recentGoals"><p class="empty">Đang xác minh Core...</p></div>
+  </section>
+  <div class="row"><h2 id="panelTitle">Phòng điều phối</h2><button class="action" id="refresh">Tải lại</button></div>
+  <div class="metrics">
+    <div class="metric"><label>Work Order</label><strong id="total">—</strong></div>
+    <div class="metric"><label>DONE xác minh</label><strong id="done">—</strong></div>
+    <div class="metric"><label>Worker đang làm</label><strong id="activeWorkers">—</strong></div>
+  </div>
+  <div class="source" role="status" id="sourceStatus">Chưa kiểm tra Work Order.</div>
+  <div class="source" role="status" id="liveStatus">Chưa kiểm tra worker/job Core.</div>
+  <h2 class="section-title">Nhân sự đang làm thực tế</h2>
+  <div id="workers"><p class="empty">Đang chờ dữ liệu Core.</p></div>
+  <h2 class="section-title">Công việc thực tế</h2>
+  <div class="worktools">
+    <input id="workSearch" class="search" type="search" placeholder="Tìm mã, tên, nội dung việc…" aria-label="Tìm Work Order">
+    <select id="workFilter" aria-label="Lọc trạng thái">
+      <option value="all">Tất cả</option>
+      <option value="open">Còn mở</option>
+      <option value="done_verified">Đã nghiệm thu</option>
+      <option value="closed_unverified">Đóng chưa xác minh</option>
+    </select>
+  </div>
+  <div id="visibleCount" class="note" aria-live="polite"></div>
+  <div id="cards"><p class="empty">Đang chờ dữ liệu Work Order.</p></div>
+ </aside>
+</main>
+<script src="/app.js" defer></script>
+<script src="/owner-console.js" defer></script>
+<script src="/scene3d.js" defer></script>
+</body>
+</html>

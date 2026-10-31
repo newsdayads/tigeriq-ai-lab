@@ -1,8 +1,9 @@
 // @ts-nocheck
 import {describe,it,expect} from 'vitest';
-import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId,normalizeWorkItemLifecycle,executeCoreWorkItemLifecycle} from '../apps/tigeriq-core/campaign-runner.mjs';
+import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId,explicitJobRefsFromText,referencedJobEvidenceContext,referencedJobReviewExclusions,normalizeWorkItemLifecycle,executeCoreWorkItemLifecycle} from '../apps/tigeriq-core/campaign-runner.mjs';
 import {detectIdleWithBacklog} from '../apps/tigeriq-core/github-backlog-policy.mjs';
 import {runExecutionPreflight} from '../apps/tigeriq-core/execution-preflight.mjs';
+import {readFileSync} from 'node:fs';
 
 const phases=[
   {title:'Checkpoint',prompt:'Design durable resume',acceptance:'Resume without Owner'},
@@ -37,6 +38,52 @@ describe('API campaign runner and core lifecycle integration',()=>{
   it('uses one deterministic evidence job id per phase',()=>{
     expect(campaignEvidenceJobId('OBJ-123',1)).toBe('JOB-EVID-OBJ-123-P1');
     expect(campaignEvidenceJobId('OBJ-123',1)).toBe(campaignEvidenceJobId('OBJ-123',1));
+  });
+  it('extracts explicit job references deterministically and bounded',()=>{
+    expect(explicitJobRefsFromText('Review JOB-abc12345 then JOB-EVID-OBJ-123-P0 and JOB-abc12345')).toEqual(['JOB-abc12345','JOB-EVID-OBJ-123-P0']);
+    expect(explicitJobRefsFromText('none')).toEqual([]);
+  });
+  it('builds fail-closed referenced receipt context from DONE referenced jobs only',()=>{
+    const context=referencedJobEvidenceContext({
+      jobIds:['JOB-done-12345','JOB-failed-12345','JOB-missing-12345'],
+      jobs:[
+        {id:'JOB-done-12345',title:'implementation',kind:'compiled_ai',status:'done',employee_id:'NV10',resource_id:'RES-NV10',provider:'ollama',completed_at:'2026-10-31T00:00:00Z',result:{text:'verified output',executionGate:{pass:true,code:'EXECUTION_ACCEPTED',evidenceIds:['e1']}}},
+        {id:'JOB-failed-12345',title:'failed',kind:'compiled_ai',status:'failed',employee_id:'NV09',resource_id:'RES-NV09',provider:'ollama'},
+        {id:'JOB-unreferenced-12345',title:'other',kind:'compiled_ai',status:'done',employee_id:'NV08',resource_id:'RES-NV08',provider:'ollama'},
+      ],
+    });
+    expect(context).toContain('PRIOR_CAMPAIGN_HANDOFF_V1');
+    const payload=JSON.parse(context.slice('PRIOR_CAMPAIGN_HANDOFF_V1 '.length));
+    expect(payload.schema).toBe('TIGERIQ_REFERENCED_JOB_EVIDENCE_V1');
+    expect(payload.refs).toEqual(['JOB-done-12345','JOB-failed-12345','JOB-missing-12345']);
+    expect(payload.receipts.map(item=>item.id)).toEqual(['JOB-done-12345']);
+    expect(context).not.toContain('JOB-unreferenced-12345');
+  });
+  it('excludes implementer identities only from explicitly referenced DONE jobs',()=>{
+    expect(referencedJobReviewExclusions({
+      jobIds:['JOB-done-12345','JOB-failed-12345','JOB-missing-12345'],
+      jobs:[
+        {id:'JOB-done-12345',status:'done',employee_id:'nv10',resource_id:'RES-NV10'},
+        {id:'JOB-failed-12345',status:'failed',employee_id:'NV09',resource_id:'RES-NV09'},
+        {id:'JOB-unreferenced-12345',status:'done',employee_id:'NV08',resource_id:'RES-NV08'},
+      ],
+    })).toEqual({employeeIds:['NV10'],resourceIds:['RES-NV10']});
+  });
+  it('does not exclude a historical referenced reviewer as an implementer',()=>{
+    expect(referencedJobReviewExclusions({
+      jobIds:['JOB-IMPLEMENTER-12345','JOB-OLD-REVIEW-12345'],
+      jobs:[
+        {id:'JOB-IMPLEMENTER-12345',status:'done',capability:'reasoning',employee_id:'NV10',resource_id:'RES-NV10'},
+        {id:'JOB-OLD-REVIEW-12345',status:'done',capability:'review',employee_id:'NV09',resource_id:'RES-NV09'},
+      ],
+    })).toEqual({employeeIds:['NV10'],resourceIds:['RES-NV10']});
+  });
+  it('wires explicit referenced receipts into review job materialization only',()=>{
+    const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    expect(source).toContain("capability==='review'&&!campaignPriorContext");
+    expect(source).toContain('explicitJobRefsFromText(rawPrompt)');
+    expect(source).toContain('referencedJobEvidenceContext({jobIds:referencedJobIds,jobs:referencedJobs})');
+    expect(source).toContain("event('REFERENCED_JOB_EVIDENCE_ATTACHED'");
   });
   it('creates a durable phase checkpoint payload',()=>{
     const cp=makePhaseCheckpoint({currentPhase:1,phases,summary:'phase done',completedAt:'2026-09-18T00:00:00.000Z'});

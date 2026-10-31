@@ -22,7 +22,7 @@ const MAX_BROKER_WAIT_MS = 12000;
 const MAX_V020_SIGNER_WAIT_MS = 130000;
 const INTERNAL_V020_SIGNER_ACTION = 'pad_android_sign_v020';
 const INTERNAL_NV07_SESSION_PING = 'nv07_native_session_ping';
-const ALLOWED_KEYS = new Set(['ENTER', 'ESC', 'TAB', 'CTRL+A', 'CTRL+F', 'CTRL+N', 'F5']);
+const ALLOWED_KEYS = new Set(['ENTER', 'ESC', 'TAB', 'CTRL+A', 'CTRL+F', 'CTRL+N', 'CTRL+S', 'F5']);
 
 function cleanText(value, max, label) {
   if (value === undefined || value === null || value === '') return null;
@@ -36,6 +36,19 @@ export function assertPadUiRequest(raw = {}) {
   if (!PAD_UI_ACTION_SET.has(action)) throw new Error('TIGERIQ_PAD_ACTION_NOT_ALLOWED');
   const out = { action };
   if (raw.windowName !== undefined) out.windowName = cleanText(raw.windowName, 160, 'TIGERIQ_PAD_WINDOW_INVALID');
+  else if (raw.windowTitle !== undefined) out.windowName = cleanText(raw.windowTitle, 160, 'TIGERIQ_PAD_WINDOW_INVALID');
+  if (raw.processId !== undefined) {
+    const pid = Number(raw.processId);
+    if (!Number.isInteger(pid) || pid <= 0) throw new Error('TIGERIQ_PAD_PID_INVALID');
+    out.processId = pid;
+  }
+  if (raw.pid !== undefined && out.processId === undefined) {
+    const pid = Number(raw.pid);
+    if (!Number.isInteger(pid) || pid <= 0) throw new Error('TIGERIQ_PAD_PID_INVALID');
+    out.pid = pid;
+  }
+  if (raw.processName !== undefined) out.processName = cleanText(raw.processName, 100, 'TIGERIQ_PAD_SELECTOR_INVALID');
+  if (raw.className !== undefined) out.className = cleanText(raw.className, 100, 'TIGERIQ_PAD_SELECTOR_INVALID');
   if (raw.name !== undefined) out.name = cleanText(raw.name, 200, 'TIGERIQ_PAD_SELECTOR_INVALID');
   if (raw.automationId !== undefined) out.automationId = cleanText(raw.automationId, 200, 'TIGERIQ_PAD_SELECTOR_INVALID');
   if (raw.controlType !== undefined) out.controlType = cleanText(raw.controlType, 80, 'TIGERIQ_PAD_SELECTOR_INVALID');
@@ -59,7 +72,7 @@ export function assertPadUiRequest(raw = {}) {
     if (!ALLOWED_KEYS.has(key)) throw new Error('TIGERIQ_PAD_KEY_NOT_ALLOWED');
     out.key = key;
   }
-  if (['pad_invoke', 'pad_set_value', 'pad_click'].includes(action) && !out.name && !out.automationId) {
+  if (['pad_invoke', 'pad_set_value', 'pad_click'].includes(action) && !out.name && !out.automationId && !out.className && !out.controlType) {
     throw new Error('TIGERIQ_PAD_SELECTOR_REQUIRED');
   }
   if (action === 'pad_set_value' && (!Object.hasOwn(out, 'value') || out.value === null)) throw new Error('TIGERIQ_PAD_VALUE_REQUIRED');

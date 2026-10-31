@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { createServer } from 'node:http';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { createPcOperatorMcpHandler, PC_OPERATOR_MCP_TOOLS } from '../apps/tigeriq-core/pc-operator-mcp.mjs';
+import { createPcOperatorMcpHandler, PC_OPERATOR_MCP_TOOLS, pcOperatorTestRunSpec, pcOperatorWorkOrderResponse } from '../apps/tigeriq-core/pc-operator-mcp.mjs';
 
 function parseSsePayload(text) {
   const lines = text.split('\n');
@@ -234,7 +234,6 @@ describe('TigerIQ PC Operator MCP Server', () => {
     const port = server.address().port;
     try {
       const blockedCalls = [
-        { name: 'file_read', arguments: { path: 'D:\\TigerIQ\\State\\read.txt' } },
         { name: 'file_write', arguments: { path: 'D:\\TigerIQ\\State\\write.txt', content: 'NEVER_WRITTEN' } },
         { name: 'shell_exec', arguments: { command: 'echo MUST_NOT_EXECUTE' } },
         { name: 'ui_action', arguments: { action: 'pad_health' } },
@@ -624,5 +623,230 @@ describe('TigerIQ PC Operator MCP Server', () => {
     } finally {
       server.close();
     }
+  });
+
+  it('never treats serverAuthorized as a credential and requires per-request bearer', async () => {
+    const secret = 's'.repeat(32);
+    const handler = createPcOperatorMcpHandler({
+      serverAuthorized: true,
+      existingSecret: secret,
+      leaseDb: null,
+      executePcActionImpl: vi.fn().mockResolvedValue({ simulated: true }),
+    });
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url, 'http://localhost');
+      if (!(await handler(req, res, url))) res.writeHead(404).end();
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+    const testFile = 'D:\\TigerIQ\\State\\mcp-server-auth-test.txt';
+    const call = (name, args = {}, authorization = null) => fetch(`http://127.0.0.1:${port}/mcp`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(authorization ? { authorization } : {}),
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 50,
+        method: 'tools/call',
+        params: { name, arguments: args },
+      }),
+    });
+    try {
+      const denied = await call('file_write', { path: testFile, content: 'SHOULD_NOT_WRITE' });
+      expect(denied.status).toBe(401);
+      expect(denied.headers.get('www-authenticate')).toBe('Bearer');
+      expect(await denied.json()).toEqual({ ok: false, reason: 'MCP_PER_REQUEST_AUTH_REQUIRED' });
+      await expect(fs.stat(testFile)).rejects.toThrow();
+
+      const initDenied = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 51, method: 'initialize',
+          params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'anonymous', version: '1' } },
+        }),
+      });
+      expect(initDenied.status).toBe(401);
+
+      const authorization = 'Bearer ' + secret;
+      const accepted = await call('file_write', { path: testFile, content: 'PER_REQUEST_AUTH_OK' }, authorization);
+      expect(accepted.status).toBe(200);
+      const acceptedPayload = parseSsePayload(await accepted.text());
+      expect(acceptedPayload.ok).toBe(true);
+      expect(acceptedPayload.completedStepId).toBe('file_write');
+
+      const readBack = await fs.readFile(testFile, 'utf8');
+      expect(readBack).toBe('PER_REQUEST_AUTH_OK');
+    } finally {
+      server.close();
+      try { await fs.unlink(testFile); } catch {}
+    }
+  });
+
+  it('handles docker_status gracefully without throwing ENOENT', async () => {
+    const handler = createPcOperatorMcpHandler();
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url, 'http://localhost');
+      const handled = await handler(req, res, url);
+      if (!handled) res.writeHead(404).end();
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 60,
+          method: 'tools/call',
+          params: {
+            name: 'docker_status',
+            arguments: {},
+          },
+        }),
+      });
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).toContain('dockerAvailable');
+      expect(text).toContain('containerCount');
+    } finally {
+      server.close();
+    }
+  });
+
+  it('handles ui_window_list with structured window response', async () => {
+    const handler = createPcOperatorMcpHandler({
+      executePcActionImpl: async () => ({
+        ok: true,
+        data: {
+          result: [
+            { Name: 'Notepad', ProcessId: 1234, Process: 'notepad', X: 10, Y: 10, Width: 400, Height: 300 }
+          ]
+        }
+      })
+    });
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url, 'http://localhost');
+      const handled = await handler(req, res, url);
+      if (!handled) res.writeHead(404).end();
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 61,
+          method: 'tools/call',
+          params: {
+            name: 'ui_window_list',
+            arguments: {},
+          },
+        }),
+      });
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      expect(text).toContain('Notepad');
+      expect(text).toContain('brokerAvailable');
+    } finally {
+      server.close();
+    }
+  });
+
+  it('validates pad-ui request parameters for PID, windowTitle, className and CTRL+S', async () => {
+    const { assertPadUiRequest } = await import('../apps/openclaw-tigeriq-runtime/pad-ui.mjs');
+    expect(assertPadUiRequest({ action: 'pad_keys', key: 'CTRL+S' })).toEqual({ action: 'pad_keys', key: 'CTRL+S' });
+    expect(assertPadUiRequest({ action: 'pad_windows', windowTitle: 'Notepad', processId: 1234 })).toEqual({
+      action: 'pad_windows',
+      windowName: 'Notepad',
+      processId: 1234,
+    });
+    expect(assertPadUiRequest({ action: 'pad_set_value', className: 'Edit', value: 'Hello' })).toEqual({
+      action: 'pad_set_value',
+      className: 'Edit',
+      value: 'Hello',
+    });
+  });
+});
+
+
+describe('P0 GH-5417: native PC Operator test runner and Work Order diagnostics', () => {
+  it('runs Vitest suites with installed node.exe, not an npm .cmd shim', () => {
+    const spec = pcOperatorTestRunSpec('tests/github-coding-intake.test.mjs', {
+      runtimeRoot: 'D:\\TigerIQ\\Runtime\\CoreSource',
+      nodeExecutable: 'C:\\Program Files\\nodejs\\node.exe',
+      testSource: "import { describe, it, expect } from 'vitest';",
+    });
+    expect(spec.exe).toBe('C:\\Program Files\\nodejs\\node.exe');
+    expect(spec.runner).toBe('vitest');
+    expect(spec.runnerPath).toBe('D:\\TigerIQ\\Runtime\\CoreSource\\node_modules\\vitest\\vitest.mjs');
+    expect(spec.args).toEqual([
+      'D:\\TigerIQ\\Runtime\\CoreSource\\node_modules\\vitest\\vitest.mjs',
+      'run',
+      'tests/github-coding-intake.test.mjs',
+    ]);
+    expect(spec.cwd).toBe('D:\\TigerIQ\\Runtime\\CoreSource');
+    expect(spec.args.some(x => x.endsWith('.cmd'))).toBe(false);
+  });
+  it('ignores a quoted node:test import example inside a Vitest suite', () => {
+    const source = [
+      "import { describe, it, expect, vi } from 'vitest';",
+      "const fixture = \"import test from 'node:test';\";",
+      "// import test from 'node:test'; is documentation only",
+    ].join('\n');
+    const spec = pcOperatorTestRunSpec('tests/pc-operator-mcp.test.mjs', {testSource:source});
+    expect(spec.runner).toBe('vitest');
+    expect(spec.args[1]).toBe('run');
+  });
+  it('recognizes a real node:test import without mistaking comment strings', () => {
+    const source = [
+      "// import { describe } from 'vitest'; commented out",
+      "import test from 'node:test';",
+      "const fixture = \"import { describe } from 'vitest';\";",
+    ].join('\n');
+    const spec = pcOperatorTestRunSpec('tests/example.test.mjs', {testSource:source});
+    expect(spec.runner).toBe('node:test');
+    expect(spec.args).toEqual(['--test', 'tests/example.test.mjs']);
+  });
+  it('runs node:test suites with node --test instead of forcing Vitest', () => {
+    const spec = pcOperatorTestRunSpec('tests/pc-operator-oauth-policy.test.mjs', {
+      runtimeRoot: 'D:\\TigerIQ\\Runtime\\CoreSource',
+      nodeExecutable: 'C:\\Program Files\\nodejs\\node.exe',
+      testSource: "import test from 'node:test';",
+    });
+    expect(spec.exe).toBe('C:\\Program Files\\nodejs\\node.exe');
+    expect(spec.runner).toBe('node:test');
+    expect(spec.runnerPath).toBe('C:\\Program Files\\nodejs\\node.exe');
+    expect(spec.args).toEqual(['--test', 'tests/pc-operator-oauth-policy.test.mjs']);
+    expect(spec.args.some(x => x.endsWith('.cmd'))).toBe(false);
+  });
+  it('refuses an absolute path, traversal or executable outside tests/**', () => {
+    for (const testPath of ['D:\\unsafe\\test.js', '../secrets.test.mjs', 'tests/../secrets.test.mjs',
+      'tests//foo.test.mjs', 'apps/tigeriq-core/core.mjs', 'tests/foo.js', 'tests/nope.test.exe']) {
+      expect(() => pcOperatorTestRunSpec(testPath)).toThrow('MCP_TEST_PATH_NOT_ALLOWED');
+    }
+  });
+  it('turns plain-text Core 404 into a structured missing-work-order receipt', async () => {
+    await expect(pcOperatorWorkOrderResponse(new Response('not_found', {status:404}), '5417'))
+      .resolves.toEqual({workOrder:'5417',found:false,status:404,reason:'WORK_ORDER_NOT_FOUND'});
+  });
+  it('does not parse untrusted non-JSON Core failures', async () => {
+    await expect(pcOperatorWorkOrderResponse(new Response('unavailable', {status:503}), '5417'))
+      .resolves.toEqual({workOrder:'5417',found:false,status:503,reason:'CORE_WORK_ORDER_HTTP_ERROR'});
+    await expect(pcOperatorWorkOrderResponse(new Response('not json', {status:200}), '5417'))
+      .resolves.toEqual({workOrder:'5417',found:false,status:200,reason:'CORE_WORK_ORDER_INVALID_JSON'});
+  });
+  it('preserves valid Core JSON receipt unchanged', async () => {
+    await expect(pcOperatorWorkOrderResponse(new Response(JSON.stringify({ok:true,workOrderId:'WO-1'}), {status:200}), 'WO-1'))
+      .resolves.toEqual({workOrder:'WO-1',found:true,data:{ok:true,workOrderId:'WO-1'}});
   });
 });

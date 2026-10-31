@@ -1,0 +1,8 @@
+# GH-5135: V1 media are imported only into an authorized PRIVATE local build.
+# Never commit them to public GitHub without documented rights and independent review.
+app/src/main/res/drawable-nodpi/v2_road_city_day.*
+app/src/main/res/drawable-nodpi/v2_road_city_night.*
+app/src/main/res/drawable-nodpi/v2_logo_ultracar.*
+app/src/main/res/drawable-nodpi/v2_car_limo_do_parked.*
+app/src/main/res/drawable-nodpi/v2_car_lambogini_trang_parked.*
+app/src/main/res/raw/ultrabot_glow_packed.*

@@ -648,6 +648,12 @@ describe('GitHub Core intake guardrails',()=>{
     expect(openGate).toMatchObject({allow:false,reason:'dependency_not_terminal_accepted',dependency:2709,state:'open'});
     const closedGate=await githubTerminalDependencyGate(async()=>new Response(JSON.stringify({number:2709,state:'closed',state_reason:'completed'}),{status:200,headers:{'content-type':'application/json'}}),'newsdayads','tigeriq-ai-lab','fake',source,new Map());
     expect(closedGate).toMatchObject({allow:true,reason:'dependencies_terminal_accepted',dependencies:[2709]});
+    const invalidV2={number:2709,title:'[P1][CORE] V2 unaccepted child',created_at:'2026-10-26T00:00:00Z',
+      state:'closed',state_reason:'completed',body:'WORK_ORDER_LIFECYCLE=V2\nDONE=false\nCURRENT_STATE=READY'};
+    const invalidGate=await githubTerminalDependencyGate(
+      async()=>new Response(JSON.stringify(invalidV2),{status:200,headers:{'content-type':'application/json'}}),
+      'newsdayads','tigeriq-ai-lab','fake',source,new Map());
+    expect(invalidGate).toMatchObject({allow:false,reason:'dependency_lifecycle_v2_unaccepted',dependency:2709});
   });
 
   it('keeps a completed Core objective open when its canonical dependency is not terminal accepted',async()=>{
@@ -687,6 +693,17 @@ describe('GitHub Core intake guardrails',()=>{
     )};
     const baseline=githubIssueSourceRevision(base);
     expect(githubIssueSourceRevision(verified)).toBe(baseline);
+    // V2 acceptance auto-sync updates the checkbox, its appended receipt and
+    // the structured counter in ONE write, without rearming a new objective.
+    const countedBody=body.replace('CHECKLIST_RECEIPT_STABLE_REVISION=V2',
+      'CHECKLIST_RECEIPT_STABLE_REVISION=V2\nPROGRESS_SOURCE=STRUCTURED_PROGRESS_CHECKLIST\nPROGRESS_COMPLETED=0\nPROGRESS_TOTAL=1');
+    const countedAccepted=countedBody.replace('PROGRESS_COMPLETED=0','PROGRESS_COMPLETED=1')
+      .replace('- [ ] R02 — Verify package source and license.',
+        '- [x] R02 — Verify package source and license. — [Biên nhận nghiệm thu](https://github.com/newsdayads/tigeriq-ai-lab/issues/4780#issuecomment-1)');
+    expect(githubIssueSourceRevision({...base,body:countedAccepted})).toBe(
+      githubIssueSourceRevision({...base,body:countedBody}));
+    expect(githubIssueSourceRevision({...base,body:countedAccepted.replace('PROGRESS_COMPLETED=1','PROGRESS_COMPLETED=0')})).not.toBe(
+      githubIssueSourceRevision({...base,body:countedBody}));
     // Legacy tasks do not silently change their stored hashes on rollout.
     const legacyBase={...base,body:base.body.replace('CHECKLIST_RECEIPT_STABLE_REVISION=V2','')};
     const legacyVerified={...verified,body:verified.body.replace('CHECKLIST_RECEIPT_STABLE_REVISION=V2','')};

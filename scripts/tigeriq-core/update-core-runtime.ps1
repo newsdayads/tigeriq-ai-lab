@@ -44,6 +44,10 @@ $remoteDesktopTask='TigerIQ Desktop Commander Remote'
 $remoteDesktopRuntime='D:\TigerIQ\Runtime\desktop-commander-remote'
 $remoteDesktopLifecycleGeneration='20260930_TOPOLOGY_2'
 $remoteDesktopLifecycleState='D:\TigerIQ\State\rdc-lifecycle-generation.txt'
+$mcpGatewayServerPath='D:\TigerIQ\Runtime\McpFunnelGateway\server.mjs'
+$mcpGatewaySourcePath=(Join-Path $runtimeRepo 'scripts\tigeriq-core\mcp-funnel-gateway-runtime.mjs')
+$mcpGatewaySupervisorPaths=@('D:\TigerIQ\Runtime\McpFunnelGateway\run-mcp-gateway.cmd','D:\TigerIQ\Runtime\McpFunnelGateway\run-mcp-gateway.ps1')
+$mcpGatewayPort=8805
 $remoteDesktopGuardInstaller=(Join-Path $runtimeRepo 'apps\remote-desktop-guard\install-runtime.mjs')
 $updaterTask='TigerIQ Core Runtime Updater'
 $legacyAutonomySupervisorTask='TigerIQ Autonomy Supervisor V2'
@@ -647,6 +651,55 @@ function Stop-NodeProcessesByMatch([string]$match){
   $procs=Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue | Where-Object {$_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($m)}
   foreach($p in $procs){try{Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop}catch{}}
 }
+function Sync-McpFunnelGatewayRuntime(){
+  $backup=$mcpGatewayServerPath+'.previous'
+  if(-not(Test-Path -LiteralPath $mcpGatewaySourcePath)){
+    if(-not(Test-Path -LiteralPath $backup)){return @{action='blocked';reason='MCP_GATEWAY_CANONICAL_SOURCE_AND_BACKUP_MISSING'}}
+    $tmp=$mcpGatewayServerPath+'.tmp';Copy-Item -LiteralPath $backup -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $mcpGatewayServerPath -Force
+    return @{action='restored_previous';sha256=(Get-FileHash -LiteralPath $mcpGatewayServerPath -Algorithm SHA256).Hash}
+  }
+  New-Item -ItemType Directory -Path (Split-Path -Parent $mcpGatewayServerPath) -Force|Out-Null
+  $expected=(Get-FileHash -LiteralPath $mcpGatewaySourcePath -Algorithm SHA256).Hash
+  $actual=if(Test-Path -LiteralPath $mcpGatewayServerPath){(Get-FileHash -LiteralPath $mcpGatewayServerPath -Algorithm SHA256).Hash}else{''}
+  if($actual -eq $expected){return @{action='none';sha256=$expected}}
+  if(Test-Path -LiteralPath $mcpGatewayServerPath){Copy-Item -LiteralPath $mcpGatewayServerPath -Destination $backup -Force}
+  $tmp=$mcpGatewayServerPath+'.tmp';Copy-Item -LiteralPath $mcpGatewaySourcePath -Destination $tmp -Force;Move-Item -LiteralPath $tmp -Destination $mcpGatewayServerPath -Force
+  $verified=(Get-FileHash -LiteralPath $mcpGatewayServerPath -Algorithm SHA256).Hash
+  if($verified -ne $expected){return @{action='blocked';reason='MCP_GATEWAY_SYNC_HASH_MISMATCH'}}
+  return @{action='updated';sha256=$expected;backup=$backup}
+}
+function Get-McpFunnelGatewayTopology(){
+  $all=@(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+  $supervisors=@($all|Where-Object{if(-not $_.CommandLine){$false}else{$line=$_.CommandLine.ToLowerInvariant();[bool]@($mcpGatewaySupervisorPaths|Where-Object{$line.Contains($_.ToLowerInvariant())}).Count}})
+  $children=@($all|Where-Object{$_.Name -eq 'node.exe' -and $_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($mcpGatewayServerPath.ToLowerInvariant())})
+  @{supervisors=$supervisors;children=$children}
+}
+function Reconcile-McpFunnelGatewayRuntime([string]$installedSha){
+  if(-not(Test-Path -LiteralPath $mcpGatewayServerPath)){return @{action='skip';reason='MCP_GATEWAY_SERVER_MISSING'}}
+  $topology=Get-McpFunnelGatewayTopology;$supervisors=@($topology.supervisors);$children=@($topology.children)
+  if($supervisors.Count -ne 1 -or $children.Count -gt 1){return @{action='blocked';reason='MCP_GATEWAY_TOPOLOGY_UNVERIFIED';supervisors=$supervisors.Count;children=$children.Count}}
+  if($children.Count -eq 0){
+    $spawnDeadline=(Get-Date).AddSeconds(12)
+    while((Get-Date)-lt $spawnDeadline){
+      Start-Sleep -Milliseconds 500;$topology=Get-McpFunnelGatewayTopology;$supervisors=@($topology.supervisors);$children=@($topology.children)
+      if($supervisors.Count -ne 1 -or $children.Count -gt 1){return @{action='blocked';reason='MCP_GATEWAY_TOPOLOGY_UNVERIFIED';supervisors=$supervisors.Count;children=$children.Count}}
+      if($children.Count -eq 1){break}
+    }
+    if($children.Count -ne 1){return @{action='blocked';reason='MCP_GATEWAY_CHILD_RESPAWN_TIMEOUT';supervisors=$supervisors.Count;children=$children.Count}}
+  }
+  try{$meta=Get-Content -Raw -LiteralPath $runtimeSourceState|ConvertFrom-Json -ErrorAction Stop;$sourceAt=[DateTime]::Parse([string]$meta.updatedAt).ToUniversalTime()}catch{return @{action='blocked';reason='MCP_GATEWAY_SOURCE_STATE_INVALID'}}
+  $child=$children[0];$created=([DateTime]$child.CreationDate).ToUniversalTime()
+  if($created -ge $sourceAt -and (Test-TcpPort '127.0.0.1' $mcpGatewayPort)){return @{action='none';pid=[int]$child.ProcessId;installedSha=$installedSha}}
+  $oldPid=[int]$child.ProcessId;$started=(Get-Date).ToUniversalTime()
+  Stop-Process -Id $oldPid -Force -ErrorAction Stop
+  $deadline=(Get-Date).AddSeconds(30)
+  while((Get-Date)-lt$deadline){
+    Start-Sleep -Seconds 2;$topology=Get-McpFunnelGatewayTopology;$supervisors=@($topology.supervisors);$new=@($topology.children)
+    if($supervisors.Count -ne 1 -or $new.Count -gt 1){return @{action='blocked';reason='MCP_GATEWAY_TOPOLOGY_UNVERIFIED';supervisors=$supervisors.Count;children=$new.Count}}
+    if($new.Count -eq 1 -and [int]$new[0].ProcessId -ne $oldPid -and ([DateTime]$new[0].CreationDate).ToUniversalTime() -ge $started -and (Test-TcpPort '127.0.0.1' $mcpGatewayPort)){return @{action='restarted';pid=[int]$new[0].ProcessId;previousPid=$oldPid;installedSha=$installedSha;port=$mcpGatewayPort}}
+  }
+  return @{action='blocked';reason='MCP_GATEWAY_RESTART_UNVERIFIED';previousPid=$oldPid}
+}
 function Get-CorePid(){$p=Get-NodePidByMatch $corePath;if($p){return $p};return Get-NodePidByMatch $legacyCorePath}
 function Stop-CoreProcesses(){Stop-NodeProcessesByMatch $corePath;Stop-NodeProcessesByMatch $legacyCorePath}
 function Restart-Core($oldPid){
@@ -755,6 +808,7 @@ function Invoke-RuntimeRollback([string]$previousRuntimeSha,[string]$remote,[has
       $script:liveStatusBridgeSync=Sync-LiveStatusBridgeRuntime
       $script:liveStatusBridgeReconcile=Invoke-LiveStatusBridgeReconcile
       if($impact.updater){Sync-UpdaterRuntime}
+      $script:mcpGatewaySync=Sync-McpFunnelGatewayRuntime
     }
   }else{
     if($CanaryMode){throw 'ROLLBACK_CANARY_PREVIOUS_SHA_REQUIRED'}
@@ -777,6 +831,7 @@ function Invoke-RuntimeRollback([string]$previousRuntimeSha,[string]$remote,[has
     $restartActions.Add('openclaw')
     if(-not $CanaryMode -and (Task-Exists $openclawTask)){$null=Restart-OpenClawGateway;$rollbackTree=OpenClaw-TreeSha;if($rollbackTree){Save-OpenClawAppliedState $rollbackTree}}
   }
+  $mcpRollback=if(-not $CanaryMode){Reconcile-McpFunnelGatewayRuntime $previousRuntimeSha}else{$null}
   if($mcpViewTouched -and (Get-Command Restart-ApiHealthViewGateway -ErrorAction SilentlyContinue)){$null=Restart-ApiHealthViewGateway}
   return [ordered]@{
     previousRuntimeSha=$previousRuntimeSha
@@ -855,7 +910,7 @@ while($true){
     }
     if(Test-GithubApiBackoff){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='WAIT_GITHUB_API_RATE_LIMIT';candidateSha=$remote;installedSha=$local;githubApiBackoffUntil=$githubApiBackoffUntil.ToString('o');runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     if($runtimeExists){$local=Resolve-DeployedSourceSha $local $remote}
-    if($runtimeExists -and $local -eq $remote){if(Test-Path -LiteralPath $viewModule){. $viewModule;$null=Reconcile-ApiHealthViewSelfUpdate $local};$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeTaskBlueprint=$appChromeTaskBlueprintState;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    if($runtimeExists -and $local -eq $remote){if(Test-Path -LiteralPath $viewModule){. $viewModule;$null=Reconcile-ApiHealthViewSelfUpdate $local};$mcpGatewaySync=Sync-McpFunnelGatewayRuntime;$mcpGatewayReconcile=if([string]$mcpGatewaySync.action -eq 'blocked'){@{action='blocked';reason=[string]$mcpGatewaySync.reason}}else{Reconcile-McpFunnelGatewayRuntime $local};$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeTaskBlueprint=$appChromeTaskBlueprintState;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;mcpGatewaySync=$mcpGatewaySync;mcpGatewayReconcile=$mcpGatewayReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     $gateSha=Resolve-GateSha $remote
     if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
     [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
@@ -873,7 +928,7 @@ while($true){
       continue
     }
     $oldCore=HealthInfo 'http://100.97.23.87:8795/health';$oldPid=if($oldCore){[int]$oldCore.pid}else{$null}
-    $mcpViewTouched=$false;$mcpViewChanged=$false;$mcpViewReceipt=$null
+    $mcpViewTouched=$false;$mcpViewChanged=$false;$mcpViewReceipt=$null;$mcpGatewaySync=@{action='skip';reason='not_started'}
     Save-ReleaseAttempt $releaseApproval.requestId $remote $local 'STARTED'
     $previousRuntimeSha=$local
     try{
@@ -883,6 +938,8 @@ while($true){
       $liveStatusBridgeReconcile=Invoke-LiveStatusBridgeReconcile
       $remoteDesktopGuard=Reconcile-RemoteDesktopGuard
       Save-RuntimeSourceState $remote $previousRuntimeSha $gateSha
+      $mcpGatewaySync=Sync-McpFunnelGatewayRuntime
+      if([string]$mcpGatewaySync.action -eq 'blocked'){throw ('MCP_FUNNEL_GATEWAY_SYNC_FAILED:'+ [string]$mcpGatewaySync.reason)}
       Sync-Launchers
       $bootstrapWatchdog=Ensure-BootstrapWatchdogTask -AllowSourceRefresh
       if($impact.updater){Sync-UpdaterRuntime;$updaterTaskTarget=Ensure-UpdaterTaskRuntimeTarget}
@@ -892,6 +949,8 @@ while($true){
       if($impact.web){Sync-WebRuntime;$webHealth=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath;if(-not $webHealth){throw 'WEB_CONTROL_HEALTH_OR_PID_FAILED'}}
       if($impact.coding){$codingHealth=Restart-ServiceTask $codingTask 'http://127.0.0.1:8797/health' $codingPath $legacyCodingPath;if(-not $codingHealth){throw 'CODING_LANE_HEALTH_OR_PID_FAILED'}}
       if($impact.openclaw){$openclawHealth=Restart-OpenClawGateway;if(-not $openclawHealth){throw 'OPENCLAW_GATEWAY_HEALTH_FAILED'}}
+      $mcpGatewayReconcile=Reconcile-McpFunnelGatewayRuntime $remote
+      if([string]$mcpGatewayReconcile.action -eq 'blocked'){throw ('MCP_FUNNEL_GATEWAY_RECONCILE_FAILED:'+ [string]$mcpGatewayReconcile.reason)}
       if(Test-Path -LiteralPath $viewModule){. $viewModule;$null=Invoke-McpViewRelease $changed $remote}
       if($impact.openclaw){
         $tree=OpenClaw-TreeSha
@@ -912,7 +971,7 @@ while($true){
     if($impact.openclaw -and $null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}
     Save-ReleaseAttempt $releaseApproval.requestId $remote $previousRuntimeSha 'COMMITTED'
     if($mcpViewReceipt){Save-ApiHealthViewAppliedState $remote $mcpViewReceipt}
-    Save-State @{result='UPDATED';appChromeTaskBlueprint=$appChromeTaskBlueprintState;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;appChromeInstall=$appChromeInstall;installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;changedPaths=$changed;impact=$impact;updaterTaskTarget=$updaterTaskTarget;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};remoteDesktopGuard=$remoteDesktopGuard;webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
+    Save-State @{result='UPDATED';appChromeTaskBlueprint=$appChromeTaskBlueprintState;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;appChromeInstall=$appChromeInstall;installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;changedPaths=$changed;impact=$impact;updaterTaskTarget=$updaterTaskTarget;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};mcpGatewaySync=$mcpGatewaySync;mcpGatewayReconcile=$mcpGatewayReconcile;remoteDesktopGuard=$remoteDesktopGuard;webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
     if($impact.updater){Restart-UpdaterAfterExit;exit 75}
   }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
   finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}

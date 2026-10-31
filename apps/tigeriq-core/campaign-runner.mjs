@@ -28,6 +28,170 @@ export function currentCampaignGoal(objective, phases, currentPhase=0) {
   ].filter(Boolean).join('\n');
 }
 
+function campaignEvidenceText(value,max=700){
+  const raw=typeof value==='string'?value:JSON.stringify(value??null);
+  return String(raw||'').slice(0,Math.max(0,Number(max)||0));
+}
+
+export function explicitJobRefsFromText(value,{maxRefs=4}={}){
+  const limit=Math.max(1,Math.min(8,Number(maxRefs)||4));
+  const matches=String(value||'').match(/\bJOB-[A-Za-z0-9][A-Za-z0-9-]{5,}\b/g)||[];
+  return [...new Set(matches.map(item=>String(item).trim()).filter(Boolean))].slice(0,limit);
+}
+
+function referencedJobReceipt(job){
+  if(!job||job.status!=='done'||!String(job.id||'').trim())return null;
+  let result=job.result??null;
+  if(typeof result==='string'){
+    try{result=JSON.parse(result);}catch{}
+  }
+  return {
+    id:String(job.id),
+    title:String(job.title||'').slice(0,180),
+    kind:String(job.kind||''),
+    status:'done',
+    employeeId:String(job.employee_id||''),
+    resourceId:String(job.resource_id||''),
+    provider:String(job.provider||''),
+    completedAt:job.completed_at||null,
+    executionGate:result&&typeof result==='object'?{
+      pass:result?.executionGate?.pass===true,
+      code:String(result?.executionGate?.code||''),
+      evidenceIds:Array.isArray(result?.executionGate?.evidenceIds)?result.executionGate.evidenceIds.slice(0,8):[],
+    }:null,
+    resultText:campaignEvidenceText(result&&typeof result==='object'?result?.text:result,700),
+  };
+}
+
+export function referencedJobEvidenceContext({jobIds=[],jobs=[]}={}){
+  const refs=[...new Set((Array.isArray(jobIds)?jobIds:[]).map(item=>String(item||'').trim()).filter(Boolean))].slice(0,4);
+  if(!refs.length)return '';
+  const byId=new Map((Array.isArray(jobs)?jobs:[])
+    .map(job=>referencedJobReceipt(job))
+    .filter(Boolean)
+    .map(receipt=>[receipt.id,receipt]));
+  const receipts=refs.map(id=>byId.get(id)).filter(Boolean);
+  if(!receipts.length)return '';
+  const payload={
+    schema:'TIGERIQ_REFERENCED_JOB_EVIDENCE_V1',
+    refs,
+    receipts,
+  };
+  return `PRIOR_CAMPAIGN_HANDOFF_V1 ${JSON.stringify(payload)}`.slice(0,2600);
+}
+
+export function referencedJobReviewExclusions({jobIds=[],jobs=[]}={}){
+  const refs=new Set((Array.isArray(jobIds)?jobIds:[])
+    .map(item=>String(item||'').trim())
+    .filter(Boolean)
+    .slice(0,4));
+  if(!refs.size)return {employeeIds:[],resourceIds:[]};
+  const employeeIds=new Set(),resourceIds=new Set();
+  for(const job of (Array.isArray(jobs)?jobs:[])){
+    const id=String(job?.id||'').trim();
+    if(!id||!refs.has(id)||job?.status!=='done')continue;
+    // Reviewer independence protects against the implementer, not against a
+    // historical reviewer receipt referenced only as evidence.
+    if(String(job?.capability||'').trim().toLowerCase()==='review')continue;
+    const employeeId=String(job?.employee_id||'').trim().toUpperCase();
+    const resourceId=String(job?.resource_id||'').trim();
+    if(employeeId)employeeIds.add(employeeId);
+    if(resourceId)resourceIds.add(resourceId);
+  }
+  return {employeeIds:[...employeeIds],resourceIds:[...resourceIds]};
+}
+
+export function campaignPriorEvidenceContext({currentPhase=0,checkpoints=[],jobs=[]}={}){
+  const phaseIndex=Math.max(0,Number(currentPhase)||0);
+  if(phaseIndex<=0)return '';
+  const previousPhaseIndex=phaseIndex-1;
+  const checkpoint=(Array.isArray(checkpoints)?checkpoints:[])
+    .filter(item=>Number(item?.phaseIndex)===previousPhaseIndex)
+    .slice(-1)[0]||null;
+  const checkpointJobId=String(checkpoint?.jobId||'').trim();
+  const receipts=(Array.isArray(jobs)?jobs:[])
+    .filter(job=>job?.status==='done'&&Number(job?.phase_index)===previousPhaseIndex)
+    // Once a phase checkpoint exists, it is the canonical verified handoff.
+    // Do not leak older same-phase jobs from a prior recovery attempt into the
+    // next review prompt: reviewer independence would incorrectly exclude
+    // those historical workers/resources.
+    .filter(job=>!checkpointJobId||String(job?.id||'').trim()===checkpointJobId)
+    .slice(0,4)
+    .map(job=>{
+      let result=job?.result??null;
+      if(typeof result==='string'){
+        try{result=JSON.parse(result);}catch{}
+      }
+      return {
+        id:String(job?.id||''),
+        title:String(job?.title||'').slice(0,180),
+        kind:String(job?.kind||''),
+        employeeId:String(job?.employee_id||''),
+        resourceId:String(job?.resource_id||''),
+        provider:String(job?.provider||''),
+        completedAt:job?.completed_at||null,
+        executionGate:result&&typeof result==='object'?{
+          pass:result?.executionGate?.pass===true,
+          code:String(result?.executionGate?.code||''),
+          evidenceIds:Array.isArray(result?.executionGate?.evidenceIds)?result.executionGate.evidenceIds.slice(0,8):[],
+        }:null,
+        resultText:campaignEvidenceText(result&&typeof result==='object'?result?.text:result,700),
+      };
+    });
+  if(!checkpoint&&!receipts.length)return '';
+  const payload={
+    schema:'TIGERIQ_CAMPAIGN_PRIOR_EVIDENCE_V1',
+    previousPhaseIndex,
+    checkpoint:checkpoint?{
+      phaseIndex:Number(checkpoint?.phaseIndex),
+      phaseNumber:Number(checkpoint?.phaseNumber)||previousPhaseIndex+1,
+      phaseTitle:String(checkpoint?.phaseTitle||'').slice(0,180),
+      summary:String(checkpoint?.summary||'').slice(0,400),
+      jobId:String(checkpoint?.jobId||''),
+      employeeId:String(checkpoint?.employeeId||''),
+      resourceId:String(checkpoint?.resourceId||''),
+      completedAt:checkpoint?.completedAt||null,
+    }:null,
+    receipts,
+  };
+  return `PRIOR_CAMPAIGN_HANDOFF_V1 ${JSON.stringify(payload)}`.slice(0,2600);
+}
+
+export function repairCampaignReviewPrompt(prompt,priorContext,{maxChars=12000}={}){
+  const base=String(prompt||'').trim();
+  const context=String(priorContext||'').trim();
+  if(!base)return {changed:false,prompt:base,reason:'prompt_missing'};
+  if(!context)return {changed:false,prompt:base,reason:'prior_context_missing'};
+  const marker='\n\nAUTHORIZED PRIOR CAMPAIGN HANDOFF:\n';
+  const skillsMarker='\n\nACTIVE SKILLS (use only when relevant; never expand permissions):';
+  const limit=Math.max(1000,Math.min(12000,Number(maxChars)||12000));
+  const markerIndex=base.indexOf(marker);
+  if(markerIndex>=0){
+    const contextStart=markerIndex+marker.length;
+    const skillsIndex=base.indexOf(skillsMarker,contextStart);
+    const contextEnd=skillsIndex>=0?skillsIndex:base.length;
+    const currentContext=base.slice(contextStart,contextEnd).trim();
+    if(currentContext===context)
+      return {changed:false,prompt:base,reason:'prior_context_already_present'};
+    const prefix=base.slice(0,markerIndex);
+    const suffix=skillsIndex>=0?base.slice(skillsIndex):'';
+    const available=limit-prefix.length-marker.length-suffix.length;
+    if(available<256)return {changed:false,prompt:base,reason:'prompt_budget_exhausted'};
+    return {
+      changed:true,
+      prompt:`${prefix}${marker}${context.slice(0,available)}${suffix}`,
+      reason:'prior_context_replaced',
+    };
+  }
+  const available=limit-base.length-marker.length;
+  if(available<256)return {changed:false,prompt:base,reason:'prompt_budget_exhausted'};
+  return {
+    changed:true,
+    prompt:`${base}${marker}${context.slice(0,available)}`,
+    reason:'prior_context_appended',
+  };
+}
+
 export function campaignTransition({status,currentPhase=0,phases=[]}) {
   const list = Array.isArray(phases) ? phases : [];
   if (status === 'blocked') return { action:'blocked', terminal:true, nextPhase:null };

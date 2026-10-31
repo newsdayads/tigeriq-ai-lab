@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "product": "UltraCarHCM V1",
+  "channel": "TEST",
+  "packageName": "com.tigeriq.dexsplit",
+  "versionCode": 313,
+  "versionName": "TigerIQ_HCM_v1.0.72",
+  "alignedName": "UltraCar_v1.0.72_313_LayoutQuickCamera_aligned_TEST.apk",
+  "alignedSHA256": "CD68C3C45F240B11EBE4A867ABBC8EA54A6F1C298A8BBB41BA14AC7C8FA91E27",
+  "signedName": "UltraCar_v1.0.72_313_LayoutQuickCamera_signed_TEST.apk",
+  "driveName": "UltraCar_v1.0.72_TEST.apk",
+  "certificateSHA256": "71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558",
+  "signReceiptName": "UltraCar_v1.0.72_313_sign_receipt.json",
+  "candidateDraftTag": "ultracar-v1.0.72-test-candidate",
+  "releaseState": "CANDIDATE_UNSIGNED_NOT_PUBLISHED",
+  "sourceIssue": 5129
+}

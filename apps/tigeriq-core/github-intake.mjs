@@ -7,7 +7,7 @@ import { Pool } from 'pg';
 import { applyChatMutationOwnerHandoff, backlogOwnerControlled, backlogOwnerDirect, bodyValue as policyBodyValue, chatMutationOwnerPlan, isOwnerOnlyP0, routingFault, sortBacklogSpecs } from './github-backlog-policy.mjs';
 import { activeRoleClaim, classifyWorkOrder } from './work-routing-policy.mjs';
 import {validateWorkOrderLifecycleV2} from './work-order-lifecycle-v2.mjs';
-import {codingIssueCompletionGate} from '../shared/work-order-acceptance-sync.mjs';
+import {codingIssueCompletionGate,sourceTerminalDependencyAccepted} from '../shared/work-order-acceptance-sync.mjs';
 import {workOrderChecklistGate,workOrderChecklistSteps} from './work-order-checklist-hard-gate.mjs';
 import { SUPPORTED_PUBLIC_EVIDENCE_KEYS, appendPublicEvidenceToSummary, validatePublicEvidenceKeys } from './public-evidence.mjs';
 import { addTerminalBlockedLabel, clearTerminalBlockedLabel } from './github-lifecycle-label.mjs';
@@ -67,16 +67,30 @@ export function bodyValue(body,key){return policyBodyValue(body,key);}
 // authorization, resource scope, acceptance text and task content must still
 // change the revision and invalidate stale live-acceptance evidence.
 export function normalizeWorkOrderChecklistReceiptProgress(body=''){
-  return String(body||'').replace(
+  const source=String(body||'');
+  const normalized=source.replace(
     /^([ \t]*-[ \t]*)\[[ xX]\]([ \t]+)([^\r\n]*)(\r?)$/gm,
     (_line,leader,spacing,content,cr)=>{
       const instruction=content.replace(
-        /[ \t]+\[(?:Bằng chứng|Biên nhận|Evidence|Receipt)\]\(https:\/\/github\.com\/[^)\s]+\)[ \t]*$/iu,
+        /[ \t]+(?:—[ \t]+)?\[(?:Bằng chứng|Biên nhận|Biên nhận nghiệm thu|Bằng chứng nghiệm thu|Evidence|Receipt)\]\(https:\/\/github\.com\/[^)\s]+\)[ \t]*$/iu,
         '',
       );
       return `${leader}[ ]${spacing}${instruction}${cr}`;
     },
   );
+  // A validated checklist receipt and its counter are one acceptance state,
+  // not a new work instruction. Never normalize a drifting counter.
+  if(/^CHECKLIST_RECEIPT_STABLE_REVISION=V2$/m.test(source)
+    && /^PROGRESS_SOURCE=STRUCTURED_PROGRESS_CHECKLIST$/m.test(source)){
+    const steps=workOrderChecklistSteps(source);
+    const completed=[...source.matchAll(/^PROGRESS_COMPLETED=(\d+)$/gm)];
+    const total=[...source.matchAll(/^PROGRESS_TOTAL=(\d+)$/gm)];
+    if(steps.found && steps.steps.length>0 && completed.length===1 && total.length===1
+      && Number(completed[0][1])===steps.steps.filter(step=>step.checked).length
+      && Number(total[0][1])===steps.steps.length)
+      return normalized.replace(/^PROGRESS_COMPLETED=\d+$/m,'PROGRESS_COMPLETED=CHECKLIST_ACCEPTED_COUNT');
+  }
+  return normalized;
 }
 
 export function githubIssueSourceRevision(issue={}){
@@ -297,9 +311,9 @@ export async function githubTerminalDependencyGate(fetchImpl,owner,repo,token,so
     }
     const state=String(issue?.state||'unknown').toLowerCase();
     const stateReason=String(issue?.state_reason||'').toLowerCase();
-    const accepted=state==='closed'&&stateReason==='completed';
+    const accepted=sourceTerminalDependencyAccepted(issue);
     states.push({dependency,state,stateReason,accepted});
-    if(!accepted)return {allow:false,reason:'dependency_not_terminal_accepted',dependency,state,stateReason,...spec,states};
+    if(!accepted)return {allow:false,reason:state==='closed'&&stateReason==='completed'?'dependency_lifecycle_v2_unaccepted':'dependency_not_terminal_accepted',dependency,state,stateReason,...spec,states};
   }
   return {allow:true,reason:'dependencies_terminal_accepted',...spec,states};
 }
@@ -343,7 +357,7 @@ export async function reconcileSatisfiedDeclaredBlockers({fetchImpl=fetch,owner=
         const dep=await resolveGithubSourceIssue(fetchImpl,owner,repo,token,dependency,index);
         const state=String(dep?.state||'unknown').toLowerCase();
         const stateReason=String(dep?.state_reason||'').toLowerCase();
-        if(!(state==='closed'&&stateReason==='completed')){allAccepted=false;break;}
+        if(!sourceTerminalDependencyAccepted(dep)){allAccepted=false;break;}
       }catch(error){
         if(githubRateLimitCooldownMs(error)>0)throw error;
         allAccepted=false;break;
@@ -725,6 +739,14 @@ export function androidProductAutoExecutionExclusion(issue){
         'NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN'
     ].every((key)=>bodyValue(currentBody,key).toLowerCase()==='true')
     && bodyValue(currentBody,'APP_CHROME_MUTATION').toUpperCase()==='FORBIDDEN';
+  const ownerApprovedAutonomousAndroid=bodyValue(currentBody,'OWNER_APPROVED_AUTONOMOUS_ANDROID').toLowerCase()==='true'||
+    (bodyValue(currentBody,'AUTONOMOUS_CODE').toLowerCase()==='true'&&
+     bodyValue(currentBody,'OWNER_POLICY').toUpperCase()==='AUTO'&&
+     bodyValue(currentBody,'AUTO_QUEUE').toUpperCase()==='INCLUDED'&&
+     bodyValue(currentBody,'TIGERIQ_EXECUTABLE').toLowerCase()==='true'&&
+     ['NO_PAID_COST','NO_CREDENTIAL_CHANGE','NO_SECURITY_BOUNDARY_CHANGE','NO_DESTRUCTIVE','NO_PRODUCTION_RELEASE','NO_DIRECT_MAIN'
+     ].every((key)=>bodyValue(currentBody,key).toLowerCase()==='true'));
+  if(ownerApprovedAutonomousAndroid)return '';
   if(ownerApprovedNv102P2)return '';
   if(/\[ANDROID\]/i.test(title)||resourceScope.startsWith('ANDROID_'))return 'ANDROID_PRODUCT_OWNER_DIRECT';
   if(!/\[MOBILE-WORKER\]/i.test(title))return '';

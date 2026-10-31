@@ -1,0 +1,540 @@
+{
+  "schema": "tigeriq.ultracarhcm-v2.f01-f22-source-matrix.v2",
+  "workOrder": "GH-5135",
+  "baseline": {
+    "pullRequest": "https://github.com/newsdayads/tigeriq-ai-lab/pull/5146",
+    "note": "Expected behavior comes from the verified static baseline/parity contract; this matrix records only current V2 source coverage and never converts source presence into runtime acceptance."
+  },
+  "statuses": [
+    "PARTIAL_SOURCE",
+    "SOURCE_IMPLEMENTED_DEVICE_REQUIRED",
+    "NOT_IMPLEMENTED"
+  ],
+  "acceptanceRule": "No row is PASS/ACCEPTED from source evidence alone. Hardware/media/runtime gates remain separate.",
+  "features": [
+    {
+      "id": "F01",
+      "expected": "UltraCar cockpit/home illustrated dashboard with V1 proportions/background/sidebar/shortcuts in DeX",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt"
+      ],
+      "gap": "Home shell exists, but original six governed media are not legally staged and screenshot parity is not accepted.",
+      "actual": "HomeActivity renders the V2 cockpit shell with governed background/logo/vehicle resource references, clock, settings and shortcut grid.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "HomeActivity.render"
+      ],
+      "permissions": []
+    },
+    {
+      "id": "F02",
+      "expected": "Vehicle card/model/color selection, parked/moving images and license plate",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleRules.kt"
+      ],
+      "gap": "Two verified source vehicle choices, local model/color selection and license-plate display are implemented; full V1 branded card styling, moving-state behavior and real-media parity remain open.",
+      "actual": "VehicleActivity lets the user choose between the two existing source vehicle choices (Limo đỏ and Lamborghini trắng) and store a bounded local license plate. It writes the legacy limo boolean for migration compatibility, and Home renders the selected parked vehicle plus the saved plate.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "HomeActivity.render",
+        "HomeActivity.showSettings",
+        "VehicleActivity.selectModel",
+        "VehicleRules.currentModel",
+        "VehicleRules.normalizeLicensePlate"
+      ],
+      "permissions": []
+    },
+    {
+      "id": "F03",
+      "expected": "Real USB Host UVC streaming, image controls and USB permission lifecycle",
+      "status": "SOURCE_IMPLEMENTED_DEVICE_REQUIRED",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbCameraActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UvcRecoveryRules.kt",
+        "tests/ultracarhcm-v2/camera-runtime-permission-source.test.ts"
+      ],
+      "gap": "Runtime CAMERA permission is now a fail-visible gate before any UVC controller start; USB-device permission remains device-scoped in the UVC library. Real USB camera grant/preview/reconnect behavior still requires physical-device acceptance.",
+      "actual": "UsbCameraActivity checks android.permission.CAMERA before calling UsbUvcController.start(), requests the Android runtime permission through the system prompt only, keeps denial visible, and allows the user to retry. UsbUvcController separately discovers USB video-class devices, requests device permission through the UVC library, opens preview, and performs bounded recovery for a still-attached device.",
+      "testStatus": "DEVICE_QA_NOT_TESTED",
+      "entryPoints": [
+        "UsbCameraActivity.onCreate",
+        "UsbCameraActivity.openCamera",
+        "UsbCameraActivity.onRequestPermissionsResult",
+        "UsbUvcController.start",
+        "UsbUvcController.beginPreview",
+        "UsbUvcController.scheduleRecovery",
+        "UvcRecoveryRules.shouldSchedule"
+      ],
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.hardware.usb.host"
+      ]
+    },
+    {
+      "id": "F04",
+      "expected": "Separate camera window with manual open/close while preserving real camera video",
+      "status": "SOURCE_IMPLEMENTED_DEVICE_REQUIRED",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbCameraActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/CameraDisplayRules.kt"
+      ],
+      "gap": "Separate window, manual toggle and display-affinity source exist; real USB video/device behavior and cross-display runtime acceptance remain unaccepted.",
+      "actual": "UsbCameraActivity keeps same-display shortcut taps as a toggle, but when a camera window exists on another display it requests a dedicated camera task on the requested display and closes the stale window only after the display-specific launch succeeds.",
+      "testStatus": "DEVICE_QA_NOT_TESTED",
+      "entryPoints": [
+        "UsbCameraActivity.toggleFromShortcut",
+        "UsbCameraActivity.toggle"
+      ],
+      "permissions": []
+    },
+    {
+      "id": "F05",
+      "expected": "Reverse signal plus 0.5m/1.0m/1.5m parking guide activation and calibration",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbCameraActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DynamicGuideView.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeLayoutRules.kt",
+        "tests/ultracarhcm-v2/dex-narrow-home-source.test.ts"
+      ],
+      "gap": "Owner private Drive video IMG_7926.MOV verifies a tall narrow UltraCar panel beside Maps and reverse-camera windows on DeX. V2 now has an evidence-backed narrow HOME panel, but automatic Samsung window sizing/placement, verified vehicle reverse-signal input, guide calibration and real-device acceptance remain open.",
+      "actual": "HomeActivity switches to a dedicated narrow DeX HOME panel only when its own desktop window is tall/narrow. The panel preserves V2 logo/background/clock/vehicle and bounded Google Maps, Camera USB and Settings actions without claiming control of other app windows. Existing reverse-guide source remains intent-fed and uncalibrated.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "UsbCameraActivity.applyReverseGuideIntent",
+        "UsbCameraActivity.updateGuideVisibility",
+        "DynamicGuideView"
+      ],
+      "permissions": []
+    },
+    {
+      "id": "F06",
+      "expected": "Exactly one draggable transparent DeX Camera shortcut with the same action as in-app Camera",
+      "status": "SOURCE_IMPLEMENTED_DEVICE_REQUIRED",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexUtils.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/CameraDisplayRules.kt"
+      ],
+      "gap": "Single transparent draggable shortcut plus explicit camera display-affinity source exist; DeX display routing still requires real-device QA.",
+      "actual": "OverlayService creates one transparent draggable camera ImageButton on the resolved external display. UsbCameraActivity only reuses a camera already on that display, relaunches to the requested display when needed, and refuses an unspecified-display fallback if explicit display launch fails.",
+      "testStatus": "DEVICE_QA_NOT_TESTED",
+      "entryPoints": [
+        "OverlayService.update",
+        "UsbCameraActivity.toggleFromShortcut",
+        "CameraDisplayRules.shouldToggleExisting",
+        "CameraDisplayRules.needsDedicatedTask",
+        "CameraDisplayRules.allowUnspecifiedFallback"
+      ],
+      "permissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
+    },
+    {
+      "id": "F07",
+      "expected": "DeX auto-launch, multiple displays, freeform windows, zone overlays and layout persistence",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexUtils.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayPositionRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexDockReceiver.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexDockRules.kt"
+      ],
+      "gap": "Samsung DeX receiver is now exported for actual system broadcast delivery and validates real desktop/external-display state before acting; OEM background-activity launch behavior, full zone orchestration and real-device acceptance remain open.",
+      "actual": "DexUtils detects desktop/external displays; OverlayService follows display changes with per-display persistence; the exported DexDockReceiver can receive Samsung ENTER/EXIT_KNOX_DESKTOP_MODE broadcasts, launches V2 Home only when a real external DeX display exists, and ignores EXIT while external DeX is still active before stopping the V2 overlay.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "DexUtils.isDesktop",
+        "DexUtils.resolveDisplay",
+        "OverlayService.update",
+        "OverlayService.onDisplayAdded",
+        "OverlayService.onDisplayChanged",
+        "OverlayService.onDisplayRemoved",
+        "OverlayPositionRules.clamp",
+        "DexDockReceiver.onReceive",
+        "DexDockRules.shouldLaunchHome",
+        "DexDockRules.shouldStopOverlay"
+      ],
+      "permissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
+    },
+    {
+      "id": "F08",
+      "expected": "Multi-zone/slot dashboard management with saved/default layouts and relaunch",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeConfigRules.kt"
+      ],
+      "gap": "Local saved/default Home state is versioned and recovered safely, now including canonical V2 vehicle model and license plate; full V1 multi-zone orchestration remains absent.",
+      "actual": "HomeActivity saves/applies/removes versioned local Home configurations containing theme, canonical vehicle model, license plate, driver and nine quick slots; schema v3 reads legacy schemas 0–2, normalizes the legacy limo flag into the canonical model, and restores the default on app creation with corrupt/future-state cleanup.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "HomeActivity.saveHomeConfiguration",
+        "HomeActivity.showSaved",
+        "HomeActivity.applyHomeConfiguration",
+        "HomeActivity.applyDefaultHomeConfiguration"
+      ],
+      "permissions": []
+    },
+    {
+      "id": "F09",
+      "expected": "Road/city/theme/day/night/video/custom image Home backgrounds",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/AppearanceActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/AppearanceRules.kt"
+      ],
+      "gap": "Verified day/night backgrounds plus user-selected image/video backgrounds are implemented without broad storage permission; exact V1 theme catalog/media parity and real-device video/background acceptance remain open.",
+      "actual": "AppearanceActivity uses Android Storage Access Framework to persist a user-selected image or video URI. HomeActivity renders that URI as the Home background with muted looping video and falls back to governed day/night media if the grant is invalid. No original V1 media rights are inferred.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "HomeActivity.renderBackground",
+        "AppearanceActivity.persistCustomBackground",
+        "AppearanceActivity.clearCustomBackground",
+        "AppearanceRules.kindForMime"
+      ],
+      "permissions": []
+    },
+    {
+      "id": "F10",
+      "expected": "Shortcut bar/map applications and bottom actions/image/music",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/QuickBarCompose.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/QuickSlotRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "tests/ultracarhcm-v2/quickbar-source.test.ts"
+      ],
+      "gap": "Nine assignable/launchable slots exist. Device QA found that a cleared Camera USB assignment could later reappear after force-stop/relaunch, so quick-slot writes are now synchronously committed and surfaced as failure if persistence fails. Full V1 bottom-zone behavior/parity remains open.",
+      "actual": "QuickBarGrid renders exactly nine slots in three rows; long press assigns/removes supported presets or package targets and click launches package/camera targets. saveQuickSlot now synchronously commits the bounded nine-slot JSON before rendering success, preventing a UI-only clear/assignment from being presented as durable when disk persistence failed.",
+      "testStatus": "DEVICE_QA_NOT_TESTED",
+      "entryPoints": [
+        "HomeActivity.saveQuickSlot",
+        "HomeActivity.renderQuickBar",
+        "HomeActivity.showQuickSlotEditor",
+        "HomeActivity.launchQuickSlot",
+        "QuickBarGrid"
+      ],
+      "permissions": []
+    },
+    {
+      "id": "F11",
+      "expected": "GPS, battery/weather/telemetry and diagnostics zone",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TelemetryActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TelemetryRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml"
+      ],
+      "gap": "Real Android battery and foreground GPS diagnostics are implemented in source; weather provider, full V1 telemetry presentation and real-device location acceptance remain open.",
+      "actual": "TelemetryActivity reads sticky Android battery state, requests foreground fine/coarse location permission, shows the freshest last-known GPS/network location and requests one fresh fix from an enabled provider. Weather is explicitly left unconnected until a verified V1/provider contract exists.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "HomeActivity.showSettings",
+        "TelemetryActivity.onCreate",
+        "TelemetryActivity.refreshBattery",
+        "TelemetryActivity.refreshLocation",
+        "TelemetryActivity.onLocationChanged"
+      ],
+      "permissions": [
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ]
+    },
+    {
+      "id": "F12",
+      "expected": "OBD/Bluetooth pairing, speed/rpm/battery and diagnostics",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ObdActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ObdProtocol.kt",
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml"
+      ],
+      "gap": "Paired-device selection, RFCOMM OBD session and speed/RPM/adapter-voltage parsing are implemented in source; actual adapter pairing/connection, vehicle compatibility and real telemetry acceptance require device/vehicle QA.",
+      "actual": "ObdActivity opens system Bluetooth settings for pairing, lists already bonded devices with Android runtime BLUETOOTH_CONNECT permission, connects by RFCOMM SPP, initializes a generic OBD adapter, then queries vehicle speed, engine RPM and adapter voltage. ObdProtocol parses the returned values without claiming V1 UI parity.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "TelemetryActivity.buildContent",
+        "ObdActivity.requestDeviceSelection",
+        "ObdActivity.showPairedDevices",
+        "ObdActivity.connect",
+        "ObdActivity.queryTelemetry",
+        "ObdProtocol.parseSpeedKph",
+        "ObdProtocol.parseRpm",
+        "ObdProtocol.parseVoltage"
+      ],
+      "permissions": [
+        "android.permission.BLUETOOTH_CONNECT"
+      ]
+    },
+    {
+      "id": "F13",
+      "expected": "Taxi meter, trip distance/time/rates/history/revenue",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TaxiMeterActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TaxiMeterRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml"
+      ],
+      "gap": "Foreground GPS trip distance/time, Owner-configured rate, local trip history and revenue are implemented in source; real-device GPS accuracy, V1 tariff semantics/UI parity and long-trip behavior are not accepted.",
+      "actual": "TaxiMeterActivity tracks foreground-only elapsed time and GPS distance, requires an explicit Owner-entered VND/km rate, calculates distance-based fare, and stores a bounded local V2 trip history with recorded revenue. No V1 tariff is guessed.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "TelemetryActivity.buildContent",
+        "TaxiMeterActivity.startTrip",
+        "TaxiMeterActivity.onLocationChanged",
+        "TaxiMeterActivity.finishTrip",
+        "TaxiMeterRules.segmentMeters",
+        "TaxiMeterRules.fareVnd"
+      ],
+      "permissions": [
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ]
+    },
+    {
+      "id": "F14",
+      "expected": "Profile, identity/license, greeting and registration/extension",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt"
+      ],
+      "gap": "Local driver profile display name and runtime app version header are implemented from verified V1 profile evidence; identity/license backend, registration/extension and full responsive V1 profile-card parity remain unverified and are intentionally not fabricated.",
+      "actual": "ProfileActivity shows the real installed V2 version/build, edits the same device-local driver display name used by Home, and explicitly leaves license/registration unavailable until a verified backend contract exists.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "HomeActivity.showSettings",
+        "ProfileActivity.onCreate",
+        "ProfileRules.normalizeDisplayName",
+        "ProfileRules.versionLabel"
+      ],
+      "permissions": []
+    },
+    {
+      "id": "F15",
+      "expected": "User/notification tabs and independent update checking",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UpdateActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UpdateRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/res/values/strings.xml",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/NotificationActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/NotificationRules.kt",
+        "apps/ultracarhcm-v2/release/update-channel.json",
+        "tests/ultracarhcm-v2/update-channel-source.test.ts"
+      ],
+      "gap": "Kênh metadata V2 TEST hiện đã được cấu hình tới tệp canonical trên GitHub main và fail-closed với releaseAvailable=false cho đến khi có APK V2 TEST ký số được phát hành. Remote push/backend, publication của signed APK, cài đặt trên thiết bị và exact V1 notification parity vẫn chưa nghiệm thu.",
+      "actual": "ProfileActivity tách CẬP NHẬT và THÔNG BÁO. UpdateActivity chỉ tin endpoint metadata V2 TEST canonical, chấp nhận trạng thái no-release không có apkUrl/sha256, và khi releaseAvailable=true chỉ chấp nhận URL GitHub release tag UltraCarHCM V2 cùng SHA-256 hợp lệ trước khi tải/kiểm toàn vẹn. Kênh hiện công khai build dev.11 nhưng không cung cấp APK, không dùng preview1 bị loại và không tự cài đặt.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "ProfileActivity.buildContent",
+        "UpdateActivity.checkForUpdate",
+        "UpdateActivity.fetchMetadata",
+        "UpdateRules.validateMetadata",
+        "UpdateRules.hasNewerVersion",
+        "UpdateActivity.recordUpdateNotice",
+        "NotificationActivity.onResume",
+        "NotificationActivity.refresh",
+        "NotificationRules.shouldReplaceNotice",
+        "NotificationRules.isResolvedNotice",
+        "UpdateActivity.downloadAndVerify",
+        "UpdateActivity.fetchAndVerifyPayload",
+        "UpdateRules.matchesExpectedSha256"
+      ],
+      "permissions": [
+        "android.permission.INTERNET"
+      ]
+    },
+    {
+      "id": "F16",
+      "expected": "Backup/export/import/restore all user settings/images/layout/shortcuts/sound/vehicle with security-bound exclusions",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeBackupRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TaxiMeterRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayPositionRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleRules.kt"
+      ],
+      "gap": "Backup schema v4 now includes bounded V2-owned Taxi Meter configured rate and up to 100 validated trip records in addition to Home state, quick slots, saved/default configs, per-display DeX positions, day/night, driver, vehicle model and license plate. Schemas 1–3 remain readable without mutating Taxi Meter state. Device/provider-bound custom background grants, V1 images/sound/other unimplemented feature data and real-device acceptance remain open.",
+      "actual": "HomeActivity exports schema v4 through SAF and validates the complete payload before preference writes. Taxi Meter restore requires exact scalar types, a valid configured rate, bounded history length and valid startedAt/duration/distance/rate/fare values; legacy schemas 1–3 preserve existing Taxi Meter prefs. No V1 data, credentials or broad storage permission are included.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "HomeActivity.exportHomeBackupJson",
+        "HomeActivity.exportTaxiMeterBackup",
+        "HomeActivity.validatedTaxiHistoryForBackup",
+        "HomeActivity.writeHomeBackup",
+        "HomeActivity.readHomeBackup",
+        "HomeActivity.importHomeBackupJson",
+        "HomeBackupRules.requiresTaxiMeterState",
+        "TaxiMeterRules.validRateVndPerKm"
+      ],
+      "permissions": []
+    },
+    {
+      "id": "F17",
+      "expected": "Language/theme/appearance/color palettes",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/AppearanceActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/AppearanceRules.kt"
+      ],
+      "gap": "Appearance now has a dedicated surface for the verified day/night mode and custom user media; V1 language mapping and color-palette semantics are still unverified and intentionally not invented.",
+      "actual": "Home settings opens AppearanceActivity. It changes the existing day/night preference and manages user-selected custom image/video backgrounds while explicitly leaving language and V1 palette parity open.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "HomeActivity.showSettings",
+        "AppearanceActivity.onCreate",
+        "AppearanceActivity.refreshStatus",
+        "AppearanceRules.modeLabel"
+      ],
+      "permissions": []
+    },
+    {
+      "id": "F18",
+      "expected": "Administrative/licensing/customer activation/device registration where legitimately available",
+      "status": "NOT_IMPLEMENTED",
+      "sourceEvidence": [],
+      "gap": "No corresponding V2 administrative/licensing implementation found.",
+      "actual": "No scoped V2 administrative/licensing/customer activation/device-registration implementation is present.",
+      "testStatus": "NOT_TESTED_NO_IMPLEMENTATION",
+      "entryPoints": [],
+      "permissions": []
+    },
+    {
+      "id": "F19",
+      "expected": "Data export/reporting sheets where supported by V1",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TaxiMeterActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ReportActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ReportRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt"
+      ],
+      "gap": "A dedicated V2 report hub now summarizes V2-owned Taxi Meter trip count, distance, duration and recorded revenue and exports CSV through Storage Access Framework. Exact V1 XLS/report templates, dashboards and other feature-domain exports remain unverified and are not claimed.",
+      "actual": "ProfileActivity opens ReportActivity, which reads only bounded local V2 Taxi Meter history, shows aggregate trip/revenue/distance/time plus recent trips, and exports stable UTF-8 BOM CSV through a user-selected SAF destination. It requests no broad storage permission and does not export credentials or V1 data.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "ProfileActivity.buildContent",
+        "ReportActivity.refresh",
+        "ReportActivity.writeCsv",
+        "ReportRules.summary",
+        "ReportRules.buildCsv",
+        "TaxiMeterActivity.writeTripReport"
+      ],
+      "permissions": []
+    },
+    {
+      "id": "F20",
+      "expected": "Permissions for camera/USB/geolocation/overlay/update package/privacy/error recovery",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbCameraActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TelemetryActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ObdActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/PrivacyActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/PrivacyRules.kt",
+        "tests/ultracarhcm-v2/camera-runtime-permission-source.test.ts"
+      ],
+      "gap": "Runtime source now includes a fail-visible CAMERA gate before UVC startup plus user-visible location/Bluetooth/overlay permission state and OS settings links. USB device permission stays separate. Package installation permission/channel, privacy-policy parity and full real-device validation remain incomplete.",
+      "actual": "UsbCameraActivity requests CAMERA only through the Android runtime prompt and never starts UVC before grant; denial remains visible and user-retryable. PrivacyActivity reports runtime permission state without auto-granting. Existing USB/location/Bluetooth recovery remains source-covered. UpdateActivity verifies downloaded candidate bytes against metadata SHA-256 without redirects and without invoking an installer; no REQUEST_INSTALL_PACKAGES permission or automatic install path is added.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "AndroidManifest.xml",
+        "UsbCameraActivity.openCamera",
+        "UsbCameraActivity.onRequestPermissionsResult",
+        "PrivacyActivity.onResume",
+        "PrivacyActivity.refreshStatus",
+        "PrivacyRules.statusLabel",
+        "UsbUvcController.start",
+        "TelemetryActivity.refreshLocation",
+        "ObdActivity.requestDeviceSelection",
+        "UpdateActivity.fetchAndVerifyPayload",
+        "UpdateRules.matchesExpectedSha256"
+      ],
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.INTERNET",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.BLUETOOTH_CONNECT"
+      ]
+    },
+    {
+      "id": "F21",
+      "expected": "Responsive portrait/phone/landscape/DeX two/three-column profile cards without clipping",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileLayoutRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml"
+      ],
+      "gap": "Profile source now reflows one/two/three columns by width for compact phone, landscape/tablet and wide DeX, but exact V1 card styling and real-device clipping acceptance are still open.",
+      "actual": "ProfileActivity groups local profile, runtime version/update, fail-closed identity/license status, and V2 trip reporting into responsive cards. ProfileLayoutRules uses 1 column below 600dp, 2 columns at 600–959dp and 3 columns at 960dp+; Android recreation on configuration changes rebuilds the layout.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "HomeActivity.onConfigurationChanged",
+        "ProfileActivity.onCreate",
+        "ProfileActivity.buildContent",
+        "ProfileLayoutRules.columnsForWidthDp"
+      ],
+      "permissions": []
+    },
+    {
+      "id": "F22",
+      "expected": "Crash/restart, offline/backups, migration, coexistence, signing and rollback",
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeBackupRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TaxiMeterRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/RecoveryActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/RecoveryRules.kt"
+      ],
+      "gap": "Local migration/recovery and schema-v4 backup source now preserve bounded V2 Taxi Meter history as well as Home state while keeping schemas 1–3 backward compatible. Recovery reports current signing identity correctly, but actual signed release provenance, downgrade/rollback execution and real-device recovery acceptance remain open.",
+      "actual": "V2 has an independent package, lifecycle/UVC cleanup, versioned Home-state migration and a bounded SAF backup envelope that can restore validated V2 Taxi Meter rate/history without touching legacy Taxi state when reading older schemas. RecoveryActivity reads real installed package/version/current signing identity; no installer protections are bypassed.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "AndroidManifest.xml",
+        "HomeActivity.onStop",
+        "HomeActivity.onDestroy",
+        "UsbUvcController.stop",
+        "RecoveryActivity.onCreate",
+        "RecoveryActivity.installedIdentity",
+        "RecoveryActivity.signingSha256",
+        "RecoveryRules.hex",
+        "RecoveryRules.isExpectedPackageName",
+        "RecoveryRules.formatSigningSha256"
+      ],
+      "permissions": []
+    }
+  ],
+  "testStatuses": [
+    "SOURCE_ONLY_NOT_ACCEPTED",
+    "DEVICE_QA_NOT_TESTED",
+    "NOT_TESTED_NO_IMPLEMENTATION"
+  ]
+}

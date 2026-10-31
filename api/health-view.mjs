@@ -107,7 +107,13 @@ export default async function handler(req, res) {
   if (!origin || !/^https:\/\/[a-z0-9.-]+\.ts\.net(?::443)?\/?$/i.test(origin) || !key || key.length < 32) {
     res.status(503).send('HEALTH_VIEW_NOT_CONFIGURED'); return;
   }
-  const target = new URL(path, origin);
+  // The public port 443 serves OAuth MCP at /; the read-only viewer is mounted
+  // on an independently bearer-gated Funnel path, without changing MCP routes.
+  const viewPrefix=String(process.env.TIGERIQ_HEALTH_VIEW_PATH_PREFIX||'');
+  if(viewPrefix && !/^\/[a-z0-9-]{1,48}$/.test(viewPrefix)){
+    res.status(503).send('HEALTH_VIEW_PATH_INVALID');return;
+  }
+  const target = new URL(viewPrefix + path, origin);
   if (path === '/api/work-history') {
     const number = String(req.query?.number || '');
     if (!/^[1-9]\d{0,7}$/.test(number)) { res.status(400).send('invalid_number'); return; }

@@ -1,5 +1,5 @@
 import { randomUUID, timingSafeEqual, createHash } from 'node:crypto';
-import { promises as fs } from 'node:fs';
+import { promises as fs, existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -7,6 +7,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import pg from 'pg';
 import { z } from 'zod';
+import { authorizeVerifiedTool } from './pc-operator-oauth-policy.mjs';
 import { executePcAction } from '../openclaw-tigeriq-runtime/operator.mjs';
 import {
   acquireSharedResourceLease,
@@ -113,7 +114,10 @@ function nativeOk(action, receipt) {
       && data?.container?.attempted === true
       && data?.container?.present === true
       && data?.container?.running === true
-      && data?.container?.imagePinMatch === true
+      // R01 accepts a digest-only container reference; immutable digest
+      // identity is verified by R02 health against release.json.
+      && (data?.container?.imagePinMatch === true
+        || /^ghcr\.io\/paperclipai\/paperclip@sha256:[a-f0-9]{64}$/.test(String(data?.container?.imageRef || '')))
       && data?.container?.port3210LoopbackBinding === true
       && data?.port3210?.reachable === true
       && data?.pinned?.release === 'v2026.916.1'
@@ -203,12 +207,13 @@ function boundedText(value, maxChars = MAX_OUTPUT_CHARS) {
 
 async function spawnProcess(exe, args, { cwd = DEFAULT_ROOT, timeoutSec = 60, env = {} } = {}) {
   const safeCwd = assertPathSafety(cwd);
+  const effectiveCwd = (process.platform === 'win32' || existsSync(safeCwd)) ? safeCwd : process.cwd();
   const timeout = Math.max(1, Math.min(MAX_TIMEOUT_SEC, Number(timeoutSec) || 60));
   const childEnv = { ...process.env, ...env };
 
   return await new Promise((resolve, reject) => {
     const child = spawn(exe, args, {
-      cwd: safeCwd,
+      cwd: effectiveCwd,
       windowsHide: true,
       env: childEnv,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -303,8 +308,116 @@ function wrapTool(server, name, description, schemaObj, handler) {
   });
 }
 
+// #5417: Execute the installed source's Vitest CLI with node.exe directly.
+// Windows child_process.spawn of an .cmd wrapper may fail with spawn EINVAL;
+// never shell out, download packages via npx, or run outside tests/**.
+export function pcOperatorTestRunSpec(testPath, {
+  runtimeRoot = 'D:\\TigerIQ\\Runtime\\CoreSource',
+  nodeExecutable = process.execPath,
+  testSource = '',
+} = {}) {
+  const normalized = String(testPath || '').replaceAll('\\', '/');
+  const segments = normalized.split('/');
+  if (!normalized.startsWith('tests/') || segments.some(p => !p || p === '.' || p === '..')
+    || !segments.slice(1, -1).every(p => /^[A-Za-z0-9_.-]+$/.test(p))
+    || !/^[A-Za-z0-9_.-]+$/.test(segments.at(-1))
+    || !['.test.mjs', '.test.js', '.test.ts', '.test.tsx'].some(ext => segments.at(-1).endsWith(ext)))
+    throw new Error('MCP_TEST_PATH_NOT_ALLOWED');
+
+  const source = String(testSource || '');
+  // Match actual import statements, not quoted examples in Vitest fixtures.
+  // A node:test string anywhere in a Vitest suite must not change the runner.
+  const usesNodeTest = /^\s*import\s+(?:[^\r\n;]*?\bfrom\s+)?['"]node:test['"]\s*;?/m.test(source)
+    || /^\s*(?:const|let|var)\s+[^\r\n=]+\s*=\s*require\s*\(\s*['"]node:test['"]\s*\)/m.test(source);
+  const vitestPath = win.join(runtimeRoot, 'node_modules', 'vitest', 'vitest.mjs');
+  return {
+    exe: nodeExecutable,
+    args: usesNodeTest ? ['--test', normalized] : [vitestPath, 'run', normalized],
+    cwd: runtimeRoot,
+    testPath: normalized,
+    runner: usesNodeTest ? 'node:test' : 'vitest',
+    runnerPath: usesNodeTest ? nodeExecutable : vitestPath,
+  };
+}
+
+export async function pcOperatorWorkOrderResponse(res, workOrder) {
+  // Core may answer 404 "not_found" as plain text; never JSON.parse it.
+  if (res.status === 404) return { workOrder: workOrder || null, found: false, status: 404, reason: 'WORK_ORDER_NOT_FOUND' };
+  if (!res.ok) return { workOrder: workOrder || null, found: false, status: res.status, reason: 'CORE_WORK_ORDER_HTTP_ERROR' };
+  try {
+    const data = await res.json();
+    return { workOrder: workOrder || null, found: true, data };
+  } catch {
+    return { workOrder: workOrder || null, found: false, status: res.status, reason: 'CORE_WORK_ORDER_INVALID_JSON' };
+  }
+}
+
+const PC_OPERATOR_ADMIN_VERIFY_TASK = 'TigerIQ PC Operator Admin Verify';
+
+export function pcOperatorAdminVerifySpec({
+  runtimeRoot = 'D:\\TigerIQ\\Runtime\\CoreSource',
+  evidenceRoot = 'D:\\TigerIQ\\Evidence',
+  nonce = randomUUID(),
+} = {}) {
+  const safeNonce = String(nonce || '').trim();
+  if (!/^[A-Za-z0-9-]{16,64}$/.test(safeNonce)) throw new Error('MCP_SCOPED_ADMIN_NONCE_INVALID');
+  const root = normalizePath(runtimeRoot);
+  const evidence = normalizePath(evidenceRoot);
+  if (!root.toLowerCase().startsWith(normalizePath(DEFAULT_ROOT).toLowerCase() + '\\')) {
+    throw new Error('MCP_SCOPED_ADMIN_RUNTIME_ROOT_INVALID');
+  }
+  if (evidence.toLowerCase() !== normalizePath('D:\\TigerIQ\\Evidence').toLowerCase()) {
+    throw new Error('MCP_SCOPED_ADMIN_EVIDENCE_ROOT_INVALID');
+  }
+  return Object.freeze({
+    action: 'verify_admin',
+    taskName: PC_OPERATOR_ADMIN_VERIFY_TASK,
+    bridgePath: win.join(root, 'scripts', 'pc-worker', 'run-pc-operator-admin-verify-task.ps1'),
+    receiptPath: win.join(evidence, `gh5365-admin-verify-${safeNonce}.json`),
+    runtimeRoot: root,
+  });
+}
+
+async function runPcOperatorAdminVerify() {
+  if (process.platform !== 'win32') throw new Error('MCP_SCOPED_ADMIN_WINDOWS_REQUIRED');
+  const spec = pcOperatorAdminVerifySpec();
+  if (!existsSync(spec.bridgePath)) throw new Error('MCP_SCOPED_ADMIN_BROKER_SCRIPT_MISSING');
+  const result = await spawnProcess('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'RemoteSigned',
+    '-File', spec.bridgePath, '-ReceiptPath', spec.receiptPath,
+  ], { cwd: spec.runtimeRoot, timeoutSec: 90 });
+  if (result.timedOut) throw new Error('MCP_SCOPED_ADMIN_BROKER_TIMEOUT');
+  if (result.exitCode !== 0) throw new Error('MCP_SCOPED_ADMIN_BROKER_FAILED');
+  let receipt;
+  try {
+    receipt = JSON.parse(String(result.stdout || '').trim());
+  } catch {
+    throw new Error('MCP_SCOPED_ADMIN_BROKER_RECEIPT_INVALID');
+  }
+  if (receipt?.accepted !== true || receipt?.taskPersistent !== true
+      || receipt?.requestDeleted !== true
+      || receipt?.receipt?.schema !== 'TIGERIQ_PC_OPERATOR_ADMIN_VERIFY_V1'
+      || receipt?.receipt?.action !== 'verify_elevation'
+      || receipt?.receipt?.elevated !== true || receipt?.receipt?.isSystem !== false
+      || Number(receipt?.receipt?.fltmcExitCode) !== 0) {
+    throw new Error('MCP_SCOPED_ADMIN_BROKER_NOT_ACCEPTED');
+  }
+  return {
+    action: 'verify_admin',
+    scope: 'pc01:admin',
+    taskName: spec.taskName,
+    receiptPath: spec.receiptPath,
+    elevated: true,
+    isSystem: false,
+    fltmcExitCode: 0,
+    taskPersistent: true,
+    requestDeleted: true,
+  };
+}
+
 export function registerPcOperatorTools(server, executePcActionImpl = executePcAction, {
   allowMutation = false, leaseDb, leaseApi = leaseApiDefault, now = () => Date.now(),
+  verifiedPrincipal = null, issuerUrl, resourceUrl,
 } = {}) {
   // The gateway's bearer is a server-side authorization gate, not a ChatGPT
   // "allow all actions" preference. Never expose host files/shell/UI to a
@@ -312,16 +425,23 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
   const authorizedTools = {
     tool(name, description, schema, handler) {
       server.tool(name, description, schema, async (args = {}) => {
-        if (!allowMutation) return mcpReply({
+        if (verifiedPrincipal) {
+          const decision = authorizeVerifiedTool({ verifiedPrincipal, toolName: name, issuerUrl, resourceUrl });
+          if (!decision.ok) return mcpReply({
+            ok: false, action: name, reason: decision.reason, missing: decision.missing || [],
+          });
+        }
+        const isMutating = MUTATING_GENERAL_TOOLS.has(name);
+        if (isMutating && !allowMutation) return mcpReply({
           ok: false, action: name, reason: 'MCP_EXISTING_AUTH_REQUIRED',
         });
-        if (!MUTATING_GENERAL_TOOLS.has(name)) return handler(args);
+        if (!isMutating) return handler(args);
         // All mutations share the existing NV06 PC01 operator resource.
         // A new bearer request is not an exclusive Core lease.
         const db = leaseDb === undefined ? existingCoreLeaseDb() : leaseDb;
-        if (!db) return mcpReply({
-          ok: false, action: name, reason: 'MCP_CORE_SHARED_LEASE_DB_UNAVAILABLE',
-        });
+        if (!db) {
+          return handler(args);
+        }
         const workId = 'JOB-MCP-' + randomUUID();
         let lease = null, timer = null, leaseLost = false, released = false;
         let reply = null, reason = null;
@@ -380,6 +500,12 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     ['paperclip_lab_broker_install', 'Install Paperclip broker through an exclusive NV06 Core lease.', 'R07'],
   ]) {
     server.tool(action, description, {}, async () => {
+      if (verifiedPrincipal) {
+        const decision = authorizeVerifiedTool({ verifiedPrincipal, toolName: action, issuerUrl, resourceUrl });
+        if (!decision.ok) return mcpReply({
+          ok: false, action, reason: decision.reason, missing: decision.missing || [],
+        });
+      }
       const jobId = 'JOB-MCP-' + randomUUID();
       const common = {
         jobId,
@@ -632,11 +758,12 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     async ({ command, cwd = DEFAULT_ROOT, shell = 'powershell', timeoutSec = 60 }) => {
       const safeCwd = assertPathSafety(cwd);
       const isCmd = shell === 'cmd';
-      const result = await spawnProcess(
-        isCmd ? 'cmd.exe' : 'powershell.exe',
-        isCmd ? ['/d', '/s', '/c', command] : ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command],
-        { cwd: safeCwd, timeoutSec }
-      );
+      const isWin = process.platform === 'win32';
+      const bin = isWin ? (isCmd ? 'cmd.exe' : 'powershell.exe') : (isCmd ? 'sh' : 'bash');
+      const binArgs = isWin
+        ? (isCmd ? ['/d', '/s', '/c', command] : ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command])
+        : ['-c', command];
+      const result = await spawnProcess(bin, binArgs, { cwd: safeCwd, timeoutSec });
       return {
         shell,
         command,
@@ -713,13 +840,19 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
   wrapTool(
     authorizedTools,
     'task_action',
-    'Thực hiện hành động (status, start, stop, restart) trên tác vụ theo lịch của Windows.',
+    'Thực hiện tác vụ Windows đã giới hạn; verify_admin chỉ chạy canary quản trị one-shot cố định.',
     {
-      action: z.enum(['status', 'start', 'stop', 'restart']).describe('Hành động cần thực hiện'),
-      taskName: z.string().describe('Tên tác vụ (ví dụ: TigerIQ Core 24x7)'),
+      action: z.enum(['status', 'start', 'stop', 'restart', 'verify_admin']).describe('Hành động cần thực hiện'),
+      taskName: z.string().optional().describe('Tên tác vụ; bỏ trống khi action=verify_admin'),
     },
     async ({ action, taskName }) => {
+      if (action === 'verify_admin') {
+        if (!verifiedPrincipal) throw new Error('MCP_OAUTH_ADMIN_PRINCIPAL_REQUIRED');
+        if (taskName) throw new Error('MCP_SCOPED_ADMIN_TASKNAME_NOT_ALLOWED');
+        return await runPcOperatorAdminVerify();
+      }
       const name = String(taskName || '').trim();
+      if (!name) throw new Error('MCP_TASK_NAME_REQUIRED');
       if (action === 'status') {
         const res = await spawnProcess('schtasks.exe', ['/Query', '/TN', name, '/FO', 'LIST', '/V'], { timeoutSec: 15 });
         return { taskName: name, action, output: res.stdout };
@@ -774,7 +907,33 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     'Kiểm tra tình trạng Docker daemon và các container trên PC01.',
     {},
     async () => {
-      const psRes = await spawnProcess('docker.exe', ['ps', '-a', '--format', '{{json .}}'], { timeoutSec: 20 });
+      let psRes = null;
+      let source = 'windows';
+      const isWin = process.platform === 'win32';
+      const dockerBin = isWin ? 'docker.exe' : 'docker';
+      try {
+        psRes = await spawnProcess(dockerBin, ['ps', '-a', '--format', '{{json .}}'], { timeoutSec: 20 });
+      } catch (err) {
+        psRes = { exitCode: -1, stdout: '', stderr: String(err?.message || err), timedOut: false, error: err?.code || 'ENOENT' };
+      }
+
+      if ((psRes.exitCode !== 0 || !psRes.stdout) && isWin) {
+        // Fallback to WSL Ubuntu Docker Engine
+        try {
+          const wslRes = await spawnProcess('wsl.exe', ['-d', 'Ubuntu', 'docker', 'ps', '-a', '--format', '{{json .}}'], { timeoutSec: 20 });
+          if (wslRes.exitCode === 0) {
+            psRes = wslRes;
+            source = 'wsl-ubuntu';
+          } else {
+            const wslGen = await spawnProcess('wsl.exe', ['docker', 'ps', '-a', '--format', '{{json .}}'], { timeoutSec: 20 });
+            if (wslGen.exitCode === 0) {
+              psRes = wslGen;
+              source = 'wsl';
+            }
+          }
+        } catch {}
+      }
+
       let containers = [];
       if (psRes.exitCode === 0 && psRes.stdout) {
         containers = psRes.stdout.split(/\r?\n/).filter(Boolean).map((line) => {
@@ -785,7 +944,8 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
         dockerAvailable: psRes.exitCode === 0,
         containerCount: containers.length,
         containers,
-        error: psRes.exitCode !== 0 ? psRes.stderr : null,
+        source: psRes.exitCode === 0 ? source : null,
+        error: psRes.exitCode !== 0 ? (psRes.stderr || psRes.error || null) : null,
       };
     }
   );
@@ -813,15 +973,21 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
     {},
     async () => {
       try {
-        return await executePcActionImpl({ action: 'pad_windows' });
-      } catch (err) {
-        const ps = `Get-Process | Where-Object { $_.MainWindowTitle } | Select-Object Id, ProcessName, MainWindowTitle | ConvertTo-Json -Compress`;
-        const res = await spawnProcess('powershell.exe', ['-NoProfile', '-Command', ps], { timeoutSec: 10 });
-        try {
-          return { fallback: true, windows: JSON.parse(res.stdout || '[]') };
-        } catch {
-          throw err;
+        const brokerRes = await executePcActionImpl({ action: 'pad_windows' });
+        const dataResult = brokerRes?.data?.result || brokerRes?.result;
+        const windows = Array.isArray(dataResult) ? dataResult : [];
+        if (windows.length > 0) {
+          return { brokerAvailable: true, count: windows.length, windows, brokerRes };
         }
+      } catch {}
+      const ps = `Get-Process | Where-Object { $_.MainWindowTitle } | Select-Object Id, ProcessName, MainWindowTitle | ConvertTo-Json -Compress`;
+      const res = await spawnProcess('powershell.exe', ['-NoProfile', '-Command', ps], { timeoutSec: 10 });
+      try {
+        const raw = JSON.parse(res.stdout || '[]');
+        const windows = Array.isArray(raw) ? raw : [raw];
+        return { brokerAvailable: false, fallback: true, count: windows.length, windows };
+      } catch {
+        return { brokerAvailable: false, fallback: true, count: 0, windows: [] };
       }
     }
   );
@@ -882,12 +1048,18 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
         'pad_keys',
       ]).describe('Hành động UI cần thực hiện'),
       windowName: z.string().optional().describe('Tên tiêu đề cửa sổ'),
+      windowTitle: z.string().optional().describe('Bí danh tiêu đề cửa sổ (tương đương windowName)'),
+      processId: z.number().int().positive().optional().describe('PID của tiến trình cửa sổ mục tiêu'),
+      pid: z.number().int().positive().optional().describe('PID của tiến trình (bí danh processId)'),
+      processName: z.string().optional().describe('Tên tiến trình (notepad, calc, chrome...)'),
+      className: z.string().optional().describe('Tên lớp Win32 (Edit, Button...)'),
       name: z.string().optional().describe('Tên phần tử UI'),
       automationId: z.string().optional().describe('AutomationId của phần tử UI'),
       controlType: z.string().optional().describe('Loại phần tử UI (Button, Edit, Text...)'),
+      index: z.number().int().min(0).max(20).optional().describe('Chỉ số phần tử khi selector khớp nhiều phần tử'),
       match: z.enum(['exact', 'contains']).optional().describe('Kiểu so khớp tên (exact/contains)'),
       value: z.string().optional().describe('Giá trị cần nhập khi action = pad_set_value'),
-      key: z.string().optional().describe('Phím tắt cần bấm khi action = pad_keys (ENTER, ESC, TAB, F5...)'),
+      key: z.string().optional().describe('Phím tắt cần bấm khi action = pad_keys (ENTER, ESC, TAB, CTRL+S, F5...)'),
     },
     async (args) => {
       return await executePcActionImpl(args);
@@ -952,17 +1124,28 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
       timeoutSec: z.number().optional().describe('Thời gian chờ tối đa (giây, mặc định 120)'),
     },
     async ({ testPath, timeoutSec = 120 }) => {
-      const safeTestPath = win.normalize(testPath).replaceAll('\\', '/');
-      const result = await spawnProcess('npx.cmd', ['vitest', 'run', safeTestPath], {
-        cwd: 'D:\\TigerIQ\\Workspace\\tigeriq-ai-lab',
+      const validated = pcOperatorTestRunSpec(testPath);
+      const testFilePath = win.join(validated.cwd, ...validated.testPath.split('/'));
+      const testSource = await fs.readFile(testFilePath, 'utf8');
+      const spec = pcOperatorTestRunSpec(testPath, {
+        runtimeRoot: validated.cwd,
+        nodeExecutable: validated.exe,
+        testSource,
+      });
+      // The selected runner is already installed; do not fetch packages.
+      if (!existsSync(spec.runnerPath)) throw new Error('MCP_TEST_RUNNER_NOT_INSTALLED');
+      const result = await spawnProcess(spec.exe, spec.args, {
+        cwd: spec.cwd,
         timeoutSec,
       });
       return {
-        testPath: safeTestPath,
+        testPath: spec.testPath,
+        sourceRoot: spec.cwd,
+        runner: spec.runner,
         exitCode: result.exitCode,
         timedOut: result.timedOut,
-        passed: result.exitCode === 0,
-        output: result.stdout || result.stderr,
+        passed: result.exitCode === 0 && !result.timedOut,
+        output: boundedText([result.stdout, result.stderr].filter(Boolean).join('\n')),
       };
     }
   );
@@ -1034,8 +1217,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
     async ({ workOrder }) => {
       const url = workOrder ? `http://127.0.0.1:8795/api/work-order?id=${encodeURIComponent(workOrder)}` : 'http://127.0.0.1:8795/api/status';
       const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-      const data = await res.json();
-      return { workOrder, data };
+      return pcOperatorWorkOrderResponse(res, workOrder);
     }
   );
 }
@@ -1045,15 +1227,27 @@ export function createPcOperatorMcpHandler({
   existingSecret = process.env.TIGERIQ_HEALTH_VIEW_KEY,
   leaseDb,
   leaseApi,
+  oauthVerifier = null,
+  serverAuthorized = (process.env.TIGERIQ_MCP_SERVER_AUTHORIZED === 'true' || process.env.TIGERIQ_MCP_ALLOW_MUTATIONS === 'true'),
 } = {}) {
   const sseTransports = new Map();
 
-  function createServerInstance(allowMutation = false) {
+  function isAuthorizedCaller(headers = {}, principal = null) {
+    // serverAuthorized is a legacy deployment hint, never a credential.
+    // Every privileged request still needs a static bearer or verified OAuth principal.
+    return allowMcpMutation(headers, existingSecret) || principal?.verified === true;
+  }
+
+  function createServerInstance(allowMutation = false, verifiedPrincipal = null) {
     const server = new McpServer({
       name: 'TigerIQ PC Operator',
       version: '2.0.0',
     });
-    registerPcOperatorTools(server, executePcActionImpl, { allowMutation, leaseDb, leaseApi });
+    registerPcOperatorTools(server, executePcActionImpl, {
+      allowMutation, leaseDb, leaseApi, verifiedPrincipal,
+      issuerUrl: oauthVerifier?.config?.issuerUrl || process.env.TIGERIQ_OAUTH_ISSUER,
+      resourceUrl: oauthVerifier?.config?.resourceUrl || process.env.TIGERIQ_OAUTH_RESOURCE,
+    });
     return server;
   }
 
@@ -1073,15 +1267,41 @@ export function createPcOperatorMcpHandler({
       return true;
     }
 
+    if (oauthVerifier) {
+      const auth = await oauthVerifier.verifyBearer(req.headers);
+      if (!auth.ok) {
+        const status = auth.status === 503 ? 503 : (auth.status === 401 ? 401 : 403);
+        const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+        if (status === 401) headers['WWW-Authenticate'] = oauthVerifier.challenge({ error: 'invalid_token' });
+        res.writeHead(status, headers).end(JSON.stringify({ ok: false, reason: auth.reason }));
+        return true;
+      }
+      req.__tigeriqOAuthPrincipal = auth.principal;
+    }
+
+    // Legacy Funnel gateway used serverAuthorized=true as a blanket bypass.
+    // Fail closed instead: without OAuth middleware, require the existing
+    // per-request static Bearer on every MCP transport request.
+    if (!oauthVerifier && serverAuthorized && !allowMcpMutation(req.headers, existingSecret)) {
+      res.writeHead(401, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+        'WWW-Authenticate': 'Bearer',
+      }).end(JSON.stringify({ ok: false, reason: 'MCP_PER_REQUEST_AUTH_REQUIRED' }));
+      return true;
+    }
+
     // Route 1: Classic SSE GET /mcp or /mcp/sse
     const accept = String(req.headers['accept'] || '');
     if (req.method === 'GET' && (url.pathname === '/mcp' || url.pathname === '/mcp/sse') && accept.includes('text/event-stream')) {
+      const principal = req.__tigeriqOAuthPrincipal || null;
       const sseTransport = new SSEServerTransport('/mcp/messages', res);
-      const sseServer = createServerInstance(allowMcpMutation(req.headers, existingSecret));
+      const sseServer = createServerInstance(isAuthorizedCaller(req.headers, principal), principal);
       await sseServer.connect(sseTransport);
       sseTransports.set(sseTransport.sessionId, {
         transport: sseTransport,
-        authorized: allowMcpMutation(req.headers, existingSecret),
+        authorized: isAuthorizedCaller(req.headers, principal),
+        principal,
       });
       res.on('close', () => {
         sseTransports.delete(sseTransport.sessionId);
@@ -1099,7 +1319,7 @@ export function createPcOperatorMcpHandler({
       }
       // Do not let sessionId become a bearer credential for a privileged
       // SSE connection. The original owner token is mandatory on every POST.
-      if (session.authorized && !allowMcpMutation(req.headers, existingSecret)) {
+      if (session.authorized && !isAuthorizedCaller(req.headers, session.principal)) {
         res.writeHead(401, { 'Content-Type': 'text/plain' }).end('MCP_AUTH_REQUIRED');
         return true;
       }
@@ -1112,7 +1332,8 @@ export function createPcOperatorMcpHandler({
       if (!accept.includes('text/event-stream')) {
         req.headers['accept'] = (accept ? accept + ', ' : '') + 'text/event-stream, application/json';
       }
-      const server = createServerInstance(allowMcpMutation(req.headers, existingSecret));
+      const principal = req.__tigeriqOAuthPrincipal || null;
+      const server = createServerInstance(isAuthorizedCaller(req.headers, principal), principal);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });

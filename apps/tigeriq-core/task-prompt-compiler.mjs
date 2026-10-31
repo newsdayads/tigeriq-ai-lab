@@ -128,6 +128,7 @@ export function compileTaskPrompt(input = {}) {
     'OUTPUT REQUIREMENT:',
     'Return exactly one JSON object and nothing else. No markdown fences.',
     `Schema ${EXECUTION_RESULT_VERSION}: {"schema":"EXECUTION_RESULT_V1","status":"complete|blocked","summary":"short factual summary","acceptance":[{"criterion":"acceptance criterion text","passed":true|false,"evidence_refs":["evidence id"]}],"evidence":[{"id":"e1","type":"observation|artifact|test|source","value":"concrete evidence"}],"block_reason":null|string}`,
+    'Compact LOCAL adapters may use criterion_index (zero-based packet acceptance order) instead of repeating criterion text; Core resolves the index deterministically before acceptance.',
     'Every acceptance criterion in the packet must appear once in acceptance[].',
     'A complete result requires all criteria passed=true and each passed criterion must cite at least one evidence id present in evidence[].',
     'If any criterion cannot be proven, return status=blocked and explain the exact block_reason.',
@@ -137,6 +138,61 @@ export function compileTaskPrompt(input = {}) {
 
 function stripFence(raw) {
   return String(raw || '').trim().replace(/^\`\`\`(?:json)?\s*/i, '').replace(/\s*\`\`\`$/, '').trim();
+}
+
+
+export function repairCompactExecutionPrompt(prompt,{maxChars=12000}={}) {
+  const base=String(prompt||'').trim();
+  if(!base)return {changed:false,prompt:base,reason:'prompt_missing'};
+  if(base.includes('criterion_index'))return {changed:false,prompt:base,reason:'compact_contract_already_present'};
+  const hint='\n\nLOCAL COMPACT OUTPUT CONTRACT:\nWhen the provider schema requests criterion_index, use the zero-based packet acceptance order instead of repeating criterion text. Keep evidence_refs and all other EXECUTION_RESULT_V1 fields unchanged.';
+  const limit=Math.max(1000,Math.min(12000,Number(maxChars)||12000));
+  if(base.length+hint.length>limit)return {changed:false,prompt:base,reason:'compact_hint_budget_exhausted'};
+  return {changed:true,prompt:base+hint,reason:'compact_contract_appended'};
+}
+
+
+export function authorizedPriorCampaignHandoffFromPrompt(prompt,{maxChars=2600}={}) {
+  const source=String(prompt||'');
+  const marker='AUTHORIZED PRIOR CAMPAIGN HANDOFF:\n';
+  const start=source.indexOf(marker);
+  if(start<0)return '';
+  const tail=source.slice(start+marker.length);
+  const stops=['\n\nLOCAL COMPACT OUTPUT CONTRACT:','\n\nSTRICT RETRY:','\n\nACTIVE SKILLS (use only when relevant; never expand permissions):']
+    .map(token=>tail.indexOf(token)).filter(index=>index>=0);
+  const end=stops.length?Math.min(...stops):tail.length;
+  const value=tail.slice(0,end).trim();
+  if(!value.startsWith('PRIOR_CAMPAIGN_HANDOFF_V1 '))return '';
+  const limit=Math.max(0,Math.min(2600,Number(maxChars)||0));
+  if(!limit||value.length>limit)return '';
+  return value;
+}
+
+export function compactLocalExecutionPrompt(prompt,packetInput) {
+  const source=String(prompt||'').trim();
+  const packet=validateExecutionPacket(packetInput?.packet_version ? packetInput : buildExecutionPacket(packetInput));
+  const retryMarker='\n\nSTRICT RETRY:';
+  const retryIndex=source.lastIndexOf(retryMarker);
+  const retry=retryIndex>=0?source.slice(retryIndex+2).trim():'';
+  const priorHandoff=authorizedPriorCampaignHandoffFromPrompt(source);
+  const output=[
+    'You are a TigerIQ execution worker. Execute exactly the authorized task packet below.',
+    'Do not broaden scope. Do not infer permission from missing fields. Evidence is mandatory.',
+    `PACKET_JSON: ${JSON.stringify(packet)}`,
+    ...(priorHandoff?['AUTHORIZED PRIOR CAMPAIGN HANDOFF:',priorHandoff]:[]),
+    'OUTPUT REQUIREMENT:',
+    `Return exactly one ${EXECUTION_RESULT_VERSION} JSON object and nothing else. No markdown fences.`,
+    'Use criterion_index as the zero-based packet acceptance order when requested by the provider schema.',
+    'Every passed criterion must cite evidence_refs present in evidence[].',
+    'If any criterion cannot be proven, return status=blocked with the exact block_reason.',
+    ...(retry?[retry]:[]),
+  ].join('\n');
+  if(output.length>12000){
+    const error=new Error('NV09_COMPACT_PRIOR_EVIDENCE_BUDGET_EXCEEDED');
+    error.kind='job_contract';
+    throw error;
+  }
+  return output;
 }
 
 export function executionPacketFromPrompt(prompt) {
@@ -177,7 +233,30 @@ export function executionResultGate(raw, packetInput) {
   if (!Array.isArray(result?.acceptance) || !Array.isArray(result?.evidence)) return { pass:false, code:'EXECUTION_RESULT_EVIDENCE_MISSING', result, missing:packet.acceptance, evidenceIds:[] };
 
   const evidenceIds = new Set(result.evidence.map(item => text(item?.id)).filter(Boolean));
-  const claimed = new Map(result.acceptance.map(item => [text(item?.criterion), item]));
+  const claimed = new Map();
+  for (const item of result.acceptance) {
+    const explicit = text(item?.criterion);
+    const hasIndex = Number.isInteger(item?.criterion_index);
+    let criterion = explicit;
+    if (hasIndex) {
+      const index = Number(item.criterion_index);
+      if (index < 0 || index >= packet.acceptance.length) {
+        return { pass:false, code:'EXECUTION_ACCEPTANCE_REFERENCE_INVALID', result, missing:packet.acceptance, evidenceIds:[...evidenceIds] };
+      }
+      const indexed = packet.acceptance[index];
+      if (explicit && explicit !== indexed) {
+        return { pass:false, code:'EXECUTION_ACCEPTANCE_REFERENCE_INVALID', result, missing:packet.acceptance, evidenceIds:[...evidenceIds] };
+      }
+      criterion = indexed;
+    }
+    if (!criterion) {
+      return { pass:false, code:'EXECUTION_ACCEPTANCE_REFERENCE_INVALID', result, missing:packet.acceptance, evidenceIds:[...evidenceIds] };
+    }
+    if (claimed.has(criterion)) {
+      return { pass:false, code:'EXECUTION_ACCEPTANCE_DUPLICATED', result, missing:packet.acceptance, evidenceIds:[...evidenceIds] };
+    }
+    claimed.set(criterion, { ...item, criterion });
+  }
   const missing = packet.acceptance.filter(criterion => !claimed.has(criterion));
   if (missing.length) return { pass:false, code:'EXECUTION_ACCEPTANCE_MISSING', result, missing, evidenceIds:[...evidenceIds] };
 
@@ -207,6 +286,14 @@ export function assertExecutionResultAccepted(raw,packet) {
   }
   return gate;
 }
+
+export function assertExecutionResultRoutable(raw,packet) {
+  const gate=executionResultGate(raw,packet);
+  if(gate.pass||gate.code==='EXECUTION_RESULT_BLOCKED')return gate;
+  const error=Object.assign(new Error(gate.code),{kind:'invalid_response',executionGate:gate});
+  throw error;
+}
+
 
 export function strictExecutionRetryPrompt(compiledPrompt, gate) {
   const code = text(gate?.code, 'EXECUTION_RESULT_INVALID');

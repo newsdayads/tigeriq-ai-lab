@@ -47,6 +47,68 @@ test('bounded inference sends small deterministic Ollama request and returns tel
   assert.strictEqual(out.evalCount,3);
 });
 
+test('compiled bounded inference preserves larger prompt and deterministic JSON schema', async()=>{
+  let request;
+  const format={type:'object',required:['schema','acceptance','evidence']};
+  const prompt='x'.repeat(6000);
+  const fake=async(url,init)=>{
+    request={url,body:JSON.parse(init.body)};
+    return {ok:true,status:200,json:async()=>({model:'qwen3.5:9b',response:'{"schema":"EXECUTION_RESULT_V1"}',done:true})};
+  };
+  await runBoundedInferenceNv09(prompt,{fetchImpl:fake,timeoutMs:2000,numCtx:4096,numPredict:256,maxPromptChars:12000,format,keepAlive:'5s'});
+  assert.strictEqual(request.body.prompt.length,6000);
+  assert.strictEqual(request.body.options.num_ctx,4096);
+  assert.strictEqual(request.body.options.num_predict,256);
+  assert.deepStrictEqual(request.body.format,format);
+});
+
+test('structured QA has a finite expanded budget and does not relax generic canary caps',async()=>{
+  let received;
+  const format={type:'object',properties:{schema:{const:'EXECUTION_RESULT_V1'}}};
+  const fake=async (_url,init)=>{
+    received=JSON.parse(init.body);
+    return {ok:true,json:async()=>({response:'{"schema":"EXECUTION_RESULT_V1"}',done:true,done_reason:'stop'})};
+  };
+  await runBoundedInferenceNv09('bounded QA',{fetchImpl:fake,timeoutMs:2000,numCtx:8192,numPredict:768,maxPromptChars:12000,format});
+  assert.equal(received.options.num_ctx,8192);
+  assert.equal(received.options.num_predict,768);
+  assert.deepStrictEqual(received.format,format);
+  await runBoundedInferenceNv09('bounded QA',{fetchImpl:fake,timeoutMs:2000,numCtx:999999,numPredict:999999,format});
+  assert.equal(received.options.num_ctx,8192);
+  assert.equal(received.options.num_predict,1024);
+  await runBoundedInferenceNv09('generic',{fetchImpl:fake,timeoutMs:2000,numCtx:999999,numPredict:999999});
+  assert.equal(received.options.num_ctx,4096);
+  assert.equal(received.options.num_predict,256);
+});
+
+test('compiled QA refuses prompt truncation before any Ollama call',async()=>{
+  let called=false;
+  await assert.rejects(
+    ()=>runBoundedInferenceNv09('x'.repeat(12001),{
+      fetchImpl:async()=>{called=true;throw new Error('must not call provider');},
+      timeoutMs:2000,maxPromptChars:12000,
+      format:{type:'object',required:['schema']}
+    }),
+    error=>error?.message==='NV09_COMPILED_PROMPT_BUDGET_EXCEEDED'&&error?.kind==='job_contract'
+  );
+  assert.equal(called,false);
+});
+
+test('NV09 rejects incomplete/length-limited structured QA without crediting success',async()=>{
+  for(const response of [
+    {response:'{"schema":',done:false,done_reason:'length'},
+    {response:'{"schema":',done:true,done_reason:'length'},
+  ]){
+    await assert.rejects(
+      ()=>runBoundedInferenceNv09('QA',{
+        fetchImpl:async()=>({ok:true,json:async()=>response}),timeoutMs:2000,
+        format:{type:'object',required:['schema']}
+      }),
+      error=>error?.message==='NV09_INFERENCE_INCOMPLETE'&&error?.kind==='invalid_response'
+    );
+  }
+});
+
 test('bounded inference preserves real Ollama 5xx evidence', async()=>{
   const fake=async()=>({ok:false,status:500,text:async()=>JSON.stringify({error:'llama-server binary not found'})});
   await assert.rejects(
@@ -102,7 +164,7 @@ test('Core wires NV09 as isolated on-demand local coder without changing NV10',(
   const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
   assert.match(core,/const NV09_TIMEOUT_MS/);
   assert.match(core,/R\(NV09_EMPLOYEE_ID,'Core AI Coder · Ollama Qwen3.5 9B','ollama',NV09_MODEL/);
-  assert.match(core,/nv09Resource\.capabilities = \['coding_local'\]/);
+  assert.match(core,/nv09Resource\.capabilities = \['coding_local','review'\]/);
   assert.match(core,/nv09Resource\.runtimeBinding = 'ollama_on_demand'/);
   assert.match(core,/const resources = \[\s*nv08Resource,\s*nv09Resource,\s*nv10Resource,/);
   assert.match(core,/employee_id not in \(\$1,\$2,\$3\)/);

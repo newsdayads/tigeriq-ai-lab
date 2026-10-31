@@ -602,9 +602,9 @@ test('P0 shimmer is shown only for live WORKING runtime lease, never on review o
   expect(animations[1]).toBe('none');
 });
 
-test('LIVE compact owner grid shows five to six cards per row on desktop with readable mobile fallback',async({page})=>{
+test('LIVE owner grid shows at most four cards per desktop row and readable iPhone fallback',async({page})=>{
   const samples:[[number,number,number],[number,number,number],[number,number,number],[number,number,number]]=[
-    [1664,950,5],[2560,1440,6],[1280,900,4],[390,844,1]
+    [1664,950,4],[2560,1440,4],[1280,900,4],[390,844,1]
   ];
   for(const [width,height,columns] of samples){
     await page.setViewportSize({width,height});
