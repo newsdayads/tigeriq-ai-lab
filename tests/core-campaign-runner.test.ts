@@ -1,6 +1,6 @@
 // @ts-nocheck
 import {describe,it,expect} from 'vitest';
-import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId,explicitJobRefsFromText,referencedJobEvidenceContext,normalizeWorkItemLifecycle,executeCoreWorkItemLifecycle} from '../apps/tigeriq-core/campaign-runner.mjs';
+import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId,explicitJobRefsFromText,referencedJobEvidenceContext,referencedJobReviewExclusions,normalizeWorkItemLifecycle,executeCoreWorkItemLifecycle} from '../apps/tigeriq-core/campaign-runner.mjs';
 import {detectIdleWithBacklog} from '../apps/tigeriq-core/github-backlog-policy.mjs';
 import {runExecutionPreflight} from '../apps/tigeriq-core/execution-preflight.mjs';
 import {readFileSync} from 'node:fs';
@@ -58,6 +58,16 @@ describe('API campaign runner and core lifecycle integration',()=>{
     expect(payload.refs).toEqual(['JOB-done-12345','JOB-failed-12345','JOB-missing-12345']);
     expect(payload.receipts.map(item=>item.id)).toEqual(['JOB-done-12345']);
     expect(context).not.toContain('JOB-unreferenced-12345');
+  });
+  it('excludes implementer identities only from explicitly referenced DONE jobs',()=>{
+    expect(referencedJobReviewExclusions({
+      jobIds:['JOB-done-12345','JOB-failed-12345','JOB-missing-12345'],
+      jobs:[
+        {id:'JOB-done-12345',status:'done',employee_id:'nv10',resource_id:'RES-NV10'},
+        {id:'JOB-failed-12345',status:'failed',employee_id:'NV09',resource_id:'RES-NV09'},
+        {id:'JOB-unreferenced-12345',status:'done',employee_id:'NV08',resource_id:'RES-NV08'},
+      ],
+    })).toEqual({employeeIds:['NV10'],resourceIds:['RES-NV10']});
   });
   it('wires explicit referenced receipts into review job materialization only',()=>{
     const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
