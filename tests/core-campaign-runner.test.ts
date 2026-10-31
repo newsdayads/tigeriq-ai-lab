@@ -53,9 +53,10 @@ describe('API campaign runner and core lifecycle integration',()=>{
       ],
     });
     expect(context).toContain('PRIOR_CAMPAIGN_HANDOFF_V1');
-    expect(context).toContain('TIGERIQ_REFERENCED_JOB_EVIDENCE_V1');
-    expect(context).toContain('JOB-done-12345');
-    expect(context).not.toContain('JOB-failed-12345');
+    const payload=JSON.parse(context.slice('PRIOR_CAMPAIGN_HANDOFF_V1 '.length));
+    expect(payload.schema).toBe('TIGERIQ_REFERENCED_JOB_EVIDENCE_V1');
+    expect(payload.refs).toEqual(['JOB-done-12345','JOB-failed-12345','JOB-missing-12345']);
+    expect(payload.receipts.map(item=>item.id)).toEqual(['JOB-done-12345']);
     expect(context).not.toContain('JOB-unreferenced-12345');
   });
   it('wires explicit referenced receipts into review job materialization only',()=>{
