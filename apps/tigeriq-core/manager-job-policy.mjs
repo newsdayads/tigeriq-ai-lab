@@ -84,14 +84,31 @@ export function phaseZeroReviewStrictAcceptanceRecoveryEligible({
   );
 }
 
+export function phaseZeroReviewHandoffTransportRecoveryEligible({
+  capability='',
+  phaseIndex=0,
+  attempts=0,
+  maxAttempts=0,
+  prompt='',
+  failure=null,
+}={}) {
+  if(String(capability).trim().toLowerCase()!=='review'||Number(phaseIndex)!==0)return false;
+  if(Number(attempts)!==7||Number(maxAttempts)!==6)return false;
+  const stored=String(prompt||'');
+  if(!stored.includes('AUTHORIZED PRIOR CAMPAIGN HANDOFF:')||!stored.includes('PRIOR_CAMPAIGN_HANDOFF_V1 '))return false;
+  return String(failure?.message||'').trim()==='EXECUTION_RESULT_BLOCKED';
+}
+
 export function campaignPromptRepairRetryCap({
   promptRepairChanged=false,
   compactRepairChanged=false,
   persistedPhaseZeroRepairEligible=false,
   phaseZeroStrictAcceptanceEligible=false,
+  phaseZeroHandoffTransportEligible=false,
   providerPromptCompactionEligible=false,
   providerPriorCampaignEvidenceEligible=false,
 }={}) {
+  if(phaseZeroHandoffTransportEligible===true)return 8;
   if(providerPriorCampaignEvidenceEligible===true)return 7;
   if(providerPromptCompactionEligible===true||phaseZeroStrictAcceptanceEligible===true)return 6;
   if(promptRepairChanged===true||compactRepairChanged===true||persistedPhaseZeroRepairEligible===true)return 5;
@@ -121,8 +138,8 @@ export function failedCampaignRuntimeRearmDecision({
   if(limit<=0)return {action:'keep',reason:'retry_budget_exhausted'};
   if(used>=limit){
     const cap=Math.max(1,Math.min(7,Number(promptRepairCap)||4));
-    if(promptRepairEligible===true&&used===limit&&limit<cap){
-      return {action:'requeue_prompt_repair',reason:'runtime_source_newer_with_prompt_repair_credit',nextMaxAttempts:limit+1};
+    if(promptRepairEligible===true&&used>=limit&&used<cap&&limit<cap){
+      return {action:'requeue_prompt_repair',reason:'runtime_source_newer_with_prompt_repair_credit',nextMaxAttempts:Math.max(limit+1,used+1)};
     }
     return {action:'keep',reason:'retry_budget_exhausted'};
   }
