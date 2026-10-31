@@ -1,6 +1,6 @@
 import { describe,expect,it } from 'vitest';
 import {managerIdleStepStopPlan} from '../apps/tigeriq-core/manager-cycle-policy.mjs';
-import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY,failedCampaignRuntimeRearmDecision,managerJobMaterializationDecision,providerPromptCompactionRecoveryEligible,providerPriorCampaignEvidenceRecoveryEligible} from '../apps/tigeriq-core/manager-job-policy.mjs';
+import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY,campaignPromptRepairRetryCap,failedCampaignRuntimeRearmDecision,managerJobMaterializationDecision,providerPromptCompactionRecoveryEligible,providerPriorCampaignEvidenceRecoveryEligible} from '../apps/tigeriq-core/manager-job-policy.mjs';
 import {campaignPriorEvidenceContext,repairCampaignReviewPrompt} from '../apps/tigeriq-core/campaign-runner.mjs';
 import {apiDoctorAutoworkPriority} from '../apps/tigeriq-core/api-doctor.mjs';
 
@@ -65,6 +65,31 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
     expect(failedCampaignRuntimeRearmDecision({...exhausted,maxAttempts:5,attempts:5,promptRepairEligible:true,promptRepairCap:6}))
       .toEqual({action:'requeue_prompt_repair',reason:'runtime_source_newer_with_prompt_repair_credit',nextMaxAttempts:6});
     expect(failedCampaignRuntimeRearmDecision({...exhausted,maxAttempts:6,attempts:6,promptRepairEligible:true,promptRepairCap:6}).reason).toBe('retry_budget_exhausted');
+  });
+  it('grants one 4-to-5 credit when a failed phase-zero review prompt gains trusted referenced receipts',()=>{
+    const cap=campaignPromptRepairRetryCap({promptRepairChanged:true});
+    expect(cap).toBe(5);
+    expect(campaignPromptRepairRetryCap({compactRepairChanged:true})).toBe(5);
+    expect(campaignPromptRepairRetryCap({providerPromptCompactionEligible:true})).toBe(6);
+    expect(campaignPromptRepairRetryCap({providerPriorCampaignEvidenceEligible:true})).toBe(7);
+    expect(campaignPromptRepairRetryCap()).toBe(4);
+    expect(failedCampaignRuntimeRearmDecision({
+      objectiveStatus:'blocked',
+      objectiveSummary:MANAGER_NO_PROGRESS_BLOCK_SUMMARY,
+      jobStatus:'failed',
+      attempts:4,
+      maxAttempts:4,
+      jobCompletedAt:'2026-10-31T03:37:52Z',
+      runtimeUpdatedAt:'2026-10-31T04:00:00Z',
+      hasCampaign:true,
+      routingProfile:'LOCAL',
+      promptRepairEligible:true,
+      promptRepairCap:cap,
+    })).toEqual({
+      action:'requeue_prompt_repair',
+      reason:'runtime_source_newer_with_prompt_repair_credit',
+      nextMaxAttempts:5,
+    });
   });
   it('grants the 5-to-6 NV09 recovery credit only from the exact same-job failure receipt',()=>{
     const exact={
