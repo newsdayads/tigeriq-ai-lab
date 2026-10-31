@@ -44,6 +44,19 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(home).not.toContain('prefs.getInt("saved_count", 0)');
   });
 
+  it('reorders saved HOME configurations with deterministic up/down controls', () => {
+    expect(home).toContain('private fun moveSavedConfiguration(index: Int, delta: Int): Boolean');
+    expect(home).toContain('HomeConfigRules.reorderTarget(entries.length(), index, delta)');
+    expect(home).toContain('.putString("v2_home_configs", reordered.toString())');
+    expect(home).toContain('.commit()');
+    expect(home).toContain('private fun showSavedOrderEditor()');
+    expect(home).toContain('SẮP XẾP BỐ CỤC');
+    expect(home).toContain('↑ Đưa lên');
+    expect(home).toContain('↓ Đưa xuống');
+    expect(home).toContain('Không dùng kéo thả để tránh chọn nhầm thẻ.');
+    expect(home).toContain('.setNeutralButton("SẮP XẾP BỐ CỤC")');
+  });
+
   it('migrates legacy local state and fails closed on corrupt or future schemas', () => {
     expect(home).toContain('private fun normalizeHomeConfiguration(item: JSONObject): JSONObject?');
     expect(home).toContain('item.optInt("schemaVersion", 0)');
