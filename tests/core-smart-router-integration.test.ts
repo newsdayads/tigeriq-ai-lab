@@ -65,7 +65,8 @@ describe('#777 Core Smart Router integration',()=>{
     expect(core).toContain('compactRepairReason:compactRepair.reason');
     expect(core).toContain('failure:row.failure');
     expect(core).not.toContain("String(compactRepair.prompt||'').length>12000");
-    expect(core).toContain('const repairCap=providerPromptCompactionEligible?6:(compactRepair.changed?5:4)');
+    expect(core).toContain('providerPriorCampaignEvidenceRecoveryEligible({');
+    expect(core).toContain('const repairCap=providerPriorEvidenceEligible?7:(providerPromptCompactionEligible?6:(compactRepair.changed?5:4))');
     expect(core).toContain('compactLocalExecutionPrompt(prompt,packet)');
     expect(core).toContain('repairCreditGranted:repairCredit');
     expect(core).not.toContain('max_attempts=max_attempts+10');

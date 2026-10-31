@@ -30,6 +30,24 @@ export function providerPromptCompactionRecoveryEligible({
   );
 }
 
+export function providerPriorCampaignEvidenceRecoveryEligible({
+  capability='',
+  phaseIndex=0,
+  maxAttempts=0,
+  prompt='',
+  failure=null,
+}={}) {
+  if(String(capability).trim().toLowerCase()!=='review'||Number(phaseIndex)<=0)return false;
+  if(Number(maxAttempts)!==6)return false;
+  const stored=String(prompt||'');
+  if(!stored.includes('AUTHORIZED PRIOR CAMPAIGN HANDOFF:')||!stored.includes('PRIOR_CAMPAIGN_HANDOFF_V1 '))return false;
+  const failures=Array.isArray(failure?.failures)?failure.failures:[];
+  return failures.some(item=>
+    String(item?.kind||'').trim().toLowerCase()==='invalid_response'
+    &&String(item?.message||'').trim()==='EXECUTION_RESULT_BLOCKED'
+  );
+}
+
 export function failedCampaignRuntimeRearmDecision({
   objectiveStatus='',
   objectiveSummary='',
@@ -52,7 +70,7 @@ export function failedCampaignRuntimeRearmDecision({
   if(!Number.isFinite(failedAt)||!Number.isFinite(runtimeAt)||runtimeAt<=failedAt)return {action:'keep',reason:'runtime_not_newer_than_failure'};
   if(limit<=0)return {action:'keep',reason:'retry_budget_exhausted'};
   if(used>=limit){
-    const cap=Math.max(1,Math.min(6,Number(promptRepairCap)||4));
+    const cap=Math.max(1,Math.min(7,Number(promptRepairCap)||4));
     if(promptRepairEligible===true&&used===limit&&limit<cap){
       return {action:'requeue_prompt_repair',reason:'runtime_source_newer_with_prompt_repair_credit',nextMaxAttempts:limit+1};
     }

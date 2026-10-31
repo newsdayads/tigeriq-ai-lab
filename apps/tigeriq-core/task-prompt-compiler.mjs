@@ -152,16 +152,34 @@ export function repairCompactExecutionPrompt(prompt,{maxChars=12000}={}) {
 }
 
 
+export function authorizedPriorCampaignHandoffFromPrompt(prompt,{maxChars=2600}={}) {
+  const source=String(prompt||'');
+  const marker='AUTHORIZED PRIOR CAMPAIGN HANDOFF:\n';
+  const start=source.indexOf(marker);
+  if(start<0)return '';
+  const tail=source.slice(start+marker.length);
+  const stops=['\n\nLOCAL COMPACT OUTPUT CONTRACT:','\n\nSTRICT RETRY:']
+    .map(token=>tail.indexOf(token)).filter(index=>index>=0);
+  const end=stops.length?Math.min(...stops):tail.length;
+  const value=tail.slice(0,end).trim();
+  if(!value.startsWith('PRIOR_CAMPAIGN_HANDOFF_V1 '))return '';
+  const limit=Math.max(0,Math.min(2600,Number(maxChars)||0));
+  if(!limit||value.length>limit)return '';
+  return value;
+}
+
 export function compactLocalExecutionPrompt(prompt,packetInput) {
   const source=String(prompt||'').trim();
   const packet=validateExecutionPacket(packetInput?.packet_version ? packetInput : buildExecutionPacket(packetInput));
   const retryMarker='\n\nSTRICT RETRY:';
   const retryIndex=source.lastIndexOf(retryMarker);
   const retry=retryIndex>=0?source.slice(retryIndex+2).trim():'';
-  return [
+  const priorHandoff=authorizedPriorCampaignHandoffFromPrompt(source);
+  const output=[
     'You are a TigerIQ execution worker. Execute exactly the authorized task packet below.',
     'Do not broaden scope. Do not infer permission from missing fields. Evidence is mandatory.',
     `PACKET_JSON: ${JSON.stringify(packet)}`,
+    ...(priorHandoff?['AUTHORIZED PRIOR CAMPAIGN HANDOFF:',priorHandoff]:[]),
     'OUTPUT REQUIREMENT:',
     `Return exactly one ${EXECUTION_RESULT_VERSION} JSON object and nothing else. No markdown fences.`,
     'Use criterion_index as the zero-based packet acceptance order when requested by the provider schema.',
@@ -169,6 +187,12 @@ export function compactLocalExecutionPrompt(prompt,packetInput) {
     'If any criterion cannot be proven, return status=blocked with the exact block_reason.',
     ...(retry?[retry]:[]),
   ].join('\n');
+  if(output.length>12000){
+    const error=new Error('NV09_COMPACT_PRIOR_EVIDENCE_BUDGET_EXCEEDED');
+    error.kind='job_contract';
+    throw error;
+  }
+  return output;
 }
 
 export function executionPacketFromPrompt(prompt) {
