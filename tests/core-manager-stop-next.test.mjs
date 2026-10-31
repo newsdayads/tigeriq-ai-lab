@@ -1,6 +1,6 @@
 import { describe,expect,it } from 'vitest';
 import {managerIdleStepStopPlan} from '../apps/tigeriq-core/manager-cycle-policy.mjs';
-import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY,campaignPromptRepairRetryCap,failedCampaignRuntimeRearmDecision,managerJobMaterializationDecision,providerPromptCompactionRecoveryEligible,providerPriorCampaignEvidenceRecoveryEligible} from '../apps/tigeriq-core/manager-job-policy.mjs';
+import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY,campaignPromptRepairRetryCap,failedCampaignRuntimeRearmDecision,managerJobMaterializationDecision,persistedPhaseZeroReviewRepairRecoveryEligible,providerPromptCompactionRecoveryEligible,providerPriorCampaignEvidenceRecoveryEligible} from '../apps/tigeriq-core/manager-job-policy.mjs';
 import {campaignPriorEvidenceContext,repairCampaignReviewPrompt} from '../apps/tigeriq-core/campaign-runner.mjs';
 import {apiDoctorAutoworkPriority} from '../apps/tigeriq-core/api-doctor.mjs';
 
@@ -90,6 +90,41 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
       reason:'runtime_source_newer_with_prompt_repair_credit',
       nextMaxAttempts:5,
     });
+  });
+  it('recovers exactly one persisted phase-zero trusted-handoff repair after restart',()=>{
+    const exact={
+      capability:'review',
+      phaseIndex:0,
+      maxAttempts:4,
+      prompt:'x\n\nAUTHORIZED PRIOR CAMPAIGN HANDOFF:\nPRIOR_CAMPAIGN_HANDOFF_V1 {"schema":"TIGERIQ_REFERENCED_JOB_EVIDENCE_V1"}',
+      failure:{failures:[{kind:'invalid_response',message:'EXECUTION_RESULT_BLOCKED'}]},
+    };
+    expect(persistedPhaseZeroReviewRepairRecoveryEligible(exact)).toBe(true);
+    expect(persistedPhaseZeroReviewRepairRecoveryEligible({...exact,maxAttempts:5})).toBe(false);
+    expect(persistedPhaseZeroReviewRepairRecoveryEligible({...exact,phaseIndex:1})).toBe(false);
+    expect(persistedPhaseZeroReviewRepairRecoveryEligible({...exact,capability:'reasoning'})).toBe(false);
+    expect(persistedPhaseZeroReviewRepairRecoveryEligible({...exact,prompt:'no trusted handoff'})).toBe(false);
+    expect(persistedPhaseZeroReviewRepairRecoveryEligible({...exact,failure:{failures:[{kind:'outage',message:'EXECUTION_RESULT_BLOCKED'}]}})).toBe(false);
+    const cap=campaignPromptRepairRetryCap({persistedPhaseZeroRepairEligible:true});
+    expect(cap).toBe(5);
+    expect(failedCampaignRuntimeRearmDecision({
+      objectiveStatus:'blocked',
+      objectiveSummary:MANAGER_NO_PROGRESS_BLOCK_SUMMARY,
+      jobStatus:'failed',
+      attempts:4,
+      maxAttempts:4,
+      jobCompletedAt:'2026-10-31T03:37:52Z',
+      runtimeUpdatedAt:'2026-10-31T05:05:57Z',
+      hasCampaign:true,
+      routingProfile:'LOCAL',
+      promptRepairEligible:true,
+      promptRepairCap:cap,
+    })).toEqual({
+      action:'requeue_prompt_repair',
+      reason:'runtime_source_newer_with_prompt_repair_credit',
+      nextMaxAttempts:5,
+    });
+    expect(persistedPhaseZeroReviewRepairRecoveryEligible({...exact,maxAttempts:5})).toBe(false);
   });
   it('grants the 5-to-6 NV09 recovery credit only from the exact same-job failure receipt',()=>{
     const exact={
