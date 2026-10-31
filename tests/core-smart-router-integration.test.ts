@@ -72,6 +72,8 @@ describe('#777 Core Smart Router integration',()=>{
     expect(core).toContain('failure:row.failure');
     expect(core).not.toContain("String(compactRepair.prompt||'').length>12000");
     expect(core).toContain('providerPriorCampaignEvidenceRecoveryEligible({');
+    expect(core).toContain('persistedPhaseZeroReviewRepairRecoveryEligible({');
+    expect(core).toContain('persistedPhaseZeroRepairEligible');
     expect(core).toContain('const repairCap=campaignPromptRepairRetryCap({');
     expect(core).toContain('compactLocalExecutionPrompt(prompt,packet)');
     expect(core).toContain('repairCreditGranted:repairCredit');
