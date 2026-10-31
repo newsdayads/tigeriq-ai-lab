@@ -18,7 +18,7 @@ describe('#777 Core Smart Router integration',()=>{
     expect(out.chosen?.employeeId).toBe('NV09');
     expect(out.candidates.find((x:any)=>x.resourceId===nv10.resource_id)?.reasons).toContain('reviewer_independence');
   });
-  it('integrates AUTO task profiles and reviewer independence into real job routing',()=>{expect(core).toContain('reviewerResourceIdsForJob');expect(core).toContain("capability<>'review'");expect(core).toContain('reviewerResourceIds:options.reviewerResourceIds||[]');expect(core).toContain('reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist,validateText,compiledPacket});');expect(core.split('employeeAllowlist,validateText,compiledPacket});').length-1).toBe(2);expect(core).toContain('preferredEmployeeId=String(options.preferredEmployeeId');expect(router).toContain("normalizedRequested!=='AUTO'");expect(router).toContain('reviewerExclusions');});
+  it('integrates AUTO task profiles and reviewer independence into real job routing',()=>{expect(core).toContain('reviewerResourceIdsForJob');expect(core).toContain("capability<>'review'");expect(core).toContain("explicitJobRefsFromText(j.prompt,{maxRefs:8})");expect(core).toContain('referencedJobReviewExclusions({jobIds:referencedJobIds,jobs:referenced})');expect(core).toContain('reviewerResourceIds:options.reviewerResourceIds||[]');expect(core).toContain('reviewerResourceIds,preferredEmployeeId:j.objective_metadata?.targetWorker||null,employeeAllowlist,validateText,compiledPacket});');expect(core.split('employeeAllowlist,validateText,compiledPacket});').length-1).toBe(2);expect(core).toContain('preferredEmployeeId=String(options.preferredEmployeeId');expect(router).toContain("normalizedRequested!=='AUTO'");expect(router).toContain('reviewerExclusions');});
   it('persists quota/rate-limit telemetry only from real provider signals or bounded cooldown evidence',()=>{expect(core).toContain('quota_state');expect(core).toContain('last_429_at');expect(core).toContain('syncQuotaFromHeaders');expect(core).toContain('x-ratelimit-limit-requests');expect(core).toContain('x-ratelimit-remaining-tokens');expect(core).toContain("kind==='rate_limit'");expect(core).toContain('rateLimitFailureState(currentQuota,policy.cooldownMs)');expect(core).toContain("select quota_state from tigeriq_ai_resources where resource_id=$1");});
   it('keeps NV09 job-local prompt overflow from poisoning the shared reviewer',()=>{
     expect(router).toContain("k==='job_contract'");
@@ -39,6 +39,9 @@ describe('#777 Core Smart Router integration',()=>{
     expect(core).toContain("j.completed_at<$2::timestamptz");
     expect(core).toContain("status='active'");
     expect(core).toContain("CAMPAIGN_FAILED_JOB_REARMED_AFTER_RUNTIME_SOURCE_CHANGE");
+    expect(core).toContain("if(!priorContext){");
+    expect(core).toContain("explicitJobRefsFromText(row.prompt,{maxRefs:8})");
+    expect(core).toContain("referencedJobEvidenceContext({jobIds:referencedJobIds,jobs:referencedJobs})");
     expect(core).toContain("await recoverStale();await recoverFailedCampaignJobsAfterRuntimeSourceChange();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;");
   });
 
