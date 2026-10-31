@@ -867,7 +867,22 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
       promptRepairEligible:repairEligible,
       promptRepairCap:repairCap,
     });
-    if(!['requeue','requeue_prompt_repair'].includes(decision.action))continue;
+    if(!['requeue','requeue_prompt_repair'].includes(decision.action)){
+      if(String(row.objective_metadata?.runtimeRearmSha||'')!==runtimeSha){
+        const prior=(await pool.query(
+          "select 1 from tigeriq_events where type='CAMPAIGN_FAILED_JOB_RECOVERY_SKIPPED' and data->>'jobId'=$1 and data->>'runtimeSha'=$2 limit 1",
+          [row.id,runtimeSha],
+        )).rowCount;
+        if(!prior)await event('CAMPAIGN_FAILED_JOB_RECOVERY_SKIPPED',{
+          objectiveId:row.objective_id,jobId:row.id,runtimeSha,runtimeUpdatedAt,
+          attempts:Number(row.attempts)||0,maxAttempts:Number(row.max_attempts)||0,
+          promptRepairChanged:promptRepair.changed,compactPromptRepairChanged:compactRepair.changed,
+          providerPromptCompactionEligible,providerPriorEvidenceEligible,repairEligible,repairCap,
+          reason:decision.reason,
+        });
+      }
+      continue;
+    }
     const repairCredit=decision.action==='requeue_prompt_repair';
     const out=await pool.query(`with requeued as (
       update tigeriq_jobs j
@@ -4732,6 +4747,7 @@ await recoverExpiredSharedResourceLeases(pool);
 await initMobileWorkerTables(pool);
 await recoverAfterCoreRestart();
 await refreshResources();
+await recoverFailedCampaignJobsAfterRuntimeSourceChange();
 const loopbackServer=HOST==='127.0.0.1'?null:createServer(server.listeners('request')[0]);
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve);});
 if(loopbackServer)await new Promise((resolve,reject)=>{loopbackServer.once('error',reject);loopbackServer.listen(PORT,'127.0.0.1',resolve);});
