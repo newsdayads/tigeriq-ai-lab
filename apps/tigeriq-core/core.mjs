@@ -19,7 +19,7 @@ const managerProviderBodyForHost = (provider, ...args) => {
 import { MANAGER_PENDING_JOB_STATUSES } from './manager-batch-policy.mjs';
 import { normalizeObjectiveRoutingProfile, objectiveJobRoutingProfile, mayWaitAfterLocalFailure, effectiveCoreJobRoutingProfile, githubAutoworkEmployeeAllowlist, githubAutoworkZeroCostResource } from './objective-local-routing.mjs';
 import { parseOwnerBacklogOrder, objectiveBacklogRank } from './owner-backlog-order.mjs';
-import { FAILED_LOGICAL_JOB_BLOCK_SUMMARY, MANAGER_NO_PROGRESS_BLOCK_SUMMARY, failedCampaignRuntimeRearmDecision, managerJobMaterializationDecision, managerLogicalJobIdentity } from './manager-job-policy.mjs';
+import { FAILED_LOGICAL_JOB_BLOCK_SUMMARY, MANAGER_NO_PROGRESS_BLOCK_SUMMARY, failedCampaignRuntimeRearmDecision, managerJobMaterializationDecision, managerLogicalJobIdentity, providerPromptCompactionRecoveryEligible } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, NV09_ENDPOINT, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 // NV09_CANARY_MARKER
 import { appendSkillContextToPrompt, focusedSkillRoutingText, matchAndLoadSkills } from './skill-loader.mjs';
@@ -787,7 +787,7 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
   const runtimeSha=String(runtime?.currentSha||'').trim();
   const runtimeUpdatedAt=String(runtime?.updatedAt||'').trim();
   if(!runtimeSha||!Number.isFinite(Date.parse(runtimeUpdatedAt)))return 0;
-  const rows=(await pool.query(`select j.id,j.objective_id,j.title,j.capability,j.phase_index,j.prompt,j.status,j.attempts,j.max_attempts,j.completed_at,
+  const rows=(await pool.query(`select j.id,j.objective_id,j.title,j.capability,j.phase_index,j.prompt,j.status,j.attempts,j.max_attempts,j.failure,j.completed_at,
       o.status as objective_status,o.summary as objective_summary,o.metadata as objective_metadata
     from tigeriq_jobs j
     join tigeriq_objectives o on o.id=j.objective_id
@@ -818,9 +818,13 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
     const compactRepair=isReviewPhase
       ? repairCompactExecutionPrompt(promptRepair.prompt)
       : {changed:false,prompt:promptRepair.prompt,reason:'not_review_phase'};
-    const providerPromptCompactionEligible=isReviewPhase
-      &&String(compactRepair.prompt||'').length>12000
-      &&compactRepair.reason==='compact_contract_already_present';
+    const providerPromptCompactionEligible=providerPromptCompactionRecoveryEligible({
+      capability:row.capability,
+      phaseIndex:row.phase_index,
+      maxAttempts:row.max_attempts,
+      compactRepairReason:compactRepair.reason,
+      failure:row.failure,
+    });
     const repairEligible=promptRepair.changed||compactRepair.changed||providerPromptCompactionEligible;
     const repairCap=providerPromptCompactionEligible?6:(compactRepair.changed?5:4);
     const decision=failedCampaignRuntimeRearmDecision({

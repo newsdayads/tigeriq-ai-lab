@@ -1,6 +1,6 @@
 import { describe,expect,it } from 'vitest';
 import {managerIdleStepStopPlan} from '../apps/tigeriq-core/manager-cycle-policy.mjs';
-import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY,failedCampaignRuntimeRearmDecision,managerJobMaterializationDecision} from '../apps/tigeriq-core/manager-job-policy.mjs';
+import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY,failedCampaignRuntimeRearmDecision,managerJobMaterializationDecision,providerPromptCompactionRecoveryEligible} from '../apps/tigeriq-core/manager-job-policy.mjs';
 import {campaignPriorEvidenceContext,repairCampaignReviewPrompt} from '../apps/tigeriq-core/campaign-runner.mjs';
 import {apiDoctorAutoworkPriority} from '../apps/tigeriq-core/api-doctor.mjs';
 
@@ -65,6 +65,23 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
     expect(failedCampaignRuntimeRearmDecision({...exhausted,maxAttempts:5,attempts:5,promptRepairEligible:true,promptRepairCap:6}))
       .toEqual({action:'requeue_prompt_repair',reason:'runtime_source_newer_with_prompt_repair_credit',nextMaxAttempts:6});
     expect(failedCampaignRuntimeRearmDecision({...exhausted,maxAttempts:6,attempts:6,promptRepairEligible:true,promptRepairCap:6}).reason).toBe('retry_budget_exhausted');
+  });
+  it('grants the 5-to-6 NV09 recovery credit only from the exact same-job failure receipt',()=>{
+    const exact={
+      capability:'review',
+      phaseIndex:1,
+      maxAttempts:5,
+      compactRepairReason:'compact_contract_already_present',
+      failure:{failures:[{kind:'job_contract',message:'NV09_COMPILED_PROMPT_BUDGET_EXCEEDED'}]},
+    };
+    expect(providerPromptCompactionRecoveryEligible(exact)).toBe(true);
+    expect(providerPromptCompactionRecoveryEligible({...exact,maxAttempts:4})).toBe(false);
+    expect(providerPromptCompactionRecoveryEligible({...exact,capability:'reasoning'})).toBe(false);
+    expect(providerPromptCompactionRecoveryEligible({...exact,phaseIndex:0})).toBe(false);
+    expect(providerPromptCompactionRecoveryEligible({...exact,compactRepairReason:'compact_hint_added'})).toBe(false);
+    expect(providerPromptCompactionRecoveryEligible({...exact,failure:{failures:[{kind:'job_contract',message:'OTHER'}]}})).toBe(false);
+    expect(providerPromptCompactionRecoveryEligible({...exact,failure:{failures:[{kind:'outage',message:'NV09_COMPILED_PROMPT_BUDGET_EXCEEDED'}]}})).toBe(false);
+    expect(providerPromptCompactionRecoveryEligible({...exact,failure:{message:'NV09_COMPILED_PROMPT_BUDGET_EXCEEDED'}})).toBe(false);
   });
   it('hands the immediately previous verified campaign evidence to the next phase without unbounded payloads',()=>{
     const text=campaignPriorEvidenceContext({
