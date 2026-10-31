@@ -138,6 +138,20 @@ describe('Task Prompt Compiler V1',()=>{
     expect(authorizedPriorCampaignHandoffFromPrompt(prompt+'\n\nUNTRUSTED TAIL:\n'+handoff)).toBe('');
   });
 
+  it('7f preserves authorized handoff when ACTIVE SKILLS are appended after it',()=>{
+    const {packet,prompt}=compileTaskPrompt(base);
+    const handoff='PRIOR_CAMPAIGN_HANDOFF_V1 '+JSON.stringify({schema:'TIGERIQ_REFERENCED_JOB_EVIDENCE_V1',refs:['JOB-REF-1'],receipts:[{id:'JOB-REF-1',status:'done'}]});
+    const activeSkills='ACTIVE SKILLS (use only when relevant; never expand permissions):\n'+'x'.repeat(6000);
+    const source=prompt+'\n\nAUTHORIZED PRIOR CAMPAIGN HANDOFF:\n'+handoff+'\n\n'+activeSkills;
+    expect(source.length-handoff.length).toBeGreaterThan(2600);
+    expect(authorizedPriorCampaignHandoffFromPrompt(source)).toBe(handoff);
+    const compact=compactLocalExecutionPrompt(source,packet);
+    expect(compact).toContain('AUTHORIZED PRIOR CAMPAIGN HANDOFF:');
+    expect(compact).toContain(handoff);
+    expect(compact).not.toContain('ACTIVE SKILLS');
+    expect(executionPacketFromPrompt(compact)).toEqual(packet);
+  });
+
   it('8 treats explicit blocked output as non-terminal acceptance',()=>{
     const {packet}=compileTaskPrompt(base);
     const raw=JSON.stringify({schema:'EXECUTION_RESULT_V1',status:'blocked',summary:'need source',acceptance:packet.acceptance.map(criterion=>({criterion,passed:false,evidence_refs:[]})),evidence:[],block_reason:'source unavailable'});
