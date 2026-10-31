@@ -94,6 +94,20 @@ test('maps real Core cards but never invents worker, delegated job or done',()=>
   assert.equal(closed.state,'closed_unverified');
 });
 
+test('accepts canonical DONE_ACCEPTED while preserving legacy DONE_VERIFIED compatibility',()=>{
+  const canonical=source();
+  canonical.items[1].completionSyncState='DONE_ACCEPTED';
+  const accepted=normalizeCoreSnapshot(canonical,{now:NOW});
+  assert.equal(accepted.rooms.find(r=>r.id==='quality').items[0].state,'done_verified');
+
+  const legacy=normalizeCoreSnapshot(source(),{now:NOW});
+  assert.equal(legacy.rooms.find(r=>r.id==='quality').items[0].state,'done_verified');
+
+  canonical.items[1].completionSyncState='VERIFY_EVIDENCE_MISSING';
+  assert.equal(normalizeCoreSnapshot(canonical,{now:NOW})
+    .rooms.find(r=>r.id==='quality').items[0].state,'closed_unverified');
+});
+
 test('fails closed on incomplete, cached-error, stale and future work-order sources',()=>{
   const invalid=[
     {...source(),ok:false},
