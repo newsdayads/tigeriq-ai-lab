@@ -23,3 +23,16 @@ Chạy `powershell -ExecutionPolicy Bypass -File .\uninstall-user.ps1` từ gói
 ## Trạng thái nghiệm thu 26/10/2026
 
 Đã thử 19 Android thật đồng thời; screenshot 19/19; APK install/launch/stop/uninstall 2/2; clipboard; macro cancel; scheduler phục hồi sau backend kill; MKV 5 giây. WiFi ADB LAN thật chưa PASS vì TCP/5555 từ PC01 tới điện thoại bị topology hiện tại chặn.
+
+## Bootstrapper không dùng shell cho RC5
+
+`TigerIQPhoneFarmBootstrapper.exe` là công cụ giao nhận RC5 theo user, không cần Administrator và không gọi PowerShell/CMD.
+
+Luồng cố định:
+1. Chỉ tải gói RC5 công khai từ GitHub qua HTTPS.
+2. Kiểm SHA-256 gói: `cb2c5dfb559bad23e95122b1e5f285f48d541ee0c973c2ec7b6f09dc54b4992`.
+3. Giải nén an toàn vào `%LOCALAPPDATA%\TigerIQ\PhoneFarm\releases\6c053a24`; chặn path traversal/symlink và giới hạn số tệp/dung lượng.
+4. Kiểm `BUILD_MANIFEST.json` có `sourceHead=6c053a242cca672f0a3f3356d995576b9b8d6058` và kiểm SHA-256 `TigerIQPhoneFarm.exe` theo manifest.
+5. Ghi `CURRENT_RELEASE.json` rồi mở EXE với `UseShellExecute=false`.
+
+Bootstrapper không đổi firewall, registry, tài khoản, quyền hệ thống, LAIXI hoặc App Chrome. Đây chỉ là đường giao nhận RC5 đã phát hành; không tự chứng minh F04/F09/F10 đã PASS.

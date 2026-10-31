@@ -221,3 +221,25 @@ test('wireless ADB address limited to valid private LAN IP and nonprivileged por
   for(const value of ['8.8.8.8:5555','127.0.0.1:5555','192.169.1.2:5555','172.32.0.1:5555','192.168.1.999:5555','192.168.1.2:0','10.1.2.3:80','10.1.2.3:5555 & whoami','localhost:5555'])
     assert.equal(privateWifiAddress(value),false);
 });
+
+
+test('non-shell RC5 bootstrapper is pinned and fails closed before deployment', () => {
+  const dir=path.dirname(fileURLToPath(import.meta.url));
+  const source=fs.readFileSync(path.join(dir,'windows','bootstrapper','Program.cs'),'utf8');
+  const project=fs.readFileSync(path.join(dir,'windows','bootstrapper','TigerIQPhoneFarmBootstrapper.csproj'),'utf8');
+  assert.match(project,/<PublishSingleFile>true<\/PublishSingleFile>/);
+  assert.match(project,/<SelfContained>true<\/SelfContained>/);
+  assert.match(source,/https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/releases\/download\/tigeriq-phone-farm-windows-v0\.5\.0-rc5\/TigerIQ-PhoneFarm-Windows-v0\.5\.0-RC5-6c053a24\.zip/);
+  assert.match(source,/cb2c5dfb559bad23e95122b1e5f285f48d541ee0c973c2ec7b6f09dc54b4992/);
+  assert.match(source,/6c053a242cca672f0a3f3356d995576b9b8d6058/);
+  assert.match(source,/uri\.Scheme != Uri\.UriSchemeHttps/);
+  assert.match(source,/uri\.Host, "github\.com"/);
+  assert.match(source,/SHA-256 gói RC5 không khớp/);
+  assert.match(source,/sourceHead trong BUILD_MANIFEST không khớp/);
+  assert.match(source,/SHA-256 TigerIQPhoneFarm\.exe không khớp manifest/);
+  assert.match(source,/Phát hiện đường dẫn ZIP vượt thư mục đích/);
+  assert.match(source,/symbolic link/);
+  assert.match(source,/UseShellExecute = false/);
+  assert.doesNotMatch(source,/ProcessStartInfo\(\s*"(?:powershell|cmd\\.exe|explorer)"/i);
+  assert.doesNotMatch(source,/UseShellExecute\s*=\s*true/);
+});
