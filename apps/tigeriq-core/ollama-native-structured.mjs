@@ -112,7 +112,7 @@ export function compactStructuredExecutionSchema(packetInput) {
   };
 }
 
-export function buildNativeExecutionRequest({ packet, prompt, model = 'gemma3:4b', numPredict = 512 }) {
+export function buildNativeExecutionRequest({ packet, prompt, model = 'gemma3:4b', numPredict = 512, compact = false }) {
   if (model !== 'gemma3:4b') throw contractError('LOCAL_MODEL_NOT_ALLOWLISTED', 'configuration');
   const parsed = executionPacketFromPrompt(prompt);
   // Verify binding to one exact source packet before sending text to the worker.
@@ -126,7 +126,7 @@ export function buildNativeExecutionRequest({ packet, prompt, model = 'gemma3:4b
     model,
     messages: [{ role: 'user', content: prompt }],
     stream: false,
-    format: structuredExecutionSchema(packet),
+    format: compact ? compactStructuredExecutionSchema(packet) : structuredExecutionSchema(packet),
     options: { temperature: 0, num_predict: numPredict },
   };
 }
@@ -134,13 +134,13 @@ export function buildNativeExecutionRequest({ packet, prompt, model = 'gemma3:4b
 // Call only on an approved isolated surface. Never create Core objectives or mark
 // workers successful here. Core's deterministic gate remains authoritative.
 export async function invokeNativeStructuredExecution({
-  packet, prompt, model = 'gemma3:4b', numPredict = 512,
+  packet, prompt, model = 'gemma3:4b', numPredict = 512, compact = false,
   timeoutMs = 85000, fetchImpl = fetch,
 } = {}) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 90000) {
     throw contractError('LOCAL_TIMEOUT_BUDGET_INVALID', 'configuration');
   }
-  const body = buildNativeExecutionRequest({ packet, prompt, model, numPredict });
+  const body = buildNativeExecutionRequest({ packet, prompt, model, numPredict, compact });
   const start = Date.now();
   let response;
   try {
