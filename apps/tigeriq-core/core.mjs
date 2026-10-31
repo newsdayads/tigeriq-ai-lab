@@ -35,7 +35,7 @@ import { CONTINUOUS_VERIFY_CADENCE_MS, cadenceContinuousVerifyDue, githubContinu
 import { planContinuousVerifyRecovery, CONTINUOUS_VERIFY_RECOVERY_EVENT_LIMIT } from './continuous-verify-recovery.mjs';
 import { assessMainCiGate } from './main-ci-health.mjs';
 import { autonomousRcaCanonicalAction, autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
-import { normalizeCampaignPhases, currentCampaignGoal, campaignPriorEvidenceContext, repairCampaignReviewPrompt, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt } from './campaign-runner.mjs';
+import { normalizeCampaignPhases, currentCampaignGoal, campaignPriorEvidenceContext, explicitJobRefsFromText, referencedJobEvidenceContext, repairCampaignReviewPrompt, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt } from './campaign-runner.mjs';
 import { buildAutonomousCodingHandoffWorkOrder, normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, functionalReprobeCandidates, functionalRoutingReadiness, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
@@ -3192,8 +3192,26 @@ async function managerTick() {
       const capability=['general','reasoning','review','pc_operator'].includes(spec.capability)?spec.capability:'general';
       const title=String(spec.title).slice(0,200);
       const rawPrompt=String(spec.prompt).slice(0,12000);
-      const campaignReviewPrompt=capability==='review'&&campaignPriorContext
-        ? `${rawPrompt.slice(0,1800)}\n\nAUTHORIZED PRIOR CAMPAIGN HANDOFF:\n${campaignPriorContext}`.slice(0,4200)
+      let referencedReviewContext='';
+      if(capability==='review'&&!campaignPriorContext){
+        const referencedJobIds=explicitJobRefsFromText(rawPrompt);
+        if(referencedJobIds.length){
+          const referencedJobs=(await pool.query(
+            "select id,title,phase_index,kind,status,employee_id,resource_id,provider,completed_at,result from tigeriq_jobs where id=any($1::text[]) and status='done' limit 8",
+            [referencedJobIds],
+          )).rows;
+          referencedReviewContext=referencedJobEvidenceContext({jobIds:referencedJobIds,jobs:referencedJobs});
+          if(referencedReviewContext)await event('REFERENCED_JOB_EVIDENCE_ATTACHED',{
+            objectiveId:o.id,
+            phaseIndex:currentPhase,
+            jobIds:referencedJobIds,
+            receiptCount:referencedJobs.length,
+          });
+        }
+      }
+      const trustedReviewContext=campaignPriorContext||referencedReviewContext;
+      const campaignReviewPrompt=capability==='review'&&trustedReviewContext
+        ? `${rawPrompt.slice(0,1800)}\n\nAUTHORIZED PRIOR CAMPAIGN HANDOFF:\n${trustedReviewContext}`.slice(0,4200)
         : rawPrompt;
       const id=capability==='pc_operator'?pcOperatorJobId(o.id,currentPhase,pcOperatorOrdinal++):`JOB-${randomUUID()}`;
       const promptText=capability==='pc_operator'?rawPrompt:compileTaskPrompt({

@@ -33,6 +33,53 @@ function campaignEvidenceText(value,max=700){
   return String(raw||'').slice(0,Math.max(0,Number(max)||0));
 }
 
+export function explicitJobRefsFromText(value,{maxRefs=4}={}){
+  const limit=Math.max(1,Math.min(8,Number(maxRefs)||4));
+  const matches=String(value||'').match(/\bJOB-[A-Za-z0-9][A-Za-z0-9-]{5,}\b/g)||[];
+  return [...new Set(matches.map(item=>String(item).trim()).filter(Boolean))].slice(0,limit);
+}
+
+function referencedJobReceipt(job){
+  if(!job||job.status!=='done'||!String(job.id||'').trim())return null;
+  let result=job.result??null;
+  if(typeof result==='string'){
+    try{result=JSON.parse(result);}catch{}
+  }
+  return {
+    id:String(job.id),
+    title:String(job.title||'').slice(0,180),
+    kind:String(job.kind||''),
+    status:'done',
+    employeeId:String(job.employee_id||''),
+    resourceId:String(job.resource_id||''),
+    provider:String(job.provider||''),
+    completedAt:job.completed_at||null,
+    executionGate:result&&typeof result==='object'?{
+      pass:result?.executionGate?.pass===true,
+      code:String(result?.executionGate?.code||''),
+      evidenceIds:Array.isArray(result?.executionGate?.evidenceIds)?result.executionGate.evidenceIds.slice(0,8):[],
+    }:null,
+    resultText:campaignEvidenceText(result&&typeof result==='object'?result?.text:result,700),
+  };
+}
+
+export function referencedJobEvidenceContext({jobIds=[],jobs=[]}={}){
+  const refs=[...new Set((Array.isArray(jobIds)?jobIds:[]).map(item=>String(item||'').trim()).filter(Boolean))].slice(0,4);
+  if(!refs.length)return '';
+  const byId=new Map((Array.isArray(jobs)?jobs:[])
+    .map(job=>referencedJobReceipt(job))
+    .filter(Boolean)
+    .map(receipt=>[receipt.id,receipt]));
+  const receipts=refs.map(id=>byId.get(id)).filter(Boolean);
+  if(!receipts.length)return '';
+  const payload={
+    schema:'TIGERIQ_REFERENCED_JOB_EVIDENCE_V1',
+    refs,
+    receipts,
+  };
+  return `PRIOR_CAMPAIGN_HANDOFF_V1 ${JSON.stringify(payload)}`.slice(0,2600);
+}
+
 export function campaignPriorEvidenceContext({currentPhase=0,checkpoints=[],jobs=[]}={}){
   const phaseIndex=Math.max(0,Number(currentPhase)||0);
   if(phaseIndex<=0)return '';
