@@ -40,7 +40,8 @@ describe('#777 Core Smart Router integration',()=>{
     expect(core).toContain("status='active'");
     expect(core).toContain("CAMPAIGN_FAILED_JOB_REARMED_AFTER_RUNTIME_SOURCE_CHANGE");
     expect(core).toContain("if(!priorContext){");
-    expect(core).toContain("explicitJobRefsFromText(row.prompt,{maxRefs:8})");
+    expect(core).toContain("o.objective as objective_text");
+    expect(core).toContain("[row.prompt,row.objective_text].filter(Boolean).join('\\n')");
     expect(core).toContain("referencedJobEvidenceContext({jobIds:referencedJobIds,jobs:referencedJobs})");
     expect(core).toContain("await recoverStale();await recoverFailedCampaignJobsAfterRuntimeSourceChange();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;");
   });
