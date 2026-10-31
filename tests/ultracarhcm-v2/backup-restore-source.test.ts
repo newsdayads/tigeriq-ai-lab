@@ -25,7 +25,9 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
     expect(home).toContain('private fun exportHomeBackupJson(): JSONObject');
     expect(home).toContain('.put("backupSchemaVersion", HomeBackupRules.CURRENT_BACKUP_SCHEMA_VERSION)');
     expect(home).toContain('.put("quickSlots", normalizedQuickSlotsForStorage(quickSlots()))');
-    expect(home).toContain('.put("savedConfigurations", savedConfigurations())');
+    expect(home).toContain('val savedConfigs = savedConfigurations()');
+    expect(home).toContain('.put("savedConfigurations", savedConfigs)');
+    expect(home).toContain('.put("savedLayoutShortcuts", exportSavedLayoutShortcuts(savedConfigs))');
     expect(home).toContain('.put("defaultHomeConfiguration", defaultSafe ?: JSONObject.NULL)');
     expect(home).toContain('.put("taxiMeter", exportTaxiMeterBackup())');
     expect(home).toContain('getSharedPreferences(TaxiMeterRules.PREFS_NAME, Context.MODE_PRIVATE)');
@@ -84,7 +86,7 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
     expect(home).toContain('OverlayPositionRules.xKey(displayId)');
     expect(home).toContain('OverlayPositionRules.yKey(displayId)');
     expect(rules).toContain('const val LEGACY_BACKUP_SCHEMA_VERSION = 1');
-    expect(rules).toContain('const val CURRENT_BACKUP_SCHEMA_VERSION = 4');
+    expect(rules).toContain('const val CURRENT_BACKUP_SCHEMA_VERSION = 5');
     expect(rules).toContain('version in LEGACY_BACKUP_SCHEMA_VERSION..CURRENT_BACKUP_SCHEMA_VERSION');
     expect(rules).toContain('fun requiresVehicleState(version: Int): Boolean');
     expect(home).toContain('"vehicleModel"');
@@ -93,13 +95,33 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
     expect(home).toContain('VehicleRules.PREF_LICENSE_PLATE');
   });
 
-  it('preserves Taxi Meter state only in schema v4 and leaves legacy backups non-destructive', () => {
+  it('preserves Taxi Meter state from schema v4 while keeping older backups non-destructive', () => {
     expect(rules).toContain('fun requiresTaxiMeterState(version: Int): Boolean');
     expect(rules).toContain('version >= 4');
     expect(home).toContain('val replaceTaxiMeterState = HomeBackupRules.requiresTaxiMeterState(backupSchema)');
     expect(home).toContain('if (replaceTaxiMeterState)');
     expect(home).toContain('.putString(TaxiMeterRules.KEY_HISTORY, safeTaxiHistory.toString())');
     expect(home).toContain('taxiEditor.remove(TaxiMeterRules.KEY_RATE)');
+  });
+
+  it('backs up five stable saved-layout shortcuts in schema v5 and validates references before writes', () => {
+    expect(rules).toContain('fun requiresSavedLayoutShortcuts(version: Int): Boolean');
+    expect(rules).toContain('version >= 5');
+    expect(home).toContain('private fun exportSavedLayoutShortcuts(savedConfigs: JSONArray): JSONArray');
+    expect(home).toContain('SavedLayoutShortcutRules.SLOT_COUNT');
+    expect(home).toContain('knownConfigIds.contains(configId)');
+    expect(home).toContain('val replaceSavedLayoutShortcuts =');
+    expect(home).toContain('HomeBackupRules.requiresSavedLayoutShortcuts(backupSchema)');
+    expect(home).toContain('rawSavedLayoutShortcuts.length() != SavedLayoutShortcutRules.SLOT_COUNT');
+    expect(home).toContain('!safeConfigIds.contains(configId)');
+    expect(home).toContain('val shortcutEditor = savedLayoutShortcutPrefs().edit().clear()');
+    const start = home.indexOf('private fun importHomeBackupJson(text: String): Boolean');
+    const end = home.indexOf('private fun editDriverName()');
+    const block = home.slice(start, end);
+    expect(block.indexOf('val editor = prefs.edit()')).toBeGreaterThan(
+      block.indexOf('!safeConfigIds.contains(configId)'),
+    );
+    expect(block).toContain('if (replaceSavedLayoutShortcuts)');
   });
 
   it('refreshes an active DeX overlay immediately after a successful restore', () => {
