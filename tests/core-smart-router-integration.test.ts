@@ -31,7 +31,7 @@ describe('#777 Core Smart Router integration',()=>{
   it('parses compound provider reset durations such as current Groq headers',()=>{const start=core.indexOf('function quotaResetDurationMs');const end=core.indexOf('\nfunction quotaResetAt',start);expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);const fn=new Function(`${core.slice(start,end)}; return quotaResetDurationMs;`)();expect(fn('2m59.56s')).toBeCloseTo(179560,5);expect(fn('7.66s')).toBeCloseTo(7660,5);expect(fn('n/a')).toBeNull();});
   it('uses task-kind performance and bounded failure-aware failover without paid fallback',()=>{expect(core).toContain('avg_latency_ms');expect(core).toContain('failurePolicy(kind)');expect(core).toContain('if(policy.stop)break');expect(router).toContain('paid_fallback_forbidden');expect(router).toContain("'security','credential','paid','production','irreversible'");});
   it('recovers a blocked LOCAL campaign by requeueing the same failed job only after runtime source change',()=>{
-    expect(core).toContain('async function recoverFailedCampaignJobsAfterRuntimeSourceChange()');
+    expect(core).toContain("async function recoverFailedCampaignJobsAfterRuntimeSourceChange({diagnostic=false,trigger='periodic'}={})");
     expect(core).toContain("o.summary=any($1::text[])");
     expect(core).toContain('MANAGER_NO_PROGRESS_BLOCK_SUMMARY');
     expect(core).toContain("j.id=$1");
@@ -43,6 +43,10 @@ describe('#777 Core Smart Router integration',()=>{
     expect(core).toContain("explicitJobRefsFromText(row.prompt,{maxRefs:8})");
     expect(core).toContain("referencedJobEvidenceContext({jobIds:referencedJobIds,jobs:referencedJobs})");
     expect(core).toContain("await recoverStale();await recoverFailedCampaignJobsAfterRuntimeSourceChange();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;");
+    expect(core).toContain("diagnostic===true&&diagnosed<5");
+    expect(core).toContain("CAMPAIGN_RUNTIME_SOURCE_RECOVERY_SKIPPED");
+    expect(core).toContain("recoverFailedCampaignJobsAfterRuntimeSourceChange({diagnostic:true,trigger:'startup'})");
+    expect(core).toContain("CAMPAIGN_RUNTIME_SOURCE_STARTUP_RECONCILED");
   });
 
   it('carries prior verified campaign receipts into later-phase Manager and review prompts',()=>{
