@@ -10,6 +10,7 @@ import {
   strictExecutionRetryPrompt,
   repairCompactExecutionPrompt,
   compactLocalExecutionPrompt,
+  authorizedPriorCampaignHandoffFromPrompt,
   executionPacketFromPrompt,
 } from '../apps/tigeriq-core/task-prompt-compiler.mjs';
 
@@ -121,6 +122,19 @@ describe('Task Prompt Compiler V1',()=>{
     expect(retried).toContain('STRICT RETRY:');
     expect(retried).toContain('EXECUTION_ACCEPTANCE_MISSING');
     expect(executionPacketFromPrompt(retried)).toEqual(packet);
+  });
+
+  it('7e preserves only the bounded authorized prior campaign handoff in the compact provider prompt',()=>{
+    const {packet,prompt}=compileTaskPrompt(base);
+    const handoff='PRIOR_CAMPAIGN_HANDOFF_V1 '+JSON.stringify({checkpoint:{jobId:'JOB-EVID-1'},receipts:[{id:'JOB-WORK-1',resultText:'verified phase evidence'}]});
+    const source=prompt+'\n\nAUTHORIZED PRIOR CAMPAIGN HANDOFF:\n'+handoff+'\n\nLOCAL COMPACT OUTPUT CONTRACT:\ncriterion_index only';
+    expect(authorizedPriorCampaignHandoffFromPrompt(source)).toBe(handoff);
+    const compact=compactLocalExecutionPrompt(source,packet);
+    expect(compact).toContain('AUTHORIZED PRIOR CAMPAIGN HANDOFF:');
+    expect(compact).toContain(handoff);
+    expect(compact).not.toContain('LOCAL COMPACT OUTPUT CONTRACT:');
+    expect(executionPacketFromPrompt(compact)).toEqual(packet);
+    expect(authorizedPriorCampaignHandoffFromPrompt(prompt+'\n\nUNTRUSTED TAIL:\n'+handoff)).toBe('');
   });
 
   it('8 treats explicit blocked output as non-terminal acceptance',()=>{
