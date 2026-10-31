@@ -48,6 +48,18 @@ export function providerPriorCampaignEvidenceRecoveryEligible({
   );
 }
 
+export function campaignPromptRepairRetryCap({
+  promptRepairChanged=false,
+  compactRepairChanged=false,
+  providerPromptCompactionEligible=false,
+  providerPriorCampaignEvidenceEligible=false,
+}={}) {
+  if(providerPriorCampaignEvidenceEligible===true)return 7;
+  if(providerPromptCompactionEligible===true)return 6;
+  if(promptRepairChanged===true||compactRepairChanged===true)return 5;
+  return 4;
+}
+
 export function failedCampaignRuntimeRearmDecision({
   objectiveStatus='',
   objectiveSummary='',

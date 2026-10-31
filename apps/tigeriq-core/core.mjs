@@ -19,7 +19,7 @@ const managerProviderBodyForHost = (provider, ...args) => {
 import { MANAGER_PENDING_JOB_STATUSES } from './manager-batch-policy.mjs';
 import { normalizeObjectiveRoutingProfile, objectiveJobRoutingProfile, mayWaitAfterLocalFailure, effectiveCoreJobRoutingProfile, githubAutoworkEmployeeAllowlist, githubAutoworkZeroCostResource } from './objective-local-routing.mjs';
 import { parseOwnerBacklogOrder, objectiveBacklogRank } from './owner-backlog-order.mjs';
-import { FAILED_LOGICAL_JOB_BLOCK_SUMMARY, MANAGER_NO_PROGRESS_BLOCK_SUMMARY, failedCampaignRuntimeRearmDecision, managerJobMaterializationDecision, managerLogicalJobIdentity, providerPromptCompactionRecoveryEligible, providerPriorCampaignEvidenceRecoveryEligible } from './manager-job-policy.mjs';
+import { FAILED_LOGICAL_JOB_BLOCK_SUMMARY, MANAGER_NO_PROGRESS_BLOCK_SUMMARY, campaignPromptRepairRetryCap, failedCampaignRuntimeRearmDecision, managerJobMaterializationDecision, managerLogicalJobIdentity, providerPromptCompactionRecoveryEligible, providerPriorCampaignEvidenceRecoveryEligible } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, NV09_ENDPOINT, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 // NV09_CANARY_MARKER
 import { appendSkillContextToPrompt, focusedSkillRoutingText, matchAndLoadSkills } from './skill-loader.mjs';
@@ -848,7 +848,12 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
       failure:row.failure,
     });
     const repairEligible=promptRepair.changed||compactRepair.changed||providerPromptCompactionEligible||providerPriorEvidenceEligible;
-    const repairCap=providerPriorEvidenceEligible?7:(providerPromptCompactionEligible?6:(compactRepair.changed?5:4));
+    const repairCap=campaignPromptRepairRetryCap({
+      promptRepairChanged:promptRepair.changed,
+      compactRepairChanged:compactRepair.changed,
+      providerPromptCompactionEligible,
+      providerPriorCampaignEvidenceEligible:providerPriorEvidenceEligible,
+    });
     const decision=failedCampaignRuntimeRearmDecision({
       objectiveStatus:row.objective_status,
       objectiveSummary:row.objective_summary,
