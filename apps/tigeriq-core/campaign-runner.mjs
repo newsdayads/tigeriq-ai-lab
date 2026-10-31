@@ -90,6 +90,9 @@ export function referencedJobReviewExclusions({jobIds=[],jobs=[]}={}){
   for(const job of (Array.isArray(jobs)?jobs:[])){
     const id=String(job?.id||'').trim();
     if(!id||!refs.has(id)||job?.status!=='done')continue;
+    // Reviewer independence protects against the implementer, not against a
+    // historical reviewer receipt referenced only as evidence.
+    if(String(job?.capability||'').trim().toLowerCase()==='review')continue;
     const employeeId=String(job?.employee_id||'').trim().toUpperCase();
     const resourceId=String(job?.resource_id||'').trim();
     if(employeeId)employeeIds.add(employeeId);
