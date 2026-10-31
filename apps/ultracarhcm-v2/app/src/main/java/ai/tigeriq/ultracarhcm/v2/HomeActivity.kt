@@ -756,6 +756,62 @@ class HomeActivity : ComponentActivity() {
             }.show()
     }
 
+    private fun moveSavedConfiguration(index: Int, delta: Int): Boolean {
+        val entries = savedConfigurations()
+        val target = HomeConfigRules.reorderTarget(entries.length(), index, delta) ?: return false
+        val reordered = JSONArray()
+        for (position in 0 until entries.length()) {
+            val source = when (position) {
+                index -> target
+                target -> index
+                else -> position
+            }
+            reordered.put(entries.get(source))
+        }
+        return prefs.edit()
+            .putString("v2_home_configs", reordered.toString())
+            .commit()
+    }
+
+    private fun showSavedOrderEditor() {
+        val entries = savedConfigurations()
+        if (entries.length() < 2) {
+            toast("Cần ít nhất 2 cấu hình Home để sắp xếp")
+            return
+        }
+        val names = Array(entries.length()) { index ->
+            entries.optJSONObject(index)?.optString("name", "Home ${index + 1}")
+                ?: "Home ${index + 1}"
+        }
+        AlertDialog.Builder(this)
+            .setTitle("SẮP XẾP BỐ CỤC")
+            .setMessage("Chọn cấu hình rồi dùng Lên/Xuống. Không dùng kéo thả để tránh chọn nhầm thẻ.")
+            .setItems(names) { _, index ->
+                val deltas = mutableListOf<Int>()
+                if (index > 0) deltas += -1
+                if (index < entries.length() - 1) deltas += 1
+                val actions = deltas.map { delta ->
+                    if (delta < 0) "↑ Đưa lên" else "↓ Đưa xuống"
+                }.toTypedArray()
+                AlertDialog.Builder(this)
+                    .setTitle(names[index])
+                    .setItems(actions) { _, choice ->
+                        if (choice in deltas.indices) {
+                            if (moveSavedConfiguration(index, deltas[choice])) {
+                                toast("Đã cập nhật thứ tự bố cục")
+                                showSavedOrderEditor()
+                            } else {
+                                toast("Không thể cập nhật thứ tự bố cục")
+                            }
+                        }
+                    }
+                    .setNegativeButton("Hủy", null)
+                    .show()
+            }
+            .setNegativeButton("Đóng", null)
+            .show()
+    }
+
     private fun showSaved() {
         val entries = savedConfigurations()
         if (entries.length() == 0) {
@@ -798,7 +854,10 @@ class HomeActivity : ComponentActivity() {
                             }
                         }
                     }.setNegativeButton("Hủy", null).show()
-            }.setNegativeButton("Đóng", null).show()
+            }
+            .setNeutralButton("SẮP XẾP BỐ CỤC") { _, _ -> showSavedOrderEditor() }
+            .setNegativeButton("Đóng", null)
+            .show()
     }
 
     private fun exportOverlayPositions(): JSONArray {
