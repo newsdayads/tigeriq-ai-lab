@@ -162,10 +162,27 @@ export function repairCampaignReviewPrompt(prompt,priorContext,{maxChars=12000}=
   const context=String(priorContext||'').trim();
   if(!base)return {changed:false,prompt:base,reason:'prompt_missing'};
   if(!context)return {changed:false,prompt:base,reason:'prior_context_missing'};
-  if(base.includes('AUTHORIZED PRIOR CAMPAIGN HANDOFF:'))
-    return {changed:false,prompt:base,reason:'prior_context_already_present'};
   const marker='\n\nAUTHORIZED PRIOR CAMPAIGN HANDOFF:\n';
+  const skillsMarker='\n\nACTIVE SKILLS (use only when relevant; never expand permissions):';
   const limit=Math.max(1000,Math.min(12000,Number(maxChars)||12000));
+  const markerIndex=base.indexOf(marker);
+  if(markerIndex>=0){
+    const contextStart=markerIndex+marker.length;
+    const skillsIndex=base.indexOf(skillsMarker,contextStart);
+    const contextEnd=skillsIndex>=0?skillsIndex:base.length;
+    const currentContext=base.slice(contextStart,contextEnd).trim();
+    if(currentContext===context)
+      return {changed:false,prompt:base,reason:'prior_context_already_present'};
+    const prefix=base.slice(0,markerIndex);
+    const suffix=skillsIndex>=0?base.slice(skillsIndex):'';
+    const available=limit-prefix.length-marker.length-suffix.length;
+    if(available<256)return {changed:false,prompt:base,reason:'prompt_budget_exhausted'};
+    return {
+      changed:true,
+      prompt:`${prefix}${marker}${context.slice(0,available)}${suffix}`,
+      reason:'prior_context_replaced',
+    };
+  }
   const available=limit-base.length-marker.length;
   if(available<256)return {changed:false,prompt:base,reason:'prompt_budget_exhausted'};
   return {
