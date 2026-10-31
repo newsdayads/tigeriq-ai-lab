@@ -40,7 +40,7 @@ function normalizeItem(raw) {
   const stepItems = Array.isArray(raw.progressSteps) ? raw.progressSteps : [];
   const doneVerified = raw.state === 'closed' &&
     raw.bucket === 'HOÀN THÀNH' &&
-    raw.completionSyncState === 'DONE_VERIFIED' &&
+    ['DONE_ACCEPTED','DONE_VERIFIED'].includes(raw.completionSyncState) &&
     stepItems.length > 0 &&
     stepItems.every(step => step && step.checked === true &&
       Array.isArray(step.evidenceUrls) &&
