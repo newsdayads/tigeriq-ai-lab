@@ -2142,7 +2142,7 @@ async function reviewerResourceIdsForJob(j){
     .slice(0,4);
   if(referencedJobIds.length){
     const referenced=(await pool.query(
-      "select id,status,resource_id,employee_id from tigeriq_jobs where id=any($1::text[]) and status='done' limit 8",
+      "select id,status,capability,resource_id,employee_id from tigeriq_jobs where id=any($1::text[]) and status='done' limit 8",
       [referencedJobIds],
     )).rows;
     const referencedExclusions=referencedJobReviewExclusions({jobIds:referencedJobIds,jobs:referenced});

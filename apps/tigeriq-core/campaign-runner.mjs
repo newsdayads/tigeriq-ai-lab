@@ -90,6 +90,9 @@ export function referencedJobReviewExclusions({jobIds=[],jobs=[]}={}){
   for(const job of (Array.isArray(jobs)?jobs:[])){
     const id=String(job?.id||'').trim();
     if(!id||!refs.has(id)||job?.status!=='done')continue;
+    // Reviewer independence protects against the implementer, not against a
+    // historical reviewer receipt referenced only as evidence.
+    if(String(job?.capability||'').trim().toLowerCase()==='review')continue;
     const employeeId=String(job?.employee_id||'').trim().toUpperCase();
     const resourceId=String(job?.resource_id||'').trim();
     if(employeeId)employeeIds.add(employeeId);
@@ -105,8 +108,14 @@ export function campaignPriorEvidenceContext({currentPhase=0,checkpoints=[],jobs
   const checkpoint=(Array.isArray(checkpoints)?checkpoints:[])
     .filter(item=>Number(item?.phaseIndex)===previousPhaseIndex)
     .slice(-1)[0]||null;
+  const checkpointJobId=String(checkpoint?.jobId||'').trim();
   const receipts=(Array.isArray(jobs)?jobs:[])
     .filter(job=>job?.status==='done'&&Number(job?.phase_index)===previousPhaseIndex)
+    // Once a phase checkpoint exists, it is the canonical verified handoff.
+    // Do not leak older same-phase jobs from a prior recovery attempt into the
+    // next review prompt: reviewer independence would incorrectly exclude
+    // those historical workers/resources.
+    .filter(job=>!checkpointJobId||String(job?.id||'').trim()===checkpointJobId)
     .slice(0,4)
     .map(job=>{
       let result=job?.result??null;
