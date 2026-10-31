@@ -175,6 +175,22 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
     }).reason).toBe('retry_budget_exhausted');
   });
 
+  it('grants one 3-to-4 source repair only to the exact exhausted campaign verifier summary',()=>{
+    const jobId='JOB-EVID-OBJ-TEST-P0';
+    const exact={
+      objectiveStatus:'blocked',objectiveSummary:'campaign verification failed after bounded attempts: '+jobId,
+      jobStatus:'failed',attempts:3,maxAttempts:3,
+      jobCompletedAt:'2026-10-31T08:30:15Z',runtimeUpdatedAt:'2026-10-31T08:35:00Z',
+      hasCampaign:true,routingProfile:'LOCAL',promptRepairEligible:true,promptRepairCap:4,
+      campaignVerifierRepair:true,campaignVerifierJobId:jobId,
+    };
+    expect(failedCampaignRuntimeRearmDecision(exact))
+      .toEqual({action:'requeue_prompt_repair',reason:'runtime_source_newer_with_prompt_repair_credit',nextMaxAttempts:4});
+    expect(failedCampaignRuntimeRearmDecision({...exact,campaignVerifierJobId:'JOB-OTHER'}).reason).toBe('not_failed_campaign_rearm_guard');
+    expect(failedCampaignRuntimeRearmDecision({...exact,campaignVerifierRepair:false}).reason).toBe('not_failed_campaign_rearm_guard');
+    expect(failedCampaignRuntimeRearmDecision({...exact,attempts:4,maxAttempts:4,promptRepairCap:4}).reason).toBe('retry_budget_exhausted');
+  });
+
   it('grants the 5-to-6 NV09 recovery credit only from the exact same-job failure receipt',()=>{
     const exact={
       capability:'review',

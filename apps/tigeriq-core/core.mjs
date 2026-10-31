@@ -787,22 +787,43 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
   const runtimeSha=String(runtime?.currentSha||'').trim();
   const runtimeUpdatedAt=String(runtime?.updatedAt||'').trim();
   if(!runtimeSha||!Number.isFinite(Date.parse(runtimeUpdatedAt)))return 0;
-  const rows=(await pool.query(`select j.id,j.objective_id,j.title,j.capability,j.phase_index,j.prompt,j.status,j.attempts,j.max_attempts,j.failure,j.completed_at,
+  const rows=(await pool.query(`select j.id,j.objective_id,j.title,j.kind,j.capability,j.phase_index,j.prompt,j.status,j.attempts,j.max_attempts,j.failure,j.completed_at,
       o.objective as objective_text,o.status as objective_status,o.summary as objective_summary,o.metadata as objective_metadata
     from tigeriq_jobs j
     join tigeriq_objectives o on o.id=j.objective_id
     where j.status='failed'
-      and j.kind='compiled_ai'
+      and j.kind in ('compiled_ai','compiled_campaign')
       and o.status='blocked'
-      and o.summary=any($1::text[])
+      and (
+        (j.kind='compiled_ai' and o.summary=any($1::text[]))
+        or (j.kind='compiled_campaign' and o.summary=('campaign verification failed after bounded attempts: '||j.id))
+      )
       and o.metadata ? 'campaign'
       and upper(coalesce(o.metadata->>'routingProfile',''))='LOCAL'
     order by j.completed_at desc nulls last
     limit 20`,[[FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY]])).rows;
   let recovered=0;
   for(const row of rows){
-    let promptRepair={changed:false,prompt:String(row.prompt||''),reason:'not_review_job'};
-    if(String(row.capability||'')==='review'){
+    const campaignVerifierRepair=String(row.kind||'')==='compiled_campaign';
+    let promptRepair={changed:false,prompt:String(row.prompt||''),reason:campaignVerifierRepair?'referenced_receipts_missing':'not_review_job'};
+    if(campaignVerifierRepair){
+      const samePhaseDone=(await pool.query(
+        "select id from tigeriq_jobs where objective_id=$1 and phase_index=$2 and status='done' and id<>$3 order by completed_at desc nulls last limit 4",
+        [row.objective_id,Number(row.phase_index)||0,row.id],
+      )).rows.map(item=>String(item.id||'')).filter(Boolean);
+      const explicitRefs=explicitJobRefsFromText([row.prompt,row.objective_text].filter(Boolean).join('\n'),{maxRefs:8})
+        .filter(id=>id!==String(row.id||''));
+      const referencedJobIds=[...new Set([...samePhaseDone,...explicitRefs])].slice(0,4);
+      let referencedContext='';
+      if(referencedJobIds.length){
+        const referencedJobs=(await pool.query(
+          "select id,title,phase_index,kind,status,employee_id,resource_id,provider,completed_at,result from tigeriq_jobs where id=any($1::text[]) and status='done' limit 8",
+          [referencedJobIds],
+        )).rows;
+        referencedContext=referencedJobEvidenceContext({jobIds:referencedJobIds,jobs:referencedJobs});
+      }
+      promptRepair=repairCampaignReviewPrompt(row.prompt,referencedContext);
+    }else if(String(row.capability||'')==='review'){
       let priorContext='';
       if(Number(row.phase_index)>0){
         const priorJobs=(await pool.query(
@@ -870,8 +891,9 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
       prompt:compactRepair.prompt,
       failure:row.failure,
     });
-    const repairEligible=promptRepair.changed||compactRepair.changed||persistedPhaseZeroRepairEligible||phaseZeroStrictAcceptanceEligible||phaseZeroHandoffTransportEligible||providerPromptCompactionEligible||providerPriorEvidenceEligible;
-    const repairCap=campaignPromptRepairRetryCap({
+    const campaignVerifierRepairEligible=campaignVerifierRepair&&promptRepair.changed&&Number(row.attempts)===3&&Number(row.max_attempts)===3;
+    const repairEligible=campaignVerifierRepairEligible||promptRepair.changed||compactRepair.changed||persistedPhaseZeroRepairEligible||phaseZeroStrictAcceptanceEligible||phaseZeroHandoffTransportEligible||providerPromptCompactionEligible||providerPriorEvidenceEligible;
+    const repairCap=campaignVerifierRepairEligible?4:campaignPromptRepairRetryCap({
       promptRepairChanged:promptRepair.changed,
       compactRepairChanged:compactRepair.changed,
       persistedPhaseZeroRepairEligible,
@@ -892,6 +914,8 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
       routingProfile:row.objective_metadata?.routingProfile,
       promptRepairEligible:repairEligible,
       promptRepairCap:repairCap,
+      campaignVerifierRepair:campaignVerifierRepairEligible,
+      campaignVerifierJobId:row.id,
     });
     if(!['requeue','requeue_prompt_repair'].includes(decision.action)){
       if(String(row.objective_metadata?.runtimeRearmSha||'')!==runtimeSha){
@@ -904,7 +928,7 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
           attempts:Number(row.attempts)||0,maxAttempts:Number(row.max_attempts)||0,
           promptRepairChanged:promptRepair.changed,promptRepairReason:promptRepair.reason,
           compactPromptRepairChanged:compactRepair.changed,
-          providerPromptCompactionEligible,providerPriorEvidenceEligible,persistedPhaseZeroRepairEligible,phaseZeroStrictAcceptanceEligible,phaseZeroHandoffTransportEligible,repairEligible,repairCap,
+          campaignVerifierRepairEligible,providerPromptCompactionEligible,providerPriorEvidenceEligible,persistedPhaseZeroRepairEligible,phaseZeroStrictAcceptanceEligible,phaseZeroHandoffTransportEligible,repairEligible,repairCap,
           reason:decision.reason,
         });
       }
@@ -925,7 +949,10 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
           select 1 from tigeriq_objectives o
           where o.id=j.objective_id
             and o.status='blocked'
-            and o.summary=any($3::text[])
+            and (
+              (j.kind='compiled_ai' and o.summary=any($3::text[]))
+              or (j.kind='compiled_campaign' and o.summary=('campaign verification failed after bounded attempts: '||j.id))
+            )
             and o.metadata ? 'campaign'
             and upper(coalesce(o.metadata->>'routingProfile',''))='LOCAL'
         )
@@ -946,7 +973,7 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
       objectiveId:row.objective_id,jobId:row.id,runtimeSha,runtimeUpdatedAt,
       attempts:Number(row.attempts)||0,maxAttempts:Number(row.max_attempts)||0,
       maxAttemptsAfter:repairCredit?(Number(decision.nextMaxAttempts)||Math.min(repairCap,Math.max(Number(row.max_attempts)+1,Number(row.attempts)+1))):Number(row.max_attempts)||0,
-      promptRepaired:promptRepair.changed,compactPromptRepaired:compactRepair.changed,persistedPhaseZeroRepairEligible,phaseZeroStrictAcceptanceEligible,phaseZeroHandoffTransportEligible,providerPromptCompactionEligible,providerPriorEvidenceEligible,repairCreditGranted:repairCredit,
+      promptRepaired:promptRepair.changed,compactPromptRepaired:compactRepair.changed,campaignVerifierRepairEligible,persistedPhaseZeroRepairEligible,phaseZeroStrictAcceptanceEligible,phaseZeroHandoffTransportEligible,providerPromptCompactionEligible,providerPriorEvidenceEligible,repairCreditGranted:repairCredit,
       promptRepairReason:promptRepair.reason,compactPromptRepairReason:compactRepair.reason,repairCap,
       reason:decision.reason,
     });
@@ -2969,12 +2996,31 @@ async function managerTick() {
         acceptance:[phase.acceptance||`Produce concrete evidence that phase ${currentPhase+1} is complete.`],
         evidenceRequired:['An observable source, test or artifact proving the phase acceptance.'],
       });
+      const currentPhaseDone=(await pool.query(
+        "select id from tigeriq_jobs where objective_id=$1 and phase_index=$2 and status='done' and id<>$3 order by completed_at desc nulls last limit 4",
+        [o.id,currentPhase,proofId],
+      )).rows.map(item=>String(item.id||'')).filter(Boolean);
+      const explicitRefs=explicitJobRefsFromText([phase.prompt,phase.acceptance].filter(Boolean).join('\n'),{maxRefs:8})
+        .filter(id=>id!==proofId);
+      const proofReferencedJobIds=[...new Set([...currentPhaseDone,...explicitRefs])].slice(0,4);
+      let proofPrompt=packet.prompt;
+      let proofReceiptCount=0;
+      if(proofReferencedJobIds.length){
+        const proofReferencedJobs=(await pool.query(
+          "select id,title,phase_index,kind,status,employee_id,resource_id,provider,completed_at,result from tigeriq_jobs where id=any($1::text[]) and status='done' limit 8",
+          [proofReferencedJobIds],
+        )).rows;
+        proofReceiptCount=proofReferencedJobs.length;
+        const proofContext=referencedJobEvidenceContext({jobIds:proofReferencedJobIds,jobs:proofReferencedJobs});
+        if(proofContext)proofPrompt=repairCampaignReviewPrompt(packet.prompt,proofContext).prompt;
+      }
       const inserted=await pool.query(
         "insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index,routing_profile) values($1,$2,$3,$4,'reasoning','compiled_campaign',$5,$6) on conflict(id) do nothing",
-        [proofId,o.id,`Phase ${currentPhase+1} verification: ${phase.title}`.slice(0,200),packet.prompt.slice(0,12000),currentPhase,objectiveJobRoutingProfile(o.metadata)],
+        [proofId,o.id,`Phase ${currentPhase+1} verification: ${phase.title}`.slice(0,200),proofPrompt.slice(0,12000),currentPhase,objectiveJobRoutingProfile(o.metadata)],
       );
       if(inserted.rowCount===1){
         await event('CAMPAIGN_PHASE_VERIFICATION_QUEUED',{objectiveId:o.id,jobId:proofId,phaseIndex:currentPhase,phaseCount:phases.length});
+        if(proofReceiptCount>0)await event('CAMPAIGN_PHASE_REFERENCED_EVIDENCE_ATTACHED',{objectiveId:o.id,jobId:proofId,phaseIndex:currentPhase,referencedJobIds:proofReferencedJobIds,receiptCount:proofReceiptCount});
       }
       return;
     }
