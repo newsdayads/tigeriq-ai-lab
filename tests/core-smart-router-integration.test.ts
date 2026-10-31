@@ -78,6 +78,7 @@ describe('#777 Core Smart Router integration',()=>{
     expect(core).toContain('phaseZeroReviewStrictAcceptanceRecoveryEligible({');
     expect(core).toContain('phaseZeroReviewHandoffTransportRecoveryEligible({');
     expect(core).toContain('phaseZeroHandoffTransportEligible');
+    expect(core).toContain('maxAttemptsAfter:repairCredit?(Number(decision.nextMaxAttempts)');
     expect(core).toContain('persistedPhaseZeroRepairEligible');
     expect(core).toContain('const repairCap=campaignPromptRepairRetryCap({');
     expect(core).toContain('compactLocalExecutionPrompt(prompt,packet)');
