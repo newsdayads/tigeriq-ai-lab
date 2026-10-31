@@ -158,7 +158,7 @@ export function authorizedPriorCampaignHandoffFromPrompt(prompt,{maxChars=2600}=
   const start=source.indexOf(marker);
   if(start<0)return '';
   const tail=source.slice(start+marker.length);
-  const stops=['\n\nLOCAL COMPACT OUTPUT CONTRACT:','\n\nSTRICT RETRY:']
+  const stops=['\n\nLOCAL COMPACT OUTPUT CONTRACT:','\n\nSTRICT RETRY:','\n\nACTIVE SKILLS (use only when relevant; never expand permissions):']
     .map(token=>tail.indexOf(token)).filter(index=>index>=0);
   const end=stops.length?Math.min(...stops):tail.length;
   const value=tail.slice(0,end).trim();

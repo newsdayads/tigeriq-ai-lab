@@ -1,6 +1,6 @@
 import { describe,expect,it } from 'vitest';
 import {managerIdleStepStopPlan} from '../apps/tigeriq-core/manager-cycle-policy.mjs';
-import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY,campaignPromptRepairRetryCap,failedCampaignRuntimeRearmDecision,managerJobMaterializationDecision,persistedPhaseZeroReviewRepairRecoveryEligible,phaseZeroReviewStrictAcceptanceRecoveryEligible,providerPromptCompactionRecoveryEligible,providerPriorCampaignEvidenceRecoveryEligible} from '../apps/tigeriq-core/manager-job-policy.mjs';
+import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY,campaignPromptRepairRetryCap,failedCampaignRuntimeRearmDecision,managerJobMaterializationDecision,persistedPhaseZeroReviewRepairRecoveryEligible,phaseZeroReviewStrictAcceptanceRecoveryEligible,phaseZeroReviewHandoffTransportRecoveryEligible,providerPromptCompactionRecoveryEligible,providerPriorCampaignEvidenceRecoveryEligible} from '../apps/tigeriq-core/manager-job-policy.mjs';
 import {campaignPriorEvidenceContext,repairCampaignReviewPrompt} from '../apps/tigeriq-core/campaign-runner.mjs';
 import {apiDoctorAutoworkPriority} from '../apps/tigeriq-core/api-doctor.mjs';
 
@@ -146,6 +146,35 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
       hasCampaign:true,routingProfile:'LOCAL',promptRepairEligible:true,promptRepairCap:cap,
     })).toEqual({action:'requeue_prompt_repair',reason:'runtime_source_newer_with_prompt_repair_credit',nextMaxAttempts:6});
   });
+  it('recovers one historical strict-correction overshoot after the handoff transport source fix',()=>{
+    const exact={
+      capability:'review',
+      phaseIndex:0,
+      attempts:7,
+      maxAttempts:6,
+      prompt:'x\n\nAUTHORIZED PRIOR CAMPAIGN HANDOFF:\nPRIOR_CAMPAIGN_HANDOFF_V1 {"schema":"TIGERIQ_REFERENCED_JOB_EVIDENCE_V1"}',
+      failure:{message:'EXECUTION_RESULT_BLOCKED',failures:[]},
+    };
+    expect(phaseZeroReviewHandoffTransportRecoveryEligible(exact)).toBe(true);
+    expect(phaseZeroReviewHandoffTransportRecoveryEligible({...exact,attempts:6})).toBe(false);
+    expect(phaseZeroReviewHandoffTransportRecoveryEligible({...exact,maxAttempts:7})).toBe(false);
+    expect(phaseZeroReviewHandoffTransportRecoveryEligible({...exact,phaseIndex:1})).toBe(false);
+    expect(phaseZeroReviewHandoffTransportRecoveryEligible({...exact,prompt:'no handoff'})).toBe(false);
+    expect(phaseZeroReviewHandoffTransportRecoveryEligible({...exact,failure:{message:'OTHER'}})).toBe(false);
+    const cap=campaignPromptRepairRetryCap({phaseZeroHandoffTransportEligible:true});
+    expect(cap).toBe(8);
+    expect(failedCampaignRuntimeRearmDecision({
+      objectiveStatus:'blocked',objectiveSummary:MANAGER_NO_PROGRESS_BLOCK_SUMMARY,jobStatus:'failed',
+      attempts:7,maxAttempts:6,jobCompletedAt:'2026-10-31T06:24:21Z',runtimeUpdatedAt:'2026-10-31T06:30:00Z',
+      hasCampaign:true,routingProfile:'LOCAL',promptRepairEligible:true,promptRepairCap:cap,
+    })).toEqual({action:'requeue_prompt_repair',reason:'runtime_source_newer_with_prompt_repair_credit',nextMaxAttempts:8});
+    expect(failedCampaignRuntimeRearmDecision({
+      objectiveStatus:'blocked',objectiveSummary:MANAGER_NO_PROGRESS_BLOCK_SUMMARY,jobStatus:'failed',
+      attempts:8,maxAttempts:8,jobCompletedAt:'2026-10-31T06:24:21Z',runtimeUpdatedAt:'2026-10-31T06:30:00Z',
+      hasCampaign:true,routingProfile:'LOCAL',promptRepairEligible:true,promptRepairCap:8,
+    }).reason).toBe('retry_budget_exhausted');
+  });
+
   it('grants the 5-to-6 NV09 recovery credit only from the exact same-job failure receipt',()=>{
     const exact={
       capability:'review',
