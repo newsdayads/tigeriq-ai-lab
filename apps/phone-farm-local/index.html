@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TigerIQ Phone Farm • Windows</title>
+<style>
+:root{font-family:"Segoe UI",Arial,sans-serif;color:#2c425d;background:#edf2f8;--blue:#2688ef;--sky:#eaf5ff;--border:#d5e3f1;--tile:146px}
+*{box-sizing:border-box}body{margin:0;overflow:hidden}button,input,textarea,select{font:inherit}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.48}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #1673d2;outline-offset:1px}
+.top{height:38px;display:flex;align-items:center;gap:12px;background:linear-gradient(90deg,#1971d3,#319cfa);color:white;padding:0 12px}
+.brand{font-size:15px;font-weight:800;display:flex;gap:8px;align-items:center;letter-spacing:.2px}
+.logo{border:2px solid #fff;border-radius:4px;width:24px;height:24px;text-align:center;line-height:20px;font-weight:900;font-size:15px}
+.top small{font-size:10px;opacity:.9}.top-right{margin-left:auto;display:flex;align-items:center;gap:12px;font-size:11px}
+.status-dot{display:inline-block;width:7px;height:7px;background:#62e0bd;border-radius:50%;margin-right:4px}
+.shell{display:flex;height:calc(100vh - 38px);min-width:660px}
+.sidebar{width:270px;min-width:270px;background:white;border-right:1px solid #b8cfe8;overflow:auto;scrollbar-width:thin;padding:9px;display:flex;flex-direction:column;gap:9px}
+.account{border-bottom:1px solid var(--border);padding-bottom:9px;font-size:11px;color:#5a779d;line-height:1.6}
+.account strong{color:#176bbb;font-size:12px}.account .status{color:#24865c}
+.tabset{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;background:#e7f0fc;border-radius:4px;padding:3px}
+.tabset button{border:0;background:transparent;border-radius:3px;padding:7px 3px;color:#597b9c;font-size:11px;font-weight:700}
+.tabset button.active{background:#fff;color:#1079df;box-shadow:0 1px 3px #bfd5eb}
+.tab-panel{display:none}.tab-panel.active{display:block}
+.sectiontitle{font-weight:750;font-size:11px;color:#547aa4;border-top:1px solid var(--border);padding:9px 2px 6px;margin-top:7px}
+.smallnote{color:#8498ac;font-size:10px;line-height:1.4;margin:6px 0}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}.three{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.action{padding:7px 5px;background:var(--blue);color:#fff;border:1px solid #1973d3;border-radius:3px;font-size:10.5px;min-height:29px;text-align:center}
+.action.soft{background:#eef6ff;border-color:#c6dafa;color:#2674bf}.action.purple{background:#7654cf;border-color:#7654cf}
+.action.muted{background:#f6f9fc;border-color:#d2e3f5;color:#426d9d}
+.action:hover{filter:brightness(.96)}.action.wide{width:100%}
+.control-line{display:flex;align-items:center;justify-content:space-between;gap:7px;margin-top:8px;font-size:11px}
+.control-line input[type=range]{width:120px;accent-color:#288cf2}
+.control-line input[type=checkbox]{accent-color:#2a89f0}
+.control-line input:not([type=checkbox]):not([type=range]),.control-line select{max-width:155px;border:1px solid #cbdbed;border-radius:3px;padding:5px;font-size:11px;background:#fff;color:#244668}
+.line-label{display:block;color:#456d93;font-size:11px;margin-bottom:4px}
+.field{border:1px solid #c8dbef;border-radius:3px;padding:7px;width:100%;font-size:11px;background:white;color:#2b4966}
+.number-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin:7px 0}
+.number{background:#d7ecff;border:1px solid #b8d9fd;color:#2678bf;border-radius:2px;font-size:10px;padding:5px 0}
+.number.chosen{background:#298be6;color:white;border-color:#1674cf}.number:not(.chosen){opacity:.62}
+.groupbar{display:flex;gap:6px;margin:6px 0}.groupbar button{flex:1}.groupslist{min-height:36px;border:1px solid #d6e5f5;background:#f9fbff;border-radius:3px;padding:6px 4px;font-size:11px}
+.group-item{display:flex;align-items:center;justify-content:space-between;padding:4px;gap:5px}.group-item button{border:0;background:transparent;color:#247dd0;font-size:10px}
+.footer{margin-top:auto;font-size:10px;color:#8396a8;text-align:center;padding:12px 0 4px;border-top:1px solid var(--border)}
+.work{min-width:0;flex:1;background:#e9eef4;display:flex;flex-direction:column}
+.workbar{background:#fff;border-bottom:1px solid #c9d8e9;min-height:40px;padding:6px 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px}
+.stat{padding:5px 9px;border-radius:3px;background:#edf5fe;color:#257ac5;font-weight:750}.stat.on{background:#eaf9f3;color:#218660}
+.search{border:1px solid #cdddee;border-radius:3px;padding:6px 9px;min-width:155px;width:195px;font-size:11px}
+.workbar .spacer{flex:1}
+.workspace{flex:1;overflow:auto;padding:9px;background:#e6edf4}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),var(--tile)));align-content:start;justify-content:start;gap:7px}
+.phone{position:relative;background:#091018;border:2px solid #9bbcdf;box-shadow:0 1px 5px #c0cbd8;overflow:hidden;min-width:0}
+.phone.selected{border-color:#1488fb;box-shadow:0 0 0 1px #1488fb}
+.phone.offline{opacity:.6}
+.phone-header{height:23px;background:#238be8;color:#fff;display:flex;align-items:center;gap:4px;padding:2px 5px;font-size:10px;white-space:nowrap;overflow:hidden}
+.phone-header label{display:flex;align-items:center;gap:3px;min-width:0;cursor:pointer}
+.phone-header input{width:12px;height:12px;margin:0;accent-color:#fff;flex-shrink:0}
+.phone-header span{overflow:hidden;text-overflow:ellipsis}.phone-header .phone-num{font-weight:800;background:#e1f2ff;color:#177bcf;border-radius:2px;padding:1px 3px}
+.screen{background:#071018;aspect-ratio:9/19.2;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.screen img{object-fit:contain;width:100%;height:100%;display:block;user-select:none;touch-action:none;cursor:crosshair}
+.empty-screen{font-size:11px;color:#a5b5c7;text-align:center;padding:9px}
+.screen-loading{position:absolute;bottom:9px;left:4px;right:4px;text-align:center;color:#aed4fd;font-size:10px}
+.phone-footer{height:25px;background:#0d2035;display:flex;align-items:center;justify-content:space-evenly}
+.phone-footer button{border:0;color:#b8d9f3;background:transparent;font-size:11px;height:23px;padding:0 4px}.phone-footer button:hover{color:#fff;background:#1d5e98}
+.phone-footer .devstat{font-size:9px;color:#70dcac}
+.placeholder{margin:auto;color:#7b91aa;text-align:center;line-height:1.8}.placeholder h2{font-size:18px;margin:0 0 8px;color:#66809c}
+.bottom{background:white;border-top:1px solid #ccdae7;padding:5px 10px;color:#708da7;font-size:10px;display:flex;justify-content:space-between;gap:10px}
+.notice{position:absolute;right:18px;bottom:38px;max-width:360px;background:#213f65;color:#fff;font-size:12px;line-height:1.45;padding:11px 14px;border-radius:5px;box-shadow:0 6px 20px #6784aa80;z-index:9;display:none}
+.notice.visible{display:block}.notice.error{background:#933d45}
+.toolrow{display:flex;gap:6px;align-items:center}.tiny{color:#7690a8;font-size:10px}
+.macro{width:100%;height:90px;resize:vertical;font-family:Consolas,monospace;font-size:10px}
+.schedule-list{font-size:10px;color:#58738c;line-height:1.45;max-height:135px;overflow:auto}
+.schedule-item{display:flex;gap:4px;align-items:center;justify-content:space-between;border-bottom:1px solid #e3eaf2;padding:4px 0}
+.schedule-item span{overflow-wrap:anywhere}.schedule-item button{border:0;background:transparent;color:#d15a66}
+@media(max-width:880px){.sidebar{width:235px;min-width:235px}.top-right span.hide{display:none}.search{width:120px;min-width:100px}.workbar{gap:4px}.action{font-size:10px}}
+
+/* Large interactive Android controller: screenshots only, not video streaming */
+#controlOverlay[hidden]{display:none}
+#controlOverlay{position:fixed;inset:0;z-index:50;background:#0c192bd9;display:flex;align-items:center;justify-content:center;padding:14px}
+.control-panel{background:#f8fbff;border-radius:10px;max-width:min(95vw,660px);width:100%;max-height:96vh;display:flex;flex-direction:column;box-shadow:0 12px 40px #06162cbb}
+.control-head{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #d4e3f2;font-size:13px;font-weight:700}
+.control-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid #cbdcef}
+.control-actions button{padding:7px 12px}
+.control-body{min-height:0;overflow:auto;display:flex;justify-content:center;background:#071321;padding:8px}
+.control-body img{width:auto;height:auto;max-height:calc(96vh - 188px);max-width:100%;object-fit:contain;touch-action:none;cursor:crosshair;user-select:none;background:#101a29}
+.control-note{padding:7px 12px;color:#486782;font-size:11px}
+</style></head><body>
+<header class="top"><div class="brand"><span class="logo">T</span>TigerIQ Phone Farm</div><small>Thiết bị Android • Local Edition v0.5 RC</small><div class="top-right"><span><i class="status-dot"></i> PC01 nội bộ</span><span class="hide">Không cần tài khoản / máy chủ</span></div></header>
+<div class="shell">
+<aside class="sidebar">
+<div class="account"><strong>Điều khiển thiết bị</strong><div>USB / WiFi ADB <span class="status">• Sẵn sàng</span></div><div>Không giới hạn theo giấy phép</div></div>
+<nav class="tabset" aria-label="Nhóm chức năng"><button class="active" data-tab="general">General</button><button data-tab="tasks">Tasks</button><button data-tab="toolbox">Toolbox</button></nav>
+<section class="tab-panel active" data-panel="general">
+<div class="control-line"><label><input type="checkbox" id="sync"> Sync Mouse</label><label><input type="checkbox" id="syncKeys" checked> Sync Keyboard</label></div>
+<div class="two" style="margin-top:8px"><button class="action" id="refresh">Làm mới USB</button><button class="action" id="scanWifi">WiFi ADB</button>
+<button class="action" id="apps">App Manager</button><button class="action purple" id="viewDevices">Devices List</button>
+<button class="action" id="screenshots">Screenshot</button><button class="action soft" id="screenInfo">Device Info</button>
+<button class="action soft" id="macroTab">Scripts</button><button class="action soft" id="scheduleTab">Scheduler</button></div>
+<div class="sectiontitle">Display & quality</div>
+<div class="control-line"><span>Small screen width</span><strong id="tileValue">146px</strong></div><input id="tileSize" type="range" min="85" max="290" value="146" step="5" style="width:100%;accent-color:#208af0">
+<div class="control-line"><span>Refresh interval</span><select id="refreshRate"><option value="4000">4 seconds</option><option value="8000">8 seconds</option><option value="15000">15 seconds</option></select></div>
+<div class="control-line"><span>Realtime mirror FPS</span><select id="mirrorFps"><option value="15">15</option><option value="25" selected>25</option><option value="30">30</option><option value="60">60</option></select></div>
+<div class="control-line"><span>Mirror max size</span><select id="mirrorSize"><option value="720">720</option><option value="1080" selected>1080</option><option value="1440">1440</option><option value="2160">2160</option></select></div>
+<div class="control-line"><span>Mirror bitrate</span><select id="mirrorBitrate"><option value="2">2 Mbps</option><option value="4" selected>4 Mbps</option><option value="8">8 Mbps</option><option value="12">12 Mbps</option></select></div>
+<div class="control-line"><label><input id="autoRefresh" type="checkbox" checked> Auto refresh screens</label></div>
+<div class="sectiontitle">Groups</div><div class="groupbar"><button id="groupAll" class="action">All devices</button><button id="groupAdd" class="action soft">+ New group</button></div>
+<div id="groupList" class="groupslist">Tất cả thiết bị</div>
+<div class="sectiontitle">Select devices</div><div class="toolrow"><button class="action soft" id="selectAll">Select all</button><button class="action soft" id="selectNone">Clear</button><button class="action soft" id="invertSelection">Invert</button></div>
+<div id="deviceNumberGrid" class="number-grid"></div>
+<div class="smallnote" id="selectionText">0 devices selected</div>
+</section>
+<section class="tab-panel" data-panel="tasks">
+<div class="sectiontitle">Group commands</div>
+<div class="two"><button class="action" data-key="HOME">Home</button><button class="action" data-key="BACK">Back</button><button class="action soft" data-key="APP_SWITCH">Recent apps</button><button class="action soft" data-key="POWER">Power</button></div>
+<div class="sectiontitle">Text input to selected devices</div><input class="field" id="sendValue" placeholder="Input text (ASCII)"><div class="two" style="margin-top:6px"><button class="action" id="sendText">Send text</button><button class="action soft" id="pasteClipboard">Dán clipboard PC</button></div>
+<div class="sectiontitle">Macro automation</div><textarea id="macroSteps" class="field macro">[{"action":"key","key":"HOME"},{"action":"wait","ms":500}]</textarea>
+<div class="two" style="margin-top:6px"><button class="action" id="runMacro">Run macro</button><button class="action muted" id="stopMacro" disabled>Stop</button></div><div class="smallnote" id="macroStatus">Không có macro đang chạy</div>
+<div class="sectiontitle">Local scheduler</div><div class="two"><button class="action" id="saveSchedule">+ New schedule</button><button class="action soft" id="refreshSchedules">Refresh list</button></div><div id="scheduleList" class="schedule-list"></div>
+</section>
+<section class="tab-panel" data-panel="toolbox">
+<div class="sectiontitle">Batch operations</div>
+<div class="two"><button class="action" id="install">Cài APK từ thư mục drop</button><button class="action" id="upload">Upload file</button><button class="action soft" id="launch">Launch app</button><button class="action soft" id="forceStop">Force stop</button><button class="action soft" id="uninstall">Gỡ app</button></div>
+<div class="smallnote">Chọn điện thoại, nhập tên APK đã đặt trong thư mục drop của ứng dụng. Chọn tệp trực tiếp từ PC chưa hỗ trợ.</div>
+<div class="sectiontitle">Local video recording</div>
+<div class="control-line"><span>Duration</span><select id="recordSeconds"><option value="8">8 seconds</option><option value="15">15 seconds</option><option value="30">30 seconds</option><option value="60">60 seconds</option><option value="120">120 seconds</option></select></div>
+<div class="two"><button class="action" id="recordStart">Start record</button><button class="action muted" id="recordStop" disabled>Stop record</button></div>
+<div class="smallnote" id="recordStatus">Chưa ghi màn hình</div>
+<div class="smallnote">Bản ghi MKV được lưu cục bộ trên PC01, không tải lên máy chủ.</div>
+<div class="sectiontitle">Device details</div><button id="listPackages" class="action wide">Quản lý ứng dụng Android</button><div id="appInfo" class="smallnote">Chọn ít nhất một thiết bị</div>
+<div class="sectiontitle">Control</div><div class="two"><button id="openFirst" class="action">Điều khiển phóng lớn</button><button id="openScrcpy" class="action soft">Mirror realtime</button></div>
+<div class="sectiontitle">System health</div><div id="health" class="smallnote">Đang kiểm tra...</div>
+</section>
+<footer class="footer">TigerIQ AI Lab • Android local controller<br>Không dùng bản quyền hoặc mã nguồn LAIXI</footer>
+</aside>
+<main class="work">
+<div class="workbar"><span class="stat" id="count">0 devices</span><span class="stat on" id="onlineCount">0 online</span><span class="stat" id="chosenCount">0 selected</span><input id="search" class="search" placeholder="Search serial, model..." aria-label="Search devices"><span class="spacer"></span><button class="action soft" id="refreshMain">Refresh</button><button class="action" id="mirrorSelected">Điều khiển máy đã chọn</button></div>
+<div class="workspace"><div id="grid" class="grid"><div class="placeholder"><h2>Đang tìm thiết bị Android</h2>Kiểm tra kết nối USB Debugging trên điện thoại.</div></div></div>
+<div class="bottom"><span id="bottomMessage">PC01 • local HTTP 127.0.0.1:8765</span><span id="lastRefresh">Đang tải...</span></div>
+</main></div>
+
+<div id="controlOverlay" hidden role="dialog" aria-modal="true" aria-label="Điều khiển Android">
+  <div class="control-panel">
+    <div class="control-head"><span id="controlTitle">Điều khiển thiết bị</span><button id="controlClose" class="action soft">Đóng</button></div>
+    <div class="control-actions">
+      <button class="action" id="controlHome">Trang chủ</button>
+      <button class="action" id="controlBack">Quay lại</button>
+      <button class="action soft" id="controlRecent">Đa nhiệm</button>
+      <button class="action soft" id="controlRefresh">Tải ảnh</button>
+      <label style="font-size:11px"><input type="checkbox" id="controlSync"> Đồng bộ máy đã chọn</label>
+    </div>
+    <div class="control-body"><img id="controlImage" alt="Màn hình Android phóng lớn" draggable="false"></div>
+    <div id="controlNote" class="control-note">Chạm hoặc vuốt trực tiếp. Ảnh làm mới định kỳ, không phải video trực tiếp.</div>
+  </div>
+</div>
+
+<div id="notice" class="notice" role="status" aria-live="polite"></div>
+<script src="/ui.js" type="module"></script>
+</body></html>
