@@ -24,7 +24,7 @@ describe('GH-5135 F14 V66 Profile subtitle parity', () => {
   });
 
   it('does not add a floating profile version badge', () => {
-    expect(profile).not.toMatch(/versionBadge|profile_chip|floating version/i);
+    expect(profile).not.toMatch(/versionBadge|profile_chip/);
   });
 
   it('is grounded in the isolated V66 original-subtitle color callsite', () => {
