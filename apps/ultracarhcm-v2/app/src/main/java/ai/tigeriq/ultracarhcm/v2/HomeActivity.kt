@@ -1105,7 +1105,38 @@ class HomeActivity : ComponentActivity() {
             .put("history", safeHistory)
     }
 
+    private fun exportSavedLayoutShortcuts(savedConfigs: JSONArray): JSONArray {
+        val knownConfigIds = mutableSetOf<String>()
+        for (index in 0 until savedConfigs.length()) {
+            val item = savedConfigs.optJSONObject(index) ?: continue
+            val configId = SavedLayoutShortcutRules.normalizeConfigId(
+                item.optString("configId", ""),
+            )
+            if (SavedLayoutShortcutRules.validConfigId(configId)) {
+                knownConfigIds.add(configId)
+            }
+        }
+
+        val shortcutPrefs = savedLayoutShortcutPrefs()
+        return JSONArray().also { result ->
+            for (index in 0 until SavedLayoutShortcutRules.SLOT_COUNT) {
+                val key = SavedLayoutShortcutRules.slotKey(index) ?: continue
+                val raw = shortcutPrefs.getString(key, null)
+                val configId = raw?.let(SavedLayoutShortcutRules::normalizeConfigId)
+                if (configId != null &&
+                    SavedLayoutShortcutRules.validConfigId(configId) &&
+                    knownConfigIds.contains(configId)
+                ) {
+                    result.put(configId)
+                } else {
+                    result.put(JSONObject.NULL)
+                }
+            }
+        }
+    }
+
     private fun exportHomeBackupJson(): JSONObject {
+        val savedConfigs = savedConfigurations()
         val defaultRaw = prefs.getString("v2_default_home_config", null)
         val defaultSafe = try {
             defaultRaw?.let { normalizeHomeConfiguration(JSONObject(it)) }
@@ -1137,10 +1168,11 @@ class HomeActivity : ComponentActivity() {
                 ).ifEmpty { "Driver" },
             )
             .put("quickSlots", normalizedQuickSlotsForStorage(quickSlots()))
-            .put("savedConfigurations", savedConfigurations())
+            .put("savedConfigurations", savedConfigs)
             .put("defaultHomeConfiguration", defaultSafe ?: JSONObject.NULL)
             .put("overlayPositions", exportOverlayPositions())
             .put("taxiMeter", exportTaxiMeterBackup())
+            .put("savedLayoutShortcuts", exportSavedLayoutShortcuts(savedConfigs))
     }
 
     private fun writeHomeBackup(uri: Uri) {
@@ -1239,11 +1271,43 @@ class HomeActivity : ComponentActivity() {
 
         val rawConfigs = root.optJSONArray("savedConfigurations") ?: return false
         if (rawConfigs.length() > HomeConfigRules.MAX_SAVED) return false
+        val replaceSavedLayoutShortcuts =
+            HomeBackupRules.requiresSavedLayoutShortcuts(backupSchema)
+        val safeConfigIds = mutableSetOf<String>()
         val safeConfigs = JSONArray()
         for (index in 0 until rawConfigs.length()) {
             val item = rawConfigs.optJSONObject(index) ?: return false
             val safe = validatedHomeConfigurationForBackup(item) ?: return false
+            if (replaceSavedLayoutShortcuts) {
+                val configId = SavedLayoutShortcutRules.normalizeConfigId(
+                    safe.optString("configId", ""),
+                )
+                if (!SavedLayoutShortcutRules.validConfigId(configId) ||
+                    !safeConfigIds.add(configId)
+                ) return false
+            }
             safeConfigs.put(safe)
+        }
+
+        val safeSavedLayoutShortcuts =
+            arrayOfNulls<String>(SavedLayoutShortcutRules.SLOT_COUNT)
+        if (replaceSavedLayoutShortcuts) {
+            val rawSavedLayoutShortcuts =
+                root.optJSONArray("savedLayoutShortcuts") ?: return false
+            if (rawSavedLayoutShortcuts.length() != SavedLayoutShortcutRules.SLOT_COUNT) {
+                return false
+            }
+            for (index in 0 until SavedLayoutShortcutRules.SLOT_COUNT) {
+                if (rawSavedLayoutShortcuts.isNull(index)) continue
+                val rawConfigId =
+                    HomeBackupRules.exactString(rawSavedLayoutShortcuts.opt(index))
+                        ?: return false
+                val configId = SavedLayoutShortcutRules.normalizeConfigId(rawConfigId)
+                if (!SavedLayoutShortcutRules.validConfigId(configId) ||
+                    !safeConfigIds.contains(configId)
+                ) return false
+                safeSavedLayoutShortcuts[index] = configId
+            }
         }
 
         val safeDefault = if (root.isNull("defaultHomeConfiguration")) {
@@ -1300,6 +1364,16 @@ class HomeActivity : ComponentActivity() {
         if (safeDefault == null) editor.remove("v2_default_home_config")
         else editor.putString("v2_default_home_config", safeDefault.toString())
         editor.apply()
+
+        if (replaceSavedLayoutShortcuts) {
+            val shortcutEditor = savedLayoutShortcutPrefs().edit().clear()
+            for (index in 0 until SavedLayoutShortcutRules.SLOT_COUNT) {
+                val configId = safeSavedLayoutShortcuts[index] ?: continue
+                val key = SavedLayoutShortcutRules.slotKey(index) ?: continue
+                shortcutEditor.putString(key, configId)
+            }
+            shortcutEditor.apply()
+        }
 
         if (replaceOverlayPositions) {
             val overlayEditor = getSharedPreferences(
