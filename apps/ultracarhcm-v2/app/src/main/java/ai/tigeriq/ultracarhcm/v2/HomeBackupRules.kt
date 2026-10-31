@@ -3,7 +3,7 @@ package ai.tigeriq.ultracarhcm.v2
 /** Safe local backup envelope for V2-owned state only. */
 internal object HomeBackupRules {
     const val LEGACY_BACKUP_SCHEMA_VERSION = 1
-    const val CURRENT_BACKUP_SCHEMA_VERSION = 4
+    const val CURRENT_BACKUP_SCHEMA_VERSION = 5
     const val MAX_BACKUP_BYTES = 256 * 1024
     const val MAX_OVERLAY_DISPLAYS = 16
     const val MAX_OVERLAY_COORDINATE = 32768
@@ -40,6 +40,9 @@ internal object HomeBackupRules {
 
     fun requiresTaxiMeterState(version: Int): Boolean =
         version >= 4
+
+    fun requiresSavedLayoutShortcuts(version: Int): Boolean =
+        version >= 5
 
     fun withinSize(byteCount: Int): Boolean =
         byteCount in 1..MAX_BACKUP_BYTES
