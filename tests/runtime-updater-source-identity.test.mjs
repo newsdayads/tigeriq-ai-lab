@@ -37,7 +37,18 @@ test('reconciles standalone MCP Funnel gateway only through exact supervised top
   expect(source.match(/function Get-McpFunnelGatewayTopology/g)).toHaveLength(1);
   expect(source.match(/function Reconcile-McpFunnelGatewayRuntime/g)).toHaveLength(1);
   expect(source).toContain("$mcpGatewayServerPath='D:\\TigerIQ\\Runtime\\McpFunnelGateway\\server.mjs'");
-  expect(source).toContain("$mcpGatewaySupervisorPaths=@('D:\\TigerIQ\\Runtime\\McpFunnelGateway\\run-mcp-gateway.cmd','D:\\TigerIQ\\Runtime\\McpFunnelGateway\\run-mcp-gateway.ps1')");
+  expect(source).not.toContain('$mcpGatewaySupervisorPaths=');
+  const topologyBlock=source.slice(
+    source.indexOf('function Get-McpFunnelGatewayTopology'),
+    source.indexOf('function Reconcile-McpFunnelGatewayRuntime'),
+  );
+  expect(topologyBlock).toContain("$n -eq 'cmd.exe'");
+  expect(topologyBlock).toContain("$n -match '^(powershell|pwsh)\\.exe$'");
+  expect(topologyBlock).toContain('run-mcp-gateway\\.cmd');
+  expect(topologyBlock).toContain('run-mcp-gateway\\.ps1');
+  expect(topologyBlock).toContain('\\s/c\\s+');
+  expect(topologyBlock).toContain('-File\\s+');
+  expect(topologyBlock).not.toContain('$line.Contains');
   expect(source).toContain("reason='MCP_GATEWAY_TOPOLOGY_UNVERIFIED'");
   expect(source).toContain("$supervisors.Count -ne 1 -or $children.Count -gt 1");
   expect(source).toContain("$spawnDeadline=(Get-Date).AddSeconds(12)");

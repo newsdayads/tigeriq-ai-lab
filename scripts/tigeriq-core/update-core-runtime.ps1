@@ -46,7 +46,6 @@ $remoteDesktopLifecycleGeneration='20260930_TOPOLOGY_2'
 $remoteDesktopLifecycleState='D:\TigerIQ\State\rdc-lifecycle-generation.txt'
 $mcpGatewayServerPath='D:\TigerIQ\Runtime\McpFunnelGateway\server.mjs'
 $mcpGatewaySourcePath=(Join-Path $runtimeRepo 'scripts\tigeriq-core\mcp-funnel-gateway-runtime.mjs')
-$mcpGatewaySupervisorPaths=@('D:\TigerIQ\Runtime\McpFunnelGateway\run-mcp-gateway.cmd','D:\TigerIQ\Runtime\McpFunnelGateway\run-mcp-gateway.ps1')
 $mcpGatewayPort=8805
 $remoteDesktopGuardInstaller=(Join-Path $runtimeRepo 'apps\remote-desktop-guard\install-runtime.mjs')
 $updaterTask='TigerIQ Core Runtime Updater'
@@ -670,7 +669,7 @@ function Sync-McpFunnelGatewayRuntime(){
 }
 function Get-McpFunnelGatewayTopology(){
   $all=@(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
-  $supervisors=@($all|Where-Object{if(-not $_.CommandLine){$false}else{$line=$_.CommandLine.ToLowerInvariant();[bool]@($mcpGatewaySupervisorPaths|Where-Object{$line.Contains($_.ToLowerInvariant())}).Count}})
+  $supervisors=@($all|Where-Object{$n=[string]$_.Name;$c=[string]$_.CommandLine;($n -eq 'cmd.exe' -and $c -match '(?i)\s/c\s+"?D:\\TigerIQ\\Runtime\\McpFunnelGateway\\run-mcp-gateway\.cmd"?\s*$') -or ($n -match '^(powershell|pwsh)\.exe$' -and $c -match '(?i)(?:^|\s)-File\s+"?D:\\TigerIQ\\Runtime\\McpFunnelGateway\\run-mcp-gateway\.ps1"?(?:\s|$)')})
   $children=@($all|Where-Object{$_.Name -eq 'node.exe' -and $_.CommandLine -and $_.CommandLine.ToLowerInvariant().Contains($mcpGatewayServerPath.ToLowerInvariant())})
   @{supervisors=$supervisors;children=$children}
 }
