@@ -48,7 +48,9 @@ describe('#777 Core Smart Router integration',()=>{
     expect(core).toContain("status='done' order by case when kind='compiled_campaign' then 0 else 1 end");
     expect(core).toContain("Prior verified campaign handoff: ${campaignPriorContext||'none'}");
     expect(core).toContain('AUTHORIZED PRIOR CAMPAIGN HANDOFF:');
-    expect(core).toContain("capability==='review'&&campaignPriorContext");
+    expect(core).toContain('const trustedReviewContext=campaignPriorContext||referencedReviewContext');
+    expect(core).toContain("capability==='review'&&trustedReviewContext");
+    expect(core).toContain('REFERENCED_JOB_EVIDENCE_ATTACHED');
     expect(core).toContain('campaign-prior-phase:');
   });
 
