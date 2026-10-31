@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe,expect,it } from 'vitest';
 import {managerIdleStepStopPlan} from '../apps/tigeriq-core/manager-cycle-policy.mjs';
 import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY,campaignPromptRepairRetryCap,failedCampaignRuntimeRearmDecision,managerJobMaterializationDecision,persistedPhaseZeroReviewRepairRecoveryEligible,phaseZeroReviewStrictAcceptanceRecoveryEligible,phaseZeroReviewHandoffTransportRecoveryEligible,providerPromptCompactionRecoveryEligible,providerPriorCampaignEvidenceRecoveryEligible} from '../apps/tigeriq-core/manager-job-policy.mjs';
@@ -5,6 +6,30 @@ import {campaignPriorEvidenceContext,repairCampaignReviewPrompt} from '../apps/t
 import {apiDoctorAutoworkPriority} from '../apps/tigeriq-core/api-doctor.mjs';
 
 describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
+  it('keeps provider exhaustion retries separate from no-progress decision cycles',()=>{
+    const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const exhausted=source.slice(source.indexOf('if(routed.exhausted===true)'),source.indexOf('const decision=routed.decision'));
+    expect(exhausted).toContain('o.metadata?.managerExhaustionRetries');
+    expect(exhausted).toContain("'{managerExhaustionRetries}'");
+    expect(exhausted).not.toContain('managerCycles:o.manager_cycles');
+    expect(exhausted).not.toContain('set manager_cycles=$2');
+    const decision=source.slice(source.indexOf('const decision=routed.decision'),source.indexOf('if(!phases.length)',source.indexOf('const decision=routed.decision')));
+    expect(decision).toContain("metadata=coalesce(metadata,'{}'::jsonb)-'managerExhaustionRetries'");
+  });
+  it('rearms only the bounded source-newer exhaustion/stall race',()=>{
+    const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const start=source.indexOf('async function recoverManagerExhaustionStallAfterRuntimeSourceChange()');
+    const end=source.indexOf('async function recoverStale()',start);
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    const block=source.slice(start,end);
+    expect(block).toContain("o.summary=$1");
+    expect(block).toContain("e.type='MANAGER_EXHAUSTED_RETRY_QUEUED'");
+    expect(block).toContain("o.updated_at<$2::timestamptz");
+    expect(block).toContain("j.status not in ('done','failed')");
+    expect(block).toContain('MANAGER_EXHAUSTION_STALL_REARMED_AFTER_RUNTIME_SOURCE_CHANGE');
+    expect(source).toContain('await recoverManagerExhaustionStallAfterRuntimeSourceChange();');
+  });
   it('allows one new decision before the two-decision no-progress stop',()=>{
     expect(managerIdleStepStopPlan({consecutiveNoProgressDecisions:1,activeChildren:0}).action).toBe('continue');
   });

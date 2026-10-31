@@ -987,6 +987,61 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
   }
   return recovered;
 }
+async function recoverManagerExhaustionStallAfterRuntimeSourceChange(){
+  const runtime=readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE);
+  const runtimeSha=String(runtime?.currentSha||'').trim();
+  const runtimeUpdatedAt=String(runtime?.updatedAt||'').trim();
+  if(!runtimeSha||!Number.isFinite(Date.parse(runtimeUpdatedAt)))return 0;
+  const rows=(await pool.query(`select o.id,o.manager_cycles,o.metadata,o.updated_at
+    from tigeriq_objectives o
+    where o.status='blocked'
+      and o.summary=$1
+      and o.metadata ? 'campaign'
+      and upper(coalesce(o.metadata->>'routingProfile',''))='LOCAL'
+      and o.manager_cycles>=2
+      and o.updated_at<$2::timestamptz
+      and coalesce(o.metadata->>'runtimeRearmSha','')<>$3
+      and exists(
+        select 1 from tigeriq_events e
+        where e.objective_id=o.id
+          and e.type='MANAGER_EXHAUSTED_RETRY_QUEUED'
+          and e.ts<=o.updated_at
+          and e.ts>=o.updated_at-interval '15 minutes'
+      )
+      and not exists(
+        select 1 from tigeriq_jobs j
+        where j.objective_id=o.id
+          and j.phase_index=coalesce((o.metadata#>>'{campaign,currentPhase}')::int,0)
+          and j.status not in ('done','failed')
+      )
+    order by o.updated_at desc
+    limit 10`,[MANAGER_NO_PROGRESS_BLOCK_SUMMARY,runtimeUpdatedAt,runtimeSha])).rows;
+  let recovered=0;
+  for(const row of rows){
+    const out=await pool.query(
+      `update tigeriq_objectives
+       set status='active',
+           manager_cycles=0,
+           summary='Runtime source changed; retrying manager after exhaustion/stall counter fix',
+           next_check_at=now(),
+           updated_at=now(),
+           metadata=jsonb_set(coalesce(metadata,'{}'::jsonb)-'managerExhaustionRetries','{runtimeRearmSha}',to_jsonb($2::text),true)
+       where id=$1
+         and status='blocked'
+         and summary=$3
+         and updated_at<$4::timestamptz
+         and coalesce(metadata->>'runtimeRearmSha','')<>$2
+       returning id`,
+      [row.id,runtimeSha,MANAGER_NO_PROGRESS_BLOCK_SUMMARY,runtimeUpdatedAt],
+    );
+    if(out.rowCount!==1)continue;
+    recovered++;
+    await event('MANAGER_EXHAUSTION_STALL_REARMED_AFTER_RUNTIME_SOURCE_CHANGE',{
+      objectiveId:row.id,runtimeSha,runtimeUpdatedAt,previousManagerCycles:Number(row.manager_cycles)||0,
+    });
+  }
+  return recovered;
+}
 async function recoverStale() {
   const recoveredSharedLeases=await recoverExpiredSharedResourceLeases(pool);
   for(const lease of recoveredSharedLeases)await event('SHARED_RESOURCE_LEASE_RECOVERED',{...lease,reason:'ttl_expired'});
@@ -3186,20 +3241,25 @@ async function managerTick() {
   try {
     const routed=await callManagerDecision(prompt,o.id);
     if(routed.exhausted===true){
-      const retryPlan=managerExhaustionRetryPlan({managerCycles:o.manager_cycles,maxCycles:30});
+      // Provider/resource exhaustion is transport backoff, not a manager
+      // decision without accepted child progress. Keep the counters separate so
+      // two timeouts cannot trip the two-decision stall guard before retry #3.
+      const exhaustionRetries=Math.max(0,Math.trunc(Number(o.metadata?.managerExhaustionRetries)||0));
+      const retryPlan=managerExhaustionRetryPlan({managerCycles:exhaustionRetries,maxCycles:30});
       const summary=String(routed.decision?.summary||'manager decision exhausted after bounded retry/failover').slice(0,2000);
       if(retryPlan.retry){
         const retryCommitted=await pool.query(
-          "update tigeriq_objectives set manager_cycles=$2,summary=$3,updated_at=now(),next_check_at=now()+($4::text||' milliseconds')::interval where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and (metadata->>'sourceRevision') is not distinct from $5::text",
-          [o.id,retryPlan.nextCycle,summary,String(retryPlan.delayMs),o.metadata?.sourceRevision??null],
+          "update tigeriq_objectives set summary=$2,updated_at=now(),next_check_at=now()+($3::text||' milliseconds')::interval,metadata=jsonb_set(coalesce(metadata,'{}'::jsonb),'{managerExhaustionRetries}',to_jsonb($4::int),true) where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and (metadata->>'sourceRevision') is not distinct from $5::text",
+          [o.id,summary,String(retryPlan.delayMs),retryPlan.nextCycle,o.metadata?.sourceRevision??null],
         );
         if(retryCommitted.rowCount!==1)return;
+        o.metadata={...(o.metadata||{}),managerExhaustionRetries:retryPlan.nextCycle};
         await event('MANAGER_EXHAUSTED_RETRY_QUEUED',{objectiveId:o.id,phaseIndex:currentPhase,retryCount:retryPlan.nextCycle,delayMs:retryPlan.delayMs,failureCount:Array.isArray(routed.failures)?routed.failures.length:0});
         return;
       }
       const exhaustedCommitted=await pool.query(
-        "update tigeriq_objectives set manager_cycles=$2,status='blocked',summary=$3,updated_at=now() where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and (metadata->>'sourceRevision') is not distinct from $4::text",
-        [o.id,retryPlan.nextCycle,'manager exhaustion retry budget exhausted',o.metadata?.sourceRevision??null],
+        "update tigeriq_objectives set status='blocked',summary=$2,updated_at=now(),metadata=jsonb_set(coalesce(metadata,'{}'::jsonb),'{managerExhaustionRetries}',to_jsonb($3::int),true) where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and (metadata->>'sourceRevision') is not distinct from $4::text",
+        [o.id,'manager exhaustion retry budget exhausted',retryPlan.nextCycle,o.metadata?.sourceRevision??null],
       );
       if(exhaustedCommitted.rowCount!==1)return;
       await event('OBJECTIVE_BLOCKED',{objectiveId:o.id,phaseIndex:currentPhase,reason:retryPlan.reason,retryCount:retryPlan.nextCycle});
@@ -3209,7 +3269,7 @@ async function managerTick() {
     // The manager model may return after GitHub intake has parked, blocked or
     // superseded this objective. Never write a stale decision over that state.
     const decisionCommitted=await pool.query(
-      "update tigeriq_objectives set manager_cycles=manager_cycles+1,summary=$2,updated_at=now(),next_check_at=now()+interval '5 seconds' where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and (metadata->>'sourceRevision') is not distinct from $3::text",
+      "update tigeriq_objectives set manager_cycles=manager_cycles+1,summary=$2,updated_at=now(),next_check_at=now()+interval '5 seconds',metadata=coalesce(metadata,'{}'::jsonb)-'managerExhaustionRetries' where id=$1 and status='active' and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and (metadata->>'sourceRevision') is not distinct from $3::text",
       [o.id,String(decision.summary||'').slice(0,2000),o.metadata?.sourceRevision??null],
     );
     if(decisionCommitted.rowCount!==1)return;
@@ -4747,7 +4807,7 @@ async function loop(){
         console.error(JSON.stringify({ event: 'PREFLIGHT_CHECK_FAILED', errors: preflightCheck.errors }));
       }
       if(t-lastRefresh>5000){await refreshResources();lastRefresh=t;}
-      if(t-lastRecover>10000){await recoverStale();await recoverFailedCampaignJobsAfterRuntimeSourceChange();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;}
+      if(t-lastRecover>10000){await recoverStale();await recoverFailedCampaignJobsAfterRuntimeSourceChange();await recoverManagerExhaustionStallAfterRuntimeSourceChange();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;}
       if(t-lastR04IndependentReview>5000){lastR04IndependentReview=t;await reconcileNativeR04IndependentReview();}
       if(t-lastOpenClawObjectiveReconcile>3000){await reconcileCoreDirectPcOperatorObjectives();await reconcileCoreOpenClawBoundedObjectives();lastOpenClawObjectiveReconcile=t;}
       if(!managerTickRunning&&t-lastManager>MANAGER_IDLE_MS){lastManager=t;managerTickRunning=true;void managerTick().catch(error=>console.error(JSON.stringify({event:'MANAGER_TICK_ERROR',error:String(error?.message||error)}))).finally(()=>{managerTickRunning=false;});}
@@ -4829,6 +4889,7 @@ await initMobileWorkerTables(pool);
 await recoverAfterCoreRestart();
 await refreshResources();
 await recoverFailedCampaignJobsAfterRuntimeSourceChange();
+await recoverManagerExhaustionStallAfterRuntimeSourceChange();
 const loopbackServer=HOST==='127.0.0.1'?null:createServer(server.listeners('request')[0]);
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve);});
 if(loopbackServer)await new Promise((resolve,reject)=>{loopbackServer.once('error',reject);loopbackServer.listen(PORT,'127.0.0.1',resolve);});
