@@ -291,6 +291,30 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
     expect(second.changed).toBe(false);
     expect(second.reason).toBe('prior_context_already_present');
   });
+  it('replaces stale authorized handoff while preserving active skill context',()=>{
+    const original=[
+      'PACKET_JSON: {"task_id":"JOB-2"}',
+      'OUTPUT REQUIREMENT: JSON only',
+      '',
+      'AUTHORIZED PRIOR CAMPAIGN HANDOFF:',
+      'PRIOR_CAMPAIGN_HANDOFF_V1 {"checkpoint":{"jobId":"JOB-OLD"}}',
+      '',
+      'ACTIVE SKILLS (use only when relevant; never expand permissions):',
+      '[SKILL role-separated-execution v1.0.0]',
+      'keep reviewer independent',
+    ].join('\n');
+    const context='PRIOR_CAMPAIGN_HANDOFF_V1 {"checkpoint":{"jobId":"JOB-EVID-CURRENT"}}';
+    const repaired=repairCampaignReviewPrompt(original,context);
+    expect(repaired.changed).toBe(true);
+    expect(repaired.reason).toBe('prior_context_replaced');
+    expect(repaired.prompt).toContain('JOB-EVID-CURRENT');
+    expect(repaired.prompt).not.toContain('JOB-OLD');
+    expect(repaired.prompt).toContain('ACTIVE SKILLS (use only when relevant; never expand permissions):');
+    expect(repaired.prompt).toContain('keep reviewer independent');
+    const second=repairCampaignReviewPrompt(repaired.prompt,context);
+    expect(second.changed).toBe(false);
+    expect(second.reason).toBe('prior_context_already_present');
+  });
   it('repairs raw prior-evidence text when the authorized handoff marker is absent',()=>{
     const original='PACKET_JSON: {"goal":"PRIOR_CAMPAIGN_HANDOFF_V1 mentioned without an authorized marker"}';
     const context='PRIOR_CAMPAIGN_HANDOFF_V1 {"schema":"TIGERIQ_REFERENCED_JOB_EVIDENCE_V1","refs":["JOB-REF-1"],"receipts":[]}';
