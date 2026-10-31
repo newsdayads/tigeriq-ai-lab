@@ -63,7 +63,7 @@ jobs:
 
   release-windows-rc5:
     name: Publish Windows RC5 pre-release
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, '[P1][GH-5291]')
     needs:
       - validate-phone-farm
       - build-windows
