@@ -945,7 +945,7 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
     await event('CAMPAIGN_FAILED_JOB_REARMED_AFTER_RUNTIME_SOURCE_CHANGE',{
       objectiveId:row.objective_id,jobId:row.id,runtimeSha,runtimeUpdatedAt,
       attempts:Number(row.attempts)||0,maxAttempts:Number(row.max_attempts)||0,
-      maxAttemptsAfter:repairCredit?Math.min(repairCap,Number(row.max_attempts)+1):Number(row.max_attempts)||0,
+      maxAttemptsAfter:repairCredit?(Number(decision.nextMaxAttempts)||Math.min(repairCap,Math.max(Number(row.max_attempts)+1,Number(row.attempts)+1))):Number(row.max_attempts)||0,
       promptRepaired:promptRepair.changed,compactPromptRepaired:compactRepair.changed,persistedPhaseZeroRepairEligible,phaseZeroStrictAcceptanceEligible,phaseZeroHandoffTransportEligible,providerPromptCompactionEligible,providerPriorEvidenceEligible,repairCreditGranted:repairCredit,
       promptRepairReason:promptRepair.reason,compactPromptRepairReason:compactRepair.reason,repairCap,
       reason:decision.reason,
