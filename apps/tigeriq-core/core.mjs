@@ -35,7 +35,7 @@ import { CONTINUOUS_VERIFY_CADENCE_MS, cadenceContinuousVerifyDue, githubContinu
 import { planContinuousVerifyRecovery, CONTINUOUS_VERIFY_RECOVERY_EVENT_LIMIT } from './continuous-verify-recovery.mjs';
 import { assessMainCiGate } from './main-ci-health.mjs';
 import { autonomousRcaCanonicalAction, autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
-import { normalizeCampaignPhases, currentCampaignGoal, campaignPriorEvidenceContext, explicitJobRefsFromText, referencedJobEvidenceContext, repairCampaignReviewPrompt, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt } from './campaign-runner.mjs';
+import { normalizeCampaignPhases, currentCampaignGoal, campaignPriorEvidenceContext, explicitJobRefsFromText, referencedJobEvidenceContext, referencedJobReviewExclusions, repairCampaignReviewPrompt, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt } from './campaign-runner.mjs';
 import { buildAutonomousCodingHandoffWorkOrder, normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, functionalReprobeCandidates, functionalRoutingReadiness, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
@@ -801,17 +801,32 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
     limit 20`,[[FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY]])).rows;
   let recovered=0;
   for(const row of rows){
-    let promptRepair={changed:false,prompt:String(row.prompt||''),reason:'not_review_phase'};
-    if(String(row.capability||'')==='review'&&Number(row.phase_index)>0){
-      const priorJobs=(await pool.query(
-        "select id,title,phase_index,kind,status,employee_id,resource_id,provider,completed_at,result from tigeriq_jobs where objective_id=$1 and phase_index=$2 and status='done' order by case when kind='compiled_campaign' then 0 else 1 end,completed_at desc nulls last limit 6",
-        [row.objective_id,Number(row.phase_index)-1],
-      )).rows;
-      const priorContext=campaignPriorEvidenceContext({
-        currentPhase:Number(row.phase_index),
-        checkpoints:row.objective_metadata?.campaign?.checkpoints||[],
-        jobs:priorJobs,
-      });
+    let promptRepair={changed:false,prompt:String(row.prompt||''),reason:'not_review_job'};
+    if(String(row.capability||'')==='review'){
+      let priorContext='';
+      if(Number(row.phase_index)>0){
+        const priorJobs=(await pool.query(
+          "select id,title,phase_index,kind,status,employee_id,resource_id,provider,completed_at,result from tigeriq_jobs where objective_id=$1 and phase_index=$2 and status='done' order by case when kind='compiled_campaign' then 0 else 1 end,completed_at desc nulls last limit 6",
+          [row.objective_id,Number(row.phase_index)-1],
+        )).rows;
+        priorContext=campaignPriorEvidenceContext({
+          currentPhase:Number(row.phase_index),
+          checkpoints:row.objective_metadata?.campaign?.checkpoints||[],
+          jobs:priorJobs,
+        });
+      }
+      if(!priorContext){
+        const referencedJobIds=explicitJobRefsFromText(row.prompt,{maxRefs:8})
+          .filter(id=>id!==String(row.id||''))
+          .slice(0,4);
+        if(referencedJobIds.length){
+          const referencedJobs=(await pool.query(
+            "select id,title,phase_index,kind,status,employee_id,resource_id,provider,completed_at,result from tigeriq_jobs where id=any($1::text[]) and status='done' limit 8",
+            [referencedJobIds],
+          )).rows;
+          priorContext=referencedJobEvidenceContext({jobIds:referencedJobIds,jobs:referencedJobs});
+        }
+      }
       promptRepair=repairCampaignReviewPrompt(row.prompt,priorContext);
     }
     const isReviewPhase=String(row.capability||'')==='review'&&Number(row.phase_index)>0;
@@ -2041,6 +2056,18 @@ async function reviewerResourceIdsForJob(j){
   const direct=await pool.query(`select distinct resource_id,employee_id from tigeriq_jobs where objective_id=$1 and id<>$2 and status='done' and capability<>'review' and (resource_id is not null or employee_id is not null)`,[j.objective_id,j.id]);
   const excludedResources=new Set(direct.rows.map(x=>String(x.resource_id||'')).filter(Boolean));
   const excludedEmployees=new Set(direct.rows.map(x=>String(x.employee_id||'').trim().toUpperCase()).filter(Boolean));
+  const referencedJobIds=explicitJobRefsFromText(j.prompt,{maxRefs:8})
+    .filter(id=>id!==String(j.id||''))
+    .slice(0,4);
+  if(referencedJobIds.length){
+    const referenced=(await pool.query(
+      "select id,status,resource_id,employee_id from tigeriq_jobs where id=any($1::text[]) and status='done' limit 8",
+      [referencedJobIds],
+    )).rows;
+    const referencedExclusions=referencedJobReviewExclusions({jobIds:referencedJobIds,jobs:referenced});
+    for(const id of referencedExclusions.employeeIds)excludedEmployees.add(id);
+    for(const id of referencedExclusions.resourceIds)excludedResources.add(id);
+  }
   for(const value of (Array.isArray(j.objective_metadata?.finalReviewImplementerEmployeeIds)?j.objective_metadata.finalReviewImplementerEmployeeIds:[])){
     const id=String(value||'').trim().toUpperCase(); if(id)excludedEmployees.add(id);
   }
