@@ -16,7 +16,7 @@
 - Stage `D:\TigerIQ\Apps\DeXCamPersonal\Staged_v1_0_71_TEST_312_MCP`, từ bản V70.
 - Patches `apps/ultracarhcm-v1-v71/pc01/apply_v71.py` + `postrender_sort_hook.py`. Reassert native sort button after Compose's saved-layout content in both routes (four calls total) so it cannot be drawn behind the content. Static guards verified: subtitle 1, saved show2, home hide removed2, bridge service2, watcher2, dock1, VM USB edge1, ReverseGearReceiver stays closed.
 - Apktool build PASS (signed input not touched), zipalign check PASS; `aapt2 dump badging` PASS for package `com.tigeriq.dexsplit`, code312, name `TigerIQ_HCM_v1.0.71`.
-- Unsigned `UltraCar_v1.0.71_312_UIProfileCamera_unsigned_TEST.apk` SHA256 `E770CD30AFF00CC338B90C60D9820F38CC807A42AA46167349E6F1373877759A`, bytes 34,938,561.
+- Unsigned `UltraCar_v1.0.71_312_HeaderCameraFix_unsigned_TEST.apk` SHA256 `EA27CAB2227DD546A45C83AD32F4DC76743B5CA49543DA7D5D2614B50024A977`, bytes 34,938,561.
 - **Aligned but not signed** `D:\TigerIQ\Apps\DeXCamPersonal\build\UltraCar_v1.0.71_312_HeaderCameraFix_aligned_TEST.apk`: bytes **34,981,993**, SHA256 **183D62E34BCC4EE65E2BD5E06127B2A6CF665F3EF5B69592D2748E7D6D55ECF8**.
 - PC01 canonical `ultracar_test_release.json` pinned code312 and this SHA; V70 signed/Drive manifest backed up as `ultracar_test_release.v70_311_signed_drive_verified.json`. Do not overwrite previous signed APK or publish this unsigned file.
 
