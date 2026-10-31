@@ -127,9 +127,15 @@ export function failedCampaignRuntimeRearmDecision({
   routingProfile='',
   promptRepairEligible=false,
   promptRepairCap=4,
+  campaignVerifierRepair=false,
+  campaignVerifierJobId='',
 }={}) {
   if(String(objectiveStatus).trim().toLowerCase()!=='blocked')return {action:'keep',reason:'objective_not_blocked'};
-  if(![FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY].includes(String(objectiveSummary)))return {action:'keep',reason:'not_failed_campaign_rearm_guard'};
+  const summary=String(objectiveSummary);
+  const verifierSummary=campaignVerifierRepair===true&&String(campaignVerifierJobId||'').trim()
+    ? `campaign verification failed after bounded attempts: ${String(campaignVerifierJobId).trim()}`
+    : '';
+  if(![FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY].includes(summary)&&summary!==verifierSummary)return {action:'keep',reason:'not_failed_campaign_rearm_guard'};
   if(String(jobStatus).trim().toLowerCase()!=='failed')return {action:'keep',reason:'job_not_failed'};
   if(!hasCampaign||String(routingProfile).trim().toUpperCase()!=='LOCAL')return {action:'keep',reason:'not_local_campaign'};
   const used=Math.max(0,Number(attempts)||0),limit=Math.max(0,Number(maxAttempts)||0);
