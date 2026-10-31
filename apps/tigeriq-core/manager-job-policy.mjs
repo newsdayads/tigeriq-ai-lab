@@ -137,7 +137,8 @@ export function failedCampaignRuntimeRearmDecision({
   if(!Number.isFinite(failedAt)||!Number.isFinite(runtimeAt)||runtimeAt<=failedAt)return {action:'keep',reason:'runtime_not_newer_than_failure'};
   if(limit<=0)return {action:'keep',reason:'retry_budget_exhausted'};
   if(used>=limit){
-    const cap=Math.max(1,Math.min(7,Number(promptRepairCap)||4));
+    const requestedCap=Number(promptRepairCap)||4;
+    const cap=requestedCap===8?8:Math.max(1,Math.min(7,requestedCap));
     if(promptRepairEligible===true&&used>=limit&&used<cap&&limit<cap){
       return {action:'requeue_prompt_repair',reason:'runtime_source_newer_with_prompt_repair_credit',nextMaxAttempts:Math.max(limit+1,used+1)};
     }
