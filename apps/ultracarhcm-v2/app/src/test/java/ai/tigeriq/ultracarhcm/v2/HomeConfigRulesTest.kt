@@ -2,6 +2,7 @@ package ai.tigeriq.ultracarhcm.v2
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -18,6 +19,22 @@ class HomeConfigRulesTest {
         assertFalse(HomeConfigRules.canSave(20))
         assertFalse(HomeConfigRules.canSave(21))
         assertFalse(HomeConfigRules.canSave(-1))
+    }
+
+    @Test fun movesOnlyToAdjacentValidPosition() {
+        assertEquals(0, HomeConfigRules.reorderTarget(3, 1, -1))
+        assertEquals(2, HomeConfigRules.reorderTarget(3, 1, 1))
+        assertEquals(1, HomeConfigRules.reorderTarget(2, 0, 1))
+    }
+
+    @Test fun rejectsInvalidSavedLayoutMoves() {
+        assertNull(HomeConfigRules.reorderTarget(1, 0, 1))
+        assertNull(HomeConfigRules.reorderTarget(3, -1, 1))
+        assertNull(HomeConfigRules.reorderTarget(3, 3, -1))
+        assertNull(HomeConfigRules.reorderTarget(3, 0, -1))
+        assertNull(HomeConfigRules.reorderTarget(3, 2, 1))
+        assertNull(HomeConfigRules.reorderTarget(3, 1, 0))
+        assertNull(HomeConfigRules.reorderTarget(3, 1, 2))
     }
 
     @Test fun acceptsLegacyAndCurrentSchemasButRejectsFutureSchema() {
