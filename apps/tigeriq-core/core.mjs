@@ -3130,11 +3130,22 @@ async function managerTick() {
         await event('CAMPAIGN_FINAL_COMPLETION_GATE_PENDING',{objectiveId:o.id,jobId:proofId,reason:finalGate.reason});
         return;
       }
+      const finalCheckpoint={...makePhaseCheckpoint({currentPhase,phases,summary:`Verified by ${proofId}`}),jobId:proofId,employeeId:proof.employee_id,resourceId:proof.resource_id};
       const finished=await pool.query(
-        "update tigeriq_objectives set status='completed',summary=$2,updated_at=now() where id=$1 and status='active' and coalesce((metadata#>>'{campaign,currentPhase}')::int,0)=$3 and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')='' and (metadata->>'sourceRevision') is not distinct from $4::text and exists(select 1 from tigeriq_jobs j where j.id=$5 and j.objective_id=$1 and j.status='done')",
-        [o.id,`verified all ${phases.length} campaign phases; final receipt ${proofId}`,currentPhase,o.metadata?.sourceRevision??null,proofId],
+        `update tigeriq_objectives
+         set status='completed',
+             summary=$2,
+             metadata=jsonb_set(metadata,'{campaign,checkpoints}',coalesce(metadata#>'{campaign,checkpoints}','[]'::jsonb)||$3::jsonb,true),
+             updated_at=now()
+         where id=$1
+           and status='active'
+           and coalesce((metadata#>>'{campaign,currentPhase}')::int,0)=$4
+           and coalesce(metadata->>'managerAwaitingAcceptanceRevision','')=''
+           and (metadata->>'sourceRevision') is not distinct from $5::text
+           and exists(select 1 from tigeriq_jobs j where j.id=$6 and j.objective_id=$1 and j.status='done')`,
+        [o.id,`verified all ${phases.length} campaign phases; final receipt ${proofId}`,JSON.stringify([finalCheckpoint]),currentPhase,o.metadata?.sourceRevision??null,proofId],
       );
-      if(finished.rowCount===1)await event('OBJECTIVE_COMPLETE',{objectiveId:o.id,jobId:proofId,phaseIndex:currentPhase,phaseCount:phases.length,mode:'deterministic_verified_receipt'});
+      if(finished.rowCount===1)await event('OBJECTIVE_COMPLETE',{objectiveId:o.id,jobId:proofId,phaseIndex:currentPhase,phaseCount:phases.length,checkpoint:finalCheckpoint,mode:'deterministic_verified_receipt'});
       return;
     }
     if(proof.status==='failed'){
