@@ -12,8 +12,9 @@ class HomeBackupRulesTest {
         assertTrue(HomeBackupRules.canReadBackupSchema(2))
         assertTrue(HomeBackupRules.canReadBackupSchema(3))
         assertTrue(HomeBackupRules.canReadBackupSchema(4))
+        assertTrue(HomeBackupRules.canReadBackupSchema(5))
         assertFalse(HomeBackupRules.canReadBackupSchema(0))
-        assertFalse(HomeBackupRules.canReadBackupSchema(5))
+        assertFalse(HomeBackupRules.canReadBackupSchema(6))
         assertFalse(HomeBackupRules.requiresOverlayPositions(1))
         assertTrue(HomeBackupRules.requiresOverlayPositions(2))
         assertTrue(HomeBackupRules.requiresOverlayPositions(3))
@@ -22,6 +23,8 @@ class HomeBackupRulesTest {
         assertTrue(HomeBackupRules.requiresVehicleState(3))
         assertFalse(HomeBackupRules.requiresTaxiMeterState(3))
         assertTrue(HomeBackupRules.requiresTaxiMeterState(4))
+        assertFalse(HomeBackupRules.requiresSavedLayoutShortcuts(4))
+        assertTrue(HomeBackupRules.requiresSavedLayoutShortcuts(5))
     }
 
     @Test fun boundsImportedBackupSize() {

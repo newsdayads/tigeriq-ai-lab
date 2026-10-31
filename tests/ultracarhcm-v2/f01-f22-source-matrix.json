@@ -379,10 +379,11 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeBackupRules.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TaxiMeterRules.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayPositionRules.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleRules.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/SavedLayoutShortcutRules.kt"
       ],
-      "gap": "Backup schema v4 now includes bounded V2-owned Taxi Meter configured rate and up to 100 validated trip records in addition to Home state, quick slots, saved/default configs, per-display DeX positions, day/night, driver, vehicle model and license plate. Schemas 1–3 remain readable without mutating Taxi Meter state. Device/provider-bound custom background grants, V1 images/sound/other unimplemented feature data and real-device acceptance remain open.",
-      "actual": "HomeActivity exports schema v4 through SAF and validates the complete payload before preference writes. Taxi Meter restore requires exact scalar types, a valid configured rate, bounded history length and valid startedAt/duration/distance/rate/fare values; legacy schemas 1–3 preserve existing Taxi Meter prefs. No V1 data, credentials or broad storage permission are included.",
+      "gap": "Backup schema v5 now includes the five V1-evidenced Home saved-layout shortcut assignments by stable config ID, in addition to schema-v4 Taxi Meter state and the existing Home/quick-slot/overlay/vehicle data. Schemas 1–4 remain readable without overwriting saved-layout shortcut mappings; schemas 1–3 also remain non-destructive for Taxi Meter state. Device/provider-bound custom background grants, V1 images/sound/other unimplemented feature data and real-device acceptance remain open.",
+      "actual": "HomeActivity exports schema v5 through SAF, emits exactly five nullable saved-layout shortcut references, and validates every non-null shortcut ID against the imported unique saved-configuration IDs before any preference write. Schema-v5 restore replaces only the V2 shortcut preference set after full validation; legacy schemas do not mutate that new preference set. No V1 data, credentials or broad storage permission are included.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.exportHomeBackupJson",
@@ -392,7 +393,10 @@
         "HomeActivity.readHomeBackup",
         "HomeActivity.importHomeBackupJson",
         "HomeBackupRules.requiresTaxiMeterState",
-        "TaxiMeterRules.validRateVndPerKm"
+        "TaxiMeterRules.validRateVndPerKm",
+        "HomeActivity.exportSavedLayoutShortcuts",
+        "HomeBackupRules.requiresSavedLayoutShortcuts",
+        "SavedLayoutShortcutRules.validConfigId"
       ],
       "permissions": []
     },
@@ -523,10 +527,11 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TaxiMeterRules.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/RecoveryActivity.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/RecoveryRules.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/RecoveryRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/SavedLayoutShortcutRules.kt"
       ],
-      "gap": "Local migration/recovery and schema-v4 backup source now preserve bounded V2 Taxi Meter history as well as Home state while keeping schemas 1–3 backward compatible. Recovery reports current signing identity correctly, but actual signed release provenance, downgrade/rollback execution and real-device recovery acceptance remain open.",
-      "actual": "V2 has an independent package, lifecycle/UVC cleanup, versioned Home-state migration and a bounded SAF backup envelope that can restore validated V2 Taxi Meter rate/history without touching legacy Taxi state when reading older schemas. RecoveryActivity reads real installed package/version/current signing identity; no installer protections are bypassed.",
+      "gap": "Local migration/recovery and schema-v5 backup source now preserve bounded V2 Taxi Meter history plus five stable-ID Home saved-layout shortcut assignments while keeping schemas 1–4 backward readable. Actual signed release provenance, downgrade/rollback execution and real-device recovery acceptance remain open.",
+      "actual": "V2 has an independent package, lifecycle/UVC cleanup, versioned Home-state migration and a bounded SAF backup envelope. Schema-v5 restore validates shortcut references against the imported saved-config set before writes and replaces only the V2 shortcut mapping; legacy backups remain readable without inventing shortcut data. RecoveryActivity reads real installed package/version/current signing identity; no installer protections are bypassed.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "AndroidManifest.xml",
@@ -538,7 +543,10 @@
         "RecoveryActivity.signingSha256",
         "RecoveryRules.hex",
         "RecoveryRules.isExpectedPackageName",
-        "RecoveryRules.formatSigningSha256"
+        "RecoveryRules.formatSigningSha256",
+        "HomeActivity.exportSavedLayoutShortcuts",
+        "HomeBackupRules.requiresSavedLayoutShortcuts",
+        "SavedLayoutShortcutRules.validConfigId"
       ],
       "permissions": []
     }
