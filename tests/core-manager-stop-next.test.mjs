@@ -258,8 +258,23 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
     expect(text).toContain('JOB-EVID-1');
     expect(text).toContain('phase1 proof');
     expect(text).toContain('EXECUTION_ACCEPTED');
+    expect(text).not.toContain('JOB-WORK-1');
     expect(text).not.toContain('JOB-FUTURE');
     expect(text.length).toBeLessThanOrEqual(2600);
+  });
+  it('does not leak stale same-phase reviewer receipts past a verified checkpoint',()=>{
+    const text=campaignPriorEvidenceContext({
+      currentPhase:1,
+      checkpoints:[{phaseIndex:0,phaseNumber:1,phaseTitle:'Receipt verification',summary:'Verified current checkpoint',jobId:'JOB-EVID-CURRENT',employeeId:'NV10',resourceId:'res:nv10',completedAt:'2026-10-31T10:46:25Z'}],
+      jobs:[
+        {id:'JOB-OLD-REVIEW',title:'Historical review',phase_index:0,kind:'compiled_ai',status:'done',employee_id:'NV09',resource_id:'res:nv09',provider:'ollama',completed_at:'2026-10-31T08:10:14Z',result:{text:'historical receipt'}},
+        {id:'JOB-EVID-CURRENT',title:'Current verified phase receipt',phase_index:0,kind:'compiled_campaign',status:'done',employee_id:'NV10',resource_id:'res:nv10',provider:'ollama',completed_at:'2026-10-31T10:46:25Z',result:{text:'current receipt',executionGate:{pass:true,code:'EXECUTION_ACCEPTED',evidenceIds:['e1']}}},
+      ],
+    });
+    expect(text).toContain('JOB-EVID-CURRENT');
+    expect(text).toContain('current receipt');
+    expect(text).not.toContain('JOB-OLD-REVIEW');
+    expect(text).not.toContain('res:nv09');
   });
   it('does not invent prior campaign evidence on phase zero',()=>{
     expect(campaignPriorEvidenceContext({currentPhase:0,checkpoints:[],jobs:[]})).toBe('');
