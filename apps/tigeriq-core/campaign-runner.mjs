@@ -105,8 +105,14 @@ export function campaignPriorEvidenceContext({currentPhase=0,checkpoints=[],jobs
   const checkpoint=(Array.isArray(checkpoints)?checkpoints:[])
     .filter(item=>Number(item?.phaseIndex)===previousPhaseIndex)
     .slice(-1)[0]||null;
+  const checkpointJobId=String(checkpoint?.jobId||'').trim();
   const receipts=(Array.isArray(jobs)?jobs:[])
     .filter(job=>job?.status==='done'&&Number(job?.phase_index)===previousPhaseIndex)
+    // Once a phase checkpoint exists, it is the canonical verified handoff.
+    // Do not leak older same-phase jobs from a prior recovery attempt into the
+    // next review prompt: reviewer independence would incorrectly exclude
+    // those historical workers/resources.
+    .filter(job=>!checkpointJobId||String(job?.id||'').trim()===checkpointJobId)
     .slice(0,4)
     .map(job=>{
       let result=job?.result??null;
