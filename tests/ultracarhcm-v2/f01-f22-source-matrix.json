@@ -321,16 +321,21 @@
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileRules.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "apps/ultracarhcm-v1/release/build-v66-profile-red-test.mjs",
+        "tests/ultracar-v66-profile-red.test.mjs",
+        "tests/ultracarhcm-v2/profile-v66-subtitle-source.test.ts"
       ],
-      "gap": "Local driver profile display name and runtime app version header are implemented from verified V1 profile evidence; identity/license backend, registration/extension and full responsive V1 profile-card parity remain unverified and are intentionally not fabricated.",
-      "actual": "ProfileActivity shows the real installed V2 version/build, edits the same device-local driver display name used by Home, and explicitly leaves license/registration unavailable until a verified backend contract exists.",
+      "gap": "The verified V1 V66 original Profile-header subtitle behavior is now reflected in V2: the real installed V2 version/build appears directly under the Profile title in red, with no floating version badge. Local driver-name editing also remains implemented. Identity/license backend, registration/extension, remaining exact V1 card styling and real-device Profile acceptance remain unverified and are intentionally not fabricated.",
+      "actual": "ProfileActivity renders the runtime V2 version/build as the red header subtitle at the original Profile location, keeps version/update actions inside normal cards rather than a floating badge, edits the same device-local driver display name used by Home, and leaves license/registration fail-closed until a verified backend contract exists.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.showSettings",
         "ProfileActivity.onCreate",
         "ProfileRules.normalizeDisplayName",
-        "ProfileRules.versionLabel"
+        "ProfileRules.versionLabel",
+        "ProfileActivity.buildContent",
+        "ProfileActivity.currentVersionLabel"
       ],
       "permissions": []
     },

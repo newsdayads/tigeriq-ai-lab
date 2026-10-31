@@ -48,11 +48,9 @@ class ProfileActivity : ComponentActivity() {
         body.addView(text("HỒ SƠ NGƯỜI LÁI", 28f).apply {
             gravity = Gravity.START
         })
-        body.addView(text(
-            "Bố cục tự đổi theo chiều rộng màn hình để tránh cắt nội dung trên phone/landscape/DeX.",
-            14f,
-            Color.LTGRAY,
-        ))
+        // V1 V66 evidence: keep the original Profile-header subtitle and color it red.
+        // V2 shows its own runtime version/build here; no floating version badge is added.
+        body.addView(text(currentVersionLabel(), 14f, Color.RED))
 
         val widthDp = (resources.configuration.screenWidthDp.takeIf { it > 0 }
             ?: (resources.displayMetrics.widthPixels / density).toInt())
