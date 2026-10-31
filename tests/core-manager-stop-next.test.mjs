@@ -1,6 +1,6 @@
 import { describe,expect,it } from 'vitest';
 import {managerIdleStepStopPlan} from '../apps/tigeriq-core/manager-cycle-policy.mjs';
-import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY,failedCampaignRuntimeRearmDecision,managerJobMaterializationDecision,providerPromptCompactionRecoveryEligible} from '../apps/tigeriq-core/manager-job-policy.mjs';
+import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY,failedCampaignRuntimeRearmDecision,managerJobMaterializationDecision,providerPromptCompactionRecoveryEligible,providerPriorCampaignEvidenceRecoveryEligible} from '../apps/tigeriq-core/manager-job-policy.mjs';
 import {campaignPriorEvidenceContext,repairCampaignReviewPrompt} from '../apps/tigeriq-core/campaign-runner.mjs';
 import {apiDoctorAutoworkPriority} from '../apps/tigeriq-core/api-doctor.mjs';
 
@@ -82,6 +82,29 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
     expect(providerPromptCompactionRecoveryEligible({...exact,failure:{failures:[{kind:'job_contract',message:'OTHER'}]}})).toBe(false);
     expect(providerPromptCompactionRecoveryEligible({...exact,failure:{failures:[{kind:'outage',message:'NV09_COMPILED_PROMPT_BUDGET_EXCEEDED'}]}})).toBe(false);
     expect(providerPromptCompactionRecoveryEligible({...exact,failure:{message:'NV09_COMPILED_PROMPT_BUDGET_EXCEEDED'}})).toBe(false);
+  });
+  it('grants exactly one 6-to-7 retry only when the blocked review had authorized prior campaign evidence',()=>{
+    const exact={
+      capability:'review',
+      phaseIndex:1,
+      maxAttempts:6,
+      prompt:'x\n\nAUTHORIZED PRIOR CAMPAIGN HANDOFF:\nPRIOR_CAMPAIGN_HANDOFF_V1 {"checkpoint":{"jobId":"JOB-EVID-1"}}',
+      failure:{failures:[{kind:'invalid_response',message:'EXECUTION_RESULT_BLOCKED'}]},
+    };
+    expect(providerPriorCampaignEvidenceRecoveryEligible(exact)).toBe(true);
+    expect(providerPriorCampaignEvidenceRecoveryEligible({...exact,maxAttempts:5})).toBe(false);
+    expect(providerPriorCampaignEvidenceRecoveryEligible({...exact,prompt:'no handoff'})).toBe(false);
+    expect(providerPriorCampaignEvidenceRecoveryEligible({...exact,failure:{failures:[{kind:'invalid_response',message:'EXECUTION_RESULT_JSON_INVALID'}]}})).toBe(false);
+    expect(providerPriorCampaignEvidenceRecoveryEligible({...exact,failure:{failures:[{kind:'outage',message:'EXECUTION_RESULT_BLOCKED'}]}})).toBe(false);
+    const decisionBase={
+      objectiveStatus:'blocked',objectiveSummary:MANAGER_NO_PROGRESS_BLOCK_SUMMARY,jobStatus:'failed',
+      attempts:6,maxAttempts:6,jobCompletedAt:'2026-10-31T00:32:39Z',runtimeUpdatedAt:'2026-10-31T00:40:00Z',
+      hasCampaign:true,routingProfile:'LOCAL',promptRepairEligible:true,promptRepairCap:7,
+    };
+    expect(failedCampaignRuntimeRearmDecision(decisionBase))
+      .toEqual({action:'requeue_prompt_repair',reason:'runtime_source_newer_with_prompt_repair_credit',nextMaxAttempts:7});
+    expect(failedCampaignRuntimeRearmDecision({...decisionBase,attempts:7,maxAttempts:7}).reason).toBe('retry_budget_exhausted');
+    expect(failedCampaignRuntimeRearmDecision({...decisionBase,promptRepairCap:99,attempts:7,maxAttempts:7}).reason).toBe('retry_budget_exhausted');
   });
   it('hands the immediately previous verified campaign evidence to the next phase without unbounded payloads',()=>{
     const text=campaignPriorEvidenceContext({
