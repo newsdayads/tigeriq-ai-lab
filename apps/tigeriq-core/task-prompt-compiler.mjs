@@ -287,6 +287,14 @@ export function assertExecutionResultAccepted(raw,packet) {
   return gate;
 }
 
+export function assertExecutionResultRoutable(raw,packet) {
+  const gate=executionResultGate(raw,packet);
+  if(gate.pass||gate.code==='EXECUTION_RESULT_BLOCKED')return gate;
+  const error=Object.assign(new Error(gate.code),{kind:'invalid_response',executionGate:gate});
+  throw error;
+}
+
+
 export function strictExecutionRetryPrompt(compiledPrompt, gate) {
   const code = text(gate?.code, 'EXECUTION_RESULT_INVALID');
   return `${String(compiledPrompt || '').trim()}\n\nSTRICT RETRY: the previous output failed the deterministic acceptance gate with ${code}. Return one corrected ${EXECUTION_RESULT_VERSION} JSON object only. Do not claim complete unless every acceptance criterion is proven by evidence_refs.`;

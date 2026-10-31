@@ -73,10 +73,13 @@ describe('#777 Core Smart Router integration',()=>{
     expect(core).not.toContain("String(compactRepair.prompt||'').length>12000");
     expect(core).toContain('providerPriorCampaignEvidenceRecoveryEligible({');
     expect(core).toContain('persistedPhaseZeroReviewRepairRecoveryEligible({');
+    expect(core).toContain('phaseZeroReviewStrictAcceptanceRecoveryEligible({');
     expect(core).toContain('persistedPhaseZeroRepairEligible');
     expect(core).toContain('const repairCap=campaignPromptRepairRetryCap({');
     expect(core).toContain('compactLocalExecutionPrompt(prompt,packet)');
     expect(core).toContain('repairCreditGranted:repairCredit');
+    expect(core).toContain('assertExecutionResultRoutable(text,compiledPacket)');
+    expect(core).toContain("EXECUTION_ACCEPTANCE_RETRY");
     expect(core).toContain("CAMPAIGN_FAILED_JOB_RECOVERY_SKIPPED");
     expect(core).toContain("await recoverAfterCoreRestart();\nawait refreshResources();\nawait recoverFailedCampaignJobsAfterRuntimeSourceChange();");
     expect(core).not.toContain('max_attempts=max_attempts+10');

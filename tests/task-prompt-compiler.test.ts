@@ -6,6 +6,7 @@ import {
   compileTaskPrompt,
   executionResultGate,
   assertExecutionResultAccepted,
+  assertExecutionResultRoutable,
   parseExecutionResult,
   strictExecutionRetryPrompt,
   repairCompactExecutionPrompt,
@@ -163,7 +164,22 @@ describe('Task Prompt Compiler V1',()=>{
     expect(assertExecutionResultAccepted(accepted(packet),packet).pass).toBe(true);
   });
 
-  it('12 Core router performs compiled acceptance before marking the provider healthy',()=>{
+  it('12 routes a valid blocked result to Core correction but still rejects malformed compiled output',()=>{
+    const {packet}=compileTaskPrompt(base);
+    const blocked=JSON.stringify({
+      schema:'EXECUTION_RESULT_V1',
+      status:'blocked',
+      summary:'need one correction',
+      acceptance:packet.acceptance.map(criterion=>({criterion,passed:false,evidence_refs:[]})),
+      evidence:[],
+      block_reason:'needs corrected evidence',
+    });
+    expect(assertExecutionResultRoutable(blocked,packet).code).toBe('EXECUTION_RESULT_BLOCKED');
+    expect(()=>assertExecutionResultRoutable('not-json',packet)).toThrow('EXECUTION_RESULT_JSON_INVALID');
+    expect(assertExecutionResultRoutable(accepted(packet),packet).pass).toBe(true);
+  });
+
+  it('13 Core router validates malformed compiled output before marking the provider healthy while allowing blocked correction',()=>{
     const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     const start=source.indexOf('async function invokeRouted(');
     const stop=source.indexOf('function buildNv09CanaryPrompt(',start);
@@ -171,7 +187,7 @@ describe('Task Prompt Compiler V1',()=>{
     expect(start).toBeGreaterThan(-1);
     expect(stop).toBeGreaterThan(start);
     expect(router).toMatch(/options\.validateText\(text\).*?markResourceSuccess/s);
-    expect(source).toContain('const validateText=compiledPacket?(text)=>assertExecutionResultAccepted(text,compiledPacket):null;');
+    expect(source).toContain('const validateText=compiledPacket?(text)=>assertExecutionResultRoutable(text,compiledPacket):null;');
     expect(source).toContain('employeeAllowlist,validateText,compiledPacket}');
     expect(source.split('employeeAllowlist,validateText,compiledPacket});').length-1).toBe(2);
   });
