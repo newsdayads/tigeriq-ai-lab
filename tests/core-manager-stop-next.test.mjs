@@ -191,6 +191,19 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
     expect(failedCampaignRuntimeRearmDecision({...exact,attempts:4,maxAttempts:4,promptRepairCap:4}).reason).toBe('retry_budget_exhausted');
   });
 
+  it('grants one exact 4-to-5 campaign-verifier transport recovery and stops at five',()=>{
+    const jobId='JOB-EVID-OBJ-TEST-P0';
+    const exact={
+      objectiveStatus:'blocked',objectiveSummary:'campaign verification failed after bounded attempts: '+jobId,
+      jobStatus:'failed',attempts:4,maxAttempts:4,
+      jobCompletedAt:'2026-10-31T08:59:48Z',runtimeUpdatedAt:'2026-10-31T09:05:00Z',
+      hasCampaign:true,routingProfile:'LOCAL',promptRepairEligible:true,promptRepairCap:5,
+      campaignVerifierRepair:true,campaignVerifierJobId:jobId,
+    };
+    expect(failedCampaignRuntimeRearmDecision(exact))
+      .toEqual({action:'requeue_prompt_repair',reason:'runtime_source_newer_with_prompt_repair_credit',nextMaxAttempts:5});
+    expect(failedCampaignRuntimeRearmDecision({...exact,attempts:5,maxAttempts:5}).reason).toBe('retry_budget_exhausted');
+  });
   it('grants the 5-to-6 NV09 recovery credit only from the exact same-job failure receipt',()=>{
     const exact={
       capability:'review',

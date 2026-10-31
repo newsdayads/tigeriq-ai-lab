@@ -29,6 +29,15 @@ function goodResult(packet) {
     block_reason: null,
   };
 }
+function compactGoodResult(packet) {
+  return {
+    schema:'EXECUTION_RESULT_V1',status:'complete',
+    summary:'CODE=READY COUNT=2 POLICY=READ_ONLY in fake test fixture',
+    acceptance:packet.acceptance.map((_,criterion_index)=>({criterion_index,passed:true,evidence_refs:['synthetic-1']})),
+    evidence:[{id:'synthetic-1',type:'test',value:'synthetic fixture only'}],
+    block_reason:null,
+  };
+}
 function mockProvider(message, meta = {}) {
   const calls = [];
   return {
@@ -70,6 +79,12 @@ test('native request stays loopback-only with a finite budget and a bound packet
   assert.equal(body.stream, false);
   assert.deepEqual(body.format.properties.acceptance.prefixItems.map(x => x.properties.criterion.const), criteria);
 });
+test('compact native request uses criterion indexes without changing the bound packet', () => {
+  const { packet, prompt } = fixture(), body = buildNativeExecutionRequest({ packet, prompt, compact:true });
+  assert.deepEqual(body.format.properties.acceptance.prefixItems.map(x => x.properties.criterion_index.const), [0,1,2]);
+  assert.equal(body.messages[0].content, prompt);
+  assert.equal(body.options.num_predict, 512);
+});
 test('rejects prompt paired with a different source packet', () => {
   const { packet, prompt } = fixture();
   const altered = { ...packet, goal: 'tampered' };
@@ -98,6 +113,14 @@ test('passes genuine deterministic gate for mock 3/3 with referenced test eviden
   assert.equal(provider.calls.length, 1);
   assert.equal(provider.calls[0].url, 'http://127.0.0.1:11434/api/chat');
   assert.ok(provider.calls[0].init.signal);
+});
+test('compact native execution still passes the deterministic gate', async () => {
+  const {packet,prompt}=fixture();
+  const provider=mockProvider(compactGoodResult(packet));
+  const result=await invokeNativeStructuredExecution({packet,prompt,compact:true,fetchImpl:provider.fetchImpl});
+  assert.equal(result.gate.pass,true);
+  const sent=JSON.parse(provider.calls[0].init.body);
+  assert.deepEqual(sent.format.properties.acceptance.prefixItems.map(x=>x.properties.criterion_index.const),[0,1,2]);
 });
 test('paraphrased criterion must fail exact contract even if JSON is valid', async () => {
   const { packet, prompt } = fixture();

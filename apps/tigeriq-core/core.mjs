@@ -444,9 +444,11 @@ async function invokeProvider(r, prompt, providerContext={}) {
       if(process.env.TIGERIQ_NV10_NATIVE_STRUCTURED==='enabled'
         &&r.id===OLLAMA_EMPLOYEE_ID&&r.model==='gemma3:4b'
         &&providerContext.profile==='LOCAL'&&providerContext.compiledPacket){
+        const compactCampaign=providerContext.taskKind==='compiled_campaign';
+        const providerPrompt=compactCampaign?compactLocalExecutionPrompt(prompt,providerContext.compiledPacket):prompt;
         const native=await invokeNativeStructuredExecution({
-          packet:providerContext.compiledPacket,prompt,model:r.model,
-          numPredict:512,timeoutMs:Math.min(85000,OLLAMA_TIMEOUT_MS),
+          packet:providerContext.compiledPacket,prompt:providerPrompt,model:r.model,
+          numPredict:512,timeoutMs:Math.min(85000,OLLAMA_TIMEOUT_MS),compact:compactCampaign,
         });
         return native.text;
       }
@@ -892,8 +894,13 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
       failure:row.failure,
     });
     const campaignVerifierRepairEligible=campaignVerifierRepair&&promptRepair.changed&&Number(row.attempts)===3&&Number(row.max_attempts)===3;
-    const repairEligible=campaignVerifierRepairEligible||promptRepair.changed||compactRepair.changed||persistedPhaseZeroRepairEligible||phaseZeroStrictAcceptanceEligible||phaseZeroHandoffTransportEligible||providerPromptCompactionEligible||providerPriorEvidenceEligible;
-    const repairCap=campaignVerifierRepairEligible?4:campaignPromptRepairRetryCap({
+    const campaignVerifierCompactTransportEligible=campaignVerifierRepair
+      &&Number(row.attempts)===4&&Number(row.max_attempts)===4
+      &&String(compactRepair.prompt||'').includes('AUTHORIZED PRIOR CAMPAIGN HANDOFF:')
+      &&Array.isArray(row.failure?.failures)
+      &&row.failure.failures.some(item=>String(item?.message||'').trim()==='LOCAL_PROVIDER_INCOMPLETE');
+    const repairEligible=campaignVerifierRepairEligible||campaignVerifierCompactTransportEligible||promptRepair.changed||compactRepair.changed||persistedPhaseZeroRepairEligible||phaseZeroStrictAcceptanceEligible||phaseZeroHandoffTransportEligible||providerPromptCompactionEligible||providerPriorEvidenceEligible;
+    const repairCap=campaignVerifierCompactTransportEligible?5:campaignVerifierRepairEligible?4:campaignPromptRepairRetryCap({
       promptRepairChanged:promptRepair.changed,
       compactRepairChanged:compactRepair.changed,
       persistedPhaseZeroRepairEligible,
@@ -914,7 +921,7 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
       routingProfile:row.objective_metadata?.routingProfile,
       promptRepairEligible:repairEligible,
       promptRepairCap:repairCap,
-      campaignVerifierRepair:campaignVerifierRepairEligible,
+      campaignVerifierRepair:campaignVerifierRepairEligible||campaignVerifierCompactTransportEligible,
       campaignVerifierJobId:row.id,
     });
     if(!['requeue','requeue_prompt_repair'].includes(decision.action)){
@@ -928,7 +935,7 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
           attempts:Number(row.attempts)||0,maxAttempts:Number(row.max_attempts)||0,
           promptRepairChanged:promptRepair.changed,promptRepairReason:promptRepair.reason,
           compactPromptRepairChanged:compactRepair.changed,
-          campaignVerifierRepairEligible,providerPromptCompactionEligible,providerPriorEvidenceEligible,persistedPhaseZeroRepairEligible,phaseZeroStrictAcceptanceEligible,phaseZeroHandoffTransportEligible,repairEligible,repairCap,
+          campaignVerifierRepairEligible,campaignVerifierCompactTransportEligible,providerPromptCompactionEligible,providerPriorEvidenceEligible,persistedPhaseZeroRepairEligible,phaseZeroStrictAcceptanceEligible,phaseZeroHandoffTransportEligible,repairEligible,repairCap,
           reason:decision.reason,
         });
       }
@@ -973,7 +980,7 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
       objectiveId:row.objective_id,jobId:row.id,runtimeSha,runtimeUpdatedAt,
       attempts:Number(row.attempts)||0,maxAttempts:Number(row.max_attempts)||0,
       maxAttemptsAfter:repairCredit?(Number(decision.nextMaxAttempts)||Math.min(repairCap,Math.max(Number(row.max_attempts)+1,Number(row.attempts)+1))):Number(row.max_attempts)||0,
-      promptRepaired:promptRepair.changed,compactPromptRepaired:compactRepair.changed,campaignVerifierRepairEligible,persistedPhaseZeroRepairEligible,phaseZeroStrictAcceptanceEligible,phaseZeroHandoffTransportEligible,providerPromptCompactionEligible,providerPriorEvidenceEligible,repairCreditGranted:repairCredit,
+      promptRepaired:promptRepair.changed,compactPromptRepaired:compactRepair.changed,campaignVerifierRepairEligible,campaignVerifierCompactTransportEligible,persistedPhaseZeroRepairEligible,phaseZeroStrictAcceptanceEligible,phaseZeroHandoffTransportEligible,providerPromptCompactionEligible,providerPriorEvidenceEligible,repairCreditGranted:repairCredit,
       promptRepairReason:promptRepair.reason,compactPromptRepairReason:compactRepair.reason,repairCap,
       reason:decision.reason,
     });
@@ -1175,7 +1182,7 @@ async function stabilityV2PeerExclusions(jobId,store=pool){
   };
 }
 async function invokeRouted(prompt,capability,jobId,maxAttempts=3,options={}){
-  if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const failures=[],excluded=[...new Set((Array.isArray(options.excludedResourceIds)?options.excludedResourceIds:[]).map(x=>String(x||'').trim()).filter(Boolean))],requestedExcludedProviders=[...new Set((Array.isArray(options.excludeProviders)?options.excludeProviders:Array.isArray(options.excludedProviders)?options.excludedProviders:[]).map(x=>String(x||'').trim().toLowerCase()).filter(Boolean))];for(let i=0;i<maxAttempts;i++){const peerExclusions=await stabilityV2PeerExclusions(jobId);for(const resourceId of peerExclusions.resourceIds)if(!excluded.includes(resourceId))excluded.push(resourceId);const attemptedProviders=[...new Set(failures.map(f=>String(f?.provider||'').trim().toLowerCase()).filter(Boolean))];const excludedProviders=[...new Set([...requestedExcludedProviders,...peerExclusions.providers,...attemptedProviders])];const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind,excludedProviders});if(!row)break;excluded.push(row.resource_id);const r=resources.find(x=>x.resourceId===row.resource_id);if(!r)continue;await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);const started=Date.now();try{const text=validateRoutedOutput(await invokeProvider(r,prompt,{profile,compiledPacket:options.compiledPacket||null}),{jobId,prompt});if(typeof options.validateText==='function')options.validateText(text);const latency=Date.now()-started;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(error){if(localInferenceBusy(error)){await releaseLocalInferenceContention(r,jobId,taskKind);const busy=new Error('PC01_LOCAL_INFERENCE_BUSY');busy.code='PC01_LOCAL_INFERENCE_BUSY';busy.failures=[];throw busy;}let finalError=error,policy=failurePolicy(error?.kind||'outage');if(policy.retrySameResource){await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});try{const retryStarted=Date.now(),text=validateRoutedOutput(await invokeProvider(r,prompt,{profile,compiledPacket:options.compiledPacket||null}),{jobId,prompt});if(typeof options.validateText==='function')options.validateText(text);const latency=Date.now()-retryStarted;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(retryError){finalError=retryError;policy=failurePolicy(retryError?.kind||policy.kind);}}const kind=finalError?.kind||'outage';failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.code||finalError?.message||finalError)});await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});if(policy.stop)break;}}const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
+  if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const failures=[],excluded=[...new Set((Array.isArray(options.excludedResourceIds)?options.excludedResourceIds:[]).map(x=>String(x||'').trim()).filter(Boolean))],requestedExcludedProviders=[...new Set((Array.isArray(options.excludeProviders)?options.excludeProviders:Array.isArray(options.excludedProviders)?options.excludedProviders:[]).map(x=>String(x||'').trim().toLowerCase()).filter(Boolean))];for(let i=0;i<maxAttempts;i++){const peerExclusions=await stabilityV2PeerExclusions(jobId);for(const resourceId of peerExclusions.resourceIds)if(!excluded.includes(resourceId))excluded.push(resourceId);const attemptedProviders=[...new Set(failures.map(f=>String(f?.provider||'').trim().toLowerCase()).filter(Boolean))];const excludedProviders=[...new Set([...requestedExcludedProviders,...peerExclusions.providers,...attemptedProviders])];const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind,excludedProviders});if(!row)break;excluded.push(row.resource_id);const r=resources.find(x=>x.resourceId===row.resource_id);if(!r)continue;await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);const started=Date.now();try{const text=validateRoutedOutput(await invokeProvider(r,prompt,{profile,compiledPacket:options.compiledPacket||null,taskKind}),{jobId,prompt});if(typeof options.validateText==='function')options.validateText(text);const latency=Date.now()-started;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(error){if(localInferenceBusy(error)){await releaseLocalInferenceContention(r,jobId,taskKind);const busy=new Error('PC01_LOCAL_INFERENCE_BUSY');busy.code='PC01_LOCAL_INFERENCE_BUSY';busy.failures=[];throw busy;}let finalError=error,policy=failurePolicy(error?.kind||'outage');if(policy.retrySameResource){await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});try{const retryStarted=Date.now(),text=validateRoutedOutput(await invokeProvider(r,prompt,{profile,compiledPacket:options.compiledPacket||null,taskKind}),{jobId,prompt});if(typeof options.validateText==='function')options.validateText(text);const latency=Date.now()-retryStarted;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(retryError){finalError=retryError;policy=failurePolicy(retryError?.kind||policy.kind);}}const kind=finalError?.kind||'outage';failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.code||finalError?.message||finalError)});await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});if(policy.stop)break;}}const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
 }
 function buildNv09CanaryPrompt(inputPrompt='',marker='NV09_CORE_CANARY_OK'){
   const diagnostic=String(inputPrompt||'').trim().slice(0,700);
@@ -2273,10 +2280,11 @@ async function runJob(j) {
       return;
     }
     const reviewerResourceIds=await reviewerResourceIdsForJob(j);
+    const deterministicCampaignVerifier=j.kind==='compiled_campaign';
     const skillObjectiveText=[j.title,j.prompt].filter(Boolean).join('\n');
     let skillRegistryError=null;
     try{
-      jobSkillContext=matchAndLoadSkills(focusedSkillRoutingText(skillObjectiveText));
+      if(!deterministicCampaignVerifier)jobSkillContext=matchAndLoadSkills(focusedSkillRoutingText(skillObjectiveText));
     }catch(error){
       skillRegistryError=String(error?.message||error).slice(0,240);
       await event('SKILL_ROUTING_REGISTRY_REJECTED',{objectiveId:j.objective_id,jobId:j.id,reason:skillRegistryError});
