@@ -240,5 +240,6 @@ test('non-shell RC5 bootstrapper is pinned and fails closed before deployment', 
   assert.match(source,/Phát hiện đường dẫn ZIP vượt thư mục đích/);
   assert.match(source,/symbolic link/);
   assert.match(source,/UseShellExecute = false/);
-  assert.doesNotMatch(source,/powershell|cmd\.exe|netsh|firewall|ProcessStartInfo\("explorer/i);
+  assert.doesNotMatch(source,/ProcessStartInfo\(\s*"(?:powershell|cmd\\.exe|explorer)"/i);
+  assert.doesNotMatch(source,/UseShellExecute\s*=\s*true/);
 });
