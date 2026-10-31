@@ -163,6 +163,14 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
     expect(second.changed).toBe(false);
     expect(second.reason).toBe('prior_context_already_present');
   });
+  it('repairs raw prior-evidence text when the authorized handoff marker is absent',()=>{
+    const original='PACKET_JSON: {"goal":"PRIOR_CAMPAIGN_HANDOFF_V1 mentioned without an authorized marker"}';
+    const context='PRIOR_CAMPAIGN_HANDOFF_V1 {"schema":"TIGERIQ_REFERENCED_JOB_EVIDENCE_V1","refs":["JOB-REF-1"],"receipts":[]}';
+    const repaired=repairCampaignReviewPrompt(original,context);
+    expect(repaired.changed).toBe(true);
+    expect(repaired.reason).toBe('prior_context_appended');
+    expect(repaired.prompt).toContain('AUTHORIZED PRIOR CAMPAIGN HANDOFF:');
+  });
 });
 
 describe('NV10 optional diagnosis must yield to real accepted GitHub work',()=>{
