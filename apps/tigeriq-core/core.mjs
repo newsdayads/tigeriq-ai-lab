@@ -782,7 +782,7 @@ async function reconcileExhaustedQueuedJobs(){
   }
   return q.rowCount||0;
 }
-async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
+async function recoverFailedCampaignJobsAfterRuntimeSourceChange({diagnostic=false,trigger='periodic'}={}){
   const runtime=readSelfAuditJsonState(CORE_RUNTIME_SOURCE_STATE);
   const runtimeSha=String(runtime?.currentSha||'').trim();
   const runtimeUpdatedAt=String(runtime?.updatedAt||'').trim();
@@ -800,6 +800,7 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
     order by j.completed_at desc nulls last
     limit 20`,[[FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY]])).rows;
   let recovered=0;
+  let diagnosed=0;
   for(const row of rows){
     let promptRepair={changed:false,prompt:String(row.prompt||''),reason:'not_review_job'};
     if(String(row.capability||'')==='review'){
@@ -867,7 +868,24 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
       promptRepairEligible:repairEligible,
       promptRepairCap:repairCap,
     });
-    if(!['requeue','requeue_prompt_repair'].includes(decision.action))continue;
+    if(!['requeue','requeue_prompt_repair'].includes(decision.action)){
+      const failedAt=Date.parse(String(row.completed_at||''));
+      const runtimeAt=Date.parse(runtimeUpdatedAt);
+      if(diagnostic===true&&diagnosed<5&&Number.isFinite(failedAt)&&Number.isFinite(runtimeAt)&&runtimeAt>failedAt){
+        diagnosed++;
+        await event('CAMPAIGN_RUNTIME_SOURCE_RECOVERY_SKIPPED',{
+          trigger:String(trigger||'periodic'),
+          objectiveId:row.objective_id,jobId:row.id,runtimeSha,runtimeUpdatedAt,
+          attempts:Number(row.attempts)||0,maxAttempts:Number(row.max_attempts)||0,
+          promptRepairEligible:repairEligible,promptRepairCap:repairCap,
+          promptRepaired:promptRepair.changed,compactPromptRepaired:compactRepair.changed,
+          promptRepairReason:promptRepair.reason,compactPromptRepairReason:compactRepair.reason,
+          providerPromptCompactionEligible,providerPriorEvidenceEligible,
+          reason:decision.reason,
+        });
+      }
+      continue;
+    }
     const repairCredit=decision.action==='requeue_prompt_repair';
     const out=await pool.query(`with requeued as (
       update tigeriq_jobs j
@@ -4732,6 +4750,8 @@ await recoverExpiredSharedResourceLeases(pool);
 await initMobileWorkerTables(pool);
 await recoverAfterCoreRestart();
 await refreshResources();
+const startupCampaignRecovery=await recoverFailedCampaignJobsAfterRuntimeSourceChange({diagnostic:true,trigger:'startup'});
+await event('CAMPAIGN_RUNTIME_SOURCE_STARTUP_RECONCILED',{recovered:startupCampaignRecovery});
 const loopbackServer=HOST==='127.0.0.1'?null:createServer(server.listeners('request')[0]);
 await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(PORT,HOST,resolve);});
 if(loopbackServer)await new Promise((resolve,reject)=>{loopbackServer.once('error',reject);loopbackServer.listen(PORT,'127.0.0.1',resolve);});
