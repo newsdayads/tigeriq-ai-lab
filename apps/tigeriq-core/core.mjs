@@ -788,7 +788,7 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
   const runtimeUpdatedAt=String(runtime?.updatedAt||'').trim();
   if(!runtimeSha||!Number.isFinite(Date.parse(runtimeUpdatedAt)))return 0;
   const rows=(await pool.query(`select j.id,j.objective_id,j.title,j.capability,j.phase_index,j.prompt,j.status,j.attempts,j.max_attempts,j.failure,j.completed_at,
-      o.status as objective_status,o.summary as objective_summary,o.metadata as objective_metadata
+      o.objective as objective_text,o.status as objective_status,o.summary as objective_summary,o.metadata as objective_metadata
     from tigeriq_jobs j
     join tigeriq_objectives o on o.id=j.objective_id
     where j.status='failed'
@@ -816,9 +816,10 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
         });
       }
       if(!priorContext){
-        const referencedJobIds=explicitJobRefsFromText(row.prompt,{maxRefs:8})
-          .filter(id=>id!==String(row.id||''))
-          .slice(0,4);
+        const referencedJobIds=explicitJobRefsFromText(
+          [row.prompt,row.objective_text].filter(Boolean).join('\n'),
+          {maxRefs:8},
+        ).filter(id=>id!==String(row.id||'')).slice(0,4);
         if(referencedJobIds.length){
           const referencedJobs=(await pool.query(
             "select id,title,phase_index,kind,status,employee_id,resource_id,provider,completed_at,result from tigeriq_jobs where id=any($1::text[]) and status='done' limit 8",
@@ -876,7 +877,8 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
         if(!prior)await event('CAMPAIGN_FAILED_JOB_RECOVERY_SKIPPED',{
           objectiveId:row.objective_id,jobId:row.id,runtimeSha,runtimeUpdatedAt,
           attempts:Number(row.attempts)||0,maxAttempts:Number(row.max_attempts)||0,
-          promptRepairChanged:promptRepair.changed,compactPromptRepairChanged:compactRepair.changed,
+          promptRepairChanged:promptRepair.changed,promptRepairReason:promptRepair.reason,
+          compactPromptRepairChanged:compactRepair.changed,
           providerPromptCompactionEligible,providerPriorEvidenceEligible,repairEligible,repairCap,
           reason:decision.reason,
         });
