@@ -36,6 +36,8 @@ describe('#777 Core Smart Router integration',()=>{
     expect(core).toContain('MANAGER_NO_PROGRESS_BLOCK_SUMMARY');
     expect(core).toContain("j.id=$1");
     expect(core).toContain("j.attempts<j.max_attempts");
+    expect(core).toContain("j.attempts>=j.max_attempts");
+    expect(core).toContain("j.attempts<$7");
     expect(core).toContain("j.completed_at<$2::timestamptz");
     expect(core).toContain("status='active'");
     expect(core).toContain("CAMPAIGN_FAILED_JOB_REARMED_AFTER_RUNTIME_SOURCE_CHANGE");
@@ -74,6 +76,8 @@ describe('#777 Core Smart Router integration',()=>{
     expect(core).toContain('providerPriorCampaignEvidenceRecoveryEligible({');
     expect(core).toContain('persistedPhaseZeroReviewRepairRecoveryEligible({');
     expect(core).toContain('phaseZeroReviewStrictAcceptanceRecoveryEligible({');
+    expect(core).toContain('phaseZeroReviewHandoffTransportRecoveryEligible({');
+    expect(core).toContain('phaseZeroHandoffTransportEligible');
     expect(core).toContain('persistedPhaseZeroRepairEligible');
     expect(core).toContain('const repairCap=campaignPromptRepairRetryCap({');
     expect(core).toContain('compactLocalExecutionPrompt(prompt,packet)');
