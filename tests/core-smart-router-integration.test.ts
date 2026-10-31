@@ -87,6 +87,10 @@ describe('#777 Core Smart Router integration',()=>{
     expect(core).toContain('persistedPhaseZeroRepairEligible');
     expect(core).toContain('campaignPromptRepairRetryCap({');
     expect(core).toContain('compactLocalExecutionPrompt(prompt,packet)');
+    expect(core).toContain("const deterministicCampaignVerifier=j.kind==='compiled_campaign'");
+    expect(core).toContain("const compactCampaign=providerContext.taskKind==='compiled_campaign'");
+    expect(core).toContain('compact:compactCampaign');
+    expect(core).toContain('campaignVerifierCompactTransportEligible');
     expect(core).toContain('repairCreditGranted:repairCredit');
     expect(core).toContain('assertExecutionResultRoutable(text,compiledPacket)');
     expect(core).toContain("EXECUTION_ACCEPTANCE_RETRY");
