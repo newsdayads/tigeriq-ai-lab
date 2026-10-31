@@ -98,5 +98,5 @@ test('native source/gate errors propagate: no silent downgrade to compatibility 
 });
 test('all native provider invocations are routed by compiled job packet from Core',()=>{
   assert.equal(source.split('employeeAllowlist,validateText,compiledPacket});').length-1,2);
-  assert.equal(source.split('invokeProvider(r,prompt,{profile,compiledPacket:options.compiledPacket||null})').length-1,2);
+  assert.equal(source.split('invokeProvider(r,prompt,{profile,compiledPacket:options.compiledPacket||null,taskKind})').length-1,2);
 });
