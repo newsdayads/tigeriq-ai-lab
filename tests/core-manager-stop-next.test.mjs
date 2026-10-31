@@ -1,6 +1,6 @@
 import { describe,expect,it } from 'vitest';
 import {managerIdleStepStopPlan} from '../apps/tigeriq-core/manager-cycle-policy.mjs';
-import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY,campaignPromptRepairRetryCap,failedCampaignRuntimeRearmDecision,managerJobMaterializationDecision,persistedPhaseZeroReviewRepairRecoveryEligible,phaseZeroReviewStrictAcceptanceRecoveryEligible,phaseZeroReviewHandoffTransportRecoveryEligible,providerPromptCompactionRecoveryEligible,providerPriorCampaignEvidenceRecoveryEligible} from '../apps/tigeriq-core/manager-job-policy.mjs';
+import {FAILED_LOGICAL_JOB_BLOCK_SUMMARY,MANAGER_NO_PROGRESS_BLOCK_SUMMARY,campaignPromptRepairRetryCap,failedCampaignRuntimeRearmDecision,managerNoProgressCampaignRuntimeRearmDecision,managerJobMaterializationDecision,persistedPhaseZeroReviewRepairRecoveryEligible,phaseZeroReviewStrictAcceptanceRecoveryEligible,phaseZeroReviewHandoffTransportRecoveryEligible,providerPromptCompactionRecoveryEligible,providerPriorCampaignEvidenceRecoveryEligible} from '../apps/tigeriq-core/manager-job-policy.mjs';
 import {campaignPriorEvidenceContext,repairCampaignReviewPrompt} from '../apps/tigeriq-core/campaign-runner.mjs';
 import {apiDoctorAutoworkPriority} from '../apps/tigeriq-core/api-doctor.mjs';
 
@@ -27,6 +27,26 @@ describe('Owner-scoped Core bounded terminal and auto-next policy',()=>{
   });
   it('never allows a greater retry limit to bypass the global cap',()=>{
     expect(managerIdleStepStopPlan({consecutiveNoProgressDecisions:2,activeChildren:0,limit:999}).action).toBe('block');
+  });
+  it('rearms a jobless blocked LOCAL campaign manager once per newer runtime source',()=>{
+    const base={
+      objectiveStatus:'blocked',
+      objectiveSummary:MANAGER_NO_PROGRESS_BLOCK_SUMMARY,
+      objectiveUpdatedAt:'2026-10-31T11:31:13Z',
+      runtimeUpdatedAt:'2026-10-31T11:40:00Z',
+      hasCampaign:true,
+      routingProfile:'LOCAL',
+      currentPhaseJobCount:0,
+      runtimeSha:'sha-new',
+      priorRuntimeRearmSha:'sha-old',
+    };
+    expect(managerNoProgressCampaignRuntimeRearmDecision(base))
+      .toEqual({action:'rearm',reason:'runtime_source_newer_than_manager_no_progress_block'});
+    expect(managerNoProgressCampaignRuntimeRearmDecision({...base,currentPhaseJobCount:1}).reason).toBe('current_phase_job_exists');
+    expect(managerNoProgressCampaignRuntimeRearmDecision({...base,runtimeUpdatedAt:'2026-10-31T11:31:13Z'}).reason).toBe('runtime_not_newer_than_block');
+    expect(managerNoProgressCampaignRuntimeRearmDecision({...base,priorRuntimeRearmSha:'sha-new'}).reason).toBe('runtime_sha_already_rearmed');
+    expect(managerNoProgressCampaignRuntimeRearmDecision({...base,routingProfile:'AUTO'}).reason).toBe('not_local_campaign');
+    expect(managerNoProgressCampaignRuntimeRearmDecision({...base,objectiveSummary:'other'}).reason).toBe('not_manager_no_progress_block');
   });
   it('does not mint another random UUID for the same failed logical job',()=>{
     expect(managerJobMaterializationDecision('failed'))
