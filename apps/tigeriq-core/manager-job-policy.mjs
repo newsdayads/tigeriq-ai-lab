@@ -66,15 +66,34 @@ export function persistedPhaseZeroReviewRepairRecoveryEligible({
   );
 }
 
+export function phaseZeroReviewStrictAcceptanceRecoveryEligible({
+  capability='',
+  phaseIndex=0,
+  maxAttempts=0,
+  prompt='',
+  failure=null,
+}={}) {
+  if(String(capability).trim().toLowerCase()!=='review'||Number(phaseIndex)!==0)return false;
+  if(Number(maxAttempts)!==5)return false;
+  const stored=String(prompt||'');
+  if(!stored.includes('AUTHORIZED PRIOR CAMPAIGN HANDOFF:')||!stored.includes('PRIOR_CAMPAIGN_HANDOFF_V1 '))return false;
+  const failures=Array.isArray(failure?.failures)?failure.failures:[];
+  return failures.some(item=>
+    String(item?.kind||'').trim().toLowerCase()==='invalid_response'
+    &&String(item?.message||'').trim()==='EXECUTION_RESULT_BLOCKED'
+  );
+}
+
 export function campaignPromptRepairRetryCap({
   promptRepairChanged=false,
   compactRepairChanged=false,
   persistedPhaseZeroRepairEligible=false,
+  phaseZeroStrictAcceptanceEligible=false,
   providerPromptCompactionEligible=false,
   providerPriorCampaignEvidenceEligible=false,
 }={}) {
   if(providerPriorCampaignEvidenceEligible===true)return 7;
-  if(providerPromptCompactionEligible===true)return 6;
+  if(providerPromptCompactionEligible===true||phaseZeroStrictAcceptanceEligible===true)return 6;
   if(promptRepairChanged===true||compactRepairChanged===true||persistedPhaseZeroRepairEligible===true)return 5;
   return 4;
 }
