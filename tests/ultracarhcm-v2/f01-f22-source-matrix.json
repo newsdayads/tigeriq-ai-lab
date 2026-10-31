@@ -175,14 +175,17 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeConfigRules.kt"
       ],
-      "gap": "Local saved/default Home state is versioned and recovered safely, now including canonical V2 vehicle model and license plate; full V1 multi-zone orchestration remains absent.",
-      "actual": "HomeActivity saves/applies/removes versioned local Home configurations containing theme, canonical vehicle model, license plate, driver and nine quick slots; schema v3 reads legacy schemas 0–2, normalizes the legacy limo flag into the canonical model, and restores the default on app creation with corrupt/future-state cleanup.",
+      "gap": "Local saved/default Home state is versioned and recovered safely, now including canonical V2 vehicle model and license plate. Saved configurations can be reordered deterministically with evidence-backed Up/Down controls that avoid the unreliable drag hit-test seen in V1 TEST history; full V1 multi-zone orchestration and device acceptance remain open.",
+      "actual": "HomeActivity saves/applies/removes versioned local Home configurations containing theme, canonical vehicle model, license plate, driver and nine quick slots; schema v3 reads legacy schemas 0–2, normalizes the legacy limo flag into the canonical model, and restores the default on app creation with corrupt/future-state cleanup. The saved-layout screen now exposes a separate SẮP XẾP BỐ CỤC flow with bounded adjacent Up/Down moves persisted synchronously before reporting success.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.saveHomeConfiguration",
         "HomeActivity.showSaved",
         "HomeActivity.applyHomeConfiguration",
-        "HomeActivity.applyDefaultHomeConfiguration"
+        "HomeActivity.applyDefaultHomeConfiguration",
+        "HomeActivity.showSavedOrderEditor",
+        "HomeActivity.moveSavedConfiguration",
+        "HomeConfigRules.reorderTarget"
       ],
       "permissions": []
     },
