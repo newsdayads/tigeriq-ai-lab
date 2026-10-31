@@ -69,6 +69,15 @@ describe('API campaign runner and core lifecycle integration',()=>{
       ],
     })).toEqual({employeeIds:['NV10'],resourceIds:['RES-NV10']});
   });
+  it('does not exclude a historical referenced reviewer as an implementer',()=>{
+    expect(referencedJobReviewExclusions({
+      jobIds:['JOB-IMPLEMENTER-12345','JOB-OLD-REVIEW-12345'],
+      jobs:[
+        {id:'JOB-IMPLEMENTER-12345',status:'done',capability:'reasoning',employee_id:'NV10',resource_id:'RES-NV10'},
+        {id:'JOB-OLD-REVIEW-12345',status:'done',capability:'review',employee_id:'NV09',resource_id:'RES-NV09'},
+      ],
+    })).toEqual({employeeIds:['NV10'],resourceIds:['RES-NV10']});
+  });
   it('wires explicit referenced receipts into review job materialization only',()=>{
     const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
     expect(source).toContain("capability==='review'&&!campaignPriorContext");
