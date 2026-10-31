@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - 'feat/tigeriq-phone-farm-local-v1'
+      - 'main'
     paths:
       - 'apps/phone-farm-local/**'
       - '.github/workflows/phone-farm-local-ci.yml'
@@ -59,3 +60,41 @@ jobs:
           path: ${{ runner.temp }}/TigerIQ-PhoneFarm-Windows.zip
           retention-days: 14
           if-no-files-found: error
+
+  release-windows-rc5:
+    name: Publish Windows RC5 pre-release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - validate-phone-farm
+      - build-windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: TigerIQ-PhoneFarm-Windows
+          path: ${{ runner.temp }}/release
+      - name: Publish idempotent RC5 pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: tigeriq-phone-farm-windows-v0.5.0-rc5
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::8}"
+          SRC="${RUNNER_TEMP}/release/TigerIQ-PhoneFarm-Windows.zip"
+          ASSET="${RUNNER_TEMP}/release/TigerIQ-PhoneFarm-Windows-v0.5.0-RC5-${SHORT_SHA}.zip"
+          mv "$SRC" "$ASSET"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            EXISTING_TARGET="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json targetCommitish --jq '.targetCommitish')"
+            test "$EXISTING_TARGET" = "$GITHUB_SHA"
+            exit 0
+          fi
+          gh release create "$TAG" "$ASSET" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "TigerIQ Phone Farm Windows v0.5.0 RC5 - ${SHORT_SHA}" \
+            --notes "GH-5291 pre-release from merged main. Source/build CI passed. Runtime acceptance F04/F09/F10 remains tracked separately; this release does not claim FULL acceptance."
