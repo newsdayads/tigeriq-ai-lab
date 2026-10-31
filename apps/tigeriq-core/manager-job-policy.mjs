@@ -153,6 +153,29 @@ export function failedCampaignRuntimeRearmDecision({
   return {action:'requeue',reason:'runtime_source_newer_than_failed_campaign_job',nextMaxAttempts:limit};
 }
 
+export function managerNoProgressCampaignRuntimeRearmDecision({
+  objectiveStatus='',
+  objectiveSummary='',
+  objectiveUpdatedAt='',
+  runtimeUpdatedAt='',
+  hasCampaign=false,
+  routingProfile='',
+  currentPhaseJobCount=0,
+  runtimeSha='',
+  priorRuntimeRearmSha='',
+}={}) {
+  if(String(objectiveStatus).trim().toLowerCase()!=='blocked')return {action:'keep',reason:'objective_not_blocked'};
+  if(String(objectiveSummary)!==MANAGER_NO_PROGRESS_BLOCK_SUMMARY)return {action:'keep',reason:'not_manager_no_progress_block'};
+  if(!hasCampaign||String(routingProfile).trim().toUpperCase()!=='LOCAL')return {action:'keep',reason:'not_local_campaign'};
+  if(Math.max(0,Number(currentPhaseJobCount)||0)>0)return {action:'keep',reason:'current_phase_job_exists'};
+  const blockedAt=Date.parse(String(objectiveUpdatedAt||'')),runtimeAt=Date.parse(String(runtimeUpdatedAt||''));
+  if(!Number.isFinite(blockedAt)||!Number.isFinite(runtimeAt)||runtimeAt<=blockedAt)return {action:'keep',reason:'runtime_not_newer_than_block'};
+  const nextSha=String(runtimeSha||'').trim(),priorSha=String(priorRuntimeRearmSha||'').trim();
+  if(!nextSha)return {action:'keep',reason:'runtime_sha_missing'};
+  if(priorSha===nextSha)return {action:'keep',reason:'runtime_sha_already_rearmed'};
+  return {action:'rearm',reason:'runtime_source_newer_than_manager_no_progress_block'};
+}
+
 export function managerJobMaterializationDecision(existingStatus='') {
   const status=String(existingStatus || '').trim().toLowerCase();
   if(!status)return {action:'create',reason:'no_existing_job'};
