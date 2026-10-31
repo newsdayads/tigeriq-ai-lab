@@ -32,6 +32,8 @@ describe('#777 Core Smart Router integration',()=>{
   it('uses task-kind performance and bounded failure-aware failover without paid fallback',()=>{expect(core).toContain('avg_latency_ms');expect(core).toContain('failurePolicy(kind)');expect(core).toContain('if(policy.stop)break');expect(router).toContain('paid_fallback_forbidden');expect(router).toContain("'security','credential','paid','production','irreversible'");});
   it('recovers a blocked LOCAL campaign by requeueing the same failed job only after runtime source change',()=>{
     expect(core).toContain('async function recoverFailedCampaignJobsAfterRuntimeSourceChange()');
+    expect(core).toContain('async function recoverBlockedCampaignManagerAfterRuntimeSourceChange()');
+    expect(core).toContain('CAMPAIGN_MANAGER_REARMED_AFTER_RUNTIME_SOURCE_CHANGE');
     expect(core).toContain("j.kind in ('compiled_ai','compiled_campaign')");
     expect(core).toContain("campaign verification failed after bounded attempts: '||j.id");
     expect(core).toContain("o.summary=any($1::text[])");
@@ -47,7 +49,7 @@ describe('#777 Core Smart Router integration',()=>{
     expect(core).toContain("o.objective as objective_text");
     expect(core).toContain("[row.prompt,row.objective_text].filter(Boolean).join('\\n')");
     expect(core).toContain("referencedJobEvidenceContext({jobIds:referencedJobIds,jobs:referencedJobs})");
-    expect(core).toContain("await recoverStale();await recoverFailedCampaignJobsAfterRuntimeSourceChange();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;");
+    expect(core).toContain("await recoverStale();await recoverFailedCampaignJobsAfterRuntimeSourceChange();await recoverBlockedCampaignManagerAfterRuntimeSourceChange();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;");
   });
 
   it('carries prior verified campaign receipts into later-phase Manager and review prompts',()=>{
@@ -104,7 +106,7 @@ describe('#777 Core Smart Router integration',()=>{
     expect(core).toContain("kind='github_api_autowork' and status='failed'");
     expect(core).toContain("o.metadata->>'admissionMode'='SAFE_P1_P5_POLICY'");
     expect(core).toContain("o.metadata->>'dispatchLane' in ('CORE_REASONING','CORE_REVIEW')");
-    expect(core).toContain("await recoverStale();await recoverFailedCampaignJobsAfterRuntimeSourceChange();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;");
+    expect(core).toContain("await recoverStale();await recoverFailedCampaignJobsAfterRuntimeSourceChange();await recoverBlockedCampaignManagerAfterRuntimeSourceChange();await reconcileFailedSafeAutoworkObjectives();lastRecover=t;");
     expect(core).toContain("reconciliation:'periodic_failed_safe_autowork'");
   });
 
