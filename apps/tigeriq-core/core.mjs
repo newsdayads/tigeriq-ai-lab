@@ -19,7 +19,7 @@ const managerProviderBodyForHost = (provider, ...args) => {
 import { MANAGER_PENDING_JOB_STATUSES } from './manager-batch-policy.mjs';
 import { normalizeObjectiveRoutingProfile, objectiveJobRoutingProfile, mayWaitAfterLocalFailure, effectiveCoreJobRoutingProfile, githubAutoworkEmployeeAllowlist, githubAutoworkZeroCostResource } from './objective-local-routing.mjs';
 import { parseOwnerBacklogOrder, objectiveBacklogRank } from './owner-backlog-order.mjs';
-import { FAILED_LOGICAL_JOB_BLOCK_SUMMARY, MANAGER_NO_PROGRESS_BLOCK_SUMMARY, campaignPromptRepairRetryCap, failedCampaignRuntimeRearmDecision, managerJobMaterializationDecision, managerLogicalJobIdentity, persistedPhaseZeroReviewRepairRecoveryEligible, phaseZeroReviewStrictAcceptanceRecoveryEligible, providerPromptCompactionRecoveryEligible, providerPriorCampaignEvidenceRecoveryEligible } from './manager-job-policy.mjs';
+import { FAILED_LOGICAL_JOB_BLOCK_SUMMARY, MANAGER_NO_PROGRESS_BLOCK_SUMMARY, campaignPromptRepairRetryCap, failedCampaignRuntimeRearmDecision, managerJobMaterializationDecision, managerLogicalJobIdentity, persistedPhaseZeroReviewRepairRecoveryEligible, phaseZeroReviewStrictAcceptanceRecoveryEligible, phaseZeroReviewHandoffTransportRecoveryEligible, providerPromptCompactionRecoveryEligible, providerPriorCampaignEvidenceRecoveryEligible } from './manager-job-policy.mjs';
 import { NV09_EMPLOYEE_ID, NV09_MODEL, NV09_ENDPOINT, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 // NV09_CANARY_MARKER
 import { appendSkillContextToPrompt, focusedSkillRoutingText, matchAndLoadSkills } from './skill-loader.mjs';
@@ -862,12 +862,21 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
       prompt:compactRepair.prompt,
       failure:row.failure,
     });
-    const repairEligible=promptRepair.changed||compactRepair.changed||persistedPhaseZeroRepairEligible||phaseZeroStrictAcceptanceEligible||providerPromptCompactionEligible||providerPriorEvidenceEligible;
+    const phaseZeroHandoffTransportEligible=phaseZeroReviewHandoffTransportRecoveryEligible({
+      capability:row.capability,
+      phaseIndex:row.phase_index,
+      attempts:row.attempts,
+      maxAttempts:row.max_attempts,
+      prompt:compactRepair.prompt,
+      failure:row.failure,
+    });
+    const repairEligible=promptRepair.changed||compactRepair.changed||persistedPhaseZeroRepairEligible||phaseZeroStrictAcceptanceEligible||phaseZeroHandoffTransportEligible||providerPromptCompactionEligible||providerPriorEvidenceEligible;
     const repairCap=campaignPromptRepairRetryCap({
       promptRepairChanged:promptRepair.changed,
       compactRepairChanged:compactRepair.changed,
       persistedPhaseZeroRepairEligible,
       phaseZeroStrictAcceptanceEligible,
+      phaseZeroHandoffTransportEligible,
       providerPromptCompactionEligible,
       providerPriorCampaignEvidenceEligible:providerPriorEvidenceEligible,
     });
@@ -895,7 +904,7 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
           attempts:Number(row.attempts)||0,maxAttempts:Number(row.max_attempts)||0,
           promptRepairChanged:promptRepair.changed,promptRepairReason:promptRepair.reason,
           compactPromptRepairChanged:compactRepair.changed,
-          providerPromptCompactionEligible,providerPriorEvidenceEligible,persistedPhaseZeroRepairEligible,phaseZeroStrictAcceptanceEligible,repairEligible,repairCap,
+          providerPromptCompactionEligible,providerPriorEvidenceEligible,persistedPhaseZeroRepairEligible,phaseZeroStrictAcceptanceEligible,phaseZeroHandoffTransportEligible,repairEligible,repairCap,
           reason:decision.reason,
         });
       }
@@ -910,7 +919,7 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
           max_attempts=case when $5::boolean then greatest(j.max_attempts,j.attempts+1) else j.max_attempts end
       where j.id=$1
         and j.status='failed'
-        and (j.attempts<j.max_attempts or ($5::boolean and j.attempts=j.max_attempts and j.max_attempts<$7))
+        and (j.attempts<j.max_attempts or ($5::boolean and j.attempts>=j.max_attempts and j.attempts<$7 and j.max_attempts<$7))
         and j.completed_at<$2::timestamptz
         and exists(
           select 1 from tigeriq_objectives o
@@ -937,7 +946,7 @@ async function recoverFailedCampaignJobsAfterRuntimeSourceChange(){
       objectiveId:row.objective_id,jobId:row.id,runtimeSha,runtimeUpdatedAt,
       attempts:Number(row.attempts)||0,maxAttempts:Number(row.max_attempts)||0,
       maxAttemptsAfter:repairCredit?Math.min(repairCap,Number(row.max_attempts)+1):Number(row.max_attempts)||0,
-      promptRepaired:promptRepair.changed,compactPromptRepaired:compactRepair.changed,persistedPhaseZeroRepairEligible,phaseZeroStrictAcceptanceEligible,providerPromptCompactionEligible,providerPriorEvidenceEligible,repairCreditGranted:repairCredit,
+      promptRepaired:promptRepair.changed,compactPromptRepaired:compactRepair.changed,persistedPhaseZeroRepairEligible,phaseZeroStrictAcceptanceEligible,phaseZeroHandoffTransportEligible,providerPromptCompactionEligible,providerPriorEvidenceEligible,repairCreditGranted:repairCredit,
       promptRepairReason:promptRepair.reason,compactPromptRepairReason:compactRepair.reason,repairCap,
       reason:decision.reason,
     });
