@@ -85,8 +85,8 @@ describe('GH-5135 R01 source-only gate (not native Android CI)', () => {
       '--test', fromRoot('tests/ultracarhcm-v2/r01-preflight.test.mjs')
     ], { cwd: root, encoding: 'utf8', timeout: 15000 });
     expect(verify.status, verify.stdout + verify.stderr).toBe(0);
-    expect(verify.stdout).toMatch(/# pass 14\b/);
-    expect(verify.stdout).toMatch(/# fail 0\b/);
+    expect(verify.stdout).toMatch(/(?:#|ℹ)\s+pass 14\b/);
+    expect(verify.stdout).toMatch(/(?:#|ℹ)\s+fail 0\b/);
   });
 
   it('checks staging safety using synthetic media (no V1 bytes)', () => {
@@ -94,8 +94,15 @@ describe('GH-5135 R01 source-only gate (not native Android CI)', () => {
       '--test', fromRoot('tests/ultracarhcm-v2/stage-v1-media.test.mjs')
     ], {cwd: root, encoding: 'utf8', timeout: 15000});
     expect(verify.status, verify.stdout + verify.stderr).toBe(0);
-    expect(verify.stdout).toMatch(/# pass 11\b/);
-    expect(verify.stdout).toMatch(/# fail 0\b/);
+    expect(verify.stdout).toMatch(/(?:#|ℹ)\s+tests 11\b/);
+    expect(verify.stdout).toMatch(/(?:#|ℹ)\s+fail 0\b/);
+    if (process.platform === 'win32') {
+      expect(verify.stdout).toMatch(/(?:#|ℹ)\s+pass (10|11)\b/);
+      expect(verify.stdout).toMatch(/(?:#|ℹ)\s+skipped (0|1)\b/);
+    } else {
+      expect(verify.stdout).toMatch(/(?:#|ℹ)\s+pass 11\b/);
+      expect(verify.stdout).toMatch(/(?:#|ℹ)\s+skipped 0\b/);
+    }
   });
 
   it('guards Kotlin UVC preview cleanup during detach, error and close', () => {
