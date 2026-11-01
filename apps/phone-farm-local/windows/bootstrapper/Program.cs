@@ -17,8 +17,6 @@ internal static class Program {
     "817ee358892210f09a2f84fbf96b045c1a4d2f51";
   private const string AppOverlayResource =
     "TigerIQPhoneFarmBootstrapper.Overlay.app.mjs";
-  private const string TestOverlayResource =
-    "TigerIQPhoneFarmBootstrapper.Overlay.test.mjs";
   private const long MaxPackageBytes = 160L * 1024 * 1024;
   private const long MaxExtractedBytes = 450L * 1024 * 1024;
   private const int MaxEntries = 2500;
@@ -58,8 +56,7 @@ internal static class Program {
 
     var assembly = Assembly.GetExecutingAssembly();
     using var app = assembly.GetManifestResourceStream(AppOverlayResource);
-    using var test = assembly.GetManifestResourceStream(TestOverlayResource);
-    return app is not null && test is not null && app.Length > 0 && test.Length > 0;
+    return app is not null && app.Length > 0;
   }
 
   private static async Task DeployAsync() {
@@ -103,9 +100,9 @@ internal static class Program {
     }
 
     ApplyOverlay(target);
-    var overlay = VerifyOverlay(target);
-    WriteOverlayReceipt(target, overlay.appSha256, overlay.testSha256);
-    WriteCurrentReceipt(root, target, overlay.appSha256, overlay.testSha256);
+    string appSha256 = VerifyOverlay(target);
+    WriteOverlayReceipt(target, appSha256);
+    WriteCurrentReceipt(root, target, appSha256);
     RestartTarget(target);
 
     MessageBox.Show(
@@ -216,25 +213,17 @@ internal static class Program {
     WriteEmbeddedResourceAtomic(
       Path.Combine(directory, "app.mjs"),
       AppOverlayResource);
-    WriteEmbeddedResourceAtomic(
-      Path.Combine(directory, "test.mjs"),
-      TestOverlayResource);
   }
 
-  private static (string appSha256, string testSha256) VerifyOverlay(string directory) {
+  private static string VerifyOverlay(string directory) {
     string appPath = Path.Combine(directory, "app.mjs");
-    string testPath = Path.Combine(directory, "test.mjs");
     string appExpected = HashEmbeddedResource(AppOverlayResource);
-    string testExpected = HashEmbeddedResource(TestOverlayResource);
     string appActual = HashFile(appPath);
-    string testActual = HashFile(testPath);
 
     if (!appActual.Equals(appExpected, StringComparison.OrdinalIgnoreCase))
       throw new InvalidDataException("SHA-256 overlay app.mjs không khớp.");
-    if (!testActual.Equals(testExpected, StringComparison.OrdinalIgnoreCase))
-      throw new InvalidDataException("SHA-256 overlay test.mjs không khớp.");
 
-    return (appActual, testActual);
+    return appActual;
   }
 
   private static void WriteEmbeddedResourceAtomic(string destination, string resourceName) {
@@ -260,13 +249,12 @@ internal static class Program {
     return Convert.ToHexString(SHA256.HashData(input)).ToLowerInvariant();
   }
 
-  private static void WriteOverlayReceipt(string directory, string appSha256, string testSha256) {
+  private static void WriteOverlayReceipt(string directory, string appSha256) {
     var receipt = new {
       schema = "TIGERIQ_PHONE_FARM_OVERLAY_V1",
       baseSourceHead = BaseSourceHead,
       overlaySourceHead = OverlaySourceHead,
       appSha256,
-      testSha256,
       appliedAtUtc = DateTime.UtcNow.ToString("O"),
       localOnly = true
     };
@@ -278,15 +266,13 @@ internal static class Program {
   private static void WriteCurrentReceipt(
     string root,
     string installPath,
-    string appSha256,
-    string testSha256) {
+    string appSha256) {
     var receipt = new {
       schema = "TIGERIQ_PHONE_FARM_CURRENT_RELEASE_V2",
       baseSourceHead = BaseSourceHead,
       overlaySourceHead = OverlaySourceHead,
       packageSha256 = PackageSha256,
       appSha256,
-      testSha256,
       installPath,
       verifiedAtUtc = DateTime.UtcNow.ToString("O"),
       localOnly = true
