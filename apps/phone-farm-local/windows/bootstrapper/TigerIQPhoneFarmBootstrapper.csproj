@@ -17,7 +17,5 @@
   <ItemGroup>
     <EmbeddedResource Include="..\..\app.mjs"
                       LogicalName="TigerIQPhoneFarmBootstrapper.Overlay.app.mjs" />
-    <EmbeddedResource Include="..\..\test.mjs"
-                      LogicalName="TigerIQPhoneFarmBootstrapper.Overlay.test.mjs" />
   </ItemGroup>
 </Project>
