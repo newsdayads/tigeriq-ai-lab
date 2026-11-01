@@ -297,23 +297,37 @@ test('WiFi ADB UI discovers an existing endpoint from selected USB before connec
 });
 
 
-test('non-shell RC6 bootstrapper is pinned and fails closed before deployment', () => {
+test('non-shell RC6 bootstrapper pins base package and applies verified embedded overlay', () => {
   const dir=path.dirname(fileURLToPath(import.meta.url));
   const source=fs.readFileSync(path.join(dir,'windows','bootstrapper','Program.cs'),'utf8');
   const project=fs.readFileSync(path.join(dir,'windows','bootstrapper','TigerIQPhoneFarmBootstrapper.csproj'),'utf8');
   assert.match(project,/<PublishSingleFile>true<\/PublishSingleFile>/);
   assert.match(project,/<SelfContained>true<\/SelfContained>/);
+  assert.match(project,/EmbeddedResource Include="\.\.\\\.\.\\app\.mjs"/);
+  assert.match(project,/EmbeddedResource Include="\.\.\\\.\.\\test\.mjs"/);
   assert.match(source,/https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/releases\/download\/tigeriq-phone-farm-windows-v0\.5\.0-rc6\/TigerIQ-PhoneFarm-Windows-v0\.5\.0-RC6-d64b2a04\.zip/);
   assert.match(source,/bd8375a8712ee8bc18d725bd45e3652414946b9eb834de6879c2c42ff8a30709/);
   assert.match(source,/d64b2a04558533d0a8690fc9a2ef11fe74d47596/);
+  assert.match(source,/817ee358892210f09a2f84fbf96b045c1a4d2f51/);
+  assert.match(source,/TIGERIQ_PHONE_FARM_OVERLAY_V1/);
+  assert.match(source,/TIGERIQ_PHONE_FARM_CURRENT_RELEASE_V2/);
+  assert.match(source,/WriteEmbeddedResourceAtomic/);
+  assert.match(source,/HashEmbeddedResource/);
+  assert.match(source,/File\.Move\(temp, destination, overwrite: true\)/);
+  assert.match(source,/Process\.GetProcessesByName\("TigerIQPhoneFarm"\)/);
+  assert.match(source,/CloseMainWindow\(\)/);
+  assert.match(source,/Kill\(entireProcessTree: true\)/);
   assert.match(source,/uri\.Scheme != Uri\.UriSchemeHttps/);
   assert.match(source,/uri\.Host, "github\.com"/);
   assert.match(source,/SHA-256 gói RC6 không khớp/);
   assert.match(source,/sourceHead trong BUILD_MANIFEST không khớp/);
   assert.match(source,/SHA-256 TigerIQPhoneFarm\.exe không khớp manifest/);
+  assert.match(source,/SHA-256 overlay app\.mjs không khớp/);
+  assert.match(source,/SHA-256 overlay test\.mjs không khớp/);
   assert.match(source,/Phát hiện đường dẫn ZIP vượt thư mục đích/);
   assert.match(source,/symbolic link/);
   assert.match(source,/UseShellExecute = false/);
   assert.doesNotMatch(source,/ProcessStartInfo\(\s*"(?:powershell|cmd\\.exe|explorer)"/i);
   assert.doesNotMatch(source,/UseShellExecute\s*=\s*true/);
+  assert.doesNotMatch(source,/adb\s+tcpip|setprop\s+service\.adb\.tcp\.port|netsh|firewall/i);
 });
