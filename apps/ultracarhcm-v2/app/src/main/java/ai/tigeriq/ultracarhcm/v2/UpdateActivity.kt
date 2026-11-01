@@ -33,6 +33,9 @@ class UpdateActivity : ComponentActivity() {
     private lateinit var installButton: Button
     private var pendingUpdate: UpdateMetadata? = null
     private var verifiedApk: VerifiedApk? = null
+    @Volatile private var operationGeneration = 0L
+    @Volatile private var activityDestroyed = false
+    private var installerHandoff = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -134,11 +137,16 @@ class UpdateActivity : ComponentActivity() {
             return
         }
 
+        val generation = beginOperation()
         checkButton.isEnabled = false
         status.text = "Đang kiểm tra…"
         Thread {
             val result = runCatching { fetchMetadata(endpoint) }
+            if (!isOperationCurrent(generation)) return@Thread
             runOnUiThread {
+                if (!isOperationCurrent(generation) || isFinishing || isDestroyed) {
+                    return@runOnUiThread
+                }
                 checkButton.isEnabled = true
                 result.fold(
                     onSuccess = ::renderMetadata,
@@ -230,6 +238,7 @@ class UpdateActivity : ComponentActivity() {
 
     private fun downloadAndVerify(metadata: UpdateMetadata) {
         clearVerifiedCandidate()
+        val generation = beginOperation()
         checkButton.isEnabled = false
         downloadButton.isEnabled = false
         status.text =
@@ -238,7 +247,15 @@ class UpdateActivity : ComponentActivity() {
 
         Thread {
             val result = runCatching { fetchAndVerifyPayload(metadata) }
+            if (!isOperationCurrent(generation)) {
+                result.getOrNull()?.file?.delete()
+                return@Thread
+            }
             runOnUiThread {
+                if (!isOperationCurrent(generation) || isFinishing || isDestroyed) {
+                    result.getOrNull()?.file?.delete()
+                    return@runOnUiThread
+                }
                 checkButton.isEnabled = true
                 downloadButton.isEnabled = true
                 result.fold(
@@ -448,15 +465,32 @@ class UpdateActivity : ComponentActivity() {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             },
         )
+        installerHandoff = true
         status.text =
             "Đã chuyển APK đã xác minh sang trình cài đặt Android. " +
             "Android vẫn yêu cầu người dùng xác nhận trước khi cài."
     }
 
+    private fun beginOperation(): Long {
+        operationGeneration += 1L
+        return operationGeneration
+    }
+
+    private fun isOperationCurrent(generation: Long): Boolean =
+        !activityDestroyed && generation == operationGeneration
+
     private fun clearVerifiedCandidate() {
         verifiedApk?.file?.delete()
         verifiedApk = null
+        installerHandoff = false
         if (::installButton.isInitialized) installButton.visibility = View.GONE
+    }
+
+    override fun onDestroy() {
+        activityDestroyed = true
+        operationGeneration += 1L
+        if (!installerHandoff) clearVerifiedCandidate()
+        super.onDestroy()
     }
 
     private fun recordUpdateNotice(metadata: UpdateMetadata): Boolean {
