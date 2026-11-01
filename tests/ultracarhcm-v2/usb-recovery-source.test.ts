@@ -42,6 +42,20 @@ describe('GH-5135 F20/R03 USB UVC recovery source contract', () => {
     expect(uvc).toMatch(/onError[\s\S]*?scheduleRecovery\(device\)/);
   });
 
+  it('does not let an unrelated USB detach cancel a scheduled UVC recovery', () => {
+    expect(uvc).toContain('private var recoveryDeviceId: Int? = null');
+    expect(uvc).toContain('recoveryDeviceId = device.deviceId');
+    const detach = uvc.slice(
+      uvc.indexOf('override fun onDetach'),
+      uvc.indexOf('override fun onCancel'),
+    );
+    expect(detach).toContain(
+      'UvcRecoveryRules.shouldCancelRecoveryForDetach(recoveryDeviceId, device.deviceId)',
+    );
+    expect(detach).not.toContain('} else if (target == null) {');
+    expect(detach).toContain('recoveryDeviceId = null');
+  });
+
   it('still treats explicit permission denial as a stopped session requiring retry', () => {
     const cancel = uvc.slice(
       uvc.indexOf('override fun onCancel'),
