@@ -17,6 +17,10 @@ internal object UpdateRules {
         "https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/main/apps/ultracarhcm-v2/release/update-channel.json"
     private const val TRUSTED_RELEASE_PREFIX =
         "https://github.com/newsdayads/tigeriq-ai-lab/releases/download/ultracarhcm-v2-"
+    private val trustedPayloadRedirectHosts = setOf(
+        "release-assets.githubusercontent.com",
+        "objects.githubusercontent.com",
+    )
     private val sha256Pattern = Regex("^[A-Fa-f0-9]{64}$")
 
     fun isSecureHttpsUrl(raw: String): Boolean = try {
@@ -39,6 +43,20 @@ internal object UpdateRules {
             uri.query == null &&
             uri.fragment == null &&
             value.startsWith(TRUSTED_RELEASE_PREFIX)
+    } catch (_: Exception) {
+        false
+    }
+
+    fun isTrustedV2PayloadUrl(raw: String): Boolean = try {
+        val value = raw.trim()
+        val uri = URI(value)
+        if (!isSecureHttpsUrl(value) || uri.fragment != null) return false
+        val host = uri.host.lowercase()
+        when {
+            host == "github.com" -> isTrustedV2ReleaseUrl(value)
+            host in trustedPayloadRedirectHosts -> true
+            else -> false
+        }
     } catch (_: Exception) {
         false
     }
@@ -132,6 +150,9 @@ internal object UpdateRules {
         if (!sha256Pattern.matches(expected) || !sha256Pattern.matches(observed)) return false
         return expected.equals(observed, ignoreCase = true)
     }
+
+    fun matchesPinnedSignerSha256(expectedSha256: String, observedSha256: String): Boolean =
+        matchesExpectedSha256(expectedSha256, observedSha256)
 
     fun hasNewerVersion(currentVersionCode: Long, metadata: UpdateMetadata): Boolean =
         metadata.releaseAvailable && metadata.latestVersionCode > currentVersionCode
