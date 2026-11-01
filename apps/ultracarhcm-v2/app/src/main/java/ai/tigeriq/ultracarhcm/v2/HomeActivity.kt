@@ -1219,7 +1219,7 @@ class HomeActivity : ComponentActivity() {
                 out.toString()
             }
             if (!importHomeBackupJson(text)) {
-                toast("Tệp sao lưu không hợp lệ hoặc không tương thích")
+                toast("Không thể khôi phục: tệp không hợp lệ hoặc ghi dữ liệu thất bại")
                 return
             }
             render()
@@ -1372,7 +1372,7 @@ class HomeActivity : ComponentActivity() {
             .putString("v2_home_configs", safeConfigs.toString())
         if (safeDefault == null) editor.remove("v2_default_home_config")
         else editor.putString("v2_default_home_config", safeDefault.toString())
-        editor.apply()
+        if (!editor.commit()) return false
 
         if (replaceSavedLayoutShortcuts) {
             val shortcutEditor = savedLayoutShortcutPrefs().edit().clear()
@@ -1381,7 +1381,7 @@ class HomeActivity : ComponentActivity() {
                 val key = SavedLayoutShortcutRules.slotKey(index) ?: continue
                 shortcutEditor.putString(key, configId)
             }
-            shortcutEditor.apply()
+            if (!shortcutEditor.commit()) return false
         }
 
         if (replaceOverlayPositions) {
@@ -1399,7 +1399,7 @@ class HomeActivity : ComponentActivity() {
                     .putInt(OverlayPositionRules.PORTABLE_X_KEY, x)
                     .putInt(OverlayPositionRules.PORTABLE_Y_KEY, y)
             }
-            overlayEditor.apply()
+            if (!overlayEditor.commit()) return false
         }
 
         if (replaceTaxiMeterState) {
@@ -1409,9 +1409,8 @@ class HomeActivity : ComponentActivity() {
             ).edit()
             if (safeTaxiRate == null) taxiEditor.remove(TaxiMeterRules.KEY_RATE)
             else taxiEditor.putString(TaxiMeterRules.KEY_RATE, safeTaxiRate)
-            taxiEditor
-                .putString(TaxiMeterRules.KEY_HISTORY, safeTaxiHistory.toString())
-                .apply()
+            taxiEditor.putString(TaxiMeterRules.KEY_HISTORY, safeTaxiHistory.toString())
+            if (!taxiEditor.commit()) return false
         }
         return true
     }
