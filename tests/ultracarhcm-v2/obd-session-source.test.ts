@@ -33,9 +33,12 @@ describe('GH-5135 F12 OBD session lifecycle', () => {
       'if (!activityStarted || isFinishing || isDestroyed || generation != connectionGeneration)',
     );
     expect(block).toContain('try { active.close() } catch (_: Exception) { }');
-    expect(block.indexOf('if (!activityStarted || isFinishing || isDestroyed)')).toBeLessThan(
-      block.indexOf('socket = active'),
-    );
+    expect(
+      block.indexOf(
+        'if (!activityStarted || isFinishing || isDestroyed || generation != connectionGeneration)',
+      ),
+    ).toBeLessThan(block.indexOf('socket = active'));
+    expect(block).toContain('generation == connectionGeneration');
   });
 
   it('invalidates stale OBD work across stop/start cycles and fences telemetry UI callbacks', () => {
