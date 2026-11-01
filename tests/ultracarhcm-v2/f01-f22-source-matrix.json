@@ -370,10 +370,11 @@
         "apps/ultracarhcm-v1-v69/src/com/tigeriq/v69/UpdateController.java",
         "tests/ultracarhcm-v2/update-channel-source.test.ts",
         "tests/ultracarhcm-v2/appearance-notification-persistence-source.test.ts",
-        "tests/ultracarhcm-v2/update-payload-integrity-source.test.ts"
+        "tests/ultracarhcm-v2/update-payload-integrity-source.test.ts",
+        "tests/ultracarhcm-v2/update-lifecycle-source.test.ts"
       ],
-      "gap": "Kênh V2 TEST vẫn fail-closed cho tới khi có APK V2 TEST ký số được phát hành. Source tải/cài dựa trên bằng chứng V1 V69: redirect HTTPS giới hạn qua host phát hành GitHub, cache riêng, kiểm SHA-256 + package + exact versionCode + exact versionName + signer pin/continuity rồi mới mở Android system installer. Android unknown-sources và màn hình xác nhận cài đặt vẫn bắt buộc; không có auto-install. Publication của signed APK, device installation acceptance, remote push/backend và exact V1 notification parity còn mở.",
-      "actual": "ProfileActivity tách CẬP NHẬT và THÔNG BÁO. UpdateActivity chỉ tin metadata canonical V2 TEST, tải candidate qua bounded trusted redirect chain, fsync cache, kiểm SHA-256/package/exact versionCode/exact versionName/certificate và signer continuity, rồi mới bật nút mở Android system installer. Unknown-sources vẫn qua Android settings và người dùng vẫn phải xác nhận cài; không shell/ADB/auto-install.",
+      "gap": "Kênh V2 TEST vẫn fail-closed cho tới khi có APK V2 TEST ký số được phát hành. Source tải/cài kiểm SHA-256 + package + exact versionCode + exact versionName + signer pin/continuity trước Android installer. Async metadata/download work is now fenced to the live UpdateActivity generation; destroy invalidates pending callbacks, stale verified candidates are deleted, and normal destroy clears the current candidate unless it has already been handed to Android Package Installer. Publication của signed APK, device installation acceptance, remote push/backend và exact V1 notification parity còn mở.",
+      "actual": "ProfileActivity tách CẬP NHẬT và THÔNG BÁO. UpdateActivity chỉ tin metadata canonical V2 TEST, tải candidate qua bounded trusted redirect chain, fsync cache, kiểm SHA-256/package/exact versionCode/exact versionName/certificate và signer continuity, rồi mới bật nút mở Android system installer. Metadata/download callbacks carry an operation generation and refuse stale/destroyed UI handoff; a verified APK produced after invalidation is deleted. onDestroy invalidates outstanding work and clears verified cache unless Android Package Installer already owns the handoff. Unknown-sources và xác nhận cài đặt của Android vẫn bắt buộc.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "ProfileActivity.buildContent",
@@ -393,7 +394,10 @@
         "UpdateActivity.launchSystemInstaller",
         "UpdateRules.matchesExpectedSha256",
         "UpdateRules.matchesPinnedSignerSha256",
-        "UpdateRules.matchesExpectedVersionName"
+        "UpdateRules.matchesExpectedVersionName",
+        "UpdateActivity.beginOperation",
+        "UpdateActivity.isOperationCurrent",
+        "UpdateActivity.onDestroy"
       ],
       "permissions": [
         "android.permission.INTERNET",
