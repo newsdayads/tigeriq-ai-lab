@@ -159,6 +159,12 @@ class ProfileActivity : ComponentActivity() {
             14f,
             Color.LTGRAY,
         ))
+        identityCard.addView(Button(this).apply {
+            text = "QUẢN TRỊ VÀ GIẤY PHÉP"
+            setOnClickListener {
+                startActivity(Intent(this@ProfileActivity, AdminLicenseActivity::class.java))
+            }
+        })
         addCard(identityCard, 2)
 
         val reportCard = card("Báo cáo dữ liệu V2")

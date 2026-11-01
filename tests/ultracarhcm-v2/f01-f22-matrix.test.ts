@@ -88,10 +88,14 @@ describe('GH-5135 R02 F01-F22 source matrix', () => {
     }
   });
 
-  it('records the currently absent business feature groups explicitly', () => {
+  it('records no fully absent business feature group after F18 gains fail-closed source coverage', () => {
     const absent = matrix.features
       .filter(feature => feature.status === 'NOT_IMPLEMENTED')
       .map(feature => feature.id);
-    expect(absent).toEqual(['F18']);
+    expect(absent).toEqual([]);
+    const f18 = matrix.features.find(feature => feature.id === 'F18')!;
+    expect(f18.status).toBe('PARTIAL_SOURCE');
+    expect(f18.testStatus).toBe('SOURCE_ONLY_NOT_ACCEPTED');
+    expect(f18.gap).toMatch(/read-only|fail-closed|backend/i);
   });
 });
