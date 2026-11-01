@@ -1,6 +1,7 @@
 package ai.tigeriq.ultracarhcm.v2
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -33,6 +34,15 @@ class TaxiMeterRulesTest {
         assertEquals(0L, TaxiMeterRules.fareVnd(7000.0, 0.0))
         assertNull(TaxiMeterRules.fareVnd(0.0, 1000.0))
         assertNull(TaxiMeterRules.fareVnd(7000.0, -1.0))
+    }
+
+    @Test fun validatesRestoredActiveTripStateFailClosed() {
+        assertTrue(TaxiMeterRules.validActiveTripState(7000.0, 1250.5, 61_000L, 1_700_000_000_000L))
+        assertFalse(TaxiMeterRules.validActiveTripState(Double.NaN, 1250.5, 61_000L, 1_700_000_000_000L))
+        assertFalse(TaxiMeterRules.validActiveTripState(7000.0, Double.POSITIVE_INFINITY, 61_000L, 1_700_000_000_000L))
+        assertFalse(TaxiMeterRules.validActiveTripState(7000.0, -1.0, 61_000L, 1_700_000_000_000L))
+        assertFalse(TaxiMeterRules.validActiveTripState(7000.0, 1250.5, -1L, 1_700_000_000_000L))
+        assertFalse(TaxiMeterRules.validActiveTripState(7000.0, 1250.5, 61_000L, 0L))
     }
 
     @Test fun reportsOnlyNonNegativeElapsedSeconds() {
