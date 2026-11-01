@@ -40,6 +40,7 @@ class ObdActivity : ComponentActivity() {
     @Volatile private var socket: BluetoothSocket? = null
     @Volatile private var selectedDevice: BluetoothDevice? = null
     @Volatile private var activityStarted = false
+    @Volatile private var connectionGeneration = 0L
 
     private val connectPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -172,6 +173,8 @@ class ObdActivity : ComponentActivity() {
     }
 
     private fun connect(device: BluetoothDevice) {
+        connectionGeneration += 1L
+        val generation = connectionGeneration
         disconnect()
         selectedDevice = device
         setConnection("OBD: đang kết nối…")
@@ -190,13 +193,15 @@ class ObdActivity : ComponentActivity() {
                 candidate = active
                 active.connect()
                 initializeAdapter(active)
-                if (!activityStarted || isFinishing || isDestroyed) {
+                if (!activityStarted || isFinishing || isDestroyed || generation != connectionGeneration) {
                     try { active.close() } catch (_: Exception) { }
                     return@execute
                 }
                 socket = active
                 runOnUiThread {
-                    if (!activityStarted || isFinishing || isDestroyed || socket !== active) {
+                    if (!activityStarted || isFinishing || isDestroyed ||
+                        generation != connectionGeneration || socket !== active
+                    ) {
                         if (socket === active) disconnect()
                         return@runOnUiThread
                     }
@@ -232,6 +237,7 @@ class ObdActivity : ComponentActivity() {
             updateButtons()
             return
         }
+        val generation = connectionGeneration
         refreshButton.isEnabled = false
         worker.execute {
             try {
@@ -239,6 +245,11 @@ class ObdActivity : ComponentActivity() {
                 val rpm = ObdProtocol.parseRpm(exchange(active, "010C"))
                 val voltage = ObdProtocol.parseVoltage(exchange(active, "ATRV"))
                 runOnUiThread {
+                    if (!activityStarted || isFinishing || isDestroyed ||
+                        generation != connectionGeneration || socket !== active
+                    ) {
+                        return@runOnUiThread
+                    }
                     speedStatus.text = "Tốc độ: " + (speed?.toString() ?: "--") + " km/h"
                     rpmStatus.text = "RPM: " + (rpm?.toString() ?: "--")
                     voltageStatus.text = "Điện áp: " +
@@ -247,8 +258,15 @@ class ObdActivity : ComponentActivity() {
                     updateButtons()
                 }
             } catch (_: Exception) {
-                disconnect()
+                val currentSession =
+                    generation == connectionGeneration && socket === active
+                if (currentSession) disconnect()
                 runOnUiThread {
+                    if (!activityStarted || isFinishing || isDestroyed ||
+                        generation != connectionGeneration || !currentSession
+                    ) {
+                        return@runOnUiThread
+                    }
                     setConnection("OBD: mất kết nối hoặc adapter không phản hồi")
                     updateButtons()
                 }
@@ -303,12 +321,14 @@ class ObdActivity : ComponentActivity() {
 
     override fun onStop() {
         activityStarted = false
+        connectionGeneration += 1L
         disconnect()
         updateButtons()
         super.onStop()
     }
 
     override fun onDestroy() {
+        connectionGeneration += 1L
         disconnect()
         worker.shutdownNow()
         super.onDestroy()
