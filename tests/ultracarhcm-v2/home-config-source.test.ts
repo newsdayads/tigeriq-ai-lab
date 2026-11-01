@@ -95,7 +95,16 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(home).toContain('val safe = normalizeHomeConfiguration(item) ?: continue');
     expect(home).toContain('val seenIds = mutableSetOf<String>()');
     expect(home).toContain('safe.put("configId", configId)');
-    expect(home).toContain('prefs.edit().remove("v2_home_configs").apply()');
+    expect(home).toContain('val cleared = prefs.edit().remove("v2_home_configs").commit()');
+    expect(home).toContain('Failed to persist corrupt HOME config cleanup');
+    expect(home).toContain('val persisted = prefs.edit()');
+    expect(home).toContain('.putString("v2_home_configs", normalized.toString())');
+    expect(home).toContain('Failed to persist normalized HOME configurations');
+    const savedStart = home.indexOf('private fun savedConfigurations(): JSONArray');
+    const savedEnd = home.indexOf('private fun savedLayoutShortcutPrefs()', savedStart);
+    const savedBlock = home.slice(savedStart, savedEnd);
+    expect(savedBlock).not.toContain('.apply()');
+    expect(savedBlock).toContain('.commit()');
     expect(home).toContain('Unsupported HOME config schema');
   });
 
