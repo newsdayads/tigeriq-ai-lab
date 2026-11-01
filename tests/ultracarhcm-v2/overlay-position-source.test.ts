@@ -31,6 +31,19 @@ describe('GH-5135 F07 DeX overlay persistence source contract', () => {
     expect(overlay).toContain('update(forceReattach = forceReattach)');
   });
 
+  it('rolls a canceled drag back to the ACTION_DOWN coordinates without persisting', () => {
+    const start = overlay.indexOf('MotionEvent.ACTION_CANCEL ->');
+    const end = overlay.indexOf('return true', start);
+    const block = overlay.slice(start, end + 'return true'.length);
+    expect(block).toContain('if (dragging)');
+    expect(block).toContain('p.x = startX');
+    expect(block).toContain('p.y = startY');
+    expect(block).toContain('wm.updateViewLayout(button, p)');
+    expect(block).toContain('dragging = false');
+    expect(block).not.toContain('.commit()');
+    expect(block).not.toContain('putInt(');
+  });
+
   it('clamps restored positions against the active display bounds', () => {
     expect(overlay).toContain('OverlayPositionRules.clamp(');
     expect(overlay).toContain('display.mode.physicalWidth');
