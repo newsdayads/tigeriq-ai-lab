@@ -45,6 +45,21 @@ describe('GH-5135 F12 OBD session lifecycle', () => {
     );
   });
 
+  it('does not let a stale UI callback cancel a newer pending connection', () => {
+    const helperStart = obd.indexOf('private fun clearPublishedSocket(expected: BluetoothSocket)');
+    const helperEnd = obd.indexOf('private fun disconnect()', helperStart);
+    const helper = obd.slice(helperStart, helperEnd);
+    expect(helper).toContain('if (socket !== expected) return');
+    expect(helper).toContain('socket = null');
+    expect(helper).not.toContain('pendingSocket');
+
+    const connectStart = obd.indexOf('private fun connect(device: BluetoothDevice)');
+    const connectEnd = obd.indexOf('private fun initializeAdapter', connectStart);
+    const connectBlock = obd.slice(connectStart, connectEnd);
+    expect(connectBlock).toContain('clearPublishedSocket(active)');
+    expect(connectBlock).not.toContain('if (socket === active) disconnect()');
+  });
+
   it('does not publish a connected socket after Activity stop or destruction', () => {
     expect(obd).toContain('@Volatile private var activityStarted = false');
     expect(obd).toContain('override fun onStart()');
