@@ -149,10 +149,11 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayPositionRules.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexDockReceiver.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexDockRules.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/DexDockRules.kt",
+        "tests/ultracarhcm-v2/overlay-position-source.test.ts"
       ],
-      "gap": "Samsung DeX receiver is now exported for actual system broadcast delivery and validates real desktop/external-display state before acting; OEM background-activity launch behavior, full zone orchestration and real-device acceptance remain open.",
-      "actual": "DexUtils detects desktop/external displays; OverlayService follows display changes with per-display persistence; the exported DexDockReceiver can receive Samsung ENTER/EXIT_KNOX_DESKTOP_MODE broadcasts, launches V2 Home only when a real external DeX display exists, and ignores EXIT while external DeX is still active before stopping the V2 overlay.",
+      "gap": "Samsung DeX receiver validates real desktop/external-display state before acting; OverlayService keeps per-display coordinates durable and now rolls a canceled drag back to its ACTION_DOWN position instead of leaving an unpersisted runtime location. OEM background-activity launch behavior, full zone orchestration and real-device acceptance remain open.",
+      "actual": "DexUtils detects desktop/external displays; OverlayService follows display changes with per-display persistence. Drag movement updates the live overlay, ACTION_UP persists coordinates synchronously, while ACTION_CANCEL restores the starting coordinates with updateViewLayout and performs no preference write. The exported DexDockReceiver launches V2 Home only when a real external DeX display exists and ignores EXIT while external DeX is still active.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "DexUtils.isDesktop",
@@ -164,7 +165,8 @@
         "OverlayPositionRules.clamp",
         "DexDockReceiver.onReceive",
         "DexDockRules.shouldLaunchHome",
-        "DexDockRules.shouldStopOverlay"
+        "DexDockRules.shouldStopOverlay",
+        "OverlayService.onTouch"
       ],
       "permissions": [
         "android.permission.SYSTEM_ALERT_WINDOW"
