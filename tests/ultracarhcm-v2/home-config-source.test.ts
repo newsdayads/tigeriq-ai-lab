@@ -115,6 +115,15 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(home).toContain('arrayOf("Áp dụng", "Đặt làm mặc định", "Xóa cấu hình")');
     expect(home).toContain('editor.remove("v2_default_home_config")');
     expect(home).toContain('Corrupt or unsupported default HOME configuration');
+    const defaultApplyStart = home.indexOf('private fun applyDefaultHomeConfiguration()');
+    const defaultApplyEnd = home.indexOf('private fun setDefaultHomeConfiguration', defaultApplyStart);
+    const defaultApplyBlock = home.slice(defaultApplyStart, defaultApplyEnd);
+    expect(defaultApplyBlock).toContain('.putString("v2_default_home_config", safe.toString())');
+    expect(defaultApplyBlock).toContain('.commit()');
+    expect(defaultApplyBlock).toContain('Failed to persist normalized default HOME configuration');
+    expect(defaultApplyBlock).toContain('Failed to persist default HOME config cleanup');
+    expect(defaultApplyBlock).not.toContain('.apply()');
+
   });
 
   it('stops retired HOME video decoders before rerender and during Activity teardown', () => {
