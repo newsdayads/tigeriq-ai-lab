@@ -54,4 +54,36 @@ describe('GH-5135 F13 Taxi Meter persistence source contract', () => {
     );
     expect(taxi).toContain('Không thể xóa lịch sử Taxi Meter V2');
   });
+
+  it('preserves an active trip across Activity recreation without counting background time', () => {
+    expect(taxi).toContain('restoreActiveTrip(savedInstanceState)');
+    const save = taxi.slice(
+      taxi.indexOf('override fun onSaveInstanceState(outState: Bundle)'),
+      taxi.indexOf('override fun onResume()', taxi.indexOf('override fun onSaveInstanceState(outState: Bundle)')),
+    );
+    expect(save).toContain('outState.putBoolean(STATE_RUNNING, true)');
+    expect(save).toContain('outState.putDouble(STATE_RATE_VND_PER_KM, rateVndPerKm)');
+    expect(save).toContain('outState.putDouble(STATE_DISTANCE_METERS, distanceMeters)');
+    expect(save).toContain('outState.putLong(STATE_ACTIVE_ELAPSED_MS, currentElapsedMs())');
+    expect(save).toContain('outState.putLong(STATE_TRIP_STARTED_EPOCH_MS, tripStartedEpochMs)');
+
+    const restore = taxi.slice(
+      taxi.indexOf('private fun restoreActiveTrip(state: Bundle?)'),
+      taxi.indexOf('private fun enabledProviders', taxi.indexOf('private fun restoreActiveTrip(state: Bundle?)')),
+    );
+    expect(restore).toContain('TaxiMeterRules.validActiveTripState(');
+    expect(restore).toContain('foregroundSegmentStartedMs = 0L');
+    expect(restore).toContain('lastLocation = null');
+    expect(restore).toContain('running = true');
+    expect(restore).toContain('rateInput.isEnabled = false');
+    expect(restore).toContain('toggleButton.text = "Kết thúc chuyến"');
+
+    const resume = taxi.slice(
+      taxi.indexOf('override fun onResume()'),
+      taxi.indexOf('override fun onStop()', taxi.indexOf('override fun onResume()')),
+    );
+    expect(resume).toContain('foregroundSegmentStartedMs = SystemClock.elapsedRealtime()');
+    expect(resume).toContain('handler.post(tick)');
+    expect(resume).toContain('startLocationUpdates()');
+  });
 });
