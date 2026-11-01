@@ -64,8 +64,12 @@ class AppearanceActivity : ComponentActivity() {
         body.addView(Button(this).apply {
             text = "ĐỔI NGÀY / ĐÊM"
             setOnClickListener {
-                prefs.edit().putBoolean("night", !prefs.getBoolean("night", false)).apply()
-                refreshStatus()
+                val nextNight = !prefs.getBoolean("night", false)
+                if (prefs.edit().putBoolean("night", nextNight).commit()) {
+                    refreshStatus()
+                } else {
+                    toast("Không thể lưu chế độ ngày/đêm")
+                }
             }
         })
 
@@ -121,46 +125,45 @@ class AppearanceActivity : ComponentActivity() {
             return
         }
 
-        releasePreviousUriIfDifferent(uri)
-        prefs.edit()
+        val previous = prefs.getString(AppearanceRules.PREF_CUSTOM_BACKGROUND_URI, null)
+            ?.let(Uri::parse)
+        val committed = prefs.edit()
             .putString(AppearanceRules.PREF_CUSTOM_BACKGROUND_URI, uri.toString())
             .putString(AppearanceRules.PREF_CUSTOM_BACKGROUND_KIND, expectedKind)
-            .apply()
+            .commit()
+        if (!committed) {
+            if (previous != uri) releasePersistedUri(uri)
+            toast("Không thể lưu nền tùy chỉnh V2")
+            return
+        }
+        if (previous != null && previous != uri) releasePersistedUri(previous)
         refreshStatus()
         toast("Đã lưu nền tùy chỉnh V2")
     }
 
-    private fun releasePreviousUriIfDifferent(next: Uri) {
-        val previous = prefs.getString(AppearanceRules.PREF_CUSTOM_BACKGROUND_URI, null)
-            ?.let(Uri::parse) ?: return
-        if (previous == next) return
+    private fun releasePersistedUri(uri: Uri) {
         try {
             contentResolver.releasePersistableUriPermission(
-                previous,
+                uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION,
             )
         } catch (_: SecurityException) {
-            // The old provider may no longer expose a persisted grant; clearing prefs is enough.
+            // Already revoked or provider removed.
         }
     }
 
     private fun clearCustomBackground() {
         val previous = prefs.getString(AppearanceRules.PREF_CUSTOM_BACKGROUND_URI, null)
             ?.let(Uri::parse)
-        if (previous != null) {
-            try {
-                contentResolver.releasePersistableUriPermission(
-                    previous,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                )
-            } catch (_: SecurityException) {
-                // Already revoked or provider removed.
-            }
-        }
-        prefs.edit()
+        val committed = prefs.edit()
             .remove(AppearanceRules.PREF_CUSTOM_BACKGROUND_URI)
             .remove(AppearanceRules.PREF_CUSTOM_BACKGROUND_KIND)
-            .apply()
+            .commit()
+        if (!committed) {
+            toast("Không thể xóa nền tùy chỉnh V2")
+            return
+        }
+        if (previous != null) releasePersistedUri(previous)
         refreshStatus()
         toast("Đã về nền ngày/đêm mặc định")
     }

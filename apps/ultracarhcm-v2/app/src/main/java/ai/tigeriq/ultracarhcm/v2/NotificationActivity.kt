@@ -65,8 +65,11 @@ class NotificationActivity : ComponentActivity() {
         markReadButton = Button(this).apply {
             text = "ĐÁNH DẤU ĐÃ ĐỌC"
             setOnClickListener {
-                prefs.edit().putBoolean(NotificationRules.KEY_READ, true).apply()
-                refresh()
+                if (prefs.edit().putBoolean(NotificationRules.KEY_READ, true).commit()) {
+                    refresh()
+                } else {
+                    toast("Không thể đánh dấu thông báo đã đọc")
+                }
             }
         }
         body.addView(
@@ -80,8 +83,11 @@ class NotificationActivity : ComponentActivity() {
         clearButton = Button(this).apply {
             text = "XÓA THÔNG BÁO CỤC BỘ"
             setOnClickListener {
-                prefs.edit().clear().apply()
-                refresh()
+                if (prefs.edit().clear().commit()) {
+                    refresh()
+                } else {
+                    toast("Không thể xóa thông báo cục bộ")
+                }
             }
         }
         body.addView(
@@ -138,6 +144,9 @@ class NotificationActivity : ComponentActivity() {
         markReadButton.isEnabled = false
         clearButton.isEnabled = false
     }
+
+    private fun toast(message: String) =
+        android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
 
     private fun currentVersionCode(): Long {
         val info = try {
