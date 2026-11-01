@@ -155,6 +155,11 @@ internal object UpdateRules {
     fun matchesPinnedSignerSha256(expectedSha256: String, observedSha256: String): Boolean =
         matchesExpectedSha256(expectedSha256, observedSha256)
 
+    fun matchesExpectedVersionName(expectedVersionName: String, observedVersionName: String?): Boolean =
+        expectedVersionName.isNotEmpty() &&
+            observedVersionName != null &&
+            observedVersionName == expectedVersionName
+
     fun hasNewerVersion(currentVersionCode: Long, metadata: UpdateMetadata): Boolean =
         metadata.releaseAvailable && metadata.latestVersionCode > currentVersionCode
 }
