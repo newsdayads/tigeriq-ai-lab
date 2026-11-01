@@ -57,7 +57,7 @@ describe('GH-5135 F09/F15 durable local UI state', () => {
     const markStart = notification.indexOf('text = "ĐÁNH DẤU ĐÃ ĐỌC"');
     const clearStart = notification.indexOf('text = "XÓA THÔNG BÁO CỤC BỘ"');
     const mark = notification.slice(markStart, clearStart);
-    const clear = notification.slice(clearStart, notification.indexOf('refresh()', clearStart + 100) + 20);
+    const clear = notification.slice(clearStart, notification.indexOf('body.addView(', clearStart));
     expect(mark).toContain('putBoolean(NotificationRules.KEY_READ, true).commit()');
     expect(mark).toContain('Không thể đánh dấu thông báo đã đọc');
     expect(mark.indexOf('.commit()')).toBeLessThan(mark.indexOf('refresh()'));
