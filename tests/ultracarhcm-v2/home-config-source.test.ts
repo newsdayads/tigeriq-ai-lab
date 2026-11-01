@@ -22,7 +22,7 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(home).toContain('.put("driver", prefs.getString("driver_name", "Driver")');
     expect(home).toContain('.put("schemaVersion", HomeConfigRules.CURRENT_SCHEMA_VERSION)');
     expect(home).toContain('.put("quickSlots", normalizedQuickSlotsForStorage(quickSlots()))');
-    expect(home).toContain('putString("v2_home_configs", current.toString()).apply()');
+    expect(home).toContain('putString("v2_home_configs", current.toString()).commit()');
     expect(home).not.toContain('Chưa hỗ trợ tạo bố cục V2 — không ghi dữ liệu giả');
   });
 
@@ -39,9 +39,35 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(home).toContain('editor.putString("v2_quick_slots", normalizedQuickSlotsForStorage(slots).toString())');
     expect(home).toContain('if (i != index) remaining.put(entries.get(i))');
     expect(home).toContain('.putString("v2_home_configs", remaining.toString())');
-    expect(home).toContain('editor.apply()');
+    expect(home).toContain('if (editor.commit())');
     expect(home).toContain('chưa phải bố cục V1');
     expect(home).not.toContain('prefs.getInt("saved_count", 0)');
+  });
+
+  it('acknowledges user-visible HOME mutations only after synchronous persistence succeeds', () => {
+    const applyStart = home.indexOf('private fun applyHomeConfiguration');
+    const applyEnd = home.indexOf('private fun applyDefaultHomeConfiguration', applyStart);
+    const applyBlock = home.slice(applyStart, applyEnd);
+    expect(applyBlock).toContain('if (!editor.commit()) return false');
+    expect(applyBlock).not.toContain('editor.apply()');
+
+    const saveStart = home.indexOf('private fun saveHomeConfiguration');
+    const saveEnd = home.indexOf('private fun moveSavedConfiguration', saveStart);
+    const saveBlock = home.slice(saveStart, saveEnd);
+    expect(saveBlock).toContain('putString("v2_home_configs", current.toString()).commit()');
+    expect(saveBlock).toContain('Không thể lưu cấu hình Home');
+
+    const defaultStart = home.indexOf('private fun setDefaultHomeConfiguration');
+    const defaultEnd = home.indexOf('private fun saveHomeConfiguration', defaultStart);
+    const defaultBlock = home.slice(defaultStart, defaultEnd);
+    expect(defaultBlock).toContain('putString("v2_default_home_config", safe.toString()).commit()');
+    expect(defaultBlock).toContain('Không thể lưu cấu hình Home mặc định');
+
+    const savedStart = home.indexOf('private fun showSaved()');
+    const savedEnd = home.indexOf('private fun exportOverlayPositions', savedStart);
+    const savedBlock = home.slice(savedStart, savedEnd);
+    expect(savedBlock).toContain('if (editor.commit())');
+    expect(savedBlock).toContain('Không thể xóa cấu hình khỏi thiết bị');
   });
 
   it('reorders saved HOME configurations with deterministic up/down controls', () => {
@@ -76,7 +102,7 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
   it('supports a device-local default HOME configuration without claiming V1 parity', () => {
     expect(home).toContain('applyDefaultHomeConfiguration()');
     expect(home).toContain('private fun setDefaultHomeConfiguration(item: JSONObject)');
-    expect(home).toContain('putString("v2_default_home_config", safe.toString()).apply()');
+    expect(home).toContain('putString("v2_default_home_config", safe.toString()).commit()');
     expect(home).toContain('arrayOf("Áp dụng", "Đặt làm mặc định", "Xóa cấu hình")');
     expect(home).toContain('editor.remove("v2_default_home_config")');
     expect(home).toContain('Corrupt or unsupported default HOME configuration');
