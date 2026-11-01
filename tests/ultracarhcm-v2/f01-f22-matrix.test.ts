@@ -88,6 +88,19 @@ describe('GH-5135 R02 F01-F22 source matrix', () => {
     }
   });
 
+  it('keeps F08 saved-layout backup coverage consistent with schema-v5 source', () => {
+    const f08 = matrix.features.find(feature => feature.id === 'F08')!;
+    const f16 = matrix.features.find(feature => feature.id === 'F16')!;
+
+    expect(f08.sourceEvidence).toContain(
+      'apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeBackupRules.kt',
+    );
+    expect(f08.sourceEvidence).toContain('tests/ultracarhcm-v2/backup-restore-source.test.ts');
+    expect(f08.actual).toMatch(/Schema-v5 backup\/restore/);
+    expect(f08.gap).not.toMatch(/backup\/restore of these new slot assignments.*remain open/i);
+    expect(f16.actual).toMatch(/Schema-v5 restore/);
+  });
+
   it('records no fully absent business feature group after F18 gains fail-closed source coverage', () => {
     const absent = matrix.features
       .filter(feature => feature.status === 'NOT_IMPLEMENTED')
