@@ -141,20 +141,14 @@ class HomeActivity : ComponentActivity() {
         val uriText = prefs.getString(AppearanceRules.PREF_CUSTOM_BACKGROUND_URI, null)
         val kind = prefs.getString(AppearanceRules.PREF_CUSTOM_BACKGROUND_KIND, null)
         if (uriText.isNullOrBlank() || !AppearanceRules.isSupportedKind(kind)) {
-            image(
-                if (night) R.drawable.v2_road_city_night else R.drawable.v2_road_city_day,
-                0f, 0f, 1f, 1f, ImageView.ScaleType.FIT_XY,
-            )
+            renderBundledBackground(night)
             return
         }
 
         val uri = runCatching { Uri.parse(uriText) }.getOrNull()
         if (uri == null) {
             clearInvalidCustomBackground()
-            image(
-                if (night) R.drawable.v2_road_city_night else R.drawable.v2_road_city_day,
-                0f, 0f, 1f, 1f, ImageView.ScaleType.FIT_XY,
-            )
+            renderBundledBackground(night)
             return
         }
 
@@ -169,10 +163,7 @@ class HomeActivity : ComponentActivity() {
                 } catch (error: SecurityException) {
                     android.util.Log.e("UltraCarV2", "Custom image permission lost", error)
                     clearInvalidCustomBackground()
-                    image(
-                        if (night) R.drawable.v2_road_city_night else R.drawable.v2_road_city_day,
-                        0f, 0f, 1f, 1f, ImageView.ScaleType.FIT_XY,
-                    )
+                    renderBundledBackground(night)
                 }
             }
             AppearanceRules.KIND_VIDEO -> {
@@ -229,6 +220,94 @@ class HomeActivity : ComponentActivity() {
         v.scaleType = scale
         place(v, left, top, width, height)
         return v
+    }
+
+    private fun optionalResourceId(type: String, name: String): Int =
+        resources.getIdentifier(name, type, packageName)
+
+    private fun optionalImage(
+        name: String,
+        left: Float,
+        top: Float,
+        width: Float,
+        height: Float,
+        scale: ImageView.ScaleType = ImageView.ScaleType.FIT_CENTER,
+    ): Boolean {
+        val resourceId = optionalResourceId("drawable", name)
+        if (resourceId == 0) return false
+        image(resourceId, left, top, width, height, scale)
+        return true
+    }
+
+    private fun renderBundledBackground(night: Boolean) {
+        val name = if (night) "v2_road_city_night" else "v2_road_city_day"
+        if (optionalImage(name, 0f, 0f, 1f, 1f, ImageView.ScaleType.FIT_XY)) return
+
+        val fallback = View(this)
+        fallback.background = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            if (night) {
+                intArrayOf(0xff071018.toInt(), 0xff102630.toInt(), 0xff05090d.toInt())
+            } else {
+                intArrayOf(0xff13252d.toInt(), 0xff1d3b47.toInt(), 0xff0b1115.toInt())
+            },
+        )
+        place(fallback, 0f, 0f, 1f, 1f)
+    }
+
+    private fun renderBrandMark(left: Float, top: Float, width: Float, height: Float) {
+        if (optionalImage("v2_logo_ultracar", left, top, width, height)) return
+        val fallback = label("ULTRACAR", if (width > .5f) 22f else 18f, Color.WHITE, true)
+        fallback.background = shape(0x55101a20, accent, 16f)
+        place(fallback, left, top, width, height)
+    }
+
+    private fun renderVehicleArtwork(
+        vehicleModel: String,
+        left: Float,
+        top: Float,
+        width: Float,
+        height: Float,
+    ) {
+        val name = if (vehicleModel == VehicleRules.MODEL_LIMO_RED) {
+            "v2_car_limo_do_parked"
+        } else {
+            "v2_car_lambogini_trang_parked"
+        }
+        if (optionalImage(name, left, top, width, height)) return
+
+        val title = if (vehicleModel == VehicleRules.MODEL_LIMO_RED) "LIMO" else "SPORT"
+        val fallback = label(title, 20f, Color.WHITE, true)
+        fallback.background = shape(0x55101a20, accent, 18f)
+        place(fallback, left, top, width, height)
+    }
+
+    private fun renderUltrabot(left: Float, top: Float, width: Float, height: Float) {
+        val resourceId = optionalResourceId("raw", "ultrabot_glow_packed")
+        if (resourceId == 0) {
+            val fallback = label("ULTRABOT", 10f, 0xffbbbbbb.toInt(), true)
+            fallback.background = shape(0x55101a20, radius = 12f)
+            fallback.isClickable = true
+            fallback.setOnClickListener {
+                toast("Ultrabot media riêng chưa được stage cho bản V2 này")
+            }
+            place(fallback, left, top, width, height)
+            return
+        }
+
+        val bot = VideoView(this)
+        homeVideo = bot
+        bot.setVideoURI(Uri.parse("android.resource://$packageName/$resourceId"))
+        bot.setOnPreparedListener { mp ->
+            if (homeVideo === bot) {
+                mp.isLooping = true
+                mp.setVolume(0f, 0f)
+                bot.start()
+            }
+        }
+        bot.setOnErrorListener { _, _, _ -> true }
+        place(bot, left, top, width, height)
+        bot.setOnClickListener { toast("Ultrabot V2 chưa tích hợp — không đổi nút này thành Camera") }
     }
 
     private fun label(value: String, textSize: Float, color: Int = Color.WHITE,
@@ -432,7 +511,7 @@ class HomeActivity : ComponentActivity() {
         )
         place(shade, 0f, 0f, 1f, 1f)
 
-        image(R.drawable.v2_logo_ultracar, .08f, .025f, .84f, .12f)
+        renderBrandMark(.08f, .025f, .84f, .12f)
 
         clock = label("", 13f, Color.WHITE, true).apply {
             background = shape(0x800c1a22.toInt(), radius = 8f)
@@ -458,11 +537,7 @@ class HomeActivity : ComponentActivity() {
             prefs.getString(VehicleRules.PREF_MODEL, null),
             prefs.getBoolean("limo", false),
         )
-        image(
-            if (vehicleModel == VehicleRules.MODEL_LIMO_RED) R.drawable.v2_car_limo_do_parked
-            else R.drawable.v2_car_lambogini_trang_parked,
-            .18f, .56f, .64f, .20f,
-        )
+        renderVehicleArtwork(vehicleModel, .18f, .56f, .64f, .20f)
 
         val plate = prefs.getString(VehicleRules.PREF_LICENSE_PLATE, "")
             ?.takeIf { it.isNotBlank() }
@@ -504,7 +579,7 @@ class HomeActivity : ComponentActivity() {
             intArrayOf(0x12000000, 0x00000000, 0x28000000, 0xa2000000.toInt()))
         place(bg, 0f, 0f, 1f, 1f)
 
-        image(R.drawable.v2_logo_ultracar, .30f, .045f, .40f, .145f)
+        renderBrandMark(.30f, .045f, .40f, .145f)
         val gear = label("⚙", 35f, Color.rgb(35,45,55), true)
         gear.background = shape(0xeaeff3f5.toInt(), radius = 100f)
         gear.isClickable = true
@@ -528,11 +603,7 @@ class HomeActivity : ComponentActivity() {
             prefs.getString(VehicleRules.PREF_MODEL, null),
             prefs.getBoolean("limo", false),
         )
-        image(
-            if (vehicleModel == VehicleRules.MODEL_LIMO_RED) R.drawable.v2_car_limo_do_parked
-            else R.drawable.v2_car_lambogini_trang_parked,
-            .295f, .458f, .41f, .242f,
-        )
+        renderVehicleArtwork(vehicleModel, .295f, .458f, .41f, .242f)
         val plate = prefs.getString(VehicleRules.PREF_LICENSE_PLATE, "")
             ?.takeIf { it.isNotBlank() }
         if (plate != null) {
@@ -561,19 +632,7 @@ class HomeActivity : ComponentActivity() {
         place(bottomShade, .028f, .883f, .944f, .074f)
         button("▣\nCấu hình đã lưu", .045f, .890f, .29f, .055f, false) { showSaved() }
         button("+\nLưu cấu hình", .357f, .890f, .29f, .055f, false) { saveHomeConfiguration() }
-        val bot = VideoView(this)
-        homeVideo = bot
-        bot.setVideoURI(Uri.parse("android.resource://$packageName/${R.raw.ultrabot_glow_packed}"))
-        bot.setOnPreparedListener { mp ->
-            if (homeVideo === bot) {
-                mp.isLooping = true
-                mp.setVolume(0f, 0f)
-                bot.start()
-            }
-        }
-        bot.setOnErrorListener { _, _, _ -> true }
-        place(bot, .675f, .887f, .278f, .062f)
-        bot.setOnClickListener { toast("Ultrabot V2 chưa tích hợp — không đổi nút này thành Camera") }
+        renderUltrabot(.675f, .887f, .278f, .062f)
         val footer = label("UltraCarHCM V2 • DEVELOPMENT • CHƯA NGHIỆM THU", 9f, 0xffbbbbbb.toInt())
         place(footer, .02f, .972f, .96f, .016f)
     }
