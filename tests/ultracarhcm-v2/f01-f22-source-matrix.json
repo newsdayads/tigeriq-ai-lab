@@ -428,12 +428,24 @@
     {
       "id": "F18",
       "expected": "Administrative/licensing/customer activation/device registration where legitimately available",
-      "status": "NOT_IMPLEMENTED",
-      "sourceEvidence": [],
-      "gap": "No corresponding V2 administrative/licensing implementation found.",
-      "actual": "No scoped V2 administrative/licensing/customer activation/device-registration implementation is present.",
-      "testStatus": "NOT_TESTED_NO_IMPLEMENTATION",
-      "entryPoints": [],
+      "status": "PARTIAL_SOURCE",
+      "sourceEvidence": [
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/AdminLicenseActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/AdminLicenseRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt",
+        "tests/ultracarhcm-v2/admin-license-status-source.test.ts"
+      ],
+      "gap": "A real V2 administrative/license status surface now exists, but it is deliberately read-only and fail-closed because no verified V1/backend contract for customer activation, license extension or device registration is available. Actual backend integration and runtime acceptance remain open.",
+      "actual": "ProfileActivity opens AdminLicenseActivity, which shows the installed V2 package/version/device model and explicitly reports license backend, customer activation and device registration as unavailable until a verified contract exists. It performs no network call, collects no credential and exposes no activation/registration mutation.",
+      "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
+      "entryPoints": [
+        "ProfileActivity.buildContent",
+        "AdminLicenseActivity.onCreate",
+        "AdminLicenseActivity.localInstallStatus",
+        "AdminLicenseRules.backendStatus",
+        "AdminLicenseRules.activationStatus",
+        "AdminLicenseRules.registrationStatus"
+      ],
       "permissions": []
     },
     {
