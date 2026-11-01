@@ -39,6 +39,7 @@ class ObdActivity : ComponentActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     @Volatile private var socket: BluetoothSocket? = null
     @Volatile private var selectedDevice: BluetoothDevice? = null
+    @Volatile private var activityStarted = false
 
     private val connectPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -177,6 +178,7 @@ class ObdActivity : ComponentActivity() {
         updateButtons()
 
         worker.execute {
+            var candidate: BluetoothSocket? = null
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                     checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) !=
@@ -184,20 +186,35 @@ class ObdActivity : ComponentActivity() {
                 ) {
                     throw SecurityException("BLUETOOTH_CONNECT missing")
                 }
-                val candidate = device.createRfcommSocketToServiceRecord(SPP_UUID)
-                candidate.connect()
-                socket = candidate
-                initializeAdapter(candidate)
+                val active = device.createRfcommSocketToServiceRecord(SPP_UUID)
+                candidate = active
+                active.connect()
+                initializeAdapter(active)
+                if (!activityStarted || isFinishing || isDestroyed) {
+                    try { active.close() } catch (_: Exception) { }
+                    return@execute
+                }
+                socket = active
                 runOnUiThread {
+                    if (!activityStarted || isFinishing || isDestroyed || socket !== active) {
+                        if (socket === active) disconnect()
+                        return@runOnUiThread
+                    }
                     setConnection("OBD: đã kết nối")
                     updateButtons()
+                    queryTelemetry()
                 }
-                queryTelemetry()
             } catch (error: Exception) {
-                disconnect()
+                if (socket === candidate) {
+                    disconnect()
+                } else {
+                    try { candidate?.close() } catch (_: Exception) { }
+                }
                 runOnUiThread {
-                    setConnection("OBD: kết nối thất bại")
-                    updateButtons()
+                    if (activityStarted && !isFinishing && !isDestroyed) {
+                        setConnection("OBD: kết nối thất bại")
+                        updateButtons()
+                    }
                 }
             }
         }
@@ -279,7 +296,13 @@ class ObdActivity : ComponentActivity() {
         try { active?.close() } catch (_: Exception) { }
     }
 
+    override fun onStart() {
+        super.onStart()
+        activityStarted = true
+    }
+
     override fun onStop() {
+        activityStarted = false
         disconnect()
         updateButtons()
         super.onStop()
