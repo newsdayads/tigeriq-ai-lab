@@ -130,6 +130,54 @@ jobs:
             --title "TigerIQ Phone Farm Windows v0.5.0 RC5 - ${SHORT_SHA}" \
             --notes "GH-5291 pre-release from merged main. Source/build CI passed. Runtime acceptance F04/F09/F10 remains tracked separately; this release does not claim FULL acceptance."
 
+  release-windows-rc6:
+    name: Publish Windows RC6 pre-release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, '[P1][GH-5291][RC6]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download exact green Windows artifact from pinned main run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PINNED_RUN: '41268740056'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/release"
+          gh run download "$PINNED_RUN" --repo "$GITHUB_REPOSITORY" --name TigerIQ-PhoneFarm-Windows --dir "${RUNNER_TEMP}/release"
+      - name: Verify and publish idempotent RC6 pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: tigeriq-phone-farm-windows-v0.5.0-rc6
+          TARGET_SHA: d64b2a04558533d0a8690fc9a2ef11fe74d47596
+          PACKAGE_SHA256: bd8375a8712ee8bc18d725bd45e3652414946b9eb834de6879c2c42ff8a30709
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="${RUNNER_TEMP}/release/TigerIQ-PhoneFarm-Windows.zip"
+          ASSET="${RUNNER_TEMP}/release/TigerIQ-PhoneFarm-Windows-v0.5.0-RC6-d64b2a04.zip"
+          test -f "$SRC"
+          ACTUAL="$(sha256sum "$SRC" | awk '{print $1}')"
+          test "$ACTUAL" = "$PACKAGE_SHA256"
+          mv "$SRC" "$ASSET"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            test "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json targetCommitish --jq '.targetCommitish')" = "$TARGET_SHA"
+            TMP="${RUNNER_TEMP}/existing"
+            mkdir -p "$TMP"
+            gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'TigerIQ-PhoneFarm-Windows-v0.5.0-RC6-d64b2a04.zip' --dir "$TMP" --clobber
+            test "$(sha256sum "$TMP/TigerIQ-PhoneFarm-Windows-v0.5.0-RC6-d64b2a04.zip" | awk '{print $1}')" = "$PACKAGE_SHA256"
+            exit 0
+          fi
+          gh release create "$TAG" "$ASSET" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$TARGET_SHA" \
+            --prerelease \
+            --title "TigerIQ Phone Farm Windows v0.5.0 RC6 - d64b2a04" \
+            --notes "GH-5291 pre-release from exact green main d64b2a04. Adds read-only discovery of an already-enabled private-LAN WiFi ADB endpoint and the Dò WiFi ADB UI flow. Runtime acceptance F04/F09/F10 remains tracked separately."
+
   release-bootstrapper:
     name: Publish non-shell bootstrapper
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, '[P1][GH-5291]')
@@ -164,4 +212,4 @@ jobs:
             --target "$GITHUB_SHA" \
             --prerelease \
             --title "TigerIQ Phone Farm Bootstrapper v1 - ${SHORT_SHA}" \
-            --notes "GH-5291 non-shell delivery helper. It installs only pinned RC5 source 6c053a24 after SHA-256 and BUILD_MANIFEST verification. This does not mark F04/F09/F10 accepted."
+            --notes "GH-5291 non-shell delivery helper. It installs only pinned RC6 source d64b2a04 after SHA-256 and BUILD_MANIFEST verification. This does not mark F04/F09/F10 accepted."
