@@ -54,7 +54,20 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
     expect(home).toContain('private fun validatedHomeConfigurationForBackup(item: JSONObject): JSONObject?');
     expect(block).toContain('val editor = prefs.edit()');
     expect(block.indexOf('val editor = prefs.edit()')).toBeGreaterThan(block.indexOf('validatedHomeConfigurationForBackup(item) ?: return false'));
-    expect(block).toContain('editor.apply()');
+    expect(block).toContain('if (!editor.commit()) return false');
+  });
+
+  it('fails visibly unless every restore preference domain commits synchronously', () => {
+    const start = home.indexOf('private fun importHomeBackupJson(text: String): Boolean');
+    const end = home.indexOf('private fun editDriverName()');
+    const block = home.slice(start, end);
+
+    expect(block).toContain('if (!editor.commit()) return false');
+    expect(block).toContain('if (!shortcutEditor.commit()) return false');
+    expect(block).toContain('if (!overlayEditor.commit()) return false');
+    expect(block).toContain('if (!taxiEditor.commit()) return false');
+    expect(block).not.toContain('.apply()');
+    expect(home).toContain('Không thể khôi phục: tệp không hợp lệ hoặc ghi dữ liệu thất bại');
   });
 
   it('rejects JSON scalar coercion before restore writes', () => {
