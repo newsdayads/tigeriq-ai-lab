@@ -42,6 +42,16 @@ describe('GH-5135 V1.0.64 QuickBar source contract', () => {
     expect(home).not.toContain('putString("v2_quick_slots", slots.toString()).apply()');
   });
 
+  it('recovers corrupt quick-slot JSON with synchronous persistence cleanup', () => {
+    const start = home.indexOf('private fun quickSlots(): JSONArray');
+    const end = home.indexOf('private fun saveQuickSlot', start);
+    const block = home.slice(start, end);
+    expect(block).toContain('Corrupt quick-slot state');
+    expect(block).toContain('remove("v2_quick_slots").commit()');
+    expect(block).toContain('Failed to persist corrupt quick-slot cleanup');
+    expect(block).not.toContain('.apply()');
+  });
+
   it('maps V1.0.64 app families to real Material Compose icons', () => {
     expect(compose).toContain('Icons.Filled.PlayArrow');
     expect(compose).toContain('Icons.Filled.DirectionsCar');
