@@ -6,9 +6,9 @@ const source=readFileSync(new URL('../../apps/ultracarhcm-v2/release/Sign-UltraC
 
 test('dev11 signer is pinned to exact artifact, app identity and certificate',()=>{
   for(const expected of [
-    'UltraCarHCM_V2_2.0.0_dev11_MAIN_9140534_UNSIGNED_ALIGNED_HANDOFF.apk',
-    'UltraCarHCM_V2_2.0.0_dev11_MAIN_9140534_SIGNED_TEST.apk',
-    '73EF300739F7C356B7F6939EAC52246D8FEBA43B62335D40B9CA526E86E9D03C',
+    'UltraCarHCM_V2_2.0.0_dev11_MAIN_f22c408aa_UNSIGNED_ALIGNED_HANDOFF.apk',
+    'UltraCarHCM_V2_2.0.0_dev11_MAIN_f22c408aa_SIGNED_TEST.apk',
+    '7562C77C4C3C81A9764179AB55007BA5F25BDAE5E1C9255D5D545BF962F0064C',
     '71617043EACE89E5F220EA9168B0A9592808111B0F17EAA219F5E6ECEB569558',
     'ai.tigeriq.ultracarhcm.v2',
     "expectedVersionCode='11'",

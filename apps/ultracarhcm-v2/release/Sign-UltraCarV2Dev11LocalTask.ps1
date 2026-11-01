@@ -9,9 +9,9 @@ $ErrorActionPreference='Stop'
 $identity=[System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 if($identity -cne 'PC01\wdragons12x'){throw 'LOCAL_SIGNING_IDENTITY_REQUIRED'}
 
-$input='D:\TigerIQ\Apps\UltraCarHCM_V2\dist\UltraCarHCM_V2_2.0.0_dev11_MAIN_9140534_UNSIGNED_ALIGNED_HANDOFF.apk'
-$output='D:\TigerIQ\Apps\UltraCarHCM_V2\dist\UltraCarHCM_V2_2.0.0_dev11_MAIN_9140534_SIGNED_TEST.apk'
-$expectedInputSha='73EF300739F7C356B7F6939EAC52246D8FEBA43B62335D40B9CA526E86E9D03C'
+$input='D:\TigerIQ\Apps\UltraCarHCM_V2\dist\UltraCarHCM_V2_2.0.0_dev11_MAIN_f22c408aa_UNSIGNED_ALIGNED_HANDOFF.apk'
+$output='D:\TigerIQ\Apps\UltraCarHCM_V2\dist\UltraCarHCM_V2_2.0.0_dev11_MAIN_f22c408aa_SIGNED_TEST.apk'
+$expectedInputSha='7562C77C4C3C81A9764179AB55007BA5F25BDAE5E1C9255D5D545BF962F0064C'
 $expectedCert='71617043EACE89E5F220EA9168B0A9592808111B0F17EAA219F5E6ECEB569558'
 $expectedPackage='ai.tigeriq.ultracarhcm.v2'
 $expectedVersionCode='11'
