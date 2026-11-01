@@ -208,10 +208,11 @@
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/AppearanceActivity.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/AppearanceRules.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/AppearanceRules.kt",
+        "tests/ultracarhcm-v2/appearance-notification-persistence-source.test.ts"
       ],
-      "gap": "Verified day/night backgrounds plus user-selected image/video backgrounds are implemented without broad storage permission; exact V1 theme catalog/media parity and real-device video/background acceptance remain open.",
-      "actual": "AppearanceActivity uses Android Storage Access Framework to persist a user-selected image or video URI. HomeActivity renders that URI as the Home background with muted looping video and falls back to governed day/night media if the grant is invalid. No original V1 media rights are inferred.",
+      "gap": "Verified day/night backgrounds plus user-selected image/video backgrounds are implemented without broad storage permission. User-visible appearance changes now require synchronous preference persistence; custom-background replacement commits the new URI/kind before releasing the previous persisted URI grant, and clear commits preference removal before releasing the old grant. Exact V1 theme catalog/media parity and real-device video/background acceptance remain open.",
+      "actual": "AppearanceActivity commits day/night mode before refreshing status. For a custom image/video it first acquires the new SAF grant, commits the new V2 background state, releases the new grant on commit failure when safe, and only after successful commit releases a different previous grant. Clearing a custom background commits preference removal before releasing the previous URI grant.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.renderBackground",
@@ -357,10 +358,11 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/NotificationActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/NotificationRules.kt",
         "apps/ultracarhcm-v2/release/update-channel.json",
-        "tests/ultracarhcm-v2/update-channel-source.test.ts"
+        "tests/ultracarhcm-v2/update-channel-source.test.ts",
+        "tests/ultracarhcm-v2/appearance-notification-persistence-source.test.ts"
       ],
-      "gap": "Kênh metadata V2 TEST hiện đã được cấu hình tới tệp canonical trên GitHub main và fail-closed với releaseAvailable=false cho đến khi có APK V2 TEST ký số được phát hành. Remote push/backend, publication của signed APK, cài đặt trên thiết bị và exact V1 notification parity vẫn chưa nghiệm thu.",
-      "actual": "ProfileActivity tách CẬP NHẬT và THÔNG BÁO. UpdateActivity chỉ tin endpoint metadata V2 TEST canonical, chấp nhận trạng thái no-release không có apkUrl/sha256, và khi releaseAvailable=true chỉ chấp nhận URL GitHub release tag UltraCarHCM V2 cùng SHA-256 hợp lệ trước khi tải/kiểm toàn vẹn. Kênh hiện công khai build dev.11 nhưng không cung cấp APK, không dùng preview1 bị loại và không tự cài đặt.",
+      "gap": "Kênh metadata V2 TEST hiện được cấu hình tới tệp canonical trên GitHub main và fail-closed với releaseAvailable=false cho đến khi có APK V2 TEST ký số được phát hành. User-driven notification read/clear state and newly discovered update notices now use synchronous local persistence with failure-visible UI. Remote push/backend, publication of a signed APK, installation on device and exact V1 notification parity remain unaccepted.",
+      "actual": "ProfileActivity separates CẬP NHẬT and THÔNG BÁO. UpdateActivity validates only the canonical V2 TEST metadata endpoint and trusted release shape, records a newer update notice with commit(), and explicitly warns if local notice persistence fails while still showing verified live metadata. NotificationActivity commits mark-read and user-requested clear before refreshing UI. No automatic install path is added.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "ProfileActivity.buildContent",
