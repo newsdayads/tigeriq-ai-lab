@@ -83,11 +83,14 @@ class VehicleActivity : ComponentActivity() {
             text = "LƯU BIỂN SỐ"
             setOnClickListener {
                 val plate = VehicleRules.normalizeLicensePlate(plateInput.text.toString())
-                prefs.edit().putString(VehicleRules.PREF_LICENSE_PLATE, plate).apply()
-                plateInput.setText(plate)
-                plateInput.setSelection(plate.length)
-                refreshStatus()
-                toast("Đã lưu biển số V2")
+                if (prefs.edit().putString(VehicleRules.PREF_LICENSE_PLATE, plate).commit()) {
+                    plateInput.setText(plate)
+                    plateInput.setSelection(plate.length)
+                    refreshStatus()
+                    toast("Đã lưu biển số V2")
+                } else {
+                    toast("Không thể lưu biển số V2")
+                }
             }
         })
 
@@ -106,12 +109,17 @@ class VehicleActivity : ComponentActivity() {
 
     private fun selectModel(model: String) {
         val limo = model == VehicleRules.MODEL_LIMO_RED
-        prefs.edit()
-            .putString(VehicleRules.PREF_MODEL, model)
-            .putBoolean("limo", limo)
-            .apply()
-        refreshStatus()
-        toast("Đã chọn ${VehicleRules.modelLabel(model)}")
+        if (
+            prefs.edit()
+                .putString(VehicleRules.PREF_MODEL, model)
+                .putBoolean("limo", limo)
+                .commit()
+        ) {
+            refreshStatus()
+            toast("Đã chọn ${VehicleRules.modelLabel(model)}")
+        } else {
+            toast("Không thể lưu lựa chọn xe V2")
+        }
     }
 
     private fun refreshStatus() {
