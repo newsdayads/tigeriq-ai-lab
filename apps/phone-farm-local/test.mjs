@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import assert from 'node:assert/strict';
-import { parseDevices, safeSerial, validInput, privateWifiAddress, mirrorOptions, server } from './app.mjs';
+import { parseDevices, safeSerial, validInput, privateWifiAddress, parsePrivateWifiIpv4, parseExistingAdbTcpPort, wifiCandidateFromOutputs, mirrorOptions, server } from './app.mjs';
 
 test('ADB inventory parses connected, offline, unauthorized devices', () => {
   const devices=parseDevices('List of devices attached\nR3CM400AKRX device product:beyondxks model:SM_G977N transport_id:1\n192.168.0.9:5555 offline\nABCD unauthorized\n');
@@ -220,6 +220,30 @@ test('wireless ADB address limited to valid private LAN IP and nonprivileged por
     assert.equal(privateWifiAddress(value),true);
   for(const value of ['8.8.8.8:5555','127.0.0.1:5555','192.169.1.2:5555','172.32.0.1:5555','192.168.1.999:5555','192.168.1.2:0','10.1.2.3:80','10.1.2.3:5555 & whoami','localhost:5555'])
     assert.equal(privateWifiAddress(value),false);
+});
+
+
+test('read-only WiFi ADB discovery accepts only an already-enabled private LAN endpoint', () => {
+  assert.equal(parsePrivateWifiIpv4('7: wlan0: <UP>\n    inet 192.168.50.23/24 brd 192.168.50.255 scope global wlan0\n'), '192.168.50.23');
+  assert.equal(parsePrivateWifiIpv4('inet 10.20.30.40/8 scope global wlan0'), '10.20.30.40');
+  assert.equal(parsePrivateWifiIpv4('inet 8.8.8.8/24 scope global wlan0'), null);
+  assert.equal(parsePrivateWifiIpv4('inet 192.168.1.999/24 scope global wlan0'), null);
+  assert.equal(parseExistingAdbTcpPort('5555\n'), 5555);
+  assert.equal(parseExistingAdbTcpPort('45555'), 45555);
+  for (const value of ['', '-1', '0', '80', '65536', '5555 & whoami']) assert.equal(parseExistingAdbTcpPort(value), null);
+  assert.equal(wifiCandidateFromOutputs('inet 192.168.50.23/24 scope global wlan0', '5555'), '192.168.50.23:5555');
+  assert.equal(wifiCandidateFromOutputs('inet 8.8.8.8/24 scope global wlan0', '5555'), null);
+  assert.equal(wifiCandidateFromOutputs('inet 192.168.50.23/24 scope global wlan0', '-1'), null);
+});
+
+test('WiFi candidate endpoint remains discovery-only and never enables ADB TCP mode', () => {
+  const dir=path.dirname(fileURLToPath(import.meta.url));
+  const source=fs.readFileSync(path.join(dir,'app.mjs'),'utf8');
+  assert.match(source,/\/api\/wifi\/candidate/);
+  assert.match(source,/getprop','service\.adb\.tcp\.port/);
+  assert.match(source,/ip','-f','inet','addr','show','wlan0/);
+  assert.doesNotMatch(source,/['"]tcpip['"]/);
+  assert.doesNotMatch(source,/service\.adb\.tcp\.port.*setprop/);
 });
 
 
