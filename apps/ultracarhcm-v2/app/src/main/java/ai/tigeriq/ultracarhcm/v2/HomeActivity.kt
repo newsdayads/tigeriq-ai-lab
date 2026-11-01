@@ -278,6 +278,13 @@ class HomeActivity : ComponentActivity() {
             JSONArray(prefs.getString("v2_quick_slots", "[]") ?: "[]")
         } catch (e: Exception) {
             android.util.Log.w("UltraCarV2", "Corrupt quick-slot state", e)
+            val cleared = prefs.edit().remove("v2_quick_slots").commit()
+            if (!cleared) {
+                android.util.Log.e(
+                    "UltraCarV2",
+                    "Failed to persist corrupt quick-slot cleanup",
+                )
+            }
             JSONArray()
         }
         val normalized = JSONArray()
