@@ -54,7 +54,7 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
     expect(home).toContain('private fun validatedHomeConfigurationForBackup(item: JSONObject): JSONObject?');
     expect(block).toContain('val editor = prefs.edit()');
     expect(block.indexOf('val editor = prefs.edit()')).toBeGreaterThan(block.indexOf('validatedHomeConfigurationForBackup(item) ?: return false'));
-    expect(block).toContain('if (!editor.commit()) return false');
+    expect(block).toContain('if (!editor.commit()) return rollbackRestoreAndFail()');
   });
 
   it('fails visibly unless every restore preference domain commits synchronously', () => {
@@ -62,12 +62,45 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
     const end = home.indexOf('private fun editDriverName()');
     const block = home.slice(start, end);
 
-    expect(block).toContain('if (!editor.commit()) return false');
-    expect(block).toContain('if (!shortcutEditor.commit()) return false');
-    expect(block).toContain('if (!overlayEditor.commit()) return false');
-    expect(block).toContain('if (!taxiEditor.commit()) return false');
+    expect(block).toContain('if (!editor.commit()) return rollbackRestoreAndFail()');
+    expect(block).toContain('if (!shortcutEditor.commit()) return rollbackRestoreAndFail()');
+    expect(block).toContain('if (!overlayEditor.commit()) return rollbackRestoreAndFail()');
+    expect(block).toContain('if (!taxiEditor.commit()) return rollbackRestoreAndFail()');
     expect(block).not.toContain('.apply()');
     expect(home).toContain('Không thể khôi phục: tệp không hợp lệ hoặc ghi dữ liệu thất bại');
+  });
+
+  it('captures every affected preference domain before the first write and rolls back on commit failure', () => {
+    const start = home.indexOf('private fun importHomeBackupJson(text: String): Boolean');
+    const end = home.indexOf('private fun editDriverName()');
+    const block = home.slice(start, end);
+
+    expect(home).toContain('private fun preferenceSnapshot(source: SharedPreferences)');
+    expect(home).toContain('private fun restorePreferenceSnapshot(');
+    expect(home).toContain('source.all.mapValues');
+    expect(home).toContain('target.edit().clear()');
+    expect(home).toContain('editor.putStringSet(key, strings)');
+    expect(home).toContain('return editor.commit()');
+
+    expect(block).toContain('val homeSnapshot = preferenceSnapshot(prefs)');
+    expect(block).toContain('val shortcutSnapshot = shortcutPrefsForRestore?.let(::preferenceSnapshot)');
+    expect(block).toContain('val overlaySnapshot = overlayPrefsForRestore?.let(::preferenceSnapshot)');
+    expect(block).toContain('val taxiSnapshot = taxiPrefsForRestore?.let(::preferenceSnapshot)');
+    expect(block.indexOf('val homeSnapshot = preferenceSnapshot(prefs)')).toBeLessThan(
+      block.indexOf('val editor = prefs.edit()'),
+    );
+
+    expect(block).toContain('fun rollbackRestoreAndFail(): Boolean');
+    expect(block).toContain('restorePreferenceSnapshot(taxiPrefsForRestore, taxiSnapshot)');
+    expect(block).toContain('restorePreferenceSnapshot(overlayPrefsForRestore, overlaySnapshot)');
+    expect(block).toContain('restorePreferenceSnapshot(shortcutPrefsForRestore, shortcutSnapshot)');
+    expect(block).toContain('restorePreferenceSnapshot(prefs, homeSnapshot)');
+    expect(block).toContain('preference rollback was incomplete');
+
+    expect(block).toContain('if (!editor.commit()) return rollbackRestoreAndFail()');
+    expect(block).toContain('if (!shortcutEditor.commit()) return rollbackRestoreAndFail()');
+    expect(block).toContain('if (!overlayEditor.commit()) return rollbackRestoreAndFail()');
+    expect(block).toContain('if (!taxiEditor.commit()) return rollbackRestoreAndFail()');
   });
 
   it('rejects JSON scalar coercion before restore writes', () => {
@@ -127,7 +160,7 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
     expect(home).toContain('HomeBackupRules.requiresSavedLayoutShortcuts(backupSchema)');
     expect(home).toContain('rawSavedLayoutShortcuts.length() != SavedLayoutShortcutRules.SLOT_COUNT');
     expect(home).toContain('!safeConfigIds.contains(configId)');
-    expect(home).toContain('val shortcutEditor = savedLayoutShortcutPrefs().edit().clear()');
+    expect(home).toContain('val shortcutEditor = shortcutPrefsForRestore!!.edit().clear()');
     const start = home.indexOf('private fun importHomeBackupJson(text: String): Boolean');
     const end = home.indexOf('private fun editDriverName()');
     const block = home.slice(start, end);

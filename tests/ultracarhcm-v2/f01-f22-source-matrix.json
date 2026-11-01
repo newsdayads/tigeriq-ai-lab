@@ -400,23 +400,22 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TaxiMeterRules.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayPositionRules.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleRules.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/SavedLayoutShortcutRules.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/SavedLayoutShortcutRules.kt",
+        "tests/ultracarhcm-v2/backup-restore-source.test.ts"
       ],
-      "gap": "Backup schema v5 includes five V1-evidenced Home saved-layout shortcut assignments by stable config ID, schema-v4 Taxi Meter state, and existing Home/quick-slot/overlay/vehicle data. Restore validates the complete payload before writes and now requires synchronous commit success for each affected preference domain before reporting success. Schemas 1–4 remain backward readable. Cross-preference-file restore is fail-visible but not a single transactional Android storage primitive; device/provider-bound custom background grants, V1 images/sound/other unimplemented feature data and real-device acceptance remain open.",
-      "actual": "HomeActivity exports schema v5 through SAF, emits exactly five nullable saved-layout shortcut references, and validates every non-null shortcut ID against imported unique saved-configuration IDs before any preference write. Restore writes Home, saved-layout shortcut, DeX overlay and Taxi Meter preference domains with synchronous commit() checks and returns failure instead of acknowledging asynchronous/unpersisted state. Schema-v5 restore replaces only validated V2 state; legacy schemas remain non-destructive for newer fields. No V1 data, credentials or broad storage permission are included.",
+      "gap": "Backup schema v5 bao phủ Home/quick slots/saved configs/five stable saved-layout shortcuts/vehicle/DeX overlay/Taxi Meter. Restore vẫn validate toàn bộ payload trước ghi; giờ còn chụp snapshot của mọi preference domain bị ảnh hưởng trước commit đầu tiên và thực hiện rollback đồng bộ theo thứ tự ngược nếu bất kỳ commit nào thất bại. SharedPreferences không cung cấp transaction đa-file nguyên tử, nên rollback là best-effort và lỗi rollback được ghi log/fail-visible. Device/provider-bound custom background grants, V1 images/sound/feature data chưa triển khai và real-device acceptance vẫn mở.",
+      "actual": "Schema-v5 restore: HomeActivity xuất schema v5 qua SAF và validate đầy đủ trước mutation. Trước restore, V2 chụp snapshot Home, saved-layout shortcuts, overlay và Taxi Meter theo đúng domain cần thay. Mỗi domain commit() đồng bộ; nếu một commit thất bại, rollbackRestoreAndFail() khôi phục snapshot theo thứ tự Taxi → overlay → shortcut → Home, ghi lỗi nếu rollback không hoàn tất và không báo restore thành công. Legacy schemas vẫn không phá các field mới; không đọc/ghi V1, credential hay broad storage.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.exportHomeBackupJson",
-        "HomeActivity.exportTaxiMeterBackup",
-        "HomeActivity.validatedTaxiHistoryForBackup",
         "HomeActivity.writeHomeBackup",
         "HomeActivity.readHomeBackup",
         "HomeActivity.importHomeBackupJson",
+        "HomeActivity.preferenceSnapshot",
+        "HomeActivity.restorePreferenceSnapshot",
+        "HomeActivity.rollbackRestoreAndFail",
         "HomeBackupRules.requiresTaxiMeterState",
-        "TaxiMeterRules.validRateVndPerKm",
-        "HomeActivity.exportSavedLayoutShortcuts",
-        "HomeBackupRules.requiresSavedLayoutShortcuts",
-        "SavedLayoutShortcutRules.validConfigId"
+        "HomeBackupRules.requiresSavedLayoutShortcuts"
       ],
       "permissions": []
     },

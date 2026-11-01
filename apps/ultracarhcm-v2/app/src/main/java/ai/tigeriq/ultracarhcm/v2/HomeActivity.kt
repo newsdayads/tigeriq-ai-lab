@@ -4,6 +4,7 @@ import android.app.AlertDialog
 import android.net.Uri
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
@@ -1250,6 +1251,44 @@ class HomeActivity : ComponentActivity() {
         }
     }
 
+    private fun preferenceSnapshot(source: SharedPreferences): Map<String, Any?> =
+        source.all.mapValues { (_, value) ->
+            if (value is Set<*>) value.toSet() else value
+        }
+
+    private fun restorePreferenceSnapshot(
+        target: SharedPreferences,
+        snapshot: Map<String, Any?>,
+    ): Boolean {
+        val editor = target.edit().clear()
+        for ((key, value) in snapshot) {
+            when (value) {
+                is String -> editor.putString(key, value)
+                is Boolean -> editor.putBoolean(key, value)
+                is Int -> editor.putInt(key, value)
+                is Long -> editor.putLong(key, value)
+                is Float -> editor.putFloat(key, value)
+                is Set<*> -> {
+                    val strings = mutableSetOf<String>()
+                    for (item in value) {
+                        val text = item as? String ?: return false
+                        strings.add(text)
+                    }
+                    editor.putStringSet(key, strings)
+                }
+                null -> editor.remove(key)
+                else -> {
+                    android.util.Log.e(
+                        "UltraCarV2",
+                        "Unsupported preference snapshot type for key=$key",
+                    )
+                    return false
+                }
+            }
+        }
+        return editor.commit()
+    }
+
     private fun importHomeBackupJson(text: String): Boolean {
         if (!HomeBackupRules.withinSize(text.toByteArray(Charsets.UTF_8).size)) return false
         val root = try { JSONObject(text) } catch (_: Exception) { return false }
@@ -1368,6 +1407,50 @@ class HomeActivity : ComponentActivity() {
             safeTaxiHistory = validatedTaxiHistoryForBackup(rawHistory) ?: return false
         }
 
+        val shortcutPrefsForRestore =
+            if (replaceSavedLayoutShortcuts) savedLayoutShortcutPrefs() else null
+        val overlayPrefsForRestore =
+            if (replaceOverlayPositions) {
+                getSharedPreferences("v2_camera_shortcut", Context.MODE_PRIVATE)
+            } else {
+                null
+            }
+        val taxiPrefsForRestore =
+            if (replaceTaxiMeterState) {
+                getSharedPreferences(TaxiMeterRules.PREFS_NAME, Context.MODE_PRIVATE)
+            } else {
+                null
+            }
+
+        val homeSnapshot = preferenceSnapshot(prefs)
+        val shortcutSnapshot = shortcutPrefsForRestore?.let(::preferenceSnapshot)
+        val overlaySnapshot = overlayPrefsForRestore?.let(::preferenceSnapshot)
+        val taxiSnapshot = taxiPrefsForRestore?.let(::preferenceSnapshot)
+
+        fun rollbackRestoreAndFail(): Boolean {
+            var rollbackOk = true
+            if (taxiPrefsForRestore != null && taxiSnapshot != null) {
+                rollbackOk =
+                    restorePreferenceSnapshot(taxiPrefsForRestore, taxiSnapshot) && rollbackOk
+            }
+            if (overlayPrefsForRestore != null && overlaySnapshot != null) {
+                rollbackOk =
+                    restorePreferenceSnapshot(overlayPrefsForRestore, overlaySnapshot) && rollbackOk
+            }
+            if (shortcutPrefsForRestore != null && shortcutSnapshot != null) {
+                rollbackOk =
+                    restorePreferenceSnapshot(shortcutPrefsForRestore, shortcutSnapshot) && rollbackOk
+            }
+            rollbackOk = restorePreferenceSnapshot(prefs, homeSnapshot) && rollbackOk
+            if (!rollbackOk) {
+                android.util.Log.e(
+                    "UltraCarV2",
+                    "HOME restore commit failed and preference rollback was incomplete",
+                )
+            }
+            return false
+        }
+
         val editor = prefs.edit()
             .putBoolean("night", night)
             .putBoolean("limo", safeVehicleModel == VehicleRules.MODEL_LIMO_RED)
@@ -1378,23 +1461,20 @@ class HomeActivity : ComponentActivity() {
             .putString("v2_home_configs", safeConfigs.toString())
         if (safeDefault == null) editor.remove("v2_default_home_config")
         else editor.putString("v2_default_home_config", safeDefault.toString())
-        if (!editor.commit()) return false
+        if (!editor.commit()) return rollbackRestoreAndFail()
 
         if (replaceSavedLayoutShortcuts) {
-            val shortcutEditor = savedLayoutShortcutPrefs().edit().clear()
+            val shortcutEditor = shortcutPrefsForRestore!!.edit().clear()
             for (index in 0 until SavedLayoutShortcutRules.SLOT_COUNT) {
                 val configId = safeSavedLayoutShortcuts[index] ?: continue
                 val key = SavedLayoutShortcutRules.slotKey(index) ?: continue
                 shortcutEditor.putString(key, configId)
             }
-            if (!shortcutEditor.commit()) return false
+            if (!shortcutEditor.commit()) return rollbackRestoreAndFail()
         }
 
         if (replaceOverlayPositions) {
-            val overlayEditor = getSharedPreferences(
-                "v2_camera_shortcut",
-                Context.MODE_PRIVATE,
-            ).edit().clear()
+            val overlayEditor = overlayPrefsForRestore!!.edit().clear()
             for ((displayId, x, y) in safeOverlayPositions) {
                 overlayEditor
                     .putInt(OverlayPositionRules.xKey(displayId), x)
@@ -1405,18 +1485,15 @@ class HomeActivity : ComponentActivity() {
                     .putInt(OverlayPositionRules.PORTABLE_X_KEY, x)
                     .putInt(OverlayPositionRules.PORTABLE_Y_KEY, y)
             }
-            if (!overlayEditor.commit()) return false
+            if (!overlayEditor.commit()) return rollbackRestoreAndFail()
         }
 
         if (replaceTaxiMeterState) {
-            val taxiEditor = getSharedPreferences(
-                TaxiMeterRules.PREFS_NAME,
-                Context.MODE_PRIVATE,
-            ).edit()
+            val taxiEditor = taxiPrefsForRestore!!.edit()
             if (safeTaxiRate == null) taxiEditor.remove(TaxiMeterRules.KEY_RATE)
             else taxiEditor.putString(TaxiMeterRules.KEY_RATE, safeTaxiRate)
             taxiEditor.putString(TaxiMeterRules.KEY_HISTORY, safeTaxiHistory.toString())
-            if (!taxiEditor.commit()) return false
+            if (!taxiEditor.commit()) return rollbackRestoreAndFail()
         }
         return true
     }
