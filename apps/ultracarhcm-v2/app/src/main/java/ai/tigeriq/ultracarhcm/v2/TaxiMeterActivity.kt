@@ -69,6 +69,7 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
         super.onCreate(savedInstanceState)
         setContentView(buildContent())
         prefs.getString(TaxiMeterRules.KEY_RATE, null)?.let { rateInput.setText(it) }
+        restoreActiveTrip(savedInstanceState)
         renderHistory()
         updateMeterUi()
     }
@@ -183,6 +184,35 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
         handler.removeCallbacks(tick)
         handler.post(tick)
         startLocationUpdates()
+    }
+
+    private fun restoreActiveTrip(state: Bundle?) {
+        if (state?.getBoolean(STATE_RUNNING, false) != true) return
+
+        val savedRate = state.getDouble(STATE_RATE_VND_PER_KM, Double.NaN)
+        val savedDistance = state.getDouble(STATE_DISTANCE_METERS, Double.NaN)
+        val savedElapsed = state.getLong(STATE_ACTIVE_ELAPSED_MS, -1L)
+        val savedStartedAt = state.getLong(STATE_TRIP_STARTED_EPOCH_MS, -1L)
+        if (!TaxiMeterRules.validActiveTripState(
+                savedRate,
+                savedDistance,
+                savedElapsed,
+                savedStartedAt,
+            )
+        ) {
+            return
+        }
+
+        rateVndPerKm = savedRate
+        distanceMeters = savedDistance
+        activeElapsedMs = savedElapsed
+        foregroundSegmentStartedMs = 0L
+        tripStartedEpochMs = savedStartedAt
+        lastLocation = null
+        running = true
+        rateInput.setText(savedRate.toString())
+        rateInput.isEnabled = false
+        toggleButton.text = "Kết thúc chuyến"
     }
 
     private fun enabledProviders(manager: LocationManager): List<String> =
@@ -384,6 +414,17 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
         return String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, remaining)
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        if (running) {
+            outState.putBoolean(STATE_RUNNING, true)
+            outState.putDouble(STATE_RATE_VND_PER_KM, rateVndPerKm)
+            outState.putDouble(STATE_DISTANCE_METERS, distanceMeters)
+            outState.putLong(STATE_ACTIVE_ELAPSED_MS, currentElapsedMs())
+            outState.putLong(STATE_TRIP_STARTED_EPOCH_MS, tripStartedEpochMs)
+        }
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onResume() {
         super.onResume()
         if (running && foregroundSegmentStartedMs == 0L) {
@@ -414,5 +455,10 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
 
     companion object {
         private const val MAX_SINGLE_SEGMENT_METERS = 2_000.0
+        private const val STATE_RUNNING = "taxi_running"
+        private const val STATE_RATE_VND_PER_KM = "taxi_rate_vnd_per_km"
+        private const val STATE_DISTANCE_METERS = "taxi_distance_meters"
+        private const val STATE_ACTIVE_ELAPSED_MS = "taxi_active_elapsed_ms"
+        private const val STATE_TRIP_STARTED_EPOCH_MS = "taxi_trip_started_epoch_ms"
     }
 }
