@@ -29,10 +29,44 @@ describe('GH-5135 F12 OBD session lifecycle', () => {
     const start = obd.indexOf('private fun connect(device: BluetoothDevice)');
     const end = obd.indexOf('private fun initializeAdapter', start);
     const block = obd.slice(start, end);
-    expect(block).toContain('if (!activityStarted || isFinishing || isDestroyed)');
+    expect(block).toContain(
+      'if (!activityStarted || isFinishing || isDestroyed || generation != connectionGeneration)',
+    );
     expect(block).toContain('try { active.close() } catch (_: Exception) { }');
     expect(block.indexOf('if (!activityStarted || isFinishing || isDestroyed)')).toBeLessThan(
       block.indexOf('socket = active'),
+    );
+  });
+
+  it('invalidates stale OBD work across stop/start cycles and fences telemetry UI callbacks', () => {
+    expect(obd).toContain('@Volatile private var connectionGeneration = 0L');
+
+    const connectStart = obd.indexOf('private fun connect(device: BluetoothDevice)');
+    const connectEnd = obd.indexOf('private fun initializeAdapter', connectStart);
+    const connectBlock = obd.slice(connectStart, connectEnd);
+    expect(connectBlock).toContain('connectionGeneration += 1L');
+    expect(connectBlock).toContain('val generation = connectionGeneration');
+    expect(connectBlock).toContain('generation != connectionGeneration');
+
+    const telemetryStart = obd.indexOf('private fun queryTelemetry()');
+    const telemetryEnd = obd.indexOf('private fun exchange(', telemetryStart);
+    const telemetryBlock = obd.slice(telemetryStart, telemetryEnd);
+    expect(telemetryBlock).toContain('val generation = connectionGeneration');
+    expect(telemetryBlock).toContain('generation != connectionGeneration || socket !== active');
+    expect(telemetryBlock.indexOf('generation != connectionGeneration || socket !== active')).toBeLessThan(
+      telemetryBlock.indexOf('speedStatus.text ='),
+    );
+    expect(telemetryBlock).toContain(
+      'generation == connectionGeneration && socket === active',
+    );
+    expect(telemetryBlock).toContain('if (currentSession) disconnect()');
+    expect(telemetryBlock).toContain('generation != connectionGeneration || !currentSession');
+
+    const stopStart = obd.indexOf('override fun onStop()');
+    const stopEnd = obd.indexOf('override fun onDestroy()', stopStart);
+    const stopBlock = obd.slice(stopStart, stopEnd);
+    expect(stopBlock.indexOf('connectionGeneration += 1L')).toBeLessThan(
+      stopBlock.indexOf('disconnect()'),
     );
   });
 
