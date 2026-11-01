@@ -39,6 +39,28 @@ describe('GH-5135 R01 source-only gate (not native Android CI)', () => {
     expect(label).toContain('<string name="app_name">UltraCarHCM V2</string>');
   });
 
+  it('keeps private V1 media optional so a clean checkout has no static missing R references', () => {
+    const home = readFileSync(fromRoot(
+      app + 'app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt'
+    ), 'utf8');
+    for (const symbol of [
+      'R.drawable.v2_road_city_day',
+      'R.drawable.v2_road_city_night',
+      'R.drawable.v2_logo_ultracar',
+      'R.drawable.v2_car_limo_do_parked',
+      'R.drawable.v2_car_lambogini_trang_parked',
+      'R.raw.ultrabot_glow_packed',
+    ]) {
+      expect(home).not.toContain(symbol);
+    }
+    expect(home).toContain('resources.getIdentifier(name, type, packageName)');
+    expect(home).toContain('private fun renderBundledBackground(night: Boolean)');
+    expect(home).toContain('private fun renderBrandMark(');
+    expect(home).toContain('private fun renderVehicleArtwork(');
+    expect(home).toContain('private fun renderUltrabot(');
+    expect(home).toContain('optionalResourceId("raw", "ultrabot_glow_packed")');
+  });
+
   it('audits V1 media without demanding absence after authorized private staging', () => {
     const probe = spawnSync(process.execPath, [
       fromRoot('tests/ultracarhcm-v2/r01-preflight.mjs'), root
