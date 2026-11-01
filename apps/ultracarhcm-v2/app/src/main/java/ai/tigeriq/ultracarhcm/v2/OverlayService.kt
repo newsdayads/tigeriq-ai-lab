@@ -58,7 +58,13 @@ class OverlayService : Service(), DisplayManager.DisplayListener {
         val id = display.displayId
         if (!forceReattach && shortcut != null && currentId == id) return
         remove()
-        val size = (56f * resources.displayMetrics.density).toInt()
+        val targetDisplayContext = try {
+            createDisplayContext(display)
+        } catch (t: Throwable) {
+            Log.e(logTag, "Cannot create target display context", t)
+            return
+        }
+        val size = (56f * targetDisplayContext.resources.displayMetrics.density + 0.5f).toInt()
         val pref = getSharedPreferences("v2_camera_shortcut", Context.MODE_PRIVATE)
         val p = WindowManager.LayoutParams(
             size, size, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -92,7 +98,7 @@ class OverlayService : Service(), DisplayManager.DisplayListener {
         p.x = restored.x
         p.y = restored.y
         try {
-            var ctx: Context = createDisplayContext(display)
+            var ctx: Context = targetDisplayContext
             if (Build.VERSION.SDK_INT >= 30) {
                 ctx = ctx.createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
             }
