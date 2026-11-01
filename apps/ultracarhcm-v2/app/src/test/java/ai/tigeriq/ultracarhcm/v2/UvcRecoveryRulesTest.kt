@@ -24,6 +24,12 @@ class UvcRecoveryRulesTest {
         assertEquals(2, UvcRecoveryRules.nextAttempt(2))
     }
 
+    @Test fun cancelsRecoveryOnlyWhenTheRecoveringDeviceActuallyDetaches() {
+        assertTrue(UvcRecoveryRules.shouldCancelRecoveryForDetach(41, 41))
+        assertFalse(UvcRecoveryRules.shouldCancelRecoveryForDetach(41, 42))
+        assertFalse(UvcRecoveryRules.shouldCancelRecoveryForDetach(null, 41))
+    }
+
     @Test fun retryDelayIsShortAndDeterministic() {
         assertEquals(750L, UvcRecoveryRules.RETRY_DELAY_MS)
     }
