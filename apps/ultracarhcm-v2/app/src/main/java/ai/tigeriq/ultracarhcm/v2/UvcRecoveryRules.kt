@@ -12,4 +12,7 @@ internal object UvcRecoveryRules {
 
     fun exhausted(attemptsUsed: Int): Boolean =
         attemptsUsed >= MAX_AUTOMATIC_ATTEMPTS
+
+    fun shouldCancelRecoveryForDetach(recoveryDeviceId: Int?, detachedDeviceId: Int): Boolean =
+        recoveryDeviceId != null && recoveryDeviceId == detachedDeviceId
 }
