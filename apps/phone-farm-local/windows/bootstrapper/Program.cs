@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json;
 
@@ -10,8 +11,14 @@ internal static class Program {
     "https://github.com/newsdayads/tigeriq-ai-lab/releases/download/tigeriq-phone-farm-windows-v0.5.0-rc6/TigerIQ-PhoneFarm-Windows-v0.5.0-RC6-d64b2a04.zip";
   private const string PackageSha256 =
     "bd8375a8712ee8bc18d725bd45e3652414946b9eb834de6879c2c42ff8a30709";
-  private const string SourceHead =
+  private const string BaseSourceHead =
     "d64b2a04558533d0a8690fc9a2ef11fe74d47596";
+  private const string OverlaySourceHead =
+    "817ee358892210f09a2f84fbf96b045c1a4d2f51";
+  private const string AppOverlayResource =
+    "TigerIQPhoneFarmBootstrapper.Overlay.app.mjs";
+  private const string TestOverlayResource =
+    "TigerIQPhoneFarmBootstrapper.Overlay.test.mjs";
   private const long MaxPackageBytes = 160L * 1024 * 1024;
   private const long MaxExtractedBytes = 450L * 1024 * 1024;
   private const int MaxEntries = 2500;
@@ -30,8 +37,8 @@ internal static class Program {
       return 0;
     } catch (Exception ex) {
       MessageBox.Show(
-        "Không thể triển khai TigerIQ Phone Farm RC6.\n\n" + ex.Message +
-        "\n\nKhông có firewall, tài khoản, LAIXI hoặc cấu hình hệ thống nào bị thay đổi.",
+        "Không thể triển khai TigerIQ Phone Farm RC6 + overlay.\n\n" + ex.Message +
+        "\n\nKhông có firewall, tài khoản, ADB mode hoặc cấu hình mạng nào bị thay đổi.",
         "TigerIQ Phone Farm Bootstrapper",
         MessageBoxButtons.OK,
         MessageBoxIcon.Error);
@@ -46,7 +53,13 @@ internal static class Program {
     if (!uri.AbsolutePath.StartsWith(
           "/newsdayads/tigeriq-ai-lab/releases/download/tigeriq-phone-farm-windows-v0.5.0-rc6/",
           StringComparison.Ordinal)) return false;
-    return IsHex(PackageSha256, 64) && IsHex(SourceHead, 40);
+    if (!IsHex(PackageSha256, 64) || !IsHex(BaseSourceHead, 40) || !IsHex(OverlaySourceHead, 40))
+      return false;
+
+    var assembly = Assembly.GetExecutingAssembly();
+    using var app = assembly.GetManifestResourceStream(AppOverlayResource);
+    using var test = assembly.GetManifestResourceStream(TestOverlayResource);
+    return app is not null && test is not null && app.Length > 0 && test.Length > 0;
   }
 
   private static async Task DeployAsync() {
@@ -57,55 +70,52 @@ internal static class Program {
 
     string root = Path.Combine(local, "TigerIQ", "PhoneFarm");
     string releases = Path.Combine(root, "releases");
-    string target = Path.Combine(releases, SourceHead[..8]);
+    string target = Path.Combine(releases, BaseSourceHead[..8]);
     Directory.CreateDirectory(releases);
 
-    if (Directory.Exists(target)) {
-      VerifyExtractedRelease(target);
-      WriteCurrentReceipt(root, target);
-      Launch(target);
-      MessageBox.Show(
-        "RC6 đúng SHA đã tồn tại và đã được mở.\n\nNguồn: " + SourceHead,
-        "TigerIQ Phone Farm Bootstrapper",
-        MessageBoxButtons.OK,
-        MessageBoxIcon.Information);
-      return;
-    }
-
-    string staging = Path.Combine(releases, ".staging-" + Guid.NewGuid().ToString("N"));
-    string cache = Path.Combine(root, "bootstrap-cache");
-    Directory.CreateDirectory(cache);
-    string zip = Path.Combine(cache, "TigerIQ-PhoneFarm-Windows-v0.5.0-RC6-d64b2a04.zip");
-
-    try {
-      await DownloadPinnedPackageAsync(zip);
-      string actual = HashFile(zip);
-      if (!actual.Equals(PackageSha256, StringComparison.OrdinalIgnoreCase))
-        throw new InvalidDataException("SHA-256 gói RC6 không khớp.");
-
-      ExtractSafe(zip, staging);
-      VerifyExtractedRelease(staging);
+    if (!Directory.Exists(target)) {
+      string staging = Path.Combine(releases, ".staging-" + Guid.NewGuid().ToString("N"));
+      string cache = Path.Combine(root, "bootstrap-cache");
+      Directory.CreateDirectory(cache);
+      string zip = Path.Combine(cache, "TigerIQ-PhoneFarm-Windows-v0.5.0-RC6-d64b2a04.zip");
 
       try {
-        Directory.Move(staging, target);
-      } catch (IOException) when (Directory.Exists(target)) {
-        Directory.Delete(staging, recursive: true);
-        VerifyExtractedRelease(target);
-      }
+        await DownloadPinnedPackageAsync(zip);
+        string actual = HashFile(zip);
+        if (!actual.Equals(PackageSha256, StringComparison.OrdinalIgnoreCase))
+          throw new InvalidDataException("SHA-256 gói RC6 không khớp.");
 
-      WriteCurrentReceipt(root, target);
-      Launch(target);
-      MessageBox.Show(
-        "Đã triển khai và mở TigerIQ Phone Farm RC6.\n\n" +
-        "Nguồn: " + SourceHead + "\n" +
-        "Gói: SHA-256 " + PackageSha256,
-        "TigerIQ Phone Farm Bootstrapper",
-        MessageBoxButtons.OK,
-        MessageBoxIcon.Information);
-    } finally {
-      TryDeleteFile(zip);
-      TryDeleteDirectory(staging);
+        ExtractSafe(zip, staging);
+        VerifyExtractedRelease(staging);
+
+        try {
+          Directory.Move(staging, target);
+        } catch (IOException) when (Directory.Exists(target)) {
+          Directory.Delete(staging, recursive: true);
+          VerifyExtractedRelease(target);
+        }
+      } finally {
+        TryDeleteFile(zip);
+        TryDeleteDirectory(staging);
+      }
+    } else {
+      VerifyExtractedRelease(target);
     }
+
+    ApplyOverlay(target);
+    var overlay = VerifyOverlay(target);
+    WriteOverlayReceipt(target, overlay.appSha256, overlay.testSha256);
+    WriteCurrentReceipt(root, target, overlay.appSha256, overlay.testSha256);
+    RestartTarget(target);
+
+    MessageBox.Show(
+      "Đã triển khai TigerIQ Phone Farm RC6 + overlay đã xác minh.\n\n" +
+      "Base: " + BaseSourceHead + "\n" +
+      "Overlay: " + OverlaySourceHead + "\n" +
+      "Gói RC6: SHA-256 " + PackageSha256,
+      "TigerIQ Phone Farm Bootstrapper",
+      MessageBoxButtons.OK,
+      MessageBoxIcon.Information);
   }
 
   private static async Task DownloadPinnedPackageAsync(string destination) {
@@ -116,7 +126,7 @@ internal static class Program {
     }) {
       Timeout = TimeSpan.FromMinutes(5)
     };
-    client.DefaultRequestHeaders.UserAgent.ParseAdd("TigerIQ-PhoneFarm-Bootstrapper/1.0");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("TigerIQ-PhoneFarm-Bootstrapper/1.1");
 
     using var response = await client.GetAsync(PackageUrl, HttpCompletionOption.ResponseHeadersRead);
     response.EnsureSuccessStatusCode();
@@ -188,7 +198,7 @@ internal static class Program {
     var root = doc.RootElement;
     string source = root.GetProperty("sourceHead").GetString() ?? "";
     string expectedExe = root.GetProperty("tigeriqExeSha256").GetString() ?? "";
-    if (!source.Equals(SourceHead, StringComparison.OrdinalIgnoreCase))
+    if (!source.Equals(BaseSourceHead, StringComparison.OrdinalIgnoreCase))
       throw new InvalidDataException("sourceHead trong BUILD_MANIFEST không khớp.");
     if (!IsHex(expectedExe, 64))
       throw new InvalidDataException("SHA-256 EXE trong BUILD_MANIFEST không hợp lệ.");
@@ -202,18 +212,145 @@ internal static class Program {
         throw new InvalidDataException("Gói RC6 thiếu " + required + ".");
   }
 
-  private static void WriteCurrentReceipt(string root, string installPath) {
+  private static void ApplyOverlay(string directory) {
+    WriteEmbeddedResourceAtomic(
+      Path.Combine(directory, "app.mjs"),
+      AppOverlayResource);
+    WriteEmbeddedResourceAtomic(
+      Path.Combine(directory, "test.mjs"),
+      TestOverlayResource);
+  }
+
+  private static (string appSha256, string testSha256) VerifyOverlay(string directory) {
+    string appPath = Path.Combine(directory, "app.mjs");
+    string testPath = Path.Combine(directory, "test.mjs");
+    string appExpected = HashEmbeddedResource(AppOverlayResource);
+    string testExpected = HashEmbeddedResource(TestOverlayResource);
+    string appActual = HashFile(appPath);
+    string testActual = HashFile(testPath);
+
+    if (!appActual.Equals(appExpected, StringComparison.OrdinalIgnoreCase))
+      throw new InvalidDataException("SHA-256 overlay app.mjs không khớp.");
+    if (!testActual.Equals(testExpected, StringComparison.OrdinalIgnoreCase))
+      throw new InvalidDataException("SHA-256 overlay test.mjs không khớp.");
+
+    return (appActual, testActual);
+  }
+
+  private static void WriteEmbeddedResourceAtomic(string destination, string resourceName) {
+    var assembly = Assembly.GetExecutingAssembly();
+    using var input = assembly.GetManifestResourceStream(resourceName)
+      ?? throw new InvalidDataException("Thiếu embedded overlay: " + resourceName);
+
+    string temp = destination + ".overlay-" + Guid.NewGuid().ToString("N") + ".tmp";
+    try {
+      using (var output = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
+        input.CopyTo(output);
+        output.Flush(flushToDisk: true);
+      }
+      File.Move(temp, destination, overwrite: true);
+    } finally {
+      TryDeleteFile(temp);
+    }
+  }
+
+  private static string HashEmbeddedResource(string resourceName) {
+    using var input = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName)
+      ?? throw new InvalidDataException("Thiếu embedded overlay: " + resourceName);
+    return Convert.ToHexString(SHA256.HashData(input)).ToLowerInvariant();
+  }
+
+  private static void WriteOverlayReceipt(string directory, string appSha256, string testSha256) {
     var receipt = new {
-      schema = "TIGERIQ_PHONE_FARM_CURRENT_RELEASE_V1",
-      sourceHead = SourceHead,
+      schema = "TIGERIQ_PHONE_FARM_OVERLAY_V1",
+      baseSourceHead = BaseSourceHead,
+      overlaySourceHead = OverlaySourceHead,
+      appSha256,
+      testSha256,
+      appliedAtUtc = DateTime.UtcNow.ToString("O"),
+      localOnly = true
+    };
+    WriteJsonAtomic(
+      Path.Combine(directory, "TIGERIQ_OVERLAY.json"),
+      receipt);
+  }
+
+  private static void WriteCurrentReceipt(
+    string root,
+    string installPath,
+    string appSha256,
+    string testSha256) {
+    var receipt = new {
+      schema = "TIGERIQ_PHONE_FARM_CURRENT_RELEASE_V2",
+      baseSourceHead = BaseSourceHead,
+      overlaySourceHead = OverlaySourceHead,
       packageSha256 = PackageSha256,
+      appSha256,
+      testSha256,
       installPath,
       verifiedAtUtc = DateTime.UtcNow.ToString("O"),
       localOnly = true
     };
-    File.WriteAllText(
+    WriteJsonAtomic(
       Path.Combine(root, "CURRENT_RELEASE.json"),
-      JsonSerializer.Serialize(receipt, new JsonSerializerOptions { WriteIndented = true }));
+      receipt);
+  }
+
+  private static void WriteJsonAtomic(string destination, object value) {
+    string temp = destination + ".tmp-" + Guid.NewGuid().ToString("N");
+    try {
+      File.WriteAllText(
+        temp,
+        JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true }));
+      File.Move(temp, destination, overwrite: true);
+    } finally {
+      TryDeleteFile(temp);
+    }
+  }
+
+  private static void RestartTarget(string directory) {
+    string exe = Path.GetFullPath(Path.Combine(directory, "TigerIQPhoneFarm.exe"));
+    StopTargetProcesses(exe);
+    Launch(directory);
+  }
+
+  private static void StopTargetProcesses(string expectedExe) {
+    foreach (var process in Process.GetProcessesByName("TigerIQPhoneFarm")) {
+      using (process) {
+        string? actualExe;
+        try {
+          actualExe = process.MainModule?.FileName;
+        } catch {
+          continue;
+        }
+        if (string.IsNullOrWhiteSpace(actualExe) ||
+            !Path.GetFullPath(actualExe).Equals(expectedExe, StringComparison.OrdinalIgnoreCase))
+          continue;
+
+        try {
+          if (!process.HasExited && process.CloseMainWindow())
+            process.WaitForExit(5000);
+          if (!process.HasExited) {
+            process.Kill(entireProcessTree: true);
+            process.WaitForExit(5000);
+          }
+        } catch (InvalidOperationException) {
+        }
+      }
+    }
+
+    foreach (var process in Process.GetProcessesByName("TigerIQPhoneFarm")) {
+      using (process) {
+        try {
+          string? actualExe = process.MainModule?.FileName;
+          if (!string.IsNullOrWhiteSpace(actualExe) &&
+              Path.GetFullPath(actualExe).Equals(expectedExe, StringComparison.OrdinalIgnoreCase) &&
+              !process.HasExited)
+            throw new InvalidOperationException("Không thể dừng đúng tiến trình TigerIQ Phone Farm để áp overlay.");
+        } catch (System.ComponentModel.Win32Exception) {
+        }
+      }
+    }
   }
 
   private static void Launch(string directory) {
