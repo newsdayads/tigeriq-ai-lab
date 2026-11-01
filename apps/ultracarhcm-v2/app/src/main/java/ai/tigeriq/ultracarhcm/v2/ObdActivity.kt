@@ -216,7 +216,9 @@ class ObdActivity : ComponentActivity() {
                     try { candidate?.close() } catch (_: Exception) { }
                 }
                 runOnUiThread {
-                    if (activityStarted && !isFinishing && !isDestroyed) {
+                    if (activityStarted && !isFinishing && !isDestroyed &&
+                        generation == connectionGeneration
+                    ) {
                         setConnection("OBD: kết nối thất bại")
                         updateButtons()
                     }
