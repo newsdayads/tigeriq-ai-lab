@@ -137,10 +137,11 @@ class UsbUvcController(
         if (requested && target == null && isUvcDevice(device)) {
             main.post {
                 if (requested && target == null) {
+                    val attached = sameAttachedUvc(device) ?: return@post
                     recoveryGeneration++
                     recoveryAttempts = 0
                     recoveryDeviceId = null
-                    selectTarget(device)
+                    selectTarget(attached)
                 }
             }
         }
