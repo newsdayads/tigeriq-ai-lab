@@ -19,6 +19,9 @@ const manifest = readFileSync(
   new URL('../../apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml', import.meta.url),
   'utf8',
 );
+const matrix = JSON.parse(
+  readFileSync(new URL('./f01-f22-source-matrix.json', import.meta.url), 'utf8'),
+);
 
 describe('GH-5135 F18 fail-closed admin/license surface', () => {
   it('exposes a real read-only product surface from Profile', () => {
@@ -42,5 +45,13 @@ describe('GH-5135 F18 fail-closed admin/license surface', () => {
     expect(activity).not.toMatch(/EditText|Password|credential/i);
     expect(activity).not.toMatch(/activate|registerDevice|renewLicense/i);
     expect(rules).not.toMatch(/token|secret|password/i);
+  });
+
+  it('records F18 as source-covered but not runtime-accepted', () => {
+    const feature = matrix.features.find((item: { id: string }) => item.id === 'F18');
+    expect(feature).toBeDefined();
+    expect(feature.status).toBe('PARTIAL_SOURCE');
+    expect(feature.testStatus).toBe('SOURCE_ONLY_NOT_ACCEPTED');
+    expect(feature.actual).toContain('performs no network call');
   });
 });
