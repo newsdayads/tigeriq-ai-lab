@@ -204,6 +204,14 @@ class UpdateRulesTest {
         assertFalse(UpdateRules.matchesPinnedSignerSha256("not-a-cert", "not-a-cert"))
     }
 
+    @Test fun matchesVersionNameExactlyWithoutCoercion() {
+        assertTrue(UpdateRules.matchesExpectedVersionName("2.0.0-test.12", "2.0.0-test.12"))
+        assertFalse(UpdateRules.matchesExpectedVersionName("2.0.0-test.12", "2.0.0-Test.12"))
+        assertFalse(UpdateRules.matchesExpectedVersionName("2.0.0-test.12", " 2.0.0-test.12 "))
+        assertFalse(UpdateRules.matchesExpectedVersionName("2.0.0-test.12", null))
+        assertFalse(UpdateRules.matchesExpectedVersionName("", ""))
+    }
+
     @Test fun comparesVersionCodesOnlyWhenReleaseIsAvailable() {
         val release = UpdateRules.validateMetadata(
             12L,
