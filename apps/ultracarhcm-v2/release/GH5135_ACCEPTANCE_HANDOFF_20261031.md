@@ -7,7 +7,7 @@ Prepared: 2026-10-31 (Asia/Ho_Chi_Minh)
 
 ## 1. Canonical source acceptance
 
-- Current accepted source main SHA: [`33cc758101c478a79aff87d19d545e909217bc15`](https://github.com/newsdayads/tigeriq-ai-lab/commit/33cc758101c478a79aff87d19d545e909217bc15)
+- Current accepted source main SHA: [`f22c408aaaa05d6dbf2ce90e2ea111b0c8eeaf4f`](https://github.com/newsdayads/tigeriq-ai-lab/commit/f22c408aaaa05d6dbf2ce90e2ea111b0c8eeaf4f)
 - Latest parity PR: [#5498 — evidence-backed narrow DeX HOME panel](https://github.com/newsdayads/tigeriq-ai-lab/pull/5498)
 - PR exact-head: `6a39682602123dbbee41f63075cdd45e180e12d4`
 - PR required checks: **7/7 SUCCESS**
@@ -76,12 +76,12 @@ Known dev.11 input:
 
 - Package: `ai.tigeriq.ultracarhcm.v2`
 - Version: `2.0.0-dev.11` / code `11`
-- Unsigned input SHA-256: `73ef300739f7c356b7f6939eac52246d8feba43b62335d40b9ca526e86e9d03c`
+- Unsigned input SHA-256: `7562c77c4c3c81a9764179ab55007ba5f25bdae5e1c9255d5d545bf962f0064c`
 - Required signer certificate SHA-256: `71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558`
 
 Current verified state:
 
-- The dev.11 handoff APK is **unsigned**; `apksigner verify` fails as expected.
+- The current-main dev.11 handoff APK `MAIN_f22c408aa` is **unsigned**; `apksigner verify` fails as expected.
 - The separately authorized local-user V2 signing task is **ABSENT**.
 - The expected signed dev.11 output is **ABSENT**.
 - Existing V1 signing task must **not** be repurposed.
@@ -89,7 +89,7 @@ Current verified state:
 
 Final blocker readback: [signer/hardware blocker checkpoint](https://github.com/newsdayads/tigeriq-ai-lab/issues/5135#issuecomment-6534937283)
 
-Important lineage note: the existing dev.11 signer input is from `MAIN_9140534`, while the currently accepted source main SHA is `33cc758101c478a79aff87d19d545e909217bc15`. Therefore the final R08/R10 artifact must be rebuilt/pinned from the current accepted main before full acceptance; an older signed dev.11 artifact would not prove current-main acceptance.
+Current lineage note: the dev.11 signer input is rebuilt from current main `f22c408aaaa05d6dbf2ce90e2ea111b0c8eeaf4f` and pinned as `MAIN_f22c408aa`; signing and device acceptance must use this exact artifact.
 
 ## 4. Hardware acceptance gates
 
