@@ -177,7 +177,7 @@ class UpdateActivity : ComponentActivity() {
             return
         }
 
-        recordUpdateNotice(metadata)
+        val noticeRecorded = recordUpdateNotice(metadata)
         pendingUpdate = metadata
         status.text = buildString {
             append("Có bản mới: ")
@@ -193,6 +193,9 @@ class UpdateActivity : ComponentActivity() {
             append(metadata.sha256)
             append("\nGói chưa được tin cậy cho đến khi bytes tải về được kiểm SHA-256.")
             if (metadata.mandatory) append("\nBản cập nhật được đánh dấu bắt buộc bởi metadata.")
+            if (!noticeRecorded) {
+                append("\n\nKhông thể lưu thông báo cập nhật cục bộ trên thiết bị.")
+            }
         }
         downloadButton.visibility = View.VISIBLE
     }
@@ -275,12 +278,14 @@ class UpdateActivity : ComponentActivity() {
         }
     }
 
-    private fun recordUpdateNotice(metadata: UpdateMetadata) {
+    private fun recordUpdateNotice(metadata: UpdateMetadata): Boolean {
         val prefs = getSharedPreferences(NotificationRules.PREFS_NAME, Context.MODE_PRIVATE)
         val previousVersionCode = prefs.getLong(NotificationRules.KEY_VERSION_CODE, 0L)
-        if (!NotificationRules.shouldReplaceNotice(previousVersionCode, metadata.latestVersionCode)) return
+        if (!NotificationRules.shouldReplaceNotice(previousVersionCode, metadata.latestVersionCode)) {
+            return true
+        }
 
-        prefs.edit()
+        return prefs.edit()
             .putLong(NotificationRules.KEY_VERSION_CODE, metadata.latestVersionCode)
             .putString(
                 NotificationRules.KEY_VERSION_NAME,
@@ -292,7 +297,7 @@ class UpdateActivity : ComponentActivity() {
             )
             .putLong(NotificationRules.KEY_CREATED_AT, System.currentTimeMillis())
             .putBoolean(NotificationRules.KEY_READ, false)
-            .apply()
+            .commit()
     }
 
     private fun currentVersionCode(): Long {
