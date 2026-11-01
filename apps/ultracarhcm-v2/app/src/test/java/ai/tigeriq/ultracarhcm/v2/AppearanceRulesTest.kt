@@ -20,6 +20,15 @@ class AppearanceRulesTest {
         assertFalse(AppearanceRules.isSupportedKind("audio"))
     }
 
+    @Test fun requiresObservedMimeToMatchTheExpectedBackgroundKind() {
+        assertTrue(AppearanceRules.matchesExpectedMime("image/jpeg", AppearanceRules.KIND_IMAGE))
+        assertTrue(AppearanceRules.matchesExpectedMime("video/mp4", AppearanceRules.KIND_VIDEO))
+        assertFalse(AppearanceRules.matchesExpectedMime(null, AppearanceRules.KIND_IMAGE))
+        assertFalse(AppearanceRules.matchesExpectedMime("application/octet-stream", AppearanceRules.KIND_IMAGE))
+        assertFalse(AppearanceRules.matchesExpectedMime("video/mp4", AppearanceRules.KIND_IMAGE))
+        assertFalse(AppearanceRules.matchesExpectedMime("image/png", "audio"))
+    }
+
     @Test fun exposesVerifiedDayNightLabelsOnly() {
         assertEquals("Ban ngày", AppearanceRules.modeLabel(false))
         assertEquals("Ban đêm", AppearanceRules.modeLabel(true))

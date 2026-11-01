@@ -108,9 +108,9 @@ class AppearanceActivity : ComponentActivity() {
     }
 
     private fun persistCustomBackground(uri: Uri, expectedKind: String) {
-        val observedKind = AppearanceRules.kindForMime(contentResolver.getType(uri))
-        if (observedKind != null && observedKind != expectedKind) {
-            toast("Loại tệp không khớp lựa chọn")
+        val observedMime = contentResolver.getType(uri)
+        if (!AppearanceRules.matchesExpectedMime(observedMime, expectedKind)) {
+            toast("Không xác minh được loại tệp ảnh/video đã chọn")
             return
         }
 

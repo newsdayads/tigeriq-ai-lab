@@ -15,6 +15,9 @@ internal object AppearanceRules {
     fun isSupportedKind(kind: String?): Boolean =
         kind == KIND_IMAGE || kind == KIND_VIDEO
 
+    fun matchesExpectedMime(mimeType: String?, expectedKind: String): Boolean =
+        isSupportedKind(expectedKind) && kindForMime(mimeType) == expectedKind
+
     fun modeLabel(night: Boolean): String =
         if (night) "Ban đêm" else "Ban ngày"
 }
