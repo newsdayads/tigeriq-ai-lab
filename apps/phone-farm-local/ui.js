@@ -391,7 +391,18 @@ $('macroTab').onclick=()=>setTab('tasks');
 $('scheduleTab').onclick=()=>{setTab('tasks');showSchedules()};
 $('screenInfo').onclick=async()=>{try{const x=await api('/api/health');toast('ADB '+(x.adbExists?'OK':'MISSING')+' • scrcpy '+(x.scrcpyExists?'OK':'MISSING')+' • '+online().length+' máy online')}catch(e){toast(e.message,true)}};
 $('scanWifi').onclick=async()=>{
-  const address=prompt('Nhập IP:port của Android đã bật/ghép đôi Wireless ADB trong LAN (vd 192.168.1.20:5555)');
+  const usbSerial=active().find(serial=>!serial.includes(':'));
+  if(usbSerial){
+    try{
+      const candidate=await api('/api/wifi/candidate?serial='+encodeURIComponent(usbSerial));
+      if(!confirm('Đã tìm thấy WiFi ADB '+candidate.address+' từ '+usbSerial+'. Kết nối ngay?'))return;
+      const r=await api('/api/wifi/connect',{address:candidate.address});
+      toast('Đã kết nối WiFi ADB: '+r.address);
+      await refresh();
+    }catch(e){toast('Dò WiFi ADB: '+e.message,true)}
+    return;
+  }
+  const address=prompt('Chọn một thiết bị USB để tự dò, hoặc nhập IP:port Wireless ADB đã bật sẵn trong LAN (vd 192.168.1.20:5555)');
   if(address===null)return;
   try{const r=await api('/api/wifi/connect',{address:address.trim()});toast('Đã kết nối WiFi ADB: '+r.address);await refresh()}
   catch(e){toast('WiFi ADB: '+e.message,true)}

@@ -247,6 +247,21 @@ test('WiFi candidate endpoint remains discovery-only and never enables ADB TCP m
 });
 
 
+test('WiFi ADB UI discovers an existing endpoint from selected USB before connecting', () => {
+  const dir=path.dirname(fileURLToPath(import.meta.url));
+  const ui=fs.readFileSync(path.join(dir,'ui.js'),'utf8');
+  const html=fs.readFileSync(path.join(dir,'index.html'),'utf8');
+  assert.match(html,/id="scanWifi">Dò WiFi ADB<\/button>/);
+  assert.match(ui,/active\(\)\.find\(serial=>!serial\.includes\(':'\)\)/);
+  assert.match(ui,/\/api\/wifi\/candidate\?serial=/);
+  assert.match(ui,/candidate\.address/);
+  assert.match(ui,/confirm\('Đã tìm thấy WiFi ADB /);
+  assert.match(ui,/\/api\/wifi\/connect/);
+  assert.doesNotMatch(ui,/adb\s+tcpip/i);
+  assert.doesNotMatch(ui,/setprop\s+service\.adb\.tcp\.port/i);
+});
+
+
 test('non-shell RC5 bootstrapper is pinned and fails closed before deployment', () => {
   const dir=path.dirname(fileURLToPath(import.meta.url));
   const source=fs.readFileSync(path.join(dir,'windows','bootstrapper','Program.cs'),'utf8');
