@@ -38,6 +38,16 @@ describe('GH-5135 F13 Taxi Meter persistence source contract', () => {
     expect(prepend).not.toContain('.apply()');
   });
 
+  it('recovers corrupt stored history with synchronous fail-visible cleanup', () => {
+    const start = taxi.indexOf('private fun history(): JSONArray');
+    const end = taxi.indexOf('private fun prependHistory', start);
+    const block = taxi.slice(start, end);
+    expect(block).toContain('Corrupt Taxi Meter history');
+    expect(block).toContain('remove(TaxiMeterRules.KEY_HISTORY).commit()');
+    expect(block).toContain('Failed to persist corrupt Taxi Meter history cleanup');
+    expect(block).not.toContain('.apply()');
+  });
+
   it('clears history only after durable persistence succeeds', () => {
     expect(taxi).toMatch(
       /remove\(TaxiMeterRules\.KEY_HISTORY\)\.commit\(\)[\s\S]*renderHistory\(\)[\s\S]*Đã xóa lịch sử Taxi Meter V2/,
