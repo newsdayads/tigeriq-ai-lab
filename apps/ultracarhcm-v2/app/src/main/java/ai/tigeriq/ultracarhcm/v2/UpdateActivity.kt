@@ -376,9 +376,13 @@ class UpdateActivity : ComponentActivity() {
         val candidateCode = packageVersionCode(candidate)
         if (candidate.packageName != packageName ||
             candidateCode != metadata.latestVersionCode ||
+            !UpdateRules.matchesExpectedVersionName(
+                metadata.latestVersionName,
+                candidate.versionName,
+            ) ||
             candidateCode <= packageVersionCode(installed)
         ) {
-            throw SecurityException("APK sai package hoặc versionCode")
+            throw SecurityException("APK sai package, versionCode hoặc versionName")
         }
 
         val candidateSigner = signerSha256(candidate)

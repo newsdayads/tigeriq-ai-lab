@@ -37,6 +37,9 @@ describe('GH-5135 F15/F20 update payload integrity', () => {
     const verifyBlock = activity.slice(verifyStart, installerStart);
     expect(verifyBlock).toContain('candidate.packageName != packageName');
     expect(verifyBlock).toContain('candidateCode != metadata.latestVersionCode');
+    expect(verifyBlock).toContain('UpdateRules.matchesExpectedVersionName(');
+    expect(verifyBlock).toContain('metadata.latestVersionName');
+    expect(verifyBlock).toContain('candidate.versionName');
     expect(verifyBlock).toContain('UpdateRules.matchesPinnedSignerSha256');
     expect(verifyBlock).toContain('candidateSigner.equals(installedSigner, ignoreCase = true)');
 

@@ -22,6 +22,16 @@ describe('GH-5135 F19 trip report hub source', () => {
     expect(manifest).toContain('<activity android:name=".ReportActivity" android:exported="false"');
   });
 
+  it('recovers corrupt Taxi history before rendering or export without broad storage', () => {
+    const start = report.indexOf('private fun readRows(): List<TripReportRow>');
+    const end = report.indexOf('private fun exactLong', start);
+    const block = report.slice(start, end);
+    expect(block).toContain('Corrupt Taxi Meter history in report');
+    expect(block).toContain('remove(TaxiMeterRules.KEY_HISTORY).commit()');
+    expect(block).toContain('Failed to persist corrupt Taxi Meter report-history cleanup');
+    expect(block).not.toContain('.apply()');
+  });
+
   it('does not add broad storage permissions for report export', () => {
     expect(manifest).not.toContain('READ_EXTERNAL_STORAGE');
     expect(manifest).not.toContain('WRITE_EXTERNAL_STORAGE');

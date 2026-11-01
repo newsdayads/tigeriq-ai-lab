@@ -278,6 +278,13 @@ class HomeActivity : ComponentActivity() {
             JSONArray(prefs.getString("v2_quick_slots", "[]") ?: "[]")
         } catch (e: Exception) {
             android.util.Log.w("UltraCarV2", "Corrupt quick-slot state", e)
+            val cleared = prefs.edit().remove("v2_quick_slots").commit()
+            if (!cleared) {
+                android.util.Log.e(
+                    "UltraCarV2",
+                    "Failed to persist corrupt quick-slot cleanup",
+                )
+            }
             JSONArray()
         }
         val normalized = JSONArray()
@@ -577,7 +584,13 @@ class HomeActivity : ComponentActivity() {
             JSONArray(prefs.getString("v2_home_configs", "[]") ?: "[]")
         } catch (e: Exception) {
             android.util.Log.w("UltraCarV2", "Corrupt local HOME config", e)
-            prefs.edit().remove("v2_home_configs").apply()
+            val cleared = prefs.edit().remove("v2_home_configs").commit()
+            if (!cleared) {
+                android.util.Log.e(
+                    "UltraCarV2",
+                    "Failed to persist corrupt HOME config cleanup",
+                )
+            }
             return JSONArray()
         }
         val normalized = JSONArray()
@@ -598,7 +611,15 @@ class HomeActivity : ComponentActivity() {
             normalized.put(safe)
         }
         if (normalized.toString() != raw.toString()) {
-            prefs.edit().putString("v2_home_configs", normalized.toString()).apply()
+            val persisted = prefs.edit()
+                .putString("v2_home_configs", normalized.toString())
+                .commit()
+            if (!persisted) {
+                android.util.Log.e(
+                    "UltraCarV2",
+                    "Failed to persist normalized HOME configurations",
+                )
+            }
         }
         return normalized
     }
@@ -612,7 +633,13 @@ class HomeActivity : ComponentActivity() {
         val raw = prefs.getString(key, null) ?: return null
         val configId = SavedLayoutShortcutRules.normalizeConfigId(raw)
         if (!SavedLayoutShortcutRules.validConfigId(configId)) {
-            prefs.edit().remove(key).commit()
+            val cleared = prefs.edit().remove(key).commit()
+            if (!cleared) {
+                android.util.Log.e(
+                    "UltraCarV2",
+                    "Failed to persist stale saved-layout shortcut cleanup for slot=$index",
+                )
+            }
             return null
         }
         return configId
@@ -631,9 +658,9 @@ class HomeActivity : ComponentActivity() {
         return editor.commit()
     }
 
-    private fun clearSavedLayoutShortcutReferences(configId: String) {
+    private fun clearSavedLayoutShortcutReferences(configId: String): Boolean {
         val safeId = SavedLayoutShortcutRules.normalizeConfigId(configId)
-        if (!SavedLayoutShortcutRules.validConfigId(safeId)) return
+        if (!SavedLayoutShortcutRules.validConfigId(safeId)) return true
         val shortcutPrefs = savedLayoutShortcutPrefs()
         val editor = shortcutPrefs.edit()
         var changed = false
@@ -644,7 +671,7 @@ class HomeActivity : ComponentActivity() {
                 changed = true
             }
         }
-        if (changed) editor.commit()
+        return !changed || editor.commit()
     }
 
     private fun savedConfigurationById(entries: JSONArray, configId: String): JSONObject? {
@@ -864,12 +891,26 @@ class HomeActivity : ComponentActivity() {
             val safe = normalizeHomeConfiguration(item)
                 ?: throw IllegalArgumentException("Unsupported HOME config schema")
             if (safe.toString() != item.toString()) {
-                prefs.edit().putString("v2_default_home_config", safe.toString()).apply()
+                val persisted = prefs.edit()
+                    .putString("v2_default_home_config", safe.toString())
+                    .commit()
+                if (!persisted) {
+                    android.util.Log.e(
+                        "UltraCarV2",
+                        "Failed to persist normalized default HOME configuration",
+                    )
+                }
             }
             applyHomeConfiguration(safe, false)
         } catch (e: Exception) {
             android.util.Log.w("UltraCarV2", "Corrupt or unsupported default HOME configuration", e)
-            prefs.edit().remove("v2_default_home_config").apply()
+            val cleared = prefs.edit().remove("v2_default_home_config").commit()
+            if (!cleared) {
+                android.util.Log.e(
+                    "UltraCarV2",
+                    "Failed to persist default HOME config cleanup",
+                )
+            }
         }
     }
 
@@ -1026,8 +1067,14 @@ class HomeActivity : ComponentActivity() {
                                     editor.remove("v2_default_home_config")
                                 }
                                 if (editor.commit()) {
-                                    clearSavedLayoutShortcutReferences(item.optString("configId", ""))
-                                    toast("Đã xóa cấu hình khỏi thiết bị")
+                                    val shortcutsCleared = clearSavedLayoutShortcutReferences(
+                                        item.optString("configId", ""),
+                                    )
+                                    if (shortcutsCleared) {
+                                        toast("Đã xóa cấu hình khỏi thiết bị")
+                                    } else {
+                                        toast("Đã xóa cấu hình nhưng không thể dọn phím bố cục cũ")
+                                    }
                                 } else {
                                     toast("Không thể xóa cấu hình khỏi thiết bị")
                                 }
