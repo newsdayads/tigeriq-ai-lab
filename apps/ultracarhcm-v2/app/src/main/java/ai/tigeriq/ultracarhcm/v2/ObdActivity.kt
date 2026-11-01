@@ -37,6 +37,7 @@ class ObdActivity : ComponentActivity() {
     private lateinit var refreshButton: Button
 
     private val worker = Executors.newSingleThreadExecutor()
+    private val socketLock = Any()
     @Volatile private var socket: BluetoothSocket? = null
     @Volatile private var pendingSocket: BluetoothSocket? = null
     @Volatile private var selectedDevice: BluetoothDevice? = null
@@ -192,35 +193,38 @@ class ObdActivity : ComponentActivity() {
                 }
                 val active = device.createRfcommSocketToServiceRecord(SPP_UUID)
                 candidate = active
-                if (!activityStarted || isFinishing || isDestroyed ||
-                    generation != connectionGeneration
-                ) {
+                val pendingRegistered = synchronized(socketLock) {
+                    if (!activityStarted || isFinishing || isDestroyed ||
+                        generation != connectionGeneration
+                    ) {
+                        false
+                    } else {
+                        pendingSocket = active
+                        true
+                    }
+                }
+                if (!pendingRegistered) {
                     try { active.close() } catch (_: Exception) { }
                     return@execute
                 }
-                pendingSocket = active
-                if (!activityStarted || isFinishing || isDestroyed ||
-                    generation != connectionGeneration || pendingSocket !== active
-                ) {
-                    if (pendingSocket === active) pendingSocket = null
-                    try { active.close() } catch (_: Exception) { }
-                    return@execute
-                }
+
                 active.connect()
                 initializeAdapter(active)
-                if (!activityStarted || isFinishing || isDestroyed ||
-                    generation != connectionGeneration || pendingSocket !== active
-                ) {
-                    if (pendingSocket === active) pendingSocket = null
-                    try { active.close() } catch (_: Exception) { }
-                    return@execute
+
+                val published = synchronized(socketLock) {
+                    if (!activityStarted || isFinishing || isDestroyed ||
+                        generation != connectionGeneration || pendingSocket !== active
+                    ) {
+                        if (pendingSocket === active) pendingSocket = null
+                        false
+                    } else {
+                        pendingSocket = null
+                        socket = active
+                        true
+                    }
                 }
-                pendingSocket = null
-                socket = active
-                if (!activityStarted || isFinishing || isDestroyed ||
-                    generation != connectionGeneration
-                ) {
-                    clearPublishedSocket(active)
+                if (!published) {
+                    try { active.close() } catch (_: Exception) { }
                     return@execute
                 }
                 runOnUiThread {
@@ -235,9 +239,12 @@ class ObdActivity : ComponentActivity() {
                     queryTelemetry()
                 }
             } catch (error: Exception) {
-                if (pendingSocket === candidate) pendingSocket = null
-                if (socket === candidate) {
-                    disconnect()
+                val publishedCandidate = synchronized(socketLock) {
+                    if (pendingSocket === candidate) pendingSocket = null
+                    socket === candidate
+                }
+                if (publishedCandidate && candidate != null) {
+                    clearPublishedSocket(candidate)
                 } else {
                     try { candidate?.close() } catch (_: Exception) { }
                 }
@@ -337,16 +344,29 @@ class ObdActivity : ComponentActivity() {
     }
 
     private fun clearPublishedSocket(expected: BluetoothSocket) {
-        if (socket !== expected) return
-        socket = null
-        try { expected.close() } catch (_: Exception) { }
+        val shouldClose = synchronized(socketLock) {
+            if (socket !== expected) {
+                false
+            } else {
+                socket = null
+                true
+            }
+        }
+        if (shouldClose) {
+            try { expected.close() } catch (_: Exception) { }
+        }
     }
 
     private fun disconnect() {
-        val active = socket
-        val pending = pendingSocket
-        socket = null
-        pendingSocket = null
+        val sockets = synchronized(socketLock) {
+            val active = socket
+            val pending = pendingSocket
+            socket = null
+            pendingSocket = null
+            active to pending
+        }
+        val active = sockets.first
+        val pending = sockets.second
         try { active?.close() } catch (_: Exception) { }
         if (pending !== active) {
             try { pending?.close() } catch (_: Exception) { }
