@@ -26,6 +26,21 @@ describe('GH-5135 F09/F15 durable local UI state', () => {
     expect(block.indexOf('.commit()')).toBeLessThan(block.indexOf('refreshStatus()'));
   });
 
+  it('rejects unknown or mismatched MIME before taking a URI grant or mutating preferences', () => {
+    const start = appearance.indexOf('private fun persistCustomBackground');
+    const end = appearance.indexOf('private fun releasePersistedUri', start);
+    const block = appearance.slice(start, end);
+    expect(block).toContain('val observedMime = contentResolver.getType(uri)');
+    expect(block).toContain('if (!AppearanceRules.matchesExpectedMime(observedMime, expectedKind))');
+    expect(block).toContain('Không xác minh được loại tệp ảnh/video đã chọn');
+    expect(block.indexOf('matchesExpectedMime')).toBeLessThan(
+      block.indexOf('takePersistableUriPermission'),
+    );
+    expect(block.indexOf('matchesExpectedMime')).toBeLessThan(
+      block.indexOf('.putString(AppearanceRules.PREF_CUSTOM_BACKGROUND_URI'),
+    );
+  });
+
   it('persists a new custom background before releasing the previous URI grant', () => {
     const start = appearance.indexOf('private fun persistCustomBackground');
     const end = appearance.indexOf('private fun releasePersistedUri', start);
