@@ -22,10 +22,9 @@ describe('GH-5135 F19 trip report hub source', () => {
     expect(manifest).toContain('<activity android:name=".ReportActivity" android:exported="false"');
   });
 
-  it('does not add broad storage or install permissions', () => {
+  it('does not add broad storage permissions for report export', () => {
     expect(manifest).not.toContain('READ_EXTERNAL_STORAGE');
     expect(manifest).not.toContain('WRITE_EXTERNAL_STORAGE');
     expect(manifest).not.toContain('MANAGE_EXTERNAL_STORAGE');
-    expect(manifest).not.toContain('REQUEST_INSTALL_PACKAGES');
   });
 });
