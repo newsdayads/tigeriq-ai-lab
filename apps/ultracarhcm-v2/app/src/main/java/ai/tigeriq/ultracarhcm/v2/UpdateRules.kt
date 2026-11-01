@@ -50,13 +50,14 @@ internal object UpdateRules {
     fun isTrustedV2PayloadUrl(raw: String): Boolean = try {
         val value = raw.trim()
         val uri = URI(value)
-        if (!isSecureHttpsUrl(value) || uri.fragment != null) return false
-        val host = uri.host.lowercase()
-        when {
-            host == "github.com" -> isTrustedV2ReleaseUrl(value)
-            host in trustedPayloadRedirectHosts -> true
-            else -> false
-        }
+        val host = uri.host?.lowercase().orEmpty()
+        isSecureHttpsUrl(value) &&
+            uri.fragment == null &&
+            when {
+                host == "github.com" -> isTrustedV2ReleaseUrl(value)
+                host in trustedPayloadRedirectHosts -> true
+                else -> false
+            }
     } catch (_: Exception) {
         false
     }
