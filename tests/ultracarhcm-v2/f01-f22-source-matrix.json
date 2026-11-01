@@ -34,10 +34,11 @@
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleActivity.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleRules.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleRules.kt",
+        "tests/ultracarhcm-v2/vehicle-profile-persistence-source.test.ts"
       ],
-      "gap": "Two verified source vehicle choices, local model/color selection and license-plate display are implemented; full V1 branded card styling, moving-state behavior and real-media parity remain open.",
-      "actual": "VehicleActivity lets the user choose between the two existing source vehicle choices (Limo đỏ and Lamborghini trắng) and store a bounded local license plate. It writes the legacy limo boolean for migration compatibility, and Home renders the selected parked vehicle plus the saved plate.",
+      "gap": "Two verified source vehicle choices, local model/color selection and bounded license-plate display are implemented. Vehicle model plus legacy migration flag and license-plate changes now require synchronous persistence success before refreshing or acknowledging the UI. Full V1 branded card styling, moving-state behavior and real-media parity remain open.",
+      "actual": "VehicleActivity lets the user choose between the two existing source vehicle choices (Limo đỏ and Lamborghini trắng) and store a bounded local license plate. It commits vehicle model plus the legacy limo migration boolean and commits the normalized plate before showing success; Home renders the selected parked vehicle plus the saved plate.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.render",
@@ -328,10 +329,11 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
         "apps/ultracarhcm-v1/release/build-v66-profile-red-test.mjs",
         "tests/ultracar-v66-profile-red.test.mjs",
-        "tests/ultracarhcm-v2/profile-v66-subtitle-source.test.ts"
+        "tests/ultracarhcm-v2/profile-v66-subtitle-source.test.ts",
+        "tests/ultracarhcm-v2/vehicle-profile-persistence-source.test.ts"
       ],
-      "gap": "The verified V1 V66 original Profile-header subtitle behavior is now reflected in V2: the real installed V2 version/build appears directly under the Profile title in red, with no floating version badge. Local driver-name editing also remains implemented. Identity/license backend, registration/extension, remaining exact V1 card styling and real-device Profile acceptance remain unverified and are intentionally not fabricated.",
-      "actual": "ProfileActivity renders the runtime V2 version/build as the red header subtitle at the original Profile location, keeps version/update actions inside normal cards rather than a floating badge, edits the same device-local driver display name used by Home, and leaves license/registration fail-closed until a verified backend contract exists.",
+      "gap": "The verified V1 V66 original Profile-header subtitle behavior is reflected in V2: real installed V2 version/build appears directly under the Profile title in red, with no floating version badge. Driver-name edits from both Profile and Home now require synchronous persistence before UI acknowledgement/rerender. Identity/license backend, registration/extension, remaining exact V1 card styling and real-device Profile acceptance remain unverified and are intentionally not fabricated.",
+      "actual": "ProfileActivity renders the runtime V2 version/build as the red header subtitle at the original Profile location, keeps version/update actions inside normal cards rather than a floating badge, and edits the same device-local driver display name used by Home. Profile and Home driver-name mutations commit synchronously and surface storage failure. License/registration remains fail-closed until a verified backend contract exists.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.showSettings",
