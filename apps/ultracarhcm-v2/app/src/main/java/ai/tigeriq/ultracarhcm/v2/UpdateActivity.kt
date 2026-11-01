@@ -482,6 +482,7 @@ class UpdateActivity : ComponentActivity() {
     private fun clearVerifiedCandidate() {
         verifiedApk?.file?.delete()
         verifiedApk = null
+        installerHandoff = false
         if (::installButton.isInitialized) installButton.visibility = View.GONE
     }
 
