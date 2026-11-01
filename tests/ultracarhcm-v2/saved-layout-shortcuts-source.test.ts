@@ -48,8 +48,13 @@ describe('GH-5135 F08 saved-layout shortcuts source contract', () => {
     expect(home).toContain('String.format(Locale.US, "+%02d", index + 1)');
   });
 
-  it('clears deleted or stale shortcut references instead of opening the wrong layout', () => {
-    expect(home).toContain('clearSavedLayoutShortcutReferences(item.optString("configId", ""))');
+  it('clears deleted or stale shortcut references durably and exposes cleanup failure', () => {
+    expect(home).toContain('private fun clearSavedLayoutShortcutReferences(configId: String): Boolean');
+    expect(home).toContain('return !changed || editor.commit()');
+    expect(home).toContain('val cleared = prefs.edit().remove(key).commit()');
+    expect(home).toContain('Failed to persist stale saved-layout shortcut cleanup');
+    expect(home).toContain('val shortcutsCleared = clearSavedLayoutShortcutReferences(');
+    expect(home).toContain('Đã xóa cấu hình nhưng không thể dọn phím bố cục cũ');
     expect(home).toContain('if (configId != null && item == null) saveSavedLayoutShortcut(index, null)');
     expect(home).toContain('Bố cục đã gán không còn tồn tại');
   });
