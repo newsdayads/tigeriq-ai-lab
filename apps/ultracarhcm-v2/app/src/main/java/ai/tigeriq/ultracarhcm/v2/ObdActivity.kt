@@ -194,9 +194,7 @@ class ObdActivity : ComponentActivity() {
                 val active = device.createRfcommSocketToServiceRecord(SPP_UUID)
                 candidate = active
                 val pendingRegistered = synchronized(socketLock) {
-                    if (!activityStarted || isFinishing || isDestroyed ||
-                        generation != connectionGeneration
-                    ) {
+                    if (!activityStarted || isFinishing || isDestroyed || generation != connectionGeneration) {
                         false
                     } else {
                         pendingSocket = active
