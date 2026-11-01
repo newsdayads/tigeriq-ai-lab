@@ -299,10 +299,11 @@
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TaxiMeterActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TaxiMeterRules.kt",
-        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml"
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
+        "tests/ultracarhcm-v2/taxi-meter-persistence-source.test.ts"
       ],
-      "gap": "Foreground GPS trip distance/time, Owner-configured rate, local trip history and revenue are implemented in source; real-device GPS accuracy, V1 tariff semantics/UI parity and long-trip behavior are not accepted.",
-      "actual": "TaxiMeterActivity tracks foreground-only elapsed time and GPS distance, requires an explicit Owner-entered VND/km rate, calculates distance-based fare, and stores a bounded local V2 trip history with recorded revenue. No V1 tariff is guessed.",
+      "gap": "Foreground GPS trip distance/time, Owner-configured rate, local trip history and revenue are implemented in source. Configured rate must now commit successfully before a trip starts; completed-trip history and history deletion also require synchronous persistence success before UI acknowledgement. Real-device GPS accuracy, V1 tariff semantics/UI parity and long-trip behavior are not accepted.",
+      "actual": "TaxiMeterActivity tracks foreground-only elapsed time and GPS distance, requires an explicit Owner-entered VND/km rate, and calculates distance-based fare. It synchronously commits the configured rate before entering the running state, commits bounded local trip history before showing a saved-trip acknowledgement, and only refreshes cleared history after durable delete succeeds. No V1 tariff is guessed.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "TelemetryActivity.buildContent",

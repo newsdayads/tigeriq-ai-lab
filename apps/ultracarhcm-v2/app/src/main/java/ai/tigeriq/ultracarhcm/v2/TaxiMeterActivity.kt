@@ -134,8 +134,12 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
         body.addView(Button(this).apply {
             text = "Xóa lịch sử Taxi Meter V2"
             setOnClickListener {
-                prefs.edit().remove(TaxiMeterRules.KEY_HISTORY).apply()
-                renderHistory()
+                if (prefs.edit().remove(TaxiMeterRules.KEY_HISTORY).commit()) {
+                    renderHistory()
+                    toast("Đã xóa lịch sử Taxi Meter V2")
+                } else {
+                    toast("Không thể xóa lịch sử Taxi Meter V2")
+                }
             }
         })
 
@@ -163,8 +167,11 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
             return
         }
 
+        if (!prefs.edit().putString(TaxiMeterRules.KEY_RATE, parsedRate.toString()).commit()) {
+            toast("Không thể lưu giá/km — chưa bắt đầu chuyến")
+            return
+        }
         rateVndPerKm = parsedRate
-        prefs.edit().putString(TaxiMeterRules.KEY_RATE, parsedRate.toString()).apply()
         running = true
         distanceMeters = 0.0
         activeElapsedMs = 0L
@@ -285,8 +292,12 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
                 .put("distanceMeters", distanceMeters)
                 .put("rateVndPerKm", rateVndPerKm)
                 .put("fareVnd", fare)
-            prependHistory(record)
-            renderHistory()
+            if (prependHistory(record)) {
+                renderHistory()
+                toast("Đã lưu chuyến Taxi Meter V2")
+            } else {
+                toast("Không thể lưu lịch sử chuyến Taxi Meter V2")
+            }
         }
         updateMeterUi()
     }
@@ -297,14 +308,16 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
         JSONArray()
     }
 
-    private fun prependHistory(record: JSONObject) {
+    private fun prependHistory(record: JSONObject): Boolean {
         val old = history()
         val next = JSONArray().put(record)
         val limit = minOf(old.length(), TaxiMeterRules.MAX_HISTORY - 1)
         for (index in 0 until limit) {
             old.optJSONObject(index)?.let(next::put)
         }
-        prefs.edit().putString(TaxiMeterRules.KEY_HISTORY, next.toString()).apply()
+        return prefs.edit()
+            .putString(TaxiMeterRules.KEY_HISTORY, next.toString())
+            .commit()
     }
 
     private fun writeTripReport(uri: Uri) {
