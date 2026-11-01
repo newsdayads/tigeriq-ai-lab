@@ -1428,8 +1428,11 @@ class HomeActivity : ComponentActivity() {
                 val name = HomeConfigRules.normalizeName(input.text.toString())
                 if (name.isEmpty()) toast("Tên tài xế không được để trống")
                 else {
-                    prefs.edit().putString("driver_name", name).apply()
-                    render()
+                    if (prefs.edit().putString("driver_name", name).commit()) {
+                        render()
+                    } else {
+                        toast("Không thể lưu tên tài xế V2")
+                    }
                 }
             }.show()
     }

@@ -113,10 +113,13 @@ class ProfileActivity : ComponentActivity() {
                 if (name.isEmpty()) {
                     toast("Tên hiển thị không được để trống")
                 } else {
-                    homePrefs.edit().putString("driver_name", name).apply()
-                    input.setText(name)
-                    input.setSelection(name.length)
-                    toast("Đã lưu hồ sơ V2 trên thiết bị")
+                    if (homePrefs.edit().putString("driver_name", name).commit()) {
+                        input.setText(name)
+                        input.setSelection(name.length)
+                        toast("Đã lưu hồ sơ V2 trên thiết bị")
+                    } else {
+                        toast("Không thể lưu hồ sơ V2")
+                    }
                 }
             }
         })
