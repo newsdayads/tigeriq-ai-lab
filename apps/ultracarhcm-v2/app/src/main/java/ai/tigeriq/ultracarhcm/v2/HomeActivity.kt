@@ -852,7 +852,7 @@ class HomeActivity : ComponentActivity() {
         safe.optJSONArray("quickSlots")?.let { slots ->
             editor.putString("v2_quick_slots", normalizedQuickSlotsForStorage(slots).toString())
         }
-        if (!editor.commit()) return rollbackRestoreAndFail()
+        if (!editor.commit()) return false
         if (renderAfter) render()
         return true
     }
@@ -1461,7 +1461,7 @@ class HomeActivity : ComponentActivity() {
             .putString("v2_home_configs", safeConfigs.toString())
         if (safeDefault == null) editor.remove("v2_default_home_config")
         else editor.putString("v2_default_home_config", safeDefault.toString())
-        if (!editor.commit()) return false
+        if (!editor.commit()) return rollbackRestoreAndFail()
 
         if (replaceSavedLayoutShortcuts) {
             val shortcutEditor = shortcutPrefsForRestore!!.edit().clear()
