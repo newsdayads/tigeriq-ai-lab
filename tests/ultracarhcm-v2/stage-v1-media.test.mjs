@@ -14,6 +14,23 @@ import {
 
 const sha256 = path => createHash('sha256').update(readFileSync(path)).digest('hex');
 
+function directoryLinkSync(target, linkPath) {
+  symlinkSync(target, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
+}
+
+function fileSymlinkSyncOrSkip(t, target, linkPath) {
+  try {
+    symlinkSync(target, linkPath, 'file');
+    return true;
+  } catch (error) {
+    if (process.platform === 'win32' && error?.code === 'EPERM') {
+      t.skip('Windows file symlink privilege unavailable; directory reparse escape cases remain covered');
+      return false;
+    }
+    throw error;
+  }
+}
+
 function writeValidRights(root, source, overrides = {}) {
   const evidence = join(root, 'rights.json');
   const receipt = {
@@ -159,7 +176,7 @@ test('read-only verification rejects changed-size assets before any local stagin
   } finally { rmSync(root,{recursive:true,force:true}); }
 });
 
-test('dangling destination-file symlink cannot redirect private media staging outside V2', () => {
+test('dangling destination-file symlink cannot redirect private media staging outside V2', t => {
   const root=mkdtempSync(join(tmpdir(),'gh5135-link-file-'));
   try {
     const src=join(root,'source'),dest=join(root,'v2');
@@ -171,7 +188,7 @@ test('dangling destination-file symlink cannot redirect private media staging ou
     const first=join(dest,'app/src/main/res',media[0].to);
     const outside=join(root,'not-in-v2.jpg');
     mkdirSync(dirname(first),{recursive:true});
-    symlinkSync(outside,first);
+    if (!fileSymlinkSyncOrSkip(t, outside, first)) return;
     assert.equal(existsSync(first),false,'dangling symlink bypasses existsSync');
     assert.equal(lstatSync(first).isSymbolicLink(),true);
     const rights=writeValidRights(root,src);
@@ -197,7 +214,7 @@ test('a symlinked parent resource directory fails before any staging writes', ()
     const outside=join(root,'external-res');
     mkdirSync(dirname(parent),{recursive:true});
     mkdirSync(outside);
-    symlinkSync(outside,parent,'dir');
+    directoryLinkSync(outside,parent);
     const rights=writeValidRights(root,src);
     assert.throws(
       ()=>stageMedia({sourceRes:src,projectDir:dest,stage:true,rightsEvidence:rights}),
@@ -220,7 +237,7 @@ test('source ancestor directory symlink cannot escape audited media tree, even i
       mkdirSync(dirname(input),{recursive:true});
       writeFileSync(input,Buffer.alloc(item.observedBytes,65+index));
     }
-    symlinkSync(outside,join(source,'drawable'),'dir');
+    directoryLinkSync(outside,join(source,'drawable'));
     assert.throws(
       ()=>stageMedia({sourceRes:source,projectDir:dest}),
       new RegExp('SOURCE_SYMLINK_FORBIDDEN:drawable/road_city_day[.]jpg')
@@ -240,7 +257,7 @@ test('sourceRes itself cannot be a symlink to a different source tree', () => {
   try {
     const real=join(root,'real-source'),alias=join(root,'aliased-source'),dest=join(root,'v2');
     mkdirSync(real);
-    symlinkSync(real,alias,'dir');
+    directoryLinkSync(real,alias);
     assert.throws(
       ()=>stageMedia({sourceRes:alias,projectDir:dest}),
       /SOURCE_SYMLINK_FORBIDDEN/
