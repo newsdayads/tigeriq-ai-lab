@@ -33,6 +33,7 @@ describe('GH-5135 R01 source-only gate (not native Android CI)', () => {
   it('uses published UVCAndroid and never shadows its AGP-generated R class', () => {
     const build = readFileSync(fromRoot(app + 'app/build.gradle'), 'utf8');
     expect(build).toContain("implementation 'com.herohan:UVCAndroid:1.0.13'");
+    expect(build).toContain("buildToolsVersion '35.0.0'");
     expect(existsSync(fromRoot(app + 'app/src/main/java/com/serenegiant/uvccamera/R.java')))
       .toBe(false);
     const label = readFileSync(fromRoot(app + 'app/src/main/res/values/strings.xml'), 'utf8');
