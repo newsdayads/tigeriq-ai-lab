@@ -53,6 +53,18 @@ internal object TaxiMeterRules {
         return (rateVndPerKm * distanceMeters / 1000.0).roundToLong()
     }
 
+    fun validActiveTripState(
+        rateVndPerKm: Double,
+        distanceMeters: Double,
+        activeElapsedMs: Long,
+        tripStartedEpochMs: Long,
+    ): Boolean =
+        validRateVndPerKm(rateVndPerKm) &&
+            distanceMeters.isFinite() &&
+            distanceMeters >= 0.0 &&
+            activeElapsedMs >= 0L &&
+            tripStartedEpochMs > 0L
+
     fun elapsedSeconds(elapsedMillis: Long): Long =
         elapsedMillis.coerceAtLeast(0L) / 1000L
 }
