@@ -884,12 +884,26 @@ class HomeActivity : ComponentActivity() {
             val safe = normalizeHomeConfiguration(item)
                 ?: throw IllegalArgumentException("Unsupported HOME config schema")
             if (safe.toString() != item.toString()) {
-                prefs.edit().putString("v2_default_home_config", safe.toString()).apply()
+                val persisted = prefs.edit()
+                    .putString("v2_default_home_config", safe.toString())
+                    .commit()
+                if (!persisted) {
+                    android.util.Log.e(
+                        "UltraCarV2",
+                        "Failed to persist normalized default HOME configuration",
+                    )
+                }
             }
             applyHomeConfiguration(safe, false)
         } catch (e: Exception) {
             android.util.Log.w("UltraCarV2", "Corrupt or unsupported default HOME configuration", e)
-            prefs.edit().remove("v2_default_home_config").apply()
+            val cleared = prefs.edit().remove("v2_default_home_config").commit()
+            if (!cleared) {
+                android.util.Log.e(
+                    "UltraCarV2",
+                    "Failed to persist default HOME config cleanup",
+                )
+            }
         }
     }
 
