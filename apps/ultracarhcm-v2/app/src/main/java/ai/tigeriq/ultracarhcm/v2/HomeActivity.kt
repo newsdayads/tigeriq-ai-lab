@@ -577,7 +577,13 @@ class HomeActivity : ComponentActivity() {
             JSONArray(prefs.getString("v2_home_configs", "[]") ?: "[]")
         } catch (e: Exception) {
             android.util.Log.w("UltraCarV2", "Corrupt local HOME config", e)
-            prefs.edit().remove("v2_home_configs").apply()
+            val cleared = prefs.edit().remove("v2_home_configs").commit()
+            if (!cleared) {
+                android.util.Log.e(
+                    "UltraCarV2",
+                    "Failed to persist corrupt HOME config cleanup",
+                )
+            }
             return JSONArray()
         }
         val normalized = JSONArray()
@@ -598,7 +604,15 @@ class HomeActivity : ComponentActivity() {
             normalized.put(safe)
         }
         if (normalized.toString() != raw.toString()) {
-            prefs.edit().putString("v2_home_configs", normalized.toString()).apply()
+            val persisted = prefs.edit()
+                .putString("v2_home_configs", normalized.toString())
+                .commit()
+            if (!persisted) {
+                android.util.Log.e(
+                    "UltraCarV2",
+                    "Failed to persist normalized HOME configurations",
+                )
+            }
         }
         return normalized
     }
