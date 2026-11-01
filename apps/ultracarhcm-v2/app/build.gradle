@@ -8,6 +8,7 @@ plugins {
 android {
     namespace 'ai.tigeriq.ultracarhcm.v2'
     compileSdk 34
+    buildToolsVersion '35.0.0'
 
     defaultConfig {
         applicationId 'ai.tigeriq.ultracarhcm.v2'
