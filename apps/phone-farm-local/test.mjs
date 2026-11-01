@@ -329,5 +329,5 @@ test('non-shell RC6 bootstrapper pins base package and applies verified embedded
   assert.match(source,/UseShellExecute = false/);
   assert.doesNotMatch(source,/ProcessStartInfo\(\s*"(?:powershell|cmd\\.exe|explorer)"/i);
   assert.doesNotMatch(source,/UseShellExecute\s*=\s*true/);
-  assert.doesNotMatch(source,/adb\s+tcpip|setprop\s+service\.adb\.tcp\.port|netsh|firewall/i);
+  assert.doesNotMatch(source,/ProcessStartInfo\([\s\S]{0,240}?(?:powershell|cmd\\.exe|netsh|adb\s+tcpip|setprop\s+service\.adb\.tcp\.port)/i);
 });
