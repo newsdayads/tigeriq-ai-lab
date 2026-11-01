@@ -105,8 +105,14 @@ class NotificationActivity : ComponentActivity() {
     private fun refresh() {
         val versionCode = prefs.getLong(NotificationRules.KEY_VERSION_CODE, 0L)
         if (NotificationRules.isResolvedNotice(currentVersionCode(), versionCode)) {
-            prefs.edit().clear().apply()
-            renderEmpty()
+            if (prefs.edit().clear().commit()) {
+                renderEmpty()
+            } else {
+                status.text = "Thông báo đã hết hiệu lực nhưng chưa thể xóa dữ liệu cục bộ."
+                markReadButton.isEnabled = false
+                clearButton.isEnabled = true
+                toast("Không thể xóa thông báo đã hết hiệu lực")
+            }
             return
         }
         if (versionCode <= 0L) {
