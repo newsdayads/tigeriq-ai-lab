@@ -131,6 +131,23 @@ async function inputOne(serial, b) {
   await run(['-s', serial, 'shell', ...args], { encoding: 'utf8' });
 }
 function errorText(e) { return String(e?.message || e).slice(0,350); }
+function boundedProcessText(value, max=250) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+export function adbConnectFailure(error) {
+  const stderr=boundedProcessText(error?.stderr);
+  const stdout=boundedProcessText(error?.stdout);
+  const message=boundedProcessText(error?.message || error);
+  const detail=stderr || stdout || message || 'ADB chưa kết nối';
+  let reason='ADB_CONNECT_FAILED';
+  if(/refused|actively refused|10061/i.test(detail))reason='ADB_CONNECT_REFUSED';
+  else if(/timed out|timeout|10060|ETIMEDOUT/i.test(detail))reason='ADB_CONNECT_TIMEOUT';
+  else if(/no route|network is unreachable|unreachable|ENETUNREACH|EHOSTUNREACH/i.test(detail))reason='ADB_CONNECT_UNREACHABLE';
+  else if(/unauthorized/i.test(detail))reason='ADB_CONNECT_UNAUTHORIZED';
+  const exitCode=Number.isInteger(error?.code)?error.code:null;
+  const signal=typeof error?.signal==='string'?error.signal:null;
+  return {reason,detail,exitCode,signal};
+}
 let busyScreens = 0;
 const scheduler = new LocalScheduler(path.join(base,'schedules.json'),async(steps,serials)=>{
   const attached=(await devices()).filter(x=>x.state==='device').map(x=>x.serial);
@@ -202,7 +219,10 @@ const server = http.createServer(async (req, res) => {
         const output=String(r.stdout||'').trim();
         if(!/connected to|already connected/i.test(output))return json(res,409,{error:output.slice(0,250)||'ADB chưa kết nối'});
         return json(res,200,{connected:true,address:b.address,result:output});
-      }catch(e){return json(res,409,{error:errorText(e)})}
+      }catch(e){
+        const failure=adbConnectFailure(e);
+        return json(res,409,{error:failure.detail,...failure});
+      }
     }
     if (req.method === 'GET' && url.pathname === '/api/wifi/candidate') {
       const serial=url.searchParams.get('serial');
