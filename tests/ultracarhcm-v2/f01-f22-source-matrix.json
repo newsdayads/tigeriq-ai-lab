@@ -233,10 +233,11 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
         "tests/ultracarhcm-v2/quickbar-source.test.ts"
       ],
-      "gap": "Nine assignable/launchable slots exist. Device QA found that a cleared Camera USB assignment could later reappear after force-stop/relaunch, so quick-slot writes are now synchronously committed and surfaced as failure if persistence fails. Full V1 bottom-zone behavior/parity remains open.",
-      "actual": "QuickBarGrid renders exactly nine slots in three rows; long press assigns/removes supported presets or package targets and click launches package/camera targets. saveQuickSlot now synchronously commits the bounded nine-slot JSON before rendering success, preventing a UI-only clear/assignment from being presented as durable when disk persistence failed.",
+      "gap": "Nine assignable/launchable slots exist. Quick-slot writes are synchronously committed and surfaced as failure if persistence fails; malformed stored quick-slot JSON is logged and synchronously cleared so corrupt state cannot silently survive relaunch. Full V1 bottom-zone behavior/parity and real-device persistence acceptance remain open.",
+      "actual": "QuickBarGrid renders exactly nine slots in three rows; long press assigns/removes supported presets or package targets and click launches package/camera targets. saveQuickSlot synchronously commits bounded nine-slot JSON before rendering success. quickSlots() recovers malformed JSON by removing the corrupt preference with commit() and logs cleanup failure instead of silently continuing with persistent corruption.",
       "testStatus": "DEVICE_QA_NOT_TESTED",
       "entryPoints": [
+        "HomeActivity.quickSlots",
         "HomeActivity.saveQuickSlot",
         "HomeActivity.renderQuickBar",
         "HomeActivity.showQuickSlotEditor",
