@@ -28,6 +28,9 @@ android {
     // Prepare the migration; existing Activity/USB code is NOT Compose parity.
     buildFeatures { compose true }
     composeOptions { kotlinCompilerExtensionVersion '1.5.4' }
+    packagingOptions {
+        jniLibs { useLegacyPackaging = true }
+    }
     testOptions { unitTests.returnDefaultValues = true }
 }
 
