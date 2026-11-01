@@ -149,7 +149,19 @@ class OverlayService : Service(), DisplayManager.DisplayListener {
                             }
                             return true
                         }
-                        MotionEvent.ACTION_CANCEL -> return true
+                        MotionEvent.ACTION_CANCEL -> {
+                            if (dragging) {
+                                p.x = startX
+                                p.y = startY
+                                try {
+                                    wm.updateViewLayout(button, p)
+                                } catch (t: Throwable) {
+                                    Log.e(logTag, "Drag cancel rollback failed", t)
+                                }
+                            }
+                            dragging = false
+                            return true
+                        }
                     }
                     return false
                 }
