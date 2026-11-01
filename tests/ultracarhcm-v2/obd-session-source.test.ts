@@ -21,6 +21,30 @@ describe('GH-5135 F12 OBD session lifecycle', () => {
     expect(block).toContain('try { candidate?.close() } catch (_: Exception) { }');
   });
 
+  it('closes an in-flight candidate socket on reconnect or lifecycle stop', () => {
+    expect(obd).toContain('@Volatile private var pendingSocket: BluetoothSocket? = null');
+
+    const connectStart = obd.indexOf('private fun connect(device: BluetoothDevice)');
+    const connectEnd = obd.indexOf('private fun initializeAdapter', connectStart);
+    const connectBlock = obd.slice(connectStart, connectEnd);
+    expect(connectBlock).toContain('pendingSocket = active');
+    expect(connectBlock).toContain('pendingSocket !== active');
+    expect(connectBlock).toContain('if (pendingSocket === active) pendingSocket = null');
+    expect(connectBlock.indexOf('pendingSocket = active')).toBeLessThan(
+      connectBlock.indexOf('active.connect()'),
+    );
+
+    const disconnectStart = obd.indexOf('private fun disconnect()');
+    const disconnectEnd = obd.indexOf('override fun onStart()', disconnectStart);
+    const disconnectBlock = obd.slice(disconnectStart, disconnectEnd);
+    expect(disconnectBlock).toContain('val pending = pendingSocket');
+    expect(disconnectBlock).toContain('pendingSocket = null');
+    expect(disconnectBlock).toContain('try { pending?.close() } catch (_: Exception) { }');
+    expect(disconnectBlock.indexOf('pendingSocket = null')).toBeLessThan(
+      disconnectBlock.indexOf('pending?.close()'),
+    );
+  });
+
   it('does not publish a connected socket after Activity stop or destruction', () => {
     expect(obd).toContain('@Volatile private var activityStarted = false');
     expect(obd).toContain('override fun onStart()');
