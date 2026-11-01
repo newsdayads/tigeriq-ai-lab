@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import assert from 'node:assert/strict';
-import { parseDevices, safeSerial, validInput, privateWifiAddress, parsePrivateWifiIpv4, parseExistingAdbTcpPort, wifiCandidateFromOutputs, adbConnectFailure, mirrorOptions, server } from './app.mjs';
+import { parseDevices, safeSerial, validInput, privateWifiAddress, parsePrivateWifiIpv4, parseExistingAdbTcpPort, wifiCandidateFromOutputs, wifiEndpointReachable, adbConnectFailure, mirrorOptions, server } from './app.mjs';
 
 test('ADB inventory parses connected, offline, unauthorized devices', () => {
   const devices=parseDevices('List of devices attached\nR3CM400AKRX device product:beyondxks model:SM_G977N transport_id:1\n192.168.0.9:5555 offline\nABCD unauthorized\n');
@@ -236,6 +236,24 @@ test('read-only WiFi ADB discovery accepts only an already-enabled private LAN e
   assert.equal(wifiCandidateFromOutputs('inet 192.168.50.23/24 scope global wlan0', '-1'), null);
 });
 
+test('WiFi ADB reachability preflight rejects stale configured endpoints without changing ADB', async () => {
+  const fakeSocket=event=>()=>{
+    const handlers={};
+    let timeoutHandler=null;
+    return {
+      once(name,fn){handlers[name]=fn; if(name===event)queueMicrotask(()=>fn(event==='error'?new Error('refused'):undefined)); return this;},
+      setTimeout(_ms,fn){timeoutHandler=fn; if(event==='timeout')queueMicrotask(()=>timeoutHandler()); return this;},
+      destroy(){}
+    };
+  };
+  assert.equal(await wifiEndpointReachable('192.168.50.23:5555',100,fakeSocket('connect')),true);
+  assert.equal(await wifiEndpointReachable('192.168.50.23:5555',100,fakeSocket('error')),false);
+  assert.equal(await wifiEndpointReachable('192.168.50.23:5555',100,fakeSocket('timeout')),false);
+  let invoked=false;
+  assert.equal(await wifiEndpointReachable('8.8.8.8:5555',100,()=>{invoked=true;throw new Error('must not run')}),false);
+  assert.equal(invoked,false);
+});
+
 test('WiFi ADB connect failures expose bounded structured diagnostics', () => {
   const refused=adbConnectFailure({
     code:1,
@@ -255,6 +273,8 @@ test('WiFi candidate endpoint remains discovery-only and never enables ADB TCP m
   const dir=path.dirname(fileURLToPath(import.meta.url));
   const source=fs.readFileSync(path.join(dir,'app.mjs'),'utf8');
   assert.match(source,/\/api\/wifi\/candidate/);
+  assert.match(source,/wifiEndpointReachable\(address,1500\)/);
+  assert.match(source,/ADB_ENDPOINT_UNREACHABLE/);
   assert.match(source,/getprop','service\.adb\.tcp\.port/);
   assert.match(source,/ip','-f','inet','addr','show','wlan0/);
   assert.doesNotMatch(source,/['"]tcpip['"]/);

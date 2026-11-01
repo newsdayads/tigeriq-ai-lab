@@ -1,6 +1,7 @@
 // TigerIQ Phone Farm • local-only controller • zero third-party Node dependencies
 // This is independent software. It does not import LAIXI binaries, services, or credentials.
 import http from 'node:http';
+import { createConnection as createNetConnection } from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFile, spawn } from 'node:child_process';
@@ -52,6 +53,27 @@ export function wifiCandidateFromOutputs(ipOutput, portOutput) {
   if(!ip||!port)return null;
   const address=ip+':'+port;
   return privateWifiAddress(address)?address:null;
+}
+
+export async function wifiEndpointReachable(address, timeoutMs=1200, createConnection=createNetConnection) {
+  if(!privateWifiAddress(address))return false;
+  const split=address.lastIndexOf(':'),host=address.slice(0,split),port=Number(address.slice(split+1));
+  const timeout=Number.isFinite(timeoutMs)?Math.min(5000,Math.max(50,Math.trunc(timeoutMs))):1200;
+  return await new Promise(resolve=>{
+    let socket=null,settled=false;
+    const finish=ok=>{
+      if(settled)return;
+      settled=true;
+      try{socket?.destroy();}catch{}
+      resolve(ok);
+    };
+    try{
+      socket=createConnection({host,port});
+      socket.once('connect',()=>finish(true));
+      socket.once('error',()=>finish(false));
+      socket.setTimeout(timeout,()=>finish(false));
+    }catch{finish(false)}
+  });
 }
 
 export function parseDevices(text) {
@@ -214,6 +236,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/wifi/connect') {
       const b=await bodyJson(req);
       if(!privateWifiAddress(b.address))return json(res,400,{error:'Chỉ hỗ trợ địa chỉ IPv4 LAN riêng và cổng hợp lệ'});
+      if(!await wifiEndpointReachable(b.address,1500))
+        return json(res,409,{error:'Endpoint WiFi ADB không phản hồi trên LAN; kiểm tra Wireless ADB đang bật sẵn trên thiết bị',reason:'ADB_ENDPOINT_UNREACHABLE',address:b.address});
       try {
         const r=await run(['connect',b.address],{encoding:'utf8',timeout:12000});
         const output=String(r.stdout||'').trim();
@@ -237,6 +261,8 @@ const server = http.createServer(async (req, res) => {
         ]);
         const address=wifiCandidateFromOutputs(String(ipResult.stdout||''),String(portResult.stdout||''));
         if(!address)return json(res,409,{error:'Thiết bị chưa có endpoint WiFi ADB LAN đang bật sẵn; TigerIQ không tự thay đổi cấu hình ADB'});
+        if(!await wifiEndpointReachable(address,1500))
+          return json(res,409,{error:'Thiết bị có cấu hình WiFi ADB nhưng endpoint chưa lắng nghe trên LAN',reason:'ADB_ENDPOINT_UNREACHABLE',address,serial,readOnly:true});
         return json(res,200,{available:true,address,serial,readOnly:true});
       }catch(e){return json(res,409,{error:errorText(e)})}
     }
