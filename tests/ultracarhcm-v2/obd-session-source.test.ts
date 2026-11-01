@@ -21,6 +21,53 @@ describe('GH-5135 F12 OBD session lifecycle', () => {
     expect(block).toContain('try { candidate?.close() } catch (_: Exception) { }');
   });
 
+  it('closes an in-flight candidate socket on reconnect or lifecycle stop', () => {
+    expect(obd).toContain('private val socketLock = Any()');
+    expect(obd).toContain('@Volatile private var pendingSocket: BluetoothSocket? = null');
+
+    const connectStart = obd.indexOf('private fun connect(device: BluetoothDevice)');
+    const connectEnd = obd.indexOf('private fun initializeAdapter', connectStart);
+    const connectBlock = obd.slice(connectStart, connectEnd);
+    expect(connectBlock).toContain('val pendingRegistered = synchronized(socketLock)');
+    expect(connectBlock).toContain('pendingSocket = active');
+    expect(connectBlock).toContain('val published = synchronized(socketLock)');
+    expect(connectBlock).toContain('pendingSocket !== active');
+    expect(connectBlock).toContain('if (pendingSocket === active) pendingSocket = null');
+    expect(connectBlock.indexOf('pendingSocket = active')).toBeLessThan(
+      connectBlock.indexOf('active.connect()'),
+    );
+    expect(connectBlock.indexOf('active.connect()')).toBeLessThan(
+      connectBlock.indexOf('socket = active'),
+    );
+
+    const disconnectStart = obd.indexOf('private fun disconnect()');
+    const disconnectEnd = obd.indexOf('override fun onStart()', disconnectStart);
+    const disconnectBlock = obd.slice(disconnectStart, disconnectEnd);
+    expect(disconnectBlock).toContain('val sockets = synchronized(socketLock)');
+    expect(disconnectBlock).toContain('val pending = pendingSocket');
+    expect(disconnectBlock).toContain('pendingSocket = null');
+    expect(disconnectBlock).toContain('try { pending?.close() } catch (_: Exception) { }');
+    expect(disconnectBlock.indexOf('pendingSocket = null')).toBeLessThan(
+      disconnectBlock.indexOf('pending?.close()'),
+    );
+  });
+
+  it('does not let a stale UI callback cancel a newer pending connection', () => {
+    const helperStart = obd.indexOf('private fun clearPublishedSocket(expected: BluetoothSocket)');
+    const helperEnd = obd.indexOf('private fun disconnect()', helperStart);
+    const helper = obd.slice(helperStart, helperEnd);
+    expect(helper).toContain('val shouldClose = synchronized(socketLock)');
+    expect(helper).toContain('if (socket !== expected)');
+    expect(helper).toContain('socket = null');
+    expect(helper).not.toContain('pendingSocket');
+
+    const connectStart = obd.indexOf('private fun connect(device: BluetoothDevice)');
+    const connectEnd = obd.indexOf('private fun initializeAdapter', connectStart);
+    const connectBlock = obd.slice(connectStart, connectEnd);
+    expect(connectBlock).toContain('clearPublishedSocket(active)');
+    expect(connectBlock).not.toContain('if (socket === active) disconnect()');
+  });
+
   it('does not publish a connected socket after Activity stop or destruction', () => {
     expect(obd).toContain('@Volatile private var activityStarted = false');
     expect(obd).toContain('override fun onStart()');
