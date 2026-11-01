@@ -845,7 +845,7 @@ class HomeActivity : ComponentActivity() {
         safe.optJSONArray("quickSlots")?.let { slots ->
             editor.putString("v2_quick_slots", normalizedQuickSlotsForStorage(slots).toString())
         }
-        editor.apply()
+        if (!editor.commit()) return false
         if (renderAfter) render()
         return true
     }
@@ -872,8 +872,11 @@ class HomeActivity : ComponentActivity() {
             toast("Không thể đặt cấu hình không tương thích làm mặc định")
             return
         }
-        prefs.edit().putString("v2_default_home_config", safe.toString()).apply()
-        toast("Đã đặt cấu hình Home mặc định")
+        if (prefs.edit().putString("v2_default_home_config", safe.toString()).commit()) {
+            toast("Đã đặt cấu hình Home mặc định")
+        } else {
+            toast("Không thể lưu cấu hình Home mặc định")
+        }
     }
 
     private fun saveHomeConfiguration() {
@@ -913,8 +916,11 @@ class HomeActivity : ComponentActivity() {
                         .put("licensePlate", licensePlate)
                         .put("driver", prefs.getString("driver_name", "Driver") ?: "Driver")
                         .put("quickSlots", normalizedQuickSlotsForStorage(quickSlots())))
-                    prefs.edit().putString("v2_home_configs", current.toString()).apply()
-                    toast("Đã lưu cấu hình Home trên thiết bị")
+                    if (prefs.edit().putString("v2_home_configs", current.toString()).commit()) {
+                        toast("Đã lưu cấu hình Home trên thiết bị")
+                    } else {
+                        toast("Không thể lưu cấu hình Home")
+                    }
                 }
             }.show()
     }
@@ -1012,9 +1018,12 @@ class HomeActivity : ComponentActivity() {
                                 if (prefs.getString("v2_default_home_config", null) == item.toString()) {
                                     editor.remove("v2_default_home_config")
                                 }
-                                editor.apply()
-                                clearSavedLayoutShortcutReferences(item.optString("configId", ""))
-                                toast("Đã xóa cấu hình khỏi thiết bị")
+                                if (editor.commit()) {
+                                    clearSavedLayoutShortcutReferences(item.optString("configId", ""))
+                                    toast("Đã xóa cấu hình khỏi thiết bị")
+                                } else {
+                                    toast("Không thể xóa cấu hình khỏi thiết bị")
+                                }
                             }
                         }
                     }.setNegativeButton("Hủy", null).show()
