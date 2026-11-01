@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import assert from 'node:assert/strict';
-import { parseDevices, safeSerial, validInput, privateWifiAddress, parsePrivateWifiIpv4, parseExistingAdbTcpPort, wifiCandidateFromOutputs, mirrorOptions, server } from './app.mjs';
+import { parseDevices, safeSerial, validInput, privateWifiAddress, parsePrivateWifiIpv4, parseExistingAdbTcpPort, wifiCandidateFromOutputs, adbConnectFailure, mirrorOptions, server } from './app.mjs';
 
 test('ADB inventory parses connected, offline, unauthorized devices', () => {
   const devices=parseDevices('List of devices attached\nR3CM400AKRX device product:beyondxks model:SM_G977N transport_id:1\n192.168.0.9:5555 offline\nABCD unauthorized\n');
@@ -234,6 +234,21 @@ test('read-only WiFi ADB discovery accepts only an already-enabled private LAN e
   assert.equal(wifiCandidateFromOutputs('inet 192.168.50.23/24 scope global wlan0', '5555'), '192.168.50.23:5555');
   assert.equal(wifiCandidateFromOutputs('inet 8.8.8.8/24 scope global wlan0', '5555'), null);
   assert.equal(wifiCandidateFromOutputs('inet 192.168.50.23/24 scope global wlan0', '-1'), null);
+});
+
+test('WiFi ADB connect failures expose bounded structured diagnostics', () => {
+  const refused=adbConnectFailure({
+    code:1,
+    stderr:'cannot connect to 172.16.199.197:5555: No connection could be made because the target machine actively refused it. (10061)\n'
+  });
+  assert.equal(refused.reason,'ADB_CONNECT_REFUSED');
+  assert.equal(refused.exitCode,1);
+  assert.equal(refused.signal,null);
+  assert.match(refused.detail,/actively refused/i);
+  assert.equal(adbConnectFailure({code:1,stderr:'failed to connect: connection timed out (10060)'}).reason,'ADB_CONNECT_TIMEOUT');
+  assert.equal(adbConnectFailure({code:1,stderr:'No route to host'}).reason,'ADB_CONNECT_UNREACHABLE');
+  assert.equal(adbConnectFailure({code:1,stderr:'device unauthorized'}).reason,'ADB_CONNECT_UNAUTHORIZED');
+  assert.equal(adbConnectFailure({stderr:'x'.repeat(400)}).detail.length,250);
 });
 
 test('WiFi candidate endpoint remains discovery-only and never enables ADB TCP mode', () => {
