@@ -20,8 +20,19 @@ describe('GH-5135 F20/R03 USB UVC recovery source contract', () => {
   it('auto-selects a newly attached UVC device only while the session is requested', () => {
     expect(uvc).toContain('if (requested && target == null && isUvcDevice(device))');
     expect(uvc).toMatch(
-      /if \(requested && target == null\) \{[\s\S]*?recoveryGeneration\+\+[\s\S]*?recoveryAttempts = 0[\s\S]*?selectTarget\(device\)/,
+      /if \(requested && target == null\) \{[\s\S]*?val attached = sameAttachedUvc\(device\) \?: return@post[\s\S]*?recoveryGeneration\+\+[\s\S]*?recoveryAttempts = 0[\s\S]*?selectTarget\(attached\)/,
     );
+  });
+
+  it('revalidates queued attach against the live USB list before selecting it', () => {
+    const attach = uvc.slice(
+      uvc.indexOf('override fun onAttach'),
+      uvc.indexOf('override fun onDeviceOpen'),
+    );
+    expect(attach).toContain('main.post');
+    expect(attach).toContain('val attached = sameAttachedUvc(device) ?: return@post');
+    expect(attach).toContain('selectTarget(attached)');
+    expect(attach).not.toContain('selectTarget(device)');
   });
 
   it('releases preview state but keeps waiting after recoverable close/detach/error', () => {
