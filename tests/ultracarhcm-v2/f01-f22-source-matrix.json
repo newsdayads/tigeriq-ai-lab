@@ -276,10 +276,11 @@
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ObdActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ObdProtocol.kt",
-        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml"
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
+        "tests/ultracarhcm-v2/obd-session-source.test.ts"
       ],
-      "gap": "Paired-device selection, RFCOMM OBD session and speed/RPM/adapter-voltage parsing are implemented in source; actual adapter pairing/connection, vehicle compatibility and real telemetry acceptance require device/vehicle QA.",
-      "actual": "ObdActivity opens system Bluetooth settings for pairing, lists already bonded devices with Android runtime BLUETOOTH_CONNECT permission, connects by RFCOMM SPP, initializes a generic OBD adapter, then queries vehicle speed, engine RPM and adapter voltage. ObdProtocol parses the returned values without claiming V1 UI parity.",
+      "gap": "Paired-device selection, RFCOMM OBD session and speed/RPM/adapter-voltage parsing are implemented in source. Connection lifecycle now keeps a candidate socket private until initialization succeeds, closes failed/stopped candidates, and marshals connected-state UI plus telemetry handoff through the UI thread with Activity lifecycle guards. Actual adapter pairing/connection, vehicle compatibility and real telemetry acceptance require device/vehicle QA.",
+      "actual": "ObdActivity opens system Bluetooth settings for pairing, lists bonded devices with BLUETOOTH_CONNECT permission, connects by RFCOMM SPP, initializes the adapter before publishing the active socket, closes unpublished candidates on failure or Activity stop, and only starts telemetry after a guarded UI-thread connected transition. ObdProtocol parses speed, RPM and voltage without claiming V1 UI parity.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "TelemetryActivity.buildContent",
@@ -289,7 +290,9 @@
         "ObdActivity.queryTelemetry",
         "ObdProtocol.parseSpeedKph",
         "ObdProtocol.parseRpm",
-        "ObdProtocol.parseVoltage"
+        "ObdProtocol.parseVoltage",
+        "ObdActivity.onStart",
+        "ObdActivity.onStop"
       ],
       "permissions": [
         "android.permission.BLUETOOTH_CONNECT"
@@ -305,8 +308,8 @@
         "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
         "tests/ultracarhcm-v2/taxi-meter-persistence-source.test.ts"
       ],
-      "gap": "Foreground GPS trip distance/time, Owner-configured rate, local trip history and revenue are implemented in source. Configured rate must now commit successfully before a trip starts; completed-trip history and history deletion also require synchronous persistence success before UI acknowledgement. Real-device GPS accuracy, V1 tariff semantics/UI parity and long-trip behavior are not accepted.",
-      "actual": "TaxiMeterActivity tracks foreground-only elapsed time and GPS distance, requires an explicit Owner-entered VND/km rate, and calculates distance-based fare. It synchronously commits the configured rate before entering the running state, commits bounded local trip history before showing a saved-trip acknowledgement, and only refreshes cleared history after durable delete succeeds. No V1 tariff is guessed.",
+      "gap": "Foreground GPS trip distance/time, Owner-configured rate, local trip history and revenue are implemented in source. Rate, completed-trip history and explicit history deletion require synchronous persistence success before UI acknowledgement. Corrupt stored trip-history JSON is now fail-visible in logs and removed with synchronous commit() before the screen proceeds with an empty history. Real-device GPS accuracy, V1 tariff semantics/UI parity and long-trip behavior are not accepted.",
+      "actual": "TaxiMeterActivity tracks foreground-only elapsed time and GPS distance, uses only an explicit Owner-entered VND/km rate, commits the rate before starting, commits bounded history before saved acknowledgement, and only refreshes explicit delete after durable persistence. If stored Taxi history is malformed, the app logs it, synchronously clears the corrupt preference with failure logging, and returns an empty local history. No V1 tariff is guessed.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "TelemetryActivity.buildContent",
@@ -314,7 +317,8 @@
         "TaxiMeterActivity.onLocationChanged",
         "TaxiMeterActivity.finishTrip",
         "TaxiMeterRules.segmentMeters",
-        "TaxiMeterRules.fareVnd"
+        "TaxiMeterRules.fareVnd",
+        "TaxiMeterActivity.history"
       ],
       "permissions": [
         "android.permission.ACCESS_FINE_LOCATION",
@@ -362,10 +366,11 @@
         "apps/ultracarhcm-v2/release/update-channel.json",
         "apps/ultracarhcm-v1-v69/src/com/tigeriq/v69/UpdateController.java",
         "tests/ultracarhcm-v2/update-channel-source.test.ts",
-        "tests/ultracarhcm-v2/appearance-notification-persistence-source.test.ts"
+        "tests/ultracarhcm-v2/appearance-notification-persistence-source.test.ts",
+        "tests/ultracarhcm-v2/update-payload-integrity-source.test.ts"
       ],
-      "gap": "Kênh V2 TEST vẫn fail-closed cho tới khi có APK V2 TEST ký số được phát hành. Source đã có đường tải/cài đặt dựa trên bằng chứng V1 V69: redirect HTTPS chỉ qua host phát hành GitHub được phép, lưu APK trong cache riêng, kiểm SHA-256 + package + version + signer khớp bản đang cài, rồi mới mở Android system installer. Android unknown-sources và màn hình xác nhận cài đặt vẫn bắt buộc; không có auto-install. Publication của signed APK, device installation acceptance, remote push/backend và exact V1 notification parity còn mở.",
-      "actual": "ProfileActivity tách CẬP NHẬT và THÔNG BÁO. UpdateActivity chỉ tin metadata canonical V2 TEST, ghi notice cục bộ bền vững, tải candidate qua bounded trusted redirect chain, fsync file cache, kiểm SHA-256/package/version/certificate và signer continuity, sau đó chỉ bật nút mở Android system installer. Nếu quyền unknown-sources chưa có, app mở đúng Android settings; người dùng vẫn phải tự xác nhận cài. Không shell/ADB/auto-install.",
+      "gap": "Kênh V2 TEST vẫn fail-closed cho tới khi có APK V2 TEST ký số được phát hành. Source tải/cài dựa trên bằng chứng V1 V69: redirect HTTPS giới hạn qua host phát hành GitHub, cache riêng, kiểm SHA-256 + package + exact versionCode + exact versionName + signer pin/continuity rồi mới mở Android system installer. Android unknown-sources và màn hình xác nhận cài đặt vẫn bắt buộc; không có auto-install. Publication của signed APK, device installation acceptance, remote push/backend và exact V1 notification parity còn mở.",
+      "actual": "ProfileActivity tách CẬP NHẬT và THÔNG BÁO. UpdateActivity chỉ tin metadata canonical V2 TEST, tải candidate qua bounded trusted redirect chain, fsync cache, kiểm SHA-256/package/exact versionCode/exact versionName/certificate và signer continuity, rồi mới bật nút mở Android system installer. Unknown-sources vẫn qua Android settings và người dùng vẫn phải xác nhận cài; không shell/ADB/auto-install.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "ProfileActivity.buildContent",
@@ -384,7 +389,8 @@
         "UpdateActivity.verifyCandidateIdentity",
         "UpdateActivity.launchSystemInstaller",
         "UpdateRules.matchesExpectedSha256",
-        "UpdateRules.matchesPinnedSignerSha256"
+        "UpdateRules.matchesPinnedSignerSha256",
+        "UpdateRules.matchesExpectedVersionName"
       ],
       "permissions": [
         "android.permission.INTERNET",
@@ -471,10 +477,11 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TaxiMeterActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ReportActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ReportRules.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt",
+        "tests/ultracarhcm-v2/report-hub-source.test.ts"
       ],
-      "gap": "A dedicated V2 report hub now summarizes V2-owned Taxi Meter trip count, distance, duration and recorded revenue and exports CSV through Storage Access Framework. Exact V1 XLS/report templates, dashboards and other feature-domain exports remain unverified and are not claimed.",
-      "actual": "ProfileActivity opens ReportActivity, which reads only bounded local V2 Taxi Meter history, shows aggregate trip/revenue/distance/time plus recent trips, and exports stable UTF-8 BOM CSV through a user-selected SAF destination. It requests no broad storage permission and does not export credentials or V1 data.",
+      "gap": "A dedicated V2 report hub summarizes V2-owned Taxi Meter trip count, distance, duration and recorded revenue and exports CSV through Storage Access Framework. Malformed stored Taxi history is logged and synchronously cleared before reporting proceeds with an empty dataset. Exact V1 XLS/report templates, dashboards and other feature-domain exports remain unverified and are not claimed.",
+      "actual": "ProfileActivity opens ReportActivity, which reads bounded local V2 Taxi Meter history, rejects malformed row scalars, recovers corrupt history JSON with synchronous preference cleanup plus failure logging, shows aggregate trip/revenue/distance/time and exports stable UTF-8 BOM CSV through user-selected SAF. It requests no broad storage permission and exports no credentials or V1 data.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "ProfileActivity.buildContent",
@@ -482,7 +489,8 @@
         "ReportActivity.writeCsv",
         "ReportRules.summary",
         "ReportRules.buildCsv",
-        "TaxiMeterActivity.writeTripReport"
+        "TaxiMeterActivity.writeTripReport",
+        "ReportActivity.readRows"
       ],
       "permissions": []
     },
@@ -504,10 +512,11 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UpdateRules.kt",
         "apps/ultracarhcm-v1-v69/src/com/tigeriq/v69/UpdateController.java",
         "tests/ultracarhcm-v2/camera-runtime-permission-source.test.ts",
-        "tests/ultracarhcm-v2/update-channel-source.test.ts"
+        "tests/ultracarhcm-v2/update-channel-source.test.ts",
+        "tests/ultracarhcm-v2/update-payload-integrity-source.test.ts"
       ],
-      "gap": "Runtime source có fail-visible CAMERA gate, location/Bluetooth/overlay state, và giờ có package-install channel dựa trên V1 V69 nhưng hẹp hơn: signed APK phải qua metadata/hash/package/version/signer verification trước; FileProvider chỉ lộ cache updates; unknown-sources và Android installer confirmation là bắt buộc. Privacy-policy parity và full real-device validation vẫn chưa nghiệm thu.",
-      "actual": "UsbCameraActivity chỉ khởi động UVC sau CAMERA runtime grant; PrivacyActivity hiển thị permission state và mở OS settings khi cần. UpdateActivity tải candidate vào cache riêng, giới hạn redirect/size, kiểm SHA-256, ZIP/package/version, signer pin + signer continuity, rồi dùng FileProvider mở Android system installer. Không dùng broad storage, shell, ADB hay silent install.",
+      "gap": "Runtime source có fail-visible CAMERA gate, location/Bluetooth/overlay state và package-install channel dựa trên V1 V69 nhưng hẹp hơn: signed APK phải qua metadata/hash/package/exact versionCode/exact versionName/signer verification trước; FileProvider chỉ lộ cache updates; unknown-sources và Android installer confirmation là bắt buộc. Privacy-policy parity và full real-device validation vẫn chưa nghiệm thu.",
+      "actual": "UsbCameraActivity chỉ khởi động UVC sau CAMERA runtime grant; PrivacyActivity hiển thị permission state và mở OS settings khi cần. UpdateActivity tải candidate vào cache riêng, giới hạn redirect/size, kiểm SHA-256, ZIP/package/exact versionCode/exact versionName, signer pin + signer continuity, rồi dùng FileProvider mở Android system installer. Không broad storage, shell, ADB hay silent install.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "AndroidManifest.xml",
@@ -524,7 +533,8 @@
         "UpdateActivity.verifyCandidateIdentity",
         "UpdateActivity.launchSystemInstaller",
         "UpdateRules.matchesExpectedSha256",
-        "UpdateRules.matchesPinnedSignerSha256"
+        "UpdateRules.matchesPinnedSignerSha256",
+        "UpdateRules.matchesExpectedVersionName"
       ],
       "permissions": [
         "android.permission.CAMERA",
