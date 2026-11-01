@@ -626,7 +626,13 @@ class HomeActivity : ComponentActivity() {
         val raw = prefs.getString(key, null) ?: return null
         val configId = SavedLayoutShortcutRules.normalizeConfigId(raw)
         if (!SavedLayoutShortcutRules.validConfigId(configId)) {
-            prefs.edit().remove(key).commit()
+            val cleared = prefs.edit().remove(key).commit()
+            if (!cleared) {
+                android.util.Log.e(
+                    "UltraCarV2",
+                    "Failed to persist stale saved-layout shortcut cleanup for slot=$index",
+                )
+            }
             return null
         }
         return configId
@@ -645,9 +651,9 @@ class HomeActivity : ComponentActivity() {
         return editor.commit()
     }
 
-    private fun clearSavedLayoutShortcutReferences(configId: String) {
+    private fun clearSavedLayoutShortcutReferences(configId: String): Boolean {
         val safeId = SavedLayoutShortcutRules.normalizeConfigId(configId)
-        if (!SavedLayoutShortcutRules.validConfigId(safeId)) return
+        if (!SavedLayoutShortcutRules.validConfigId(safeId)) return true
         val shortcutPrefs = savedLayoutShortcutPrefs()
         val editor = shortcutPrefs.edit()
         var changed = false
@@ -658,7 +664,7 @@ class HomeActivity : ComponentActivity() {
                 changed = true
             }
         }
-        if (changed) editor.commit()
+        return !changed || editor.commit()
     }
 
     private fun savedConfigurationById(entries: JSONArray, configId: String): JSONObject? {
@@ -1040,8 +1046,14 @@ class HomeActivity : ComponentActivity() {
                                     editor.remove("v2_default_home_config")
                                 }
                                 if (editor.commit()) {
-                                    clearSavedLayoutShortcutReferences(item.optString("configId", ""))
-                                    toast("Đã xóa cấu hình khỏi thiết bị")
+                                    val shortcutsCleared = clearSavedLayoutShortcutReferences(
+                                        item.optString("configId", ""),
+                                    )
+                                    if (shortcutsCleared) {
+                                        toast("Đã xóa cấu hình khỏi thiết bị")
+                                    } else {
+                                        toast("Đã xóa cấu hình nhưng không thể dọn phím bố cục cũ")
+                                    }
                                 } else {
                                     toast("Không thể xóa cấu hình khỏi thiết bị")
                                 }
