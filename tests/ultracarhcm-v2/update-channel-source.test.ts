@@ -1,29 +1,20 @@
-// GH-5135 F15 — canonical V2 TEST update-channel contract.
-// Verifies a real metadata endpoint while preserving an explicit no-release state.
+// GH-5135 F15/F20 — canonical V2 TEST update channel + user-confirmed installer handoff.
+// Source-only evidence; does not prove a signed release exists or that Android device installation passed.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const channel = JSON.parse(
-  readFileSync(new URL('../../apps/ultracarhcm-v2/release/update-channel.json', import.meta.url), 'utf8'),
-);
-const strings = readFileSync(
-  new URL('../../apps/ultracarhcm-v2/app/src/main/res/values/strings.xml', import.meta.url),
-  'utf8',
-);
-const build = readFileSync(
-  new URL('../../apps/ultracarhcm-v2/app/build.gradle', import.meta.url),
-  'utf8',
-);
-const rules = readFileSync(
-  new URL('../../apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UpdateRules.kt', import.meta.url),
-  'utf8',
-);
-const activity = readFileSync(
-  new URL('../../apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UpdateActivity.kt', import.meta.url),
-  'utf8',
-);
+const read = (path: string) =>
+  readFileSync(new URL('../../' + path, import.meta.url), 'utf8');
 
-describe('GH-5135 F15 canonical V2 TEST update channel', () => {
+const channel = JSON.parse(read('apps/ultracarhcm-v2/release/update-channel.json'));
+const strings = read('apps/ultracarhcm-v2/app/src/main/res/values/strings.xml');
+const build = read('apps/ultracarhcm-v2/app/build.gradle');
+const rules = read('apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UpdateRules.kt');
+const activity = read('apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UpdateActivity.kt');
+const manifest = read('apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml');
+const providerPaths = read('apps/ultracarhcm-v2/app/src/main/res/xml/update_file_paths.xml');
+
+describe('GH-5135 F15/F20 canonical V2 TEST update channel', () => {
   it('pins the app to the canonical repository metadata endpoint', () => {
     const endpoint =
       'https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/main/apps/ultracarhcm-v2/release/update-channel.json';
@@ -58,6 +49,47 @@ describe('GH-5135 F15 canonical V2 TEST update channel', () => {
     expect(rules).toContain('if (mandatory) return null');
     expect(activity).toContain('if (!metadata.releaseAvailable)');
     expect(activity).toContain('hiện chưa có APK V2 TEST ký số được phát hành');
-    expect(activity).not.toContain('Intent.ACTION_VIEW');
+    expect(activity).not.toContain('downloadAndVerify(metadata)\n                launchSystemInstaller');
+  });
+
+  it('allows only bounded trusted HTTPS release redirects before reading payload bytes', () => {
+    expect(rules).toContain('fun isTrustedV2PayloadUrl');
+    expect(rules).toContain('"release-assets.githubusercontent.com"');
+    expect(rules).toContain('"objects.githubusercontent.com"');
+    expect(activity).toContain('private fun openTrustedPayloadConnection');
+    expect(activity).toContain('instanceFollowRedirects = false');
+    expect(activity).toContain('MAX_REDIRECTS = 3');
+    expect(activity).toContain('URI(current).resolve(location).toString()');
+    expect(activity).toContain('UpdateRules.isTrustedV2PayloadUrl(current)');
+  });
+
+  it('persists candidate privately and verifies hash package version and signer before enabling install', () => {
+    expect(activity).toContain('File(cacheDir, "updates")');
+    expect(activity).toContain('FileOutputStream(target, false)');
+    expect(activity).toContain('output.fd.sync()');
+    expect(activity).toContain('UpdateRules.matchesExpectedSha256(metadata.sha256, observedSha256)');
+    expect(activity).toContain('packageManager.getPackageArchiveInfo(file.absolutePath, flags)');
+    expect(activity).toContain('candidate.packageName != packageName');
+    expect(activity).toContain('candidateCode != metadata.latestVersionCode');
+    expect(activity).toContain('EXPECTED_SIGNER_SHA256');
+    expect(activity).toContain('UpdateRules.matchesPinnedSignerSha256(EXPECTED_SIGNER_SHA256, candidateSigner)');
+    expect(activity).toContain('candidateSigner.equals(installedSigner, ignoreCase = true)');
+    expect(activity).toContain('installButton.visibility = View.VISIBLE');
+  });
+
+  it('hands only the verified cache file to Android system installer with user permission gates', () => {
+    expect(build).toContain("implementation 'androidx.core:core-ktx:1.12.0'");
+    expect(manifest).toContain('android.permission.REQUEST_INSTALL_PACKAGES');
+    expect(manifest).toContain('android:name="androidx.core.content.FileProvider"');
+    expect(manifest).toContain('android:authorities="${applicationId}.fileprovider"');
+    expect(manifest).toContain('android:resource="@xml/update_file_paths"');
+    expect(providerPaths).toContain('<cache-path name="verified_updates" path="updates/"/>');
+    expect(activity).toContain('Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES');
+    expect(activity).toContain('packageManager.canRequestPackageInstalls()');
+    expect(activity).toContain('FileProvider.getUriForFile');
+    expect(activity).toContain('Intent(Intent.ACTION_VIEW)');
+    expect(activity).toContain('Intent.FLAG_GRANT_READ_URI_PERMISSION');
+    expect(activity).toContain('Android vẫn yêu cầu người dùng xác nhận trước khi cài');
+    expect(activity).not.toMatch(/adb\s+install|pm\s+install|Runtime\.getRuntime|ProcessBuilder/);
   });
 });
