@@ -44,6 +44,16 @@ describe('GH-5135 F07 DeX overlay persistence source contract', () => {
     expect(block).not.toContain('putInt(');
   });
 
+  it('sizes the shortcut from the resolved target display density', () => {
+    expect(overlay).toContain('val targetDisplayContext = try {');
+    expect(overlay).toContain('createDisplayContext(display)');
+    expect(overlay).toContain(
+      'targetDisplayContext.resources.displayMetrics.density',
+    );
+    expect(overlay).toContain('var ctx: Context = targetDisplayContext');
+    expect(overlay).not.toContain('56f * resources.displayMetrics.density');
+  });
+
   it('clamps restored positions against the active display bounds', () => {
     expect(overlay).toContain('OverlayPositionRules.clamp(');
     expect(overlay).toContain('display.mode.physicalWidth');
