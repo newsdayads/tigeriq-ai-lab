@@ -353,16 +353,18 @@
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UpdateActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UpdateRules.kt",
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
+        "apps/ultracarhcm-v2/app/src/main/res/xml/update_file_paths.xml",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt",
-        "apps/ultracarhcm-v2/app/src/main/res/values/strings.xml",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/NotificationActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/NotificationRules.kt",
         "apps/ultracarhcm-v2/release/update-channel.json",
+        "apps/ultracarhcm-v1-v69/src/com/tigeriq/v69/UpdateController.java",
         "tests/ultracarhcm-v2/update-channel-source.test.ts",
         "tests/ultracarhcm-v2/appearance-notification-persistence-source.test.ts"
       ],
-      "gap": "Kênh metadata V2 TEST hiện được cấu hình tới tệp canonical trên GitHub main và fail-closed với releaseAvailable=false cho đến khi có APK V2 TEST ký số được phát hành. User-driven notification read/clear state and newly discovered update notices now use synchronous local persistence with failure-visible UI. Remote push/backend, publication of a signed APK, installation on device and exact V1 notification parity remain unaccepted.",
-      "actual": "ProfileActivity separates CẬP NHẬT and THÔNG BÁO. UpdateActivity validates only the canonical V2 TEST metadata endpoint and trusted release shape, records a newer update notice with commit(), and explicitly warns if local notice persistence fails while still showing verified live metadata. NotificationActivity commits mark-read and user-requested clear before refreshing UI. No automatic install path is added.",
+      "gap": "Kênh V2 TEST vẫn fail-closed cho tới khi có APK V2 TEST ký số được phát hành. Source đã có đường tải/cài đặt dựa trên bằng chứng V1 V69: redirect HTTPS chỉ qua host phát hành GitHub được phép, lưu APK trong cache riêng, kiểm SHA-256 + package + version + signer khớp bản đang cài, rồi mới mở Android system installer. Android unknown-sources và màn hình xác nhận cài đặt vẫn bắt buộc; không có auto-install. Publication của signed APK, device installation acceptance, remote push/backend và exact V1 notification parity còn mở.",
+      "actual": "ProfileActivity tách CẬP NHẬT và THÔNG BÁO. UpdateActivity chỉ tin metadata canonical V2 TEST, ghi notice cục bộ bền vững, tải candidate qua bounded trusted redirect chain, fsync file cache, kiểm SHA-256/package/version/certificate và signer continuity, sau đó chỉ bật nút mở Android system installer. Nếu quyền unknown-sources chưa có, app mở đúng Android settings; người dùng vẫn phải tự xác nhận cài. Không shell/ADB/auto-install.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "ProfileActivity.buildContent",
@@ -377,10 +379,15 @@
         "NotificationRules.isResolvedNotice",
         "UpdateActivity.downloadAndVerify",
         "UpdateActivity.fetchAndVerifyPayload",
-        "UpdateRules.matchesExpectedSha256"
+        "UpdateActivity.openTrustedPayloadConnection",
+        "UpdateActivity.verifyCandidateIdentity",
+        "UpdateActivity.launchSystemInstaller",
+        "UpdateRules.matchesExpectedSha256",
+        "UpdateRules.matchesPinnedSignerSha256"
       ],
       "permissions": [
-        "android.permission.INTERNET"
+        "android.permission.INTERNET",
+        "android.permission.REQUEST_INSTALL_PACKAGES"
       ]
     },
     {
@@ -486,16 +493,21 @@
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbCameraActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
+        "apps/ultracarhcm-v2/app/src/main/res/xml/update_file_paths.xml",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/OverlayService.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TelemetryActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ObdActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/PrivacyActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/PrivacyRules.kt",
-        "tests/ultracarhcm-v2/camera-runtime-permission-source.test.ts"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UpdateActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UpdateRules.kt",
+        "apps/ultracarhcm-v1-v69/src/com/tigeriq/v69/UpdateController.java",
+        "tests/ultracarhcm-v2/camera-runtime-permission-source.test.ts",
+        "tests/ultracarhcm-v2/update-channel-source.test.ts"
       ],
-      "gap": "Runtime source now includes a fail-visible CAMERA gate before UVC startup plus user-visible location/Bluetooth/overlay permission state and OS settings links. USB device permission stays separate. Package installation permission/channel, privacy-policy parity and full real-device validation remain incomplete.",
-      "actual": "UsbCameraActivity requests CAMERA only through the Android runtime prompt and never starts UVC before grant; denial remains visible and user-retryable. PrivacyActivity reports runtime permission state without auto-granting. Existing USB/location/Bluetooth recovery remains source-covered. UpdateActivity verifies downloaded candidate bytes against metadata SHA-256 without redirects and without invoking an installer; no REQUEST_INSTALL_PACKAGES permission or automatic install path is added.",
+      "gap": "Runtime source có fail-visible CAMERA gate, location/Bluetooth/overlay state, và giờ có package-install channel dựa trên V1 V69 nhưng hẹp hơn: signed APK phải qua metadata/hash/package/version/signer verification trước; FileProvider chỉ lộ cache updates; unknown-sources và Android installer confirmation là bắt buộc. Privacy-policy parity và full real-device validation vẫn chưa nghiệm thu.",
+      "actual": "UsbCameraActivity chỉ khởi động UVC sau CAMERA runtime grant; PrivacyActivity hiển thị permission state và mở OS settings khi cần. UpdateActivity tải candidate vào cache riêng, giới hạn redirect/size, kiểm SHA-256, ZIP/package/version, signer pin + signer continuity, rồi dùng FileProvider mở Android system installer. Không dùng broad storage, shell, ADB hay silent install.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "AndroidManifest.xml",
@@ -508,12 +520,17 @@
         "TelemetryActivity.refreshLocation",
         "ObdActivity.requestDeviceSelection",
         "UpdateActivity.fetchAndVerifyPayload",
-        "UpdateRules.matchesExpectedSha256"
+        "UpdateActivity.openTrustedPayloadConnection",
+        "UpdateActivity.verifyCandidateIdentity",
+        "UpdateActivity.launchSystemInstaller",
+        "UpdateRules.matchesExpectedSha256",
+        "UpdateRules.matchesPinnedSignerSha256"
       ],
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.INTERNET",
+        "android.permission.REQUEST_INSTALL_PACKAGES",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",

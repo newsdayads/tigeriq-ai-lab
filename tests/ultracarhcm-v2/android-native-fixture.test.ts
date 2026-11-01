@@ -109,7 +109,7 @@ describe('GH-5135 native Android compile gate (synthetic fixtures, not a release
         ['ObdProtocolTest', 3],
         ['TaxiMeterRulesTest', 5],
         ['ProfileRulesTest', 3],
-        ['UpdateRulesTest', 8],
+        ['UpdateRulesTest', 10],
         ['ReportRulesTest', 6],
         ['ProfileLayoutRulesTest', 3],
         ['AppearanceRulesTest', 3],

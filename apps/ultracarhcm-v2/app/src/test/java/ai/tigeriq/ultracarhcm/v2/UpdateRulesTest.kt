@@ -18,6 +18,25 @@ class UpdateRulesTest {
         assertFalse(UpdateRules.isSecureHttpsUrl("not-a-url"))
     }
 
+    @Test fun acceptsOnlyTrustedV2PayloadRedirectChain() {
+        assertTrue(UpdateRules.isTrustedV2PayloadUrl(releaseUrl))
+        assertTrue(
+            UpdateRules.isTrustedV2PayloadUrl(
+                "https://release-assets.githubusercontent.com/github-production-release-asset/test.apk?sp=r&sig=abc",
+            ),
+        )
+        assertTrue(
+            UpdateRules.isTrustedV2PayloadUrl(
+                "https://objects.githubusercontent.com/github-production-release-asset/test.apk?sig=abc",
+            ),
+        )
+        assertFalse(UpdateRules.isTrustedV2PayloadUrl("https://github.com/newsdayads/tigeriq-ai-lab/archive/main.zip"))
+        assertFalse(UpdateRules.isTrustedV2PayloadUrl("https://example.com/app.apk"))
+        assertFalse(UpdateRules.isTrustedV2PayloadUrl("http://release-assets.githubusercontent.com/app.apk"))
+        assertFalse(UpdateRules.isTrustedV2PayloadUrl("https://user:pass@release-assets.githubusercontent.com/app.apk"))
+        assertFalse(UpdateRules.isTrustedV2PayloadUrl("https://release-assets.githubusercontent.com/app.apk#fragment"))
+    }
+
     @Test fun validatesTrustedReleaseMetadataShape() {
         assertNotNull(
             UpdateRules.validateMetadata(
@@ -177,6 +196,12 @@ class UpdateRulesTest {
         assertFalse(UpdateRules.matchesExpectedSha256("A".repeat(64), "B".repeat(64)))
         assertFalse(UpdateRules.matchesExpectedSha256("1234", "1234"))
         assertFalse(UpdateRules.matchesExpectedSha256("A".repeat(64), "1234"))
+    }
+
+    @Test fun matchesPinnedSignerFingerprintOnlyWhenWellFormedAndEqual() {
+        assertTrue(UpdateRules.matchesPinnedSignerSha256("A".repeat(64), "a".repeat(64)))
+        assertFalse(UpdateRules.matchesPinnedSignerSha256("A".repeat(64), "B".repeat(64)))
+        assertFalse(UpdateRules.matchesPinnedSignerSha256("not-a-cert", "not-a-cert"))
     }
 
     @Test fun comparesVersionCodesOnlyWhenReleaseIsAvailable() {
