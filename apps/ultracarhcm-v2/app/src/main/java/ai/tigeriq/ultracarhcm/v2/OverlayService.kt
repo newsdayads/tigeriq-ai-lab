@@ -130,14 +130,20 @@ class OverlayService : Service(), DisplayManager.DisplayListener {
                         }
                         MotionEvent.ACTION_UP -> {
                             if (dragging) {
-                                pref.edit()
+                                val persisted = pref.edit()
                                     .putInt(xKey, p.x)
                                     .putInt(yKey, p.y)
                                     .putInt(OverlayPositionRules.PORTABLE_X_KEY, p.x)
                                     .putInt(OverlayPositionRules.PORTABLE_Y_KEY, p.y)
                                     .remove("x")
                                     .remove("y")
-                                    .apply()
+                                    .commit()
+                                if (!persisted) {
+                                    Log.e(
+                                        logTag,
+                                        "Position persistence failed display=$id at (${p.x},${p.y})",
+                                    )
+                                }
                             } else {
                                 UsbCameraActivity.toggleFromShortcut(this@OverlayService, currentId)
                             }

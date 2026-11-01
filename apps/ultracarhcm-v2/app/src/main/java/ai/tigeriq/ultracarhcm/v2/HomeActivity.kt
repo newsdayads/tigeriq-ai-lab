@@ -124,10 +124,16 @@ class HomeActivity : ComponentActivity() {
     }
 
     private fun clearInvalidCustomBackground() {
-        prefs.edit()
+        val cleared = prefs.edit()
             .remove(AppearanceRules.PREF_CUSTOM_BACKGROUND_URI)
             .remove(AppearanceRules.PREF_CUSTOM_BACKGROUND_KIND)
-            .apply()
+            .commit()
+        if (!cleared) {
+            android.util.Log.e(
+                "UltraCarV2",
+                "Failed to persist invalid custom background cleanup",
+            )
+        }
     }
 
     private fun renderBackground(night: Boolean) {
