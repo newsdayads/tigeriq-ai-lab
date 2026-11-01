@@ -58,10 +58,11 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
         "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UvcRecoveryRules.kt",
-        "tests/ultracarhcm-v2/camera-runtime-permission-source.test.ts"
+        "tests/ultracarhcm-v2/camera-runtime-permission-source.test.ts",
+        "tests/ultracarhcm-v2/usb-recovery-source.test.ts"
       ],
-      "gap": "Runtime CAMERA permission is now a fail-visible gate before any UVC controller start; USB-device permission remains device-scoped in the UVC library. Real USB camera grant/preview/reconnect behavior still requires physical-device acceptance.",
-      "actual": "UsbCameraActivity checks android.permission.CAMERA before calling UsbUvcController.start(), requests the Android runtime permission through the system prompt only, keeps denial visible, and allows the user to retry. UsbUvcController separately discovers USB video-class devices, requests device permission through the UVC library, opens preview, and performs bounded recovery for a still-attached device.",
+      "gap": "Runtime CAMERA permission is a fail-visible gate before any UVC controller start; USB-device permission remains device-scoped in the UVC library. Bounded recovery is now fenced to the exact recovering USB device, so detaching an unrelated USB peripheral cannot cancel a still-attached camera retry. Real USB camera grant/preview/reconnect behavior still requires physical-device acceptance.",
+      "actual": "UsbCameraActivity checks android.permission.CAMERA before calling UsbUvcController.start(), requests the Android runtime permission through the system prompt only, keeps denial visible, and allows the user to retry. UsbUvcController discovers USB video-class devices, requests device permission through the UVC library, opens preview, and performs bounded recovery for a still-attached device. Recovery tracks the exact deviceId being retried and only cancels that pending retry when the matching camera detaches; unrelated USB detach events leave the recovery generation intact.",
       "testStatus": "DEVICE_QA_NOT_TESTED",
       "entryPoints": [
         "UsbCameraActivity.onCreate",
@@ -70,7 +71,8 @@
         "UsbUvcController.start",
         "UsbUvcController.beginPreview",
         "UsbUvcController.scheduleRecovery",
-        "UvcRecoveryRules.shouldSchedule"
+        "UvcRecoveryRules.shouldSchedule",
+        "UvcRecoveryRules.shouldCancelRecoveryForDetach"
       ],
       "permissions": [
         "android.permission.CAMERA",
