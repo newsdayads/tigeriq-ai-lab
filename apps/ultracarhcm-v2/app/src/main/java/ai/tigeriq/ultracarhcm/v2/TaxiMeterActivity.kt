@@ -304,7 +304,12 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
 
     private fun history(): JSONArray = try {
         JSONArray(prefs.getString(TaxiMeterRules.KEY_HISTORY, "[]") ?: "[]")
-    } catch (_: Exception) {
+    } catch (error: Exception) {
+        android.util.Log.w("UltraCarV2", "Corrupt Taxi Meter history", error)
+        val cleared = prefs.edit().remove(TaxiMeterRules.KEY_HISTORY).commit()
+        if (!cleared) {
+            android.util.Log.e("UltraCarV2", "Failed to persist corrupt Taxi Meter history cleanup")
+        }
         JSONArray()
     }
 
