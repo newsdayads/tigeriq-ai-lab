@@ -38,6 +38,7 @@ class ObdActivity : ComponentActivity() {
 
     private val worker = Executors.newSingleThreadExecutor()
     @Volatile private var socket: BluetoothSocket? = null
+    @Volatile private var pendingSocket: BluetoothSocket? = null
     @Volatile private var selectedDevice: BluetoothDevice? = null
     @Volatile private var activityStarted = false
     @Volatile private var connectionGeneration = 0L
@@ -191,12 +192,30 @@ class ObdActivity : ComponentActivity() {
                 }
                 val active = device.createRfcommSocketToServiceRecord(SPP_UUID)
                 candidate = active
-                active.connect()
-                initializeAdapter(active)
-                if (!activityStarted || isFinishing || isDestroyed || generation != connectionGeneration) {
+                if (!activityStarted || isFinishing || isDestroyed ||
+                    generation != connectionGeneration
+                ) {
                     try { active.close() } catch (_: Exception) { }
                     return@execute
                 }
+                pendingSocket = active
+                if (!activityStarted || isFinishing || isDestroyed ||
+                    generation != connectionGeneration || pendingSocket !== active
+                ) {
+                    if (pendingSocket === active) pendingSocket = null
+                    try { active.close() } catch (_: Exception) { }
+                    return@execute
+                }
+                active.connect()
+                initializeAdapter(active)
+                if (!activityStarted || isFinishing || isDestroyed ||
+                    generation != connectionGeneration || pendingSocket !== active
+                ) {
+                    if (pendingSocket === active) pendingSocket = null
+                    try { active.close() } catch (_: Exception) { }
+                    return@execute
+                }
+                pendingSocket = null
                 socket = active
                 runOnUiThread {
                     if (!activityStarted || isFinishing || isDestroyed ||
@@ -210,6 +229,7 @@ class ObdActivity : ComponentActivity() {
                     queryTelemetry()
                 }
             } catch (error: Exception) {
+                if (pendingSocket === candidate) pendingSocket = null
                 if (socket === candidate) {
                     disconnect()
                 } else {
@@ -312,8 +332,13 @@ class ObdActivity : ComponentActivity() {
 
     private fun disconnect() {
         val active = socket
+        val pending = pendingSocket
         socket = null
+        pendingSocket = null
         try { active?.close() } catch (_: Exception) { }
+        if (pending !== active) {
+            try { pending?.close() } catch (_: Exception) { }
+        }
     }
 
     override fun onStart() {
