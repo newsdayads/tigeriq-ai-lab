@@ -32,6 +32,28 @@ export function privateWifiAddress(input) {
   return p[0]===10||(p[0]===172&&p[1]>=16&&p[1]<=31)||(p[0]===192&&p[1]===168);
 }
 
+export function parsePrivateWifiIpv4(input) {
+  if(typeof input!=='string')return null;
+  const candidates=[...input.matchAll(/\binet\s+(\d{1,3}(?:\.\d{1,3}){3})\/\d{1,2}\b/g)].map(x=>x[1]);
+  for(const ip of candidates){
+    if(privateWifiAddress(ip+':5555'))return ip;
+  }
+  return null;
+}
+export function parseExistingAdbTcpPort(input) {
+  if(typeof input!=='string')return null;
+  const value=input.trim();
+  if(!/^\d{4,5}$/.test(value))return null;
+  const port=Number(value);
+  return Number.isInteger(port)&&port>=1024&&port<=65535?port:null;
+}
+export function wifiCandidateFromOutputs(ipOutput, portOutput) {
+  const ip=parsePrivateWifiIpv4(ipOutput),port=parseExistingAdbTcpPort(portOutput);
+  if(!ip||!port)return null;
+  const address=ip+':'+port;
+  return privateWifiAddress(address)?address:null;
+}
+
 export function parseDevices(text) {
   return String(text).split(/\r?\n/).slice(1).map(s => {
     const m = s.trim().match(/^([^\s]+)\s+(device|offline|unauthorized|recovery|bootloader)(?:\s+(.*))?$/);
@@ -180,6 +202,22 @@ const server = http.createServer(async (req, res) => {
         const output=String(r.stdout||'').trim();
         if(!/connected to|already connected/i.test(output))return json(res,409,{error:output.slice(0,250)||'ADB chưa kết nối'});
         return json(res,200,{connected:true,address:b.address,result:output});
+      }catch(e){return json(res,409,{error:errorText(e)})}
+    }
+    if (req.method === 'GET' && url.pathname === '/api/wifi/candidate') {
+      const serial=url.searchParams.get('serial');
+      if(!safeSerial(serial)||serial.includes(':'))return json(res,400,{error:'Chỉ dò thiết bị USB ADB hợp lệ'});
+      const attached=await devices();
+      if(!attached.some(x=>x.serial===serial&&x.state==='device'))
+        return json(res,409,{error:'Thiết bị USB ADB chưa sẵn sàng'});
+      try {
+        const [ipResult,portResult]=await Promise.all([
+          run(['-s',serial,'shell','ip','-f','inet','addr','show','wlan0'],{encoding:'utf8',timeout:8000}),
+          run(['-s',serial,'shell','getprop','service.adb.tcp.port'],{encoding:'utf8',timeout:8000})
+        ]);
+        const address=wifiCandidateFromOutputs(String(ipResult.stdout||''),String(portResult.stdout||''));
+        if(!address)return json(res,409,{error:'Thiết bị chưa có endpoint WiFi ADB LAN đang bật sẵn; TigerIQ không tự thay đổi cấu hình ADB'});
+        return json(res,200,{available:true,address,serial,readOnly:true});
       }catch(e){return json(res,409,{error:errorText(e)})}
     }
     if (req.method === 'GET' && url.pathname === '/api/health')
