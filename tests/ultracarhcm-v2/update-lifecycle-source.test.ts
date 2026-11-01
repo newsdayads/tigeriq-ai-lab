@@ -53,6 +53,9 @@ describe('GH-5135 F15 update Activity lifecycle', () => {
     expect(install).toContain('installerHandoff = true');
     expect(install.indexOf('startActivity(')).toBeLessThan(install.indexOf('installerHandoff = true'));
 
+    const clear = block('private fun clearVerifiedCandidate()', 'override fun onDestroy()');
+    expect(clear).toContain('installerHandoff = false');
+
     const destroy = block('override fun onDestroy()', 'private fun recordUpdateNotice');
     expect(destroy).toContain('if (!installerHandoff) clearVerifiedCandidate()');
   });
