@@ -217,11 +217,17 @@ class ObdActivity : ComponentActivity() {
                 }
                 pendingSocket = null
                 socket = active
+                if (!activityStarted || isFinishing || isDestroyed ||
+                    generation != connectionGeneration
+                ) {
+                    clearPublishedSocket(active)
+                    return@execute
+                }
                 runOnUiThread {
                     if (!activityStarted || isFinishing || isDestroyed ||
                         generation != connectionGeneration || socket !== active
                     ) {
-                        if (socket === active) disconnect()
+                        clearPublishedSocket(active)
                         return@runOnUiThread
                     }
                     setConnection("OBD: đã kết nối")
@@ -328,6 +334,12 @@ class ObdActivity : ComponentActivity() {
         val connected = socket?.isConnected == true
         refreshButton.isEnabled = connected
         connectButton.text = if (connected) "Đổi thiết bị OBD" else "Chọn thiết bị OBD đã ghép đôi"
+    }
+
+    private fun clearPublishedSocket(expected: BluetoothSocket) {
+        if (socket !== expected) return
+        socket = null
+        try { expected.close() } catch (_: Exception) { }
     }
 
     private fun disconnect() {
