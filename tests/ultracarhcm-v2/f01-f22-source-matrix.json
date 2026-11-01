@@ -175,10 +175,12 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeConfigRules.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/SavedLayoutShortcutRules.kt",
-        "tests/ultracarhcm-v2/saved-layout-shortcuts-source.test.ts"
+        "tests/ultracarhcm-v2/saved-layout-shortcuts-source.test.ts",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeBackupRules.kt",
+        "tests/ultracarhcm-v2/backup-restore-source.test.ts"
       ],
-      "gap": "Local saved/default Home state is versioned and recovered safely. Saved configurations now have stable V2 config IDs, deterministic Up/Down ordering, and five V1-evidenced HOME shortcut slots with tap-to-apply and long-press-to-reassign. Exact V1 shortcut icon artwork, full multi-zone orchestration, backup/restore of these new slot assignments, and real-device DeX acceptance remain open.",
-      "actual": "HomeActivity saves/applies/removes versioned local Home configurations and assigns/migrates unique stable config IDs. Reordering swaps array position without changing IDs. Five equal HOME shortcut controls persist config IDs synchronously, resolve the current saved layout by ID on tap, open the assignment picker on empty tap/long press, and clear stale/deleted references instead of falling through to another layout.",
+      "gap": "Local saved/default Home state is versioned and recovered safely. Saved configurations now have stable V2 config IDs, deterministic Up/Down ordering, and five V1-evidenced HOME shortcut slots with tap-to-apply and long-press-to-reassign. Backup schema v5 now exports and restores those five slot assignments by stable config ID with reference validation. Exact V1 shortcut icon artwork, full multi-zone orchestration, and real-device DeX acceptance remain open.",
+      "actual": "HomeActivity saves/applies/removes versioned local Home configurations and assigns/migrates unique stable config IDs. Reordering swaps array position without changing IDs. Five equal HOME shortcut controls persist config IDs synchronously, resolve the current saved layout by ID on tap, open the assignment picker on empty tap/long press, and clear stale/deleted references instead of falling through to another layout. Schema-v5 backup/restore preserves the five slot assignments only when every non-null config ID validates against the imported saved-configuration set; legacy schemas do not overwrite the newer mapping.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.saveHomeConfiguration",
