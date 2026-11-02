@@ -894,3 +894,16 @@ describe('GH-5291 PAD UI broker no-broad-scan recovery', () => {
     expect(source).toContain('function Test-PadElementMatch($Element, $Request, [string]$Mode)');
   });
 });
+
+
+describe('GH-5291 PAD Console selection contract', () => {
+  it('prefers SelectionItemPattern for clickable rows without InvokePattern', async () => {
+    const source = await fs.readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
+    const start = source.indexOf('function Invoke-PadElement($Request, [bool]$AllowClickFallback)');
+    const end = source.indexOf('function Set-PadValue($Request)');
+    const invoke = source.slice(start, end);
+    expect(invoke).toContain('SelectionItemPattern]::Pattern');
+    expect(invoke).toContain('$selection.Select()');
+    expect(invoke.indexOf('$selection.Select()')).toBeLessThan(invoke.indexOf('SetCursorPos'));
+  });
+});
