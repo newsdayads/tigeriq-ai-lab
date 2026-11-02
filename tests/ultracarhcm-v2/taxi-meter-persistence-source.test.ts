@@ -25,9 +25,15 @@ describe('GH-5135 F13 Taxi Meter persistence source contract', () => {
       taxi.indexOf('private fun finishTrip(save: Boolean)'),
       taxi.indexOf('private fun history()', taxi.indexOf('private fun finishTrip(save: Boolean)')),
     );
-    expect(finish).toContain('if (prependHistory(record))');
+    expect(finish).toContain('if (!prependHistory(record))');
+    expect(finish).toContain('foregroundSegmentStartedMs = SystemClock.elapsedRealtime()');
+    expect(finish).toContain('handler.post(tick)');
+    expect(finish).toContain('startLocationUpdates()');
+    expect(finish).toContain('chuyến vẫn tiếp tục để thử lại');
     expect(finish).toContain('toast("Đã lưu chuyến Taxi Meter V2")');
-    expect(finish).toContain('toast("Không thể lưu lịch sử chuyến Taxi Meter V2")');
+    expect(finish.indexOf('prependHistory(record)')).toBeLessThan(
+      finish.indexOf('running = false'),
+    );
 
     const prepend = taxi.slice(
       taxi.indexOf('private fun prependHistory(record: JSONObject): Boolean'),
