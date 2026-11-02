@@ -910,9 +910,10 @@ describe('GH-5291 PAD Console selection contract', () => {
 
 
 describe('GH-5291 selector-bound double click', () => {
-  it('emits two bounded clicks only when pad_click value is double', async () => {
+  it('emits two bounded clicks only for the explicit pad_click double-click path', async () => {
     const source = await fs.readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
-    expect(source).toContain("$clickCount = if ([string]$Request.value -eq 'double') { 2 } else { 1 }");
+    expect(source).toContain("$forceDoubleClick = $AllowClickFallback -and ([string]$Request.value -eq 'double')");
+    expect(source).toContain("$clickCount = if ($forceDoubleClick) { 2 } else { 1 }");
     expect(source).toContain("ElementCenterDoubleClick");
     expect(source).toContain('Start-Sleep -Milliseconds 80');
   });
