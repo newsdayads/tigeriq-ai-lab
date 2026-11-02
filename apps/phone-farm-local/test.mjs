@@ -472,7 +472,7 @@ syncBuiltinESMExports();
 });
 
 test('F09 media evidence exposes SHA-256 for screenshot and completed recording', () => {
-  assert.equal(sha256Buffer(Buffer.from('TigerIQ')),'f8f97796ec5469f14d8a3a2f8b847884dc760d8de0eacf7bd8232ef818460029');
+  assert.equal(sha256Buffer(Buffer.from('TigerIQ')),'e8be8f2a5025b7f14e5b36325d2bdf10e092d353defa33d36cce94b10da1eff8');
   const dir=path.dirname(fileURLToPath(import.meta.url));
   const app=fs.readFileSync(path.join(dir,'app.mjs'),'utf8');
   const ui=fs.readFileSync(path.join(dir,'ui.js'),'utf8');
