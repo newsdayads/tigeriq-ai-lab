@@ -108,7 +108,13 @@ class AppearanceActivity : ComponentActivity() {
     }
 
     private fun persistCustomBackground(uri: Uri, expectedKind: String) {
-        val observedMime = contentResolver.getType(uri)
+        val observedMime = try {
+            contentResolver.getType(uri)
+        } catch (error: RuntimeException) {
+            android.util.Log.e("UltraCarV2", "Cannot inspect custom background MIME", error)
+            toast("Không thể đọc loại tệp ảnh/video đã chọn")
+            return
+        }
         if (!AppearanceRules.matchesExpectedMime(observedMime, expectedKind)) {
             toast("Không xác minh được loại tệp ảnh/video đã chọn")
             return
@@ -119,7 +125,7 @@ class AppearanceActivity : ComponentActivity() {
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION,
             )
-        } catch (error: SecurityException) {
+        } catch (error: RuntimeException) {
             android.util.Log.e("UltraCarV2", "Cannot persist custom background URI", error)
             toast("Không thể giữ quyền đọc tệp nền")
             return
@@ -147,8 +153,9 @@ class AppearanceActivity : ComponentActivity() {
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION,
             )
-        } catch (_: SecurityException) {
-            // Already revoked or provider removed.
+        } catch (error: RuntimeException) {
+            // Already revoked, provider removed, or provider rejected release.
+            android.util.Log.w("UltraCarV2", "Cannot release custom background URI", error)
         }
     }
 

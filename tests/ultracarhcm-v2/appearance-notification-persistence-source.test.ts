@@ -34,7 +34,10 @@ describe('GH-5135 F09/F15 durable local UI state', () => {
     const start = appearance.indexOf('private fun persistCustomBackground');
     const end = appearance.indexOf('private fun releasePersistedUri', start);
     const block = appearance.slice(start, end);
-    expect(block).toContain('val observedMime = contentResolver.getType(uri)');
+    expect(block).toContain('val observedMime = try {');
+    expect(block).toContain('contentResolver.getType(uri)');
+    expect(block).toContain('catch (error: RuntimeException)');
+    expect(block).toContain('Cannot inspect custom background MIME');
     expect(block).toContain('if (!AppearanceRules.matchesExpectedMime(observedMime, expectedKind))');
     expect(block).toContain('Không xác minh được loại tệp ảnh/video đã chọn');
     expect(block.indexOf('matchesExpectedMime')).toBeLessThan(

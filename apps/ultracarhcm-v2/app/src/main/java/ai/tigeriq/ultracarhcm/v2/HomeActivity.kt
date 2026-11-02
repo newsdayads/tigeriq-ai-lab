@@ -125,6 +125,8 @@ class HomeActivity : ComponentActivity() {
     }
 
     private fun clearInvalidCustomBackground() {
+        val previous = prefs.getString(AppearanceRules.PREF_CUSTOM_BACKGROUND_URI, null)
+            ?.let { stored -> runCatching { Uri.parse(stored) }.getOrNull() }
         val cleared = prefs.edit()
             .remove(AppearanceRules.PREF_CUSTOM_BACKGROUND_URI)
             .remove(AppearanceRules.PREF_CUSTOM_BACKGROUND_KIND)
@@ -134,6 +136,21 @@ class HomeActivity : ComponentActivity() {
                 "UltraCarV2",
                 "Failed to persist invalid custom background cleanup",
             )
+            return
+        }
+        if (previous != null) {
+            try {
+                contentResolver.releasePersistableUriPermission(
+                    previous,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            } catch (error: RuntimeException) {
+                android.util.Log.w(
+                    "UltraCarV2",
+                    "Cannot release invalid custom background URI",
+                    error,
+                )
+            }
         }
     }
 
