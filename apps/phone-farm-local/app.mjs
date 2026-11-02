@@ -241,11 +241,11 @@ const server = http.createServer(async (req, res) => {
       try {
         const r=await run(['connect',b.address],{encoding:'utf8',timeout:12000});
         const output=String(r.stdout||'').trim();
-        if(!/connected to|already connected/i.test(output))return json(res,409,{error:output.slice(0,250)||'ADB chưa kết nối'});
+        if(!/connected to|already connected/i.test(output))return json(res,409,{error:output.slice(0,250)||'ADB chưa kết nối',reason:'ADB_CONNECT_FAILED',address:b.address});
         return json(res,200,{connected:true,address:b.address,result:output});
       }catch(e){
         const failure=adbConnectFailure(e);
-        return json(res,409,{error:failure.detail,...failure});
+        return json(res,409,{error:failure.detail,address:b.address,...failure});
       }
     }
     if (req.method === 'GET' && url.pathname === '/api/wifi/candidate') {
