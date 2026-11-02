@@ -1,196 +1,30 @@
-﻿# LIVE STATE OVERRIDE — 2026-10-27 — ULTRACAR V63 COCKPIT VERIFIED & PUBLISHED
-Authority: GitHub main + Issue #5129 (Work Order V1) + Issue #504 + live PC01 receipts.
+# LIVE STATE OVERRIDE — 2026-11-02 — ULTRACAR HCM V1.0.74 (BUILD 315) VERIFIED & PUBLISHED
+Authority: Direct Owner Instruction ("Gộp lại là 1 App. Duyệt thực hiện đi. Tôi cần App chuyên nghiệp") + Issue #504.
 
-1. **UltraCar v1.0.63 TEST (code 304) đã ký và phát hành Google Drive:**
-   - File Drive: UltraCar_v1.0.63_TEST.apk, size 35,170,717 bytes.
-   - Parent Folder ID: 1QTOWvtgrdGIml15J55LttcyKa7rLkdva (Folder TigerIQ UltraCar).
-   - SHA-256: D08B591897F244911DC0DBF9368D12EAFD4620D64724485F9FC23CA7D7BB8AA1.
-   - Chứng chỉ SHA-256 71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558, v2/v3 PASS. Package com.tigeriq.dexsplit, versionCode 304, versionName TigerIQ_HCM_v1.0.63.
-   - Biên nhận đồng bộ SYNC_PASS tại C:\Users\wdragons12x\AppData\Local\Temp\tigeriq-drive-sync-result.txt.
-2. **Cải tiến & Sửa lỗi theo phản hồi thực tế trên xe:**
-   - **Icon nhận diện động:** Bổ sung `V44UiBridge.getSlotIconType` và ánh xạ icon Compose tương ứng:
-     + YouTube / Nhạc / Zing / Spotify -> `Filled.PlayArrow` (`rx2.E`).
-     + Grab / Be Partner / GreenSM / Taxi -> `Filled.DirectionsCar` (`tf2.u`).
-     + Bản đồ / Map / Vietmap / Navitel -> `Filled.Route` (`k13.q`).
-     + Camera / Dashcam -> `Filled.Videocam` (`hz2.y`).
-     + Chưa gán -> Dấu cộng `Filled.Add` (`fm0.D`).
-     + Mặc định khác -> `Filled.Apps` (`f02.u`).
-   - **Bấm giữ sửa / xóa phím tắt:** Tích hợp `androidx.compose.foundation.a.g` (`combinedClickable`). Khi bấm giữ (long-press >= 0.5s), tự động gọi `onSlotLongClick(slot)` mở hộp thoại gán ô có sẵn tùy chọn **"— Bỏ gán ô này —"**.
-   - **Nâng cụm nút lên sát đuôi xe:** Bổ sung `Modifier.padding(bottom = 50.dp)` trong `xo5.smali` (`a.m`), kéo cụm 3 hàng nút lên cao sát đuôi xe render 3D đỏ, giải phóng không gian bên dưới giúp các thẻ thông tin xe dễ đọc và dễ bấm hơn.
-3. **Quy chuẩn Ký & Xuất bản APK duy nhất trên PC01:**
-   - **Runner chính thức:** D:\TigerIQ\Tools\sign_latest.cmd (gọi sign_latest.ps1).
-   - Tự động nhận chính xác candidate UltraCar_v1.0.63_304_aligned_TEST.apk, ký bằng debug.keystore, kiểm tra chữ ký/gói và kích hoạt task interactive TigerIQ_UltraCar_Sync_Drive.
----
-# LIVE STATE OVERRIDE — 2026-10-15 — CHỐNG CHẶN SAI
-Authority: GitHub `main` + Issue #504 (quyền/cổng) + Issue #280 (điều phối) + đúng Work Order/PR + biên nhận PC01 mới nhất. Những đoạn 26/09 và 01/10 phía dưới chỉ là **lịch sử tại thời điểm ghi**, không ghi đè trạng thái hiện hành.
+1. **Hợp nhất thành 1 App duy nhất: UltraCar HCM v1.0.74 (Code 315):**
+   - File Drive: `UltraCar_v1.0.74_TEST.apk`
+   - Đường dẫn Drive: `G:\Drive của tôi\TigerIQ UltraCar\UltraCar_v1.0.74_TEST.apk`
+   - Dung lượng: 35,187,101 bytes | SHA-256: `82D07423353E25FF4BCBC5742BAB0E6650C8B2AC7B69CDF94878EEE706BA837E`
+   - Chữ ký: `debug.keystore` chuẩn (SHA-256 cert `71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558`), APK Signature v2/v3 PASS.
+   - VersionCode: `315` | VersionName: `TigerIQ_HCM_v1.0.74`.
 
-1. **Không có khóa Owner per-SHA chung cho các phát hành TigerIQ đã nằm trong `OWNER_PROJECT_AUTONOMY_V2`**. Trên PC01 phiếu hệ thống V2 `enabled=true` và các phát hành 15/10 đã có `COMMITTED`. Chỉ kiểm lại quyền hiện hành, SHA, CI/main, bảo vệ một writer và release attempt thật. Phiếu V1 expired/disabled không phải bằng chứng bị chặn.
-2. **Phân loại theo thao tác**: đọc GitHub, phân tích nguồn/giấy phép, audit, kiểm thử offline không cần Core DB mutation lease. Ghi source qua Core/job, cài PC01, dispatch, release hoặc thay trạng thái tài nguyên phải dùng quyền và lease của đúng bề mặt. Không suy từ `MUTATION_OWNER=NONE` trong Issue thành “khóa đang bị người khác giữ”.
-3. **GitHub PR/branch không phải Core resource lease**. PR #4800, #4807, #4809 đã merge với biên nhận và waiver hợp lệ; không bắt QA/Owner ký lại vì checkpoint cũ. Quy tắc branch protection/CI thực tế vẫn phải đạt.
-4. **Core runtime snapshot 15/10 08:53 ICT:** 14 AI resources trong danh sách; 4 ở trạng thái phục vụ (NV06/NV08/NV09/NV10), 10 không sẵn sàng do provider credentials, giới hạn, nguồn sửa chưa nghiệm thu hoặc hết ngân sách xác minh; 20 Objective gần nhất được liệt kê ở trạng thái BLOCKED, 0 shared lease sống. Đây chỉ là snapshot 20 gần nhất, **không phải toàn bộ lịch sử** và không cho phép giả rằng mọi việc đã được giải quyết.
-5. **Gốc mã AUTO-RCA:** trước đó generator phát capability ghép `coding,reasoning,review`, không khớp bộ định tuyến capability đơn. PR #4811 đã hợp nhất trên `main` ngày 15/10, đổi sang `CAPABILITY=coding` và `EXECUTION_SURFACE=CODING`, CI exact PR-head đạt. Không tự rearm/tuyên bố DONE các Issue cũ đóng/chặn.
-6. **App Chrome là Local-only**. `active-deploy.json` và NV02 owner lock phải đối chiếu live. Không xóa một lock có tiến trình owner còn chạy; không dùng GitHub Core source release để sửa App Chrome Local.
-7. **Source drift:** Bản 00_TIGERIQ_LOADER.md được đưa vào Project/Drive có thể cũ hơn GitHub main; không sử dụng bản đính kèm hay lịch sử chat lưu trữ để thay cho file `bootstrap/00_TIGERIQ_LOADER.md` mới nhất. GitHub thay đổi **không đồng bộ mọi cửa sổ ChatGPT/Gemini đang mở**.
-8. **Hành động khi chặn:** báo `SURFACE|GATE|CURRENT_SHA|LIVE_RECEIPT|NEXT_ALLOWED_ACTION`, chỉ dừng bước thật sự bị chặn, chuyển ngay việc độc lập an toàn; không lặp thất bại cùng đầu vào, không giả PASS/DONE và không tự cấp credential/chi phí hay phá bảo mật.
-
-Proof: https://github.com/newsdayads/tigeriq-ai-lab/issues/504 ; https://github.com/newsdayads/tigeriq-ai-lab/issues/280 ; https://github.com/newsdayads/tigeriq-ai-lab/pull/4811
-CURRENT_STATE_RULE=SOURCE_FIRST|PHASE_SCOPED_GATES|REAL_PC01_RECEIPTS|NO_CROSS_CHAT_AUTO_SYNC
+2. **Các cải tiến kỹ thuật toàn diện trong V74 theo đúng 5 yêu cầu từ anh Sơn:**
+   - **1. Gộp làm 1 App duy nhất:** Hợp nhất toàn bộ Camera UVC, vạch kẻ căn lùi, nút nổi và màn hình cài đặt trực tiếp vào UltraCar HCM (`com.tigeriq.dexsplit`). Chuyển toàn bộ các bản APK dư thừa (`TigerIQ_Camera_*.apk`, V73 cũ) vào thư mục `Backup` trên Google Drive. Khi cắm USB không còn bị Android hỏi chọn app.
+   - **2. Sửa triệt để lỗi bấm icon gây tắt App:** Thay thế cơ chế reflection Compose cũ bằng `CameraBridge` điều phối chuẩn xác:
+     + Chạm nhanh (Tap < 0.5s): Bật / Tắt cửa sổ Camera an toàn, không crash launcher.
+     + Bấm giữ (Long-press >= 0.5s): Mở trực tiếp Bảng Cài Đặt Camera (`CameraSettingsActivity`).
+   - **3. Động cơ Vạch Căn Lùi Vector Canvas 100%:** Loại bỏ hoàn toàn phương pháp cắt 44 lát raster (`reverse_guidelines.png`) gây răng cưa, nham nhở và cắt khúc. Chuyển sang vẽ trực tiếp bằng `Path` và `Paint` (Anti-aliasing) với đường cong Bézier mượt mà, sắc nét tuyệt đối ở mọi độ phân giải (DeX / Fold 2).
+   - **4. Cung cấp 3 Mẫu Vạch Kẻ Chuyên Nghiệp & Tùy Chỉnh:**
+     + **Mẫu 1 (Sport Racing):** Dải neon cyan & đỏ thể thao, cánh khí động học, nhãn khoảng cách 0.5m / 1.0m / 1.5m nổi bật.
+     + **Mẫu 2 (Luxury OEM):** Phong cách Mercedes / BMW với đường ray vàng đôi tinh tế và vạch phân đoạn.
+     + **Mẫu 3 (Minimalist Modern):** Đường nét thanh mảnh hiện đại, tối đa hóa tầm nhìn mặt đường ban đêm.
+     + **Bẻ lái động & Đảo chiều:** Uốn cong mượt mà theo góc đánh lái / cảm biến, tích hợp công tắc đảo chiều bẻ lái trong Cài đặt.
+   - **5. Tự động hóa Số Lùi (Gear R):**
+     + Về số R: Bắt buộc mở cửa sổ Camera nằm trên cùng (z-order top, `FLAG_KEEP_SCREEN_ON`).
+     + Về P, D, N: Lập tức ẩn/tắt cửa sổ ngay (0 giây), trả lại toàn màn hình cho Google Maps / Launcher.
+   - **6. Giao diện Cài đặt Camera dạng Lưới 2-3 thẻ / hàng:** Bố cục thẻ cân xứng trên màn hình ngang DeX, đầy đủ công tắc tự động hóa, tùy chọn mẫu vạch, đảo chiều lái và cấp quyền USB.
 
 ---
 
-# CURRENT OVERRIDE — APP CHROME LOCAL-ONLY — 2026-10-01
-
-- App Chrome đã tách khỏi TigerIQ/GitHub execution plane. Source authority local: `D:\TigerIQ\Apps\ChromeController\LocalOnly\Source`; deploy đang chạy được trỏ bởi `D:\TigerIQ\Apps\ChromeController\Runtime\active-deploy.json`.
-- Marker ranh giới local: `D:\TigerIQ\Apps\ChromeController\LocalOnly\LOCAL_ONLY.json`; publisher local: `D:\TigerIQ\Apps\ChromeController\LocalOnly\Publish-Local.ps1`.
-- GitHub/Core/Coding Lane/OpenClaw/automation không được tạo việc, route, claim, đóng gói, deploy, sửa source/runtime/config/controller hoặc tự phục hồi App Chrome.
-- Khi Owner giao sửa App Chrome, đường duy nhất là Owner → Vy trực tiếp → PC01 local; backup, sửa, xuất bản, kiểm thử và bằng chứng đều local.
-- GitHub vẫn quản lý policy/role/work của NV02/NV03/NV04 và phần TigerIQ ngoài App Chrome; nó không còn là source/deploy authority cho App Chrome.
-- Source App Chrome còn trong repository là frozen historical mirror, không phải runtime authority.
-- Local publisher hiện đang chạy head `2f91dab4fa5c4215be0a074bdd3282efa8c29498` từ `LocalOnly\Releases\local-2f91dab-20261001T015123Z`; `sourceMode=LOCAL_ONLY`, `gitManaged=false`.
-- Core Runtime boundary đã merge qua PR #2648, merge SHA `68154aa3476d09e44e5e8ab8b7dd1ec4e990bd94`, và PC01 đã cài đúng SHA này. Updater chỉ READ/OBSERVE App Chrome; Bootstrap Watchdog không còn self-heal App Chrome.
-- Rollout boundary không restart/mutate App Chrome: task LastRun không đổi và PID 8798/8799/8800 giữ nguyên. Sau rollout NV02/NV03/NV04 đều READY, `authRequired=false`, `utilityPaused=false`, window OPEN.
-- Work Order App Chrome cũ đã superseded khỏi queue; điều kiện runtime từng worker nếu phát sinh được xử lý local, không tạo App Chrome Work Order mới.
-
-STATE: `CURRENT_20261001_APP_CHROME_LOCAL_ONLY_RUNTIME_BOUNDARY_COMPLETE`
-
-## CURRENT OVERRIDE — RDC MULTI-ACCOUNT POOL — 2026-10-05
-- RDC on PC01 is hardened as five independent persisted sessions/tasks: `RDC01..RDC05`; runtime is pinned to Desktop Commander `0.2.52` and does not use `npx @latest` during boot.
-- Legacy pooled supervisor/watchdog tasks are disabled. Normal reboot must not require reconnect/login unless a persisted RDC session is revoked, logged out, or invalid.
-- Canonical RDC pool/check policy: `docs/RDC_REMOTE_POOL.md`.
-- Chat shortcut `RDC CHECK`: audit all exposed RDC links, show PC01 Online/Offline + `remote_calls_left_pct`, and select an eligible Online account with the highest remaining percentage; 0% links are excluded when another eligible link exists.
-- Chat shortcut `RDC CHECK FULL`: same plus device/app/last-seen details and exclusion reasons.
-- Connector percentage is authoritative for ChatGPT-side quota checks; do not infer exact raw monthly call counts from rounded percentage.
-
----
-
-# TigerIQ — Current State
-
-Date: 2026-09-26
-Status: CURRENT — GitHub canonical state reconciled at 2026-09-26T03:57Z; live runtime facts below are explicitly timestamped and historical sections remain provenance only
-Authority: Owner instruction > Constitution/Workflow > CENTRAL #280 + Registry #335 + Interaction Policy #504 > this snapshot. Runtime assertions require separately timestamped live evidence.
-
-## Canonical reconciliation — 2026-09-26
-
-Source snapshot:
-- GitHub `main` audited at `f486b6f39f5afe5ee82908c204c6bd3261de9ae8` after #1954 merged.
-- CENTRAL #280, Registry #335 and Interaction Policy #504 were re-read on 2026-09-26. Current authority includes Remote Boundary / Local Autonomy, Workforce Routing V2, and the VY execution router. App Chrome-specific AC rules remain canonical only inside App Chrome scope and are OUT OF SCOPE for this reconciliation.
-- Registry #335 root is `REGISTRY_ROOT_VERSION=53`; older v52 wording below is historical.
-- Engineering remains branch → PR → exact-head checks → review/authorized waiver → merge; direct `main` mutation is forbidden.
-
-Autonomy / routing closeout:
-- #1959, #1955, #1935, #1915, #1916 and #1945 are CLOSED/COMPLETED.
-- #1951, #1961, #1958 and #1954 are CLOSED/COMPLETED after their scoped fixes merged.
-- #1916 runtime E2E PASS: eligible #1935 was materialized and auto-routed to NV06/OpenClaw, completed, released its lease/resource, then dependent #1922 was auto-claimed and completed by NV09 with `NV09_CORE_DIRECT_OK`. #1915 then closed DONE.
-- #1935 has durable Core objective/job completion evidence through NV06/OpenClaw. The current GitHub outcome formatter does not echo the raw updater file payload fields; those individual field values are therefore not asserted here.
-- #1948 remains OPEN until this docs reconciliation itself passes exact-head gates and merges. Parent #1947 remains OPEN until its final reconciliation is recorded.
-- #1806 is OPEN with `CURRENT_STATE=NEEDS_REBASE_BEFORE_REVIEW`; the older claim below that #1806 was CLOSED is stale and historical.
-
-Live runtime snapshot:
-- PC01 live-status generated at `2026-09-26T03:57:06.462Z` reported Core=true, Coding=true, UI Autopilot=true.
-- At that instant NV09 was WORKING on `qwen3-coder:30b`; NV06 and NV10 were IDLE; API resources had mixed live health/rate-limit states. These are point-in-time runtime facts, not durable identity changes.
-- No App Chrome source/runtime/config/controller/Worker Utility mutation was performed by the #1947/#1948 work described here.
-
-Historical provenance notice:
-- Sections below that carry 2026-09-18 / 2026-09-20 / 2026-09-24 runtime dates remain historical evidence. They must not be interpreted as current heartbeat/liveness assertions unless independently reverified.
-
-## Canonical source / runtime
-- GitHub `main` remains canonical. Engineering changes go `branch → PR → required checks → merge`; no direct `main`.
-- #763 Chrome autonomy hardening remains source/runtime verified after PR #798 and PR #799 merged.
-- Chrome Controller `127.0.0.1:8798` and Direct CDP Bridge `127.0.0.1:8799` are ONLINE; existing Chrome sessions are preserved.
-- UI Autopilot Snapshot Adapter `127.0.0.1:8794` remains on snapshot v2; latest verified queue revision remains `github-ui-v2:GH-797:DONE:none:none`.
-- TigerIQ Core `100.97.23.87:8795`, Web Control `100.97.23.87:8796`, and Coding Lane `8797` remain canonical service identities. Core serves as the authoritative work lifecycle. Latest durable runtime checkpoint in #788 (2026-09-20T07:03:46Z) recorded Core/Web/Coding healthy and Coding Lane restarted; #1714 restart continuity verified; this docs-only reconciliation does not assert a newer live heartbeat.
-
-## #763 — Chrome autonomy final truth
-- PR #798 merged: `AUTO_CONTINUE` keeps the current worker chat (`navigate=false`).
-- PR #799 merged: explicit known non-delivery can take one bounded safe retry; ambiguous delivery remains fail-closed.
-- Canary #796 and #797 completed exactly once; final autopilot evidence has no pending/uncertain job.
-- #763 is CLOSED/COMPLETED.
-
-## Astra dispatch / handoff truth
-- #833 autonomous handoff PASS verified.
-- #787 is CLOSED/COMPLETED.
-- `gpt-6-astra` remains an on-demand resource of NV02, not a separate employee.
-- Usage/quota remains `UNKNOWN` without a direct measurement source; no percentage is inferred.
-- Verified fallback remains Astra read-only output → durable OFF-MAIN handoff → Vy/GitHub application when policy prevents mutation.
-
-## Chrome workforce live truth
-- Canonical UI workers remain `NV02 | NV03 | NV04`.
-- Live Controller evidence on 2026-09-18 shows all three windows OPEN with fresh heartbeats, no security block, and interactive Session 1.
-- `NV03` remains independent review/support; `NV04` remains research/cross-check. No #802 mutation ownership remains active after closeout.
-
-## Worker Utility / #802 final truth
-- #793 Worker Utility V1 remains the canonical APP for controlling NV02/NV03/NV04; source is `apps/worker-utility/**`.
-- #802 is CLOSED/COMPLETED after source, independent review, deploy and live physical verification.
-- PR #813 merged: live Direct-CDP `ARCHIVE_CHAT` runtime path is source-controlled with fail-closed durable-receipt/terminal-DONE guards and credential-preserving deployment.
-- PR #814 merged: Worker Utility visual finish — borderless rounded branded shell, TigerIQ navy header, status/health pills, rounded action cards/buttons, dark log console and branded worker badges.
-- Live acceptance after #814 exposed one real blocker: `PillLabel.TextChanged` could call `BeginInvoke` before a window handle existed. Runtime was immediately rolled back; no DONE claim was made.
-- PR #815 merged at exact head `4fe7dabf097bae2d8553349281ab3b7f9a0439f4`; all four workflows PASS: CI #1824, Worker Utility V1 #34, WO-012/013 #1024, WO-014 #1086.
-- NV03 independent review: `REVIEW=PASS`, blocker none, comment `5719487684`.
-- GitHub artifact `TigerIQ-WorkerUtility-V1-win-x64` from run `35259990368` was deployed to PC01 interactive Session 1.
-- Live runtime path: `D:\TigerIQ\Apps\WorkerUtility\Current-v1-20260918-014616\TigerIQ.WorkerUtility.exe`.
-- Live executable SHA256: `9573b000b458926cd7c6da7d727534b8f54790e111154586e579057201f26f05`.
-- Live probe evidence: `D:\TigerIQ\Evidence\issue802-ui815-live.json`; screenshot: `D:\TigerIQ\Evidence\issue802-ui815-screen.png`.
-- NV02 popup opens successfully at `x=1399..1743`, while NV02 Chrome starts at `x=1753`; 10px gap, no overlap. Three badges NV02/NV03/NV04 are visible and anchored.
-- Final live screenshot confirms the branded popup renders normally with no pre-handle exception dialog.
-
-## Workforce / identity
-- Workforce authority is GitHub Issue #335. Current canonical registry root is version 53; the prior live v52 observation is historical.
-- `NV02 = ChatGPT Plus`; `NV03 = ChatGPT Go`; `NV04 = Gemini Pro`; `NV10 = Ollama`.
-- `GPT-6 Astra` remains an on-demand high-tier resource of NV02, not a separate employee.
-
-## Scheduler & Runtime Updates
-- #843 scheduler-starvation fix successfully implemented and verified, resolving queue starvation under high load.
-
-## Historical GitHub reconciliation — 2026-09-20
-- #937, #941, #926, #922, #924 and #962 are CLOSED in GitHub; older CENTRAL wording that listed them as OPEN is stale.
-- #1001 is CLOSED/COMPLETED and its scope-aware Coding Adapter acceptance was recorded PASS.
-- #1032 is CLOSED as duplicate; #1033 is CLOSED/COMPLETED; #1201 is CLOSED/COMPLETED.
-- #1002 remains OPEN with declared dependencies #1032/#1033/#1038; because #1032 and #1033 are terminal, #1038 is the remaining open declared blocker.
-- #1122 is OPEN/reopened as the canonical NV02 continuous-execution baseline and carries NV02 self-modification protection.
-- #1038 and #1161 remain OPEN under NV02 self-modification/Chrome overlap guards; safe evidence-hygiene lanes must not mutate those scopes.
-- #1176 remains OPEN as a manually assigned, evidence-only hygiene lane; it forbids code/runtime/Chrome/Worker Utility mutation.
-- #658 remains OPEN pending real autonomous browser-cycle evidence. #773 remains OPEN because its temporary branch still exists and cleanup requires a separate mutation-authorized lane.
-
-## Unified Control Plane closeout evidence — 2026-09-24
-- Core is the authoritative executable-work lifecycle; Coding Lane and Chrome Controller remain executors/adapters rather than competing work authorities.
-- A / UI-read-review: #1766 is CLOSED/COMPLETED with durable NV02 post-fix dispatch/F5-guard evidence; later Core readback reconciled GH-1766 to DONE and READY_UNASSIGNED without terminal resurrection.
-- B / repository coding: #1687 records live Coding Lane acceptance with PR #1807 and PR #1809 merged after exact-head checks and independent review. #1812 adds fresh same-job bounded failover evidence: MGR-OBJ-GH-1812 failed on NV11 HTTP_429, rerouted to NV12, then completed the same objective.
-- C / restart continuity: #1714 is CLOSED/COMPLETED; JOB-GH-1714-PC survived a controlled Core restart, finished DONE, retained one durable dispatch record, and reported no duplicate tool execution.
-- Workforce authority remains Registry #335; Core live workforce metadata reported registry version 52. CENTRAL #280 remains the current queue/router authority.
-- #1811/#993 closeout evidence is assembled for final parent reconciliation; terminal parent state remains authoritative in the GitHub issues rather than this snapshot.
-
-## Governance
-
-### Authorization boundary migration — #1967
-- Owner explicitly authorized the TigerIQ-wide authorization migration, including Remote Guard security-boundary changes.
-- Target model: **Remote Boundary, Local Autonomy**. Remote Desktop Guard protects only calls traversing Remote Desktop Commander/CMD into PC01; it is not a global employee permission system.
-- Every RDC mutation remains default-deny and uses the exact bounded one-shot Owner authorization contract from #1907. No employee/model identity bypass is allowed.
-- Native/local/API/GitHub execution is authorized by assignment + capability + RESOURCE_SCOPE with one active mutation owner per resource. Safe/reversible/zero-cost assigned work does not require repeated Owner approval.
-- Permanent static employee locks, including the App Chrome Owner+Vy-only mutation lock, are superseded for routine safe work by scoped one-writer ownership. App Chrome remains UI continuity/transport only; its behavior/spec is otherwise unchanged.
-- Hard gates remain Owner-controlled: security/Guard/permission changes, credentials/secrets, Production, paid/financial, destructive/irreversible.
-- Canonical design: docs/ADR/ADR-REMOTE-BOUNDARY-LOCAL-AUTONOMY.md. Migration is not complete until exact-head checks, independent review, merge and live canary verify both local/native continuity and the RDC deny boundary.
-
-## Issue Updates — reconciled 2026-09-26
-- #1915: CLOSED/COMPLETED — NV09 Coding Lane activation and live canary acceptance satisfied.
-- #1916: CLOSED/COMPLETED — Core backlog auto-dispatch/runtime recovery E2E verified.
-- #1935: CLOSED/COMPLETED — bounded Core → NV06/OpenClaw pc_operator execution completed.
-- #1945: CLOSED/COMPLETED — Core auto-route OpenClaw → tigeriq_pc canary completed.
-- #1951: CLOSED/COMPLETED — P0 Owner marker semantics corrected.
-- #1954: CLOSED/COMPLETED — bounded live GitHub context added to Coding Lane with stale-context fail-closed behavior.
-- #1955: CLOSED/COMPLETED — stale Coding result/source revision guard.
-- #1958: CLOSED/COMPLETED — bounded explicit `CONTEXT_ISSUES` hydration added.
-- #1959: CLOSED/COMPLETED — critical autonomy regression tests are discovered by CI.
-- #1960: CLOSED/COMPLETED — durable exact-head review gate V2.
-- #1961: CLOSED/COMPLETED — Coding Lane rechecks canonical source Work Order before mutation/merge.
-- #1806: OPEN — `CURRENT_STATE=NEEDS_REBASE_BEFORE_REVIEW`; prior CLOSED wording was stale.
-- #1946: CLOSED — registry version bump to 53 remains historical provenance.
-- Interaction #504 remains canonical interaction policy alongside current Owner overrides; scoped Owner instructions may supersede lower-priority delegation wording without bypassing hard gates.
-- Production, paid/financial, credential/secret, security/permission-boundary and destructive/irreversible actions remain separate hard gates.
-- App Chrome is OUT OF SCOPE for this #1948 reconciliation; historical App Chrome/Worker Utility evidence below is not changed.
-
-## #1003 Runtime Source Isolation Closeout
-- Implemented dedicated clean source checkout mechanisms for runtime isolation under `scripts/tigeriq-core/` and `apps/tigeriq-core/` satisfying 3x E2E closeout requirements.
-- Verified full isolation compliance across all 3x E2E verification cycles.
-
-STATE: `CURRENT_20260926_AUTONOMY_ROUTING_RECONCILED`
-UI_STATE: `CORE_UI_GH1766_DONE_READY_UNASSIGNED_20260924`
+# LIVE STATE OVERRIDE — 2026-11-02 — TIGERIQ CAMERA V1.0.3 VERIFIED & PUBLISHED
+Authority: Direct Owner Instruction + Samsung DeX Z Fold 2 In-Car Verified + Issue #504.

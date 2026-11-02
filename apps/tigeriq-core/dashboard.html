@@ -32,6 +32,22 @@
    ============================================================ */
 
 /* 1. PROJECT THEMES FOR WORK CARDS */
+.tiq-work-card[data-project-theme="camera"] > .work-main {
+  background: linear-gradient(165deg, #0a2533 0%, #06151f 100%) !important;
+  border: 1px solid rgba(0, 229, 255, 0.55) !important;
+}
+.tiq-work-card[data-project-theme="camera"]:hover > .work-main {
+  border-color: #00e5ff !important;
+  box-shadow: 0 10px 28px rgba(0, 229, 255, 0.28) !important;
+}
+.tiq-work-card[data-project-theme="camera"] .work-id {
+  background: linear-gradient(135deg, #00b4d8, #0077b6) !important;
+  color: #fff !important;
+}
+.banner-camera {
+  background: rgba(0, 229, 255, 0.18) !important;
+  color: #00e5ff !important;
+}
 .tiq-work-card[data-project-theme="ultracar"] > .work-main {
   background: linear-gradient(165deg, #072540 0%, #051423 100%) !important;
   border: 1px solid rgba(56, 189, 248, 0.45) !important;
@@ -1300,7 +1316,11 @@ function renderWork(){
    const titleLower = String(row.title || '').toLowerCase();
    let theme = 'default', icon = '📦', prjShortName = row.projectName || 'Dự án';
 
-   if (prjName.includes('dexcam') || prjName.includes('ultracar') || titleLower.includes('ultracar') || titleLower.includes('dexcam')) {
+   if (prjName.includes('camera') || titleLower.includes('camera')) {
+     theme = 'camera';
+     icon = '📷';
+     prjShortName = 'TigerIQ Camera';
+   } else if (prjName.includes('dexcam') || prjName.includes('ultracar') || titleLower.includes('ultracar') || titleLower.includes('dexcam')) {
      theme = 'ultracar';
      icon = '🚗';
      prjShortName = 'UltraCarHCM V2';

@@ -9,6 +9,7 @@ const PROJECTS = Object.freeze([
   { id: 'paperclip-vnext', name: 'Paperclip vNext', order: 70, kind: 'project', groupId: 'paperclip-vnext' },
   { id: 'revenue-lab', name: 'Revenue Lab', order: 80, kind: 'project', groupId: 'revenue-lab' },
   { id: 'tigeriq-driver', name: 'TigerIQ Driver', order: 90, kind: 'project', groupId: 'tigeriq-driver' },
+  { id: 'tigeriq-camera', name: 'TigerIQ Camera', order: 95, kind: 'project', groupId: 'dexcam-personal' },
   { id: 'dexcam-personal', name: 'DeXCam Personal', order: 100, kind: 'project', groupId: 'dexcam-personal' },
   { id: 'tigeriq-coin', name: 'TigerIQ Coin', order: 110, kind: 'project', groupId: 'tigeriq-coin' },
 ]);
@@ -21,6 +22,8 @@ const PROJECT_ALIASES = new Map([
   ['tigeriq-media', 'tigeriq-news'],
   ['tigeriq-news-media', 'tigeriq-news'],
   ['workflow-lab', 'tigeriq-workflow-lab'],
+  ['tigeriq-camera', 'tigeriq-camera'],
+  ['camera', 'tigeriq-camera'],
   ['app-chrome', 'tigeriq-app-chrome'],
   ['appchrome', 'tigeriq-app-chrome'],
   ['chrome-controller', 'tigeriq-app-chrome'],
@@ -44,7 +47,7 @@ export const CANONICAL_PORTFOLIO_GROUPS = Object.freeze([
   { id: 'paperclip-vnext', name: 'Paperclip vNext', order: 30, childIds: ['paperclip-vnext'] },
   { id: 'revenue-lab', name: 'Revenue Lab', order: 40, childIds: ['revenue-lab'] },
   { id: 'tigeriq-driver', name: 'TigerIQ Driver', order: 50, childIds: ['tigeriq-driver'] },
-  { id: 'dexcam-personal', name: 'DeXCam Personal', order: 60, childIds: ['dexcam-personal'] },
+  { id: 'dexcam-personal', name: 'DeXCam Personal', order: 60, childIds: ['dexcam-personal', 'tigeriq-camera'] },
   { id: 'tigeriq-coin', name: 'TigerIQ Coin', order: 70, childIds: ['tigeriq-coin'] },
 ]);
 const PORTFOLIO_GROUP_BY_ID = new Map(CANONICAL_PORTFOLIO_GROUPS.map(group => [group.id,group]));
