@@ -183,8 +183,8 @@ class HomeActivity : ComponentActivity() {
                         }
                         place(view, 0f, 0f, 1f, 1f)
                     }
-                } catch (error: SecurityException) {
-                    android.util.Log.e("UltraCarV2", "Custom image permission lost", error)
+                } catch (error: RuntimeException) {
+                    android.util.Log.e("UltraCarV2", "Custom image setup failed", error)
                     clearInvalidCustomBackground()
                     renderBundledBackground(night)
                 }
