@@ -11,7 +11,7 @@ import { spawn } from 'node:child_process';
 import { createServer as createNetServer } from 'node:net';
 
 import assert from 'node:assert/strict';
-import { parseDevices, safeSerial, validInput, privateWifiAddress, parsePrivateWifiIpv4, parseExistingAdbTcpPort, wifiCandidateFromOutputs, wifiEndpointReachable, normalizeKnownWifiEndpoints, reconnectKnownWifiEndpoints, runtimeNetworkPolicy, sha256Buffer, adbConnectFailure, mirrorOptions, server } from './app.mjs';
+import { parseDevices, safeSerial, validInput, privateWifiAddress, parsePrivateWifiIpv4, parseExistingAdbTcpPort, wifiCandidateFromOutputs, parseAdbMdnsConnectServices, wifiCandidatesFromOutputs, wifiEndpointReachable, normalizeKnownWifiEndpoints, reconnectKnownWifiEndpoints, runtimeNetworkPolicy, sha256Buffer, adbConnectFailure, mirrorOptions, server } from './app.mjs';
 
 test('ADB inventory parses connected, offline, unauthorized devices', () => {
   const devices=parseDevices('List of devices attached\nR3CM400AKRX device product:beyondxks model:SM_G977N transport_id:1\n192.168.0.9:5555 offline\nABCD unauthorized\n');
@@ -238,6 +238,28 @@ test('read-only WiFi ADB discovery accepts only an already-enabled private LAN e
   assert.equal(wifiCandidateFromOutputs('inet 192.168.50.23/24 scope global wlan0', '-1'), null);
 });
 
+test('read-only mDNS discovery finds modern Wireless Debugging connect endpoints on the USB device LAN IP', () => {
+  const mdns=[
+    'List of discovered mdns services',
+    'adb-R3CM400AKRX-abc._adb-tls-pairing._tcp. 172.16.199.197:37123',
+    'adb-R3CM400AKRX-def._adb-tls-connect._tcp. 172.16.199.197:39111',
+    'adb-R3CM400AKRX-dup._adb-tls-connect._tcp. 172.16.199.197:39111',
+    'adb-OTHER-ghi._adb-tls-connect._tcp. 192.168.1.50:40123',
+    'adb-PUBLIC._adb-tls-connect._tcp. 8.8.8.8:5555'
+  ].join('\n');
+  assert.deepEqual(parseAdbMdnsConnectServices(mdns,'172.16.199.197'),['172.16.199.197:39111']);
+  assert.deepEqual(parseAdbMdnsConnectServices(mdns),['172.16.199.197:39111','192.168.1.50:40123']);
+  assert.deepEqual(
+    wifiCandidatesFromOutputs('inet 172.16.199.197/24 scope global wlan0','5555',mdns),
+    ['172.16.199.197:5555','172.16.199.197:39111']
+  );
+  assert.deepEqual(
+    wifiCandidatesFromOutputs('inet 172.16.199.197/24 scope global wlan0','-1',mdns),
+    ['172.16.199.197:39111']
+  );
+  assert.deepEqual(wifiCandidatesFromOutputs('inet 8.8.8.8/24 scope global wlan0','-1',mdns),[]);
+});
+
 test('WiFi ADB reachability preflight rejects stale configured endpoints without changing ADB', async () => {
   const fakeSocket=event=>()=>{
     const handlers={};
@@ -335,6 +357,9 @@ test('WiFi candidate endpoint remains discovery-only and never enables ADB TCP m
   assert.match(source,/error:failure\.detail,address:b\.address,\.\.\.failure/);
   assert.match(source,/getprop','service\.adb\.tcp\.port/);
   assert.match(source,/ip','-f','inet','addr','show','wlan0/);
+  assert.match(source,/run\(\['mdns','services'\]/);
+  assert.match(source,/_adb-tls-connect\\\._tcp/);
+  assert.match(source,/source:live\.address===classic\?'legacy-tcp':'adb-mdns'/);
   assert.doesNotMatch(source,/['"]tcpip['"]/);
   assert.doesNotMatch(source,/service\.adb\.tcp\.port.*setprop/);
 });
