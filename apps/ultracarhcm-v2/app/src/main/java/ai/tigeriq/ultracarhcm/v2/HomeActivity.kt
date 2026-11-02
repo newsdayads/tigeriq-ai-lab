@@ -158,6 +158,12 @@ class HomeActivity : ComponentActivity() {
                     ImageView(this).also { view ->
                         view.scaleType = ImageView.ScaleType.CENTER_CROP
                         view.setImageURI(uri)
+                        if (view.drawable == null) {
+                            android.util.Log.e("UltraCarV2", "Custom image could not be decoded")
+                            clearInvalidCustomBackground()
+                            renderBundledBackground(night)
+                            return
+                        }
                         place(view, 0f, 0f, 1f, 1f)
                     }
                 } catch (error: SecurityException) {

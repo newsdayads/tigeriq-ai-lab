@@ -43,6 +43,20 @@ describe('GH-5135 remaining local durability paths', () => {
     expect(block).toContain('Position persistence failed');
   });
 
+  it('fails closed to bundled background when a persisted custom image cannot decode', () => {
+    const start = home.indexOf('AppearanceRules.KIND_IMAGE ->');
+    const end = home.indexOf('AppearanceRules.KIND_VIDEO ->', start);
+    const block = home.slice(start, end);
+    expect(block).toContain('view.setImageURI(uri)');
+    expect(block).toContain('if (view.drawable == null)');
+    expect(block).toContain('Custom image could not be decoded');
+    expect(block).toContain('clearInvalidCustomBackground()');
+    expect(block).toContain('renderBundledBackground(night)');
+    expect(block.indexOf('if (view.drawable == null)')).toBeLessThan(
+      block.indexOf('place(view, 0f, 0f, 1f, 1f)'),
+    );
+  });
+
   it('persists invalid custom-background cleanup synchronously and logs failure', () => {
     const start = home.indexOf('private fun clearInvalidCustomBackground()');
     const end = home.indexOf('private fun renderBackground', start);
