@@ -87,7 +87,9 @@ export function parseAdbMdnsConnectServices(input, preferredIp=null, preferredSe
     const addressMatch=line.match(/(\d{1,3}(?:\.\d{1,3}){3}:\d{1,5})\s*$/);
     if(!addressMatch || !privateWifiAddress(addressMatch[1]))continue;
     if(preferred && !addressMatch[1].startsWith(preferred+':'))continue;
-    const serviceMatch=line.match(/^(\S+?)\._adb-tls-connect\._tcp\.?/i);
+    const serviceMatch=
+      line.match(/^(\S+)\s+_adb-tls-connect\._tcp\.?\s+/i) ||
+      line.match(/^(\S+?)\._adb-tls-connect\._tcp\.?\s+/i);
     const target=serial && serviceMatch && mdnsServiceMatchesSerial(serviceMatch[1],serial) ? serialMatches : fallbackMatches;
     if(!target.includes(addressMatch[1]))target.push(addressMatch[1]);
     if(serialMatches.length+fallbackMatches.length>=16)break;
