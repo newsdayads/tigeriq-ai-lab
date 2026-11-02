@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>??i ?u ti?n Work Order ? TigerIQ Owner</title>
+<style>
+*{box-sizing:border-box}body{background:#0b1729;color:#e6f1fe;font:15px system-ui,-apple-system,sans-serif;margin:0;min-height:100vh;display:grid;place-items:center;padding:16px}
+main{border:1px solid #2f4865;background:#10213a;border-radius:16px;padding:22px;width:100%;max-width:530px;box-shadow:0 12px 50px #0005}
+h1{font-size:21px;margin:0 0 18px}p{color:#b9cde3;line-height:1.5}label{display:block;margin:18px 0 7px;font-weight:750}
+select,button{font:inherit;border-radius:9px;padding:12px;width:100%}select{background:#0a1727;color:#fff;border:1px solid #5b7a9c}
+button{background:#1364ad;color:#fff;border:1px solid #4387ca;font-weight:800;cursor:pointer;margin-top:16px}
+button:disabled{opacity:.6;cursor:wait}a{color:#91ceff}small{color:#a6bfd7;display:block;margin-top:15px}
+#status{padding:10px 0;min-height:40px}#issueTitle{font-weight:700;color:#fff}#login[hidden],#controls[hidden]{display:none}
+</style><script defer src="/owner-priority.js"></script></head>
+<body><main><h1>Thay ??i ?u ti?n P0?P5</h1>
+<p id="status" role="status" aria-live="polite">?ang x?c minh quy?n Owner v? c?ng vi?c t? GitHub?</p>
+<p id="issueTitle"></p>
+<p id="login" hidden><a id="ownerLogin" href="/api/owner-auth?action=login">??NG NH?P OWNER</a></p>
+<div id="controls" hidden><label for="priority">M?c ?u ti?n m?i</label>
+<select id="priority" aria-label="?u ti?n c?ng vi?c"><option>P0</option><option>P1</option><option>P2</option><option>P3</option><option>P4</option><option>P5</option></select>
+<p id="policy">P0: ch? Owner/Vy ?i?u h?nh. Chuy?n xu?ng P1?P5 kh?ng t? c?p quy?n AI; P5 c? th? ?n theo b? l?c.</p>
+<button id="save" type="button">L?U ?U TI?N V? X?C MINH GITHUB</button></div>
+<small><a id="github" href="https://github.com/newsdayads/tigeriq-ai-lab" rel="noopener noreferrer" target="_blank">Xem ngu?n GitHub</a> ? Sau khi l?u, quay l?i Dashboard v? t?i m?i.</small></main></body></html>
