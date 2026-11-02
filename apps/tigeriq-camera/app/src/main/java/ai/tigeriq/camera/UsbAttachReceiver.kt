@@ -21,10 +21,15 @@ class UsbAttachReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         if (intent == null) return
         val settings = CameraSettings(context)
-        if (!settings.isUsbAutoStart) return
-
         val action = intent.action ?: return
+        if (!settings.isUsbAutoStart) {
+            CameraEventLog.record(context, "USB", "IGNORED", "usb_autostart_disabled " + action)
+            return
+        }
         val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+        CameraEventLog.record(context, "USB", "BROADCAST",
+            (if (action == UsbManager.ACTION_USB_DEVICE_ATTACHED) "ATTACHED" else "DETACHED") +
+            " | camera=" + (device != null && UsbUvcManager.isUvc(device)))
 
         if (action == UsbManager.ACTION_USB_DEVICE_ATTACHED) {
             val isCamera = device != null && UsbUvcManager.isUvc(device)

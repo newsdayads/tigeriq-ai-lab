@@ -17,3 +17,9 @@
 - No driving while testing. Parked-vehicle real Fold2 DeX R/P/D QA remains required before closure.
 
 - Diagnostics (settings screen): show last reverse broadcast and last USB-presence change separately. A simulated broadcast is not proof of gear R. USB enumeration is not proof of gear R.
+
+# v1.0.13 TEST ? bounded offline event recording and user-controlled share
+- Local-only, app-private bounded camera_events.log (128 KiB rollover); no camera frames or location.
+- Instrument source: gear broadcast arrival and parsed R_ON/R_OFF, service dynamic broadcast, USB device attach/detach, USB presence baseline/transitions, attempted window launch, Android launch exception type, window visible lifecycle, and close reason.
+- Settings has XEM LOG and G?I LOG Android share-sheet buttons; user initiates sharing, there is no auto-upload.
+- If no R event and USB does not change on a parked vehicle, the app cannot infer the actual selected gear. A physical signal bridge or verified original source is required; do not treat simulation as vehicle QA.

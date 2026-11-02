@@ -342,6 +342,29 @@ class MainActivity : AppCompatActivity() {
         val tvBuildVersion: TextView? = findViewById(R.id.tvBuildVersion)
         tvBuildVersion?.text = "• Bản dựng: TigerIQ Camera v${BuildConfig.VERSION_NAME}"
         tvBuildVersion?.append("\n" + settings.getReverseDiagnostics())
+        CameraEventLog.record(this, "APP", "SETTINGS_OPENED", "log_view_ready")
+        val eventText: TextView = findViewById(R.id.tvCameraEventLog)
+        eventText.text = CameraEventLog.read(this, maxChars = 4000)
+        findViewById<Button>(R.id.btnRefreshCameraLog).setOnClickListener {
+            eventText.text = CameraEventLog.read(this, maxChars = 5000)
+        }
+        findViewById<Button>(R.id.btnShareCameraLog).setOnClickListener {
+            CameraEventLog.record(this, "APP", "LOG_SHARED_BY_USER")
+            val payload = "TigerIQ Camera v" + BuildConfig.VERSION_NAME + "\n" +
+                settings.getReverseDiagnostics() + "\n--- Event log ---\n" +
+                CameraEventLog.read(this, maxChars = 32000)
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, "TigerIQ Camera diagnostic log")
+                putExtra(Intent.EXTRA_TEXT, payload)
+            }
+            try {
+                startActivity(Intent.createChooser(send, "G?i nh?t k? Camera"))
+            } catch (error: Exception) {
+                Toast.makeText(this, "Kh?ng chia s? ???c: " + error.javaClass.simpleName,
+                    Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun updateStyleButtonHighlight(style: Int) {

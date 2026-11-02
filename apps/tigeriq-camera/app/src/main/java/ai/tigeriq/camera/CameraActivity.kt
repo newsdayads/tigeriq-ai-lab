@@ -48,6 +48,8 @@ class CameraActivity : AppCompatActivity() {
         }
 
         fun launch(context: Context, displayId: Int = -1, reverseActive: Boolean = false, steering: Float = 0f) {
+            CameraEventLog.record(context, "WINDOW", "OPEN_REQUEST",
+                "reverse=" + reverseActive + " | display=" + displayId)
             val intent = Intent(context, CameraActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 putExtra(EXTRA_REVERSE_ACTIVE, reverseActive)
@@ -59,17 +61,25 @@ class CameraActivity : AppCompatActivity() {
                     options.launchDisplayId = displayId
                 }
                 context.startActivity(intent, options.toBundle())
+                CameraEventLog.record(context, "WINDOW", "START_ACTIVITY_ACCEPTED", "display=" + displayId)
             } catch (t: Throwable) {
+                CameraEventLog.record(context, "WINDOW", "LAUNCH_DISPLAY_FAILED", t.javaClass.simpleName)
                 Log.w("TigerIQ_Camera", "Failed to launch on display $displayId, falling back", t)
                 try {
                     context.startActivity(intent)
+                    CameraEventLog.record(context, "WINDOW", "FALLBACK_ACCEPTED", "display=default")
                 } catch (fallback: Throwable) {
+                    CameraEventLog.record(context, "WINDOW", "FALLBACK_FAILED", fallback.javaClass.simpleName)
                     Log.e("TigerIQ_Camera", "Background launch rejected; check visible DeX/overlay context", fallback)
                 }
             }
         }
 
         fun dismissIfRunning(immediate: Boolean = true) {
+            val wasRunning = isRunning()
+            currentInstance.get()?.let {
+                CameraEventLog.record(it, "WINDOW", "CLOSE_REQUEST", "running=" + wasRunning)
+            }
             isRunningFlag = false
             val act = currentInstance.get()
             if (act != null && !act.isFinishing && !act.isDestroyed) {
@@ -118,6 +128,7 @@ class CameraActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         currentInstance = WeakReference(this)
         isRunningFlag = true
+        CameraEventLog.record(this, "WINDOW", "ACTIVITY_CREATED", "camera_ui")
         setContentView(R.layout.activity_camera)
 
         settings = CameraSettings(this)
@@ -307,6 +318,7 @@ class CameraActivity : AppCompatActivity() {
     }
 
     override fun onNewIntent(intent: Intent) {
+        CameraEventLog.record(this, "WINDOW", "NEW_INTENT", "existing_window")
         super.onNewIntent(intent)
         setIntent(intent)
         processIntent(intent)
@@ -361,6 +373,8 @@ class CameraActivity : AppCompatActivity() {
                 val list = um?.deviceList?.values
                 val hasCamera = list?.any { UsbUvcManager.isUvc(it) } == true
                 if (!hasCamera) {
+                    CameraEventLog.record(this@CameraActivity, "WINDOW", "NO_UVC_CLOSE",
+                        "usb_absent_not_necessarily_R_OFF")
                     Log.i("TigerIQ_Camera", "CameraActivity Watcher: No UVC camera detected (Tail-light R=OFF) -> Auto-closing")
                     finish()
                     return
@@ -374,6 +388,7 @@ class CameraActivity : AppCompatActivity() {
         super.onResume()
         currentInstance = WeakReference(this)
         isRunningFlag = true
+        CameraEventLog.record(this, "WINDOW", "ACTIVITY_RESUMED", "visible_lifecycle")
         checkAndRequestCameraPermission()
         applyNightBooster(settings.isNightBoosterEnabled)
         updateButtonStates()
@@ -390,6 +405,7 @@ class CameraActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        CameraEventLog.record(this, "WINDOW", "ACTIVITY_DESTROYED", "finishing=" + isFinishing)
         super.onDestroy()
         isRunningFlag = false
         handler.removeCallbacks(usbPresenceWatcher)

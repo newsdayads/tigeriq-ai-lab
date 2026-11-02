@@ -87,16 +87,19 @@ class ReverseGearReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         if (intent == null) return
         val settings = CameraSettings(context)
+        val action = intent.action ?: return
+        CameraEventLog.record(context, "GEAR", "BROADCAST_RECEIVED", action +
+            " | auto=" + settings.isReverseAutoStart)
         if (!settings.isReverseAutoStart) {
-            Log.i(TAG, "Reverse auto-start is disabled in settings")
+            CameraEventLog.record(context, "GEAR", "IGNORED", "reverse_autostart_disabled")
             return
         }
-
-        val action = intent.action ?: return
         Log.i(TAG, "Received gear signal broadcast: $action")
 
         val isReverse = parseIsReverse(intent)
         settings.recordReverseSignal(action, isReverse)
+        CameraEventLog.record(context, "GEAR", if (isReverse) "R_ON" else "R_OFF",
+            "source=broadcast | synthetic=" + (action == ACTION_REVERSE_GEAR))
         val steering = intent.getFloatExtra("steering", 0f)
 
         if (isReverse) {

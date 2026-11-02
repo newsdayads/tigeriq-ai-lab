@@ -92,6 +92,8 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
             it.registerDisplayListener(this, handler)
         }
 
+        CameraEventLog.record(this, "SERVICE", "START",
+            "reverse_auto=" + settings.isReverseAutoStart + " | usb_auto=" + settings.isUsbAutoStart)
         registerDynamicReverseReceiver()
         startUsbCameraWatcher()
         updateFloatingView()
@@ -110,12 +112,19 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
             override fun onReceive(context: Context?, intent: Intent?) {
                 if (intent == null) return
                 val action = intent.action ?: ""
+                if (action != UsbManager.ACTION_USB_DEVICE_ATTACHED &&
+                    action != UsbManager.ACTION_USB_DEVICE_DETACHED) {
+                    CameraEventLog.record(this@FloatingCameraService, "SERVICE", "GEAR_RX",
+                        action + " | reverse_auto=" + settings.isReverseAutoStart)
+                }
                 val targetDisplay = findDexDisplay()
                 val displayId = targetDisplay?.displayId ?: -1
 
                 if (action == UsbManager.ACTION_USB_DEVICE_ATTACHED) {
                     val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
                     val isCamera = device != null && UsbUvcManager.isUvc(device)
+                    CameraEventLog.record(this@FloatingCameraService, "SERVICE", "USB_ATTACHED",
+                        "uvc=" + isCamera + " auto=" + settings.isUsbAutoStart)
                     if (isCamera && settings.isUsbAutoStart) {
                         Log.i(TAG, "Dynamic USB Attached (Tail-light R=ON) -> Auto-opening Camera")
                         CameraActivity.launch(this@FloatingCameraService, displayId, reverseActive = true)
@@ -126,6 +135,8 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
                 if (action == UsbManager.ACTION_USB_DEVICE_DETACHED) {
                     val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
                     val isCamera = device != null && UsbUvcManager.isUvc(device)
+                    CameraEventLog.record(this@FloatingCameraService, "SERVICE", "USB_DETACHED",
+                        "uvc=" + isCamera + " close=" + settings.isReverseImmediateClose)
                     if (isCamera && settings.isReverseImmediateClose) {
                         Log.i(TAG, "Dynamic USB Detached (Tail-light R=OFF) -> Auto-closing Camera")
                         CameraActivity.dismissIfRunning(immediate = true)
@@ -139,6 +150,8 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
                 if (!settings.isReverseAutoStart) return
                 val isReverse = ReverseGearReceiver.parseIsReverse(intent)
                 settings.recordReverseSignal(action, isReverse)
+                CameraEventLog.record(this@FloatingCameraService, "SERVICE",
+                    if (isReverse) "R_ON" else "R_OFF", "source=dynamic_broadcast")
                 val steering = intent.getFloatExtra("steering", 0f)
 
                 if (isReverse) {
@@ -168,6 +181,7 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
             dynamicReverseReceiver = receiver
             Log.i(TAG, "Registered dynamic reverse receiver successfully")
         } catch (t: Throwable) {
+            CameraEventLog.record(this, "SERVICE", "REGISTER_FAILED", t.javaClass.simpleName)
             Log.w(TAG, "Failed to register dynamic reverse receiver", t)
         }
     }
@@ -198,6 +212,8 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
             // A camera already connected at service startup is not proof of reverse gear.
             // Do not open a window on app launch, initial attach state or service restart.
             // Only a *new* USB transition or an explicit reverse broadcast may trigger it.
+            CameraEventLog.record(this, "USB_WATCHER", "BASELINE",
+                "uvc_present=" + cameraConnected + " | not_reverse_signal")
             Log.i(TAG, "UsbCameraWatcher initial state: present=$cameraConnected; waiting for transition/R")
             return
         }
@@ -205,6 +221,9 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
         if (cameraConnected != lastCameraPresent) {
             lastCameraPresent = cameraConnected
             settings.recordUsbState(cameraConnected, changed = true)
+            CameraEventLog.record(this, "USB_WATCHER",
+                if (cameraConnected) "DEVICE_CONNECTED" else "DEVICE_DISCONNECTED",
+                "source=physical_usb_enumeration | NOT_VERIFIED_GEAR")
             val targetDisplay = findDexDisplay()
             val displayId = targetDisplay?.displayId ?: -1
 

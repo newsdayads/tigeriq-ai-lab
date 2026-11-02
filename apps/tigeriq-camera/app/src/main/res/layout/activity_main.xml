@@ -735,6 +735,38 @@
                     android:layout_marginBottom="10dp" />
 
                 <TextView
+                    android:id="@+id/tvCameraEventLog"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Nh?t k? ch?a t?i. Nh?n XEM LOG."
+                    android:textSize="11sp"
+                    android:maxLines="18"
+                    android:textIsSelectable="true"
+                    android:textColor="#E2E8F0"
+                    android:padding="8dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <Button
+                        android:id="@+id/btnRefreshCameraLog"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="XEM LOG"
+                        android:textSize="11sp" />
+                    <Button
+                        android:id="@+id/btnShareCameraLog"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="G?I LOG"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+
+                <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Được chứng nhận bởi TigerIQ AI Lab."
