@@ -682,9 +682,7 @@ class HomeActivity : ComponentActivity() {
         val startTop = maxOf(.73f, quickBarBottom + .006f).coerceAtMost(.80f)
 
         button("KHỞI ĐỘNG", .028f, startTop, .79f, .043f) {
-            AlertDialog.Builder(this).setTitle("Chưa nghiệm thu chức năng Khởi động")
-                .setMessage("V2 đang được tái dựng từ ứng dụng chuẩn. Tính năng Khởi động và bố cục đa cửa sổ chưa tương đương. Không chuyển sang giao diện demo.")
-                .setPositiveButton("Đóng", null).show()
+            startConfiguredHome()
         }
         button("⟳", .835f, startTop, .137f, .043f) { render() }
         val shortcutTop = (startTop + .049f).coerceAtMost(.849f)
@@ -1006,9 +1004,9 @@ class HomeActivity : ComponentActivity() {
         return true
     }
 
-    private fun applyDefaultHomeConfiguration() {
-        val raw = prefs.getString("v2_default_home_config", null) ?: return
-        try {
+    private fun applyDefaultHomeConfiguration(renderAfter: Boolean = false): Boolean {
+        val raw = prefs.getString("v2_default_home_config", null) ?: return false
+        return try {
             val item = JSONObject(raw)
             val safe = normalizeHomeConfiguration(item)
                 ?: throw IllegalArgumentException("Unsupported HOME config schema")
@@ -1023,7 +1021,7 @@ class HomeActivity : ComponentActivity() {
                     )
                 }
             }
-            applyHomeConfiguration(safe, false)
+            applyHomeConfiguration(safe, renderAfter)
         } catch (e: Exception) {
             android.util.Log.w("UltraCarV2", "Corrupt or unsupported default HOME configuration", e)
             val cleared = prefs.edit().remove("v2_default_home_config").commit()
@@ -1033,6 +1031,24 @@ class HomeActivity : ComponentActivity() {
                     "Failed to persist default HOME config cleanup",
                 )
             }
+            false
+        }
+    }
+
+    private fun startConfiguredHome() {
+        if (prefs.contains("v2_default_home_config")) {
+            if (applyDefaultHomeConfiguration(renderAfter = true)) {
+                toast("Đã khởi động cấu hình Home mặc định")
+            } else {
+                toast("Không thể khởi động cấu hình Home mặc định")
+            }
+            return
+        }
+
+        if (savedConfigurations().length() > 0) {
+            showSaved()
+        } else {
+            toast("Chưa có cấu hình Home. Hãy chọn Lưu cấu hình trước.")
         }
     }
 
