@@ -3,55 +3,23 @@ package ai.tigeriq.camera
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
-import android.util.Log
 
-/**
- * Hardware USB power trigger for rear cameras wired directly to the vehicle reverse tail-light.
- * When reverse gear is engaged, tail-light powers the USB camera -> triggers USB_DEVICE_ATTACHED.
- * When shifted to Park/Drive, power cuts -> triggers USB_DEVICE_DETACHED.
- */
+/** Only wakes the original UltraCar-style watcher; does not open UI independently. */
 class UsbAttachReceiver : BroadcastReceiver() {
-
-    companion object {
-        private const val TAG = "TigerIQ_UsbAttach"
-    }
-
     override fun onReceive(context: Context, intent: Intent?) {
-        if (intent == null) return
-        val settings = CameraSettings(context)
-        val action = intent.action ?: return
-        if (!settings.isUsbAutoStart) {
-            CameraEventLog.record(context, "USB", "IGNORED", "usb_autostart_disabled " + action)
-            return
-        }
-        val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
-        CameraEventLog.record(context, "USB", "BROADCAST",
-            (if (action == UsbManager.ACTION_USB_DEVICE_ATTACHED) "ATTACHED" else "DETACHED") +
-            " | camera=" + (device != null && UsbUvcManager.isUvc(device)))
-
-        if (action == UsbManager.ACTION_USB_DEVICE_ATTACHED) {
-            val isCamera = device != null && UsbUvcManager.isUvc(device)
-            if (isCamera) {
-                Log.i(TAG, "UVC Camera attached via reverse power -> Auto-launching camera")
-                val targetDisplay = DeXDisplayHelper.resolveTargetDisplay(context)
-                val displayId = targetDisplay?.displayId ?: -1
-                CameraActivity.launch(
-                    context = context,
-                    displayId = displayId,
-                    reverseActive = true
-                )
-            }
-        } else if (action == UsbManager.ACTION_USB_DEVICE_DETACHED) {
-            val isCamera = device != null && UsbUvcManager.isUvc(device)
-            if (isCamera) {
-                Log.i(TAG, "UVC Camera detached -> Tail-light power cut, auto-dismissing camera immediately")
-                CameraActivity.dismissIfRunning(immediate = true)
-                try {
-                    context.sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA))
-                } catch (_: Throwable) {}
-            }
+        val action = intent?.action ?: return
+        if (action != UsbManager.ACTION_USB_DEVICE_ATTACHED &&
+            action != UsbManager.ACTION_USB_DEVICE_DETACHED) return
+        CameraEventLog.record(context, "ULTRACAR_USB", "RECEIVER_WAKEUP", action)
+        if (!CameraSettings(context).isUsbAutoStart) return
+        FloatingCameraService.start(context)
+        try {
+            context.startService(Intent(context, FloatingCameraService::class.java).apply {
+                this.action = FloatingCameraService.ACTION_USB_REFRESH
+            })
+        } catch (_: Throwable) {
+            // The foreground watcher also independently polls USB every 350 ms.
         }
     }
 }

@@ -37,6 +37,7 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
         private const val TAG = "FloatingCamService"
         private const val CHANNEL_ID = "tigeriq_camera_floating"
         private const val NOTIFICATION_ID = 1001
+        const val ACTION_USB_REFRESH = "ai.tigeriq.camera.action.USB_REFRESH"
 
         fun start(context: Context) {
             val intent = Intent(context, FloatingCameraService::class.java)
@@ -73,10 +74,27 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     // Background USB camera presence watcher
     private var lastCameraPresent = false
     private var isWatcherInitialized = false
+    // Single pending open mirrors original UltraCar v1.0.17.
+    private val pendingUsbOpen = Runnable {
+        val display = findDexDisplay()?.displayId ?: -1
+        CameraEventLog.record(this, "ULTRACAR_USB", "AUTO_OPEN_EXECUTING", "display=" + display)
+        CameraActivity.launch(this, displayId = display, reverseActive = true)
+    }
+    private fun openFromUsb(source: String) {
+        handler.removeCallbacks(pendingUsbOpen)
+        CameraEventLog.record(this, "ULTRACAR_USB", "OPEN_SCHEDULED", source + " delay=400ms")
+        handler.postDelayed(pendingUsbOpen, 400L)
+    }
+    private fun closeFromUsb(source: String) {
+        handler.removeCallbacks(pendingUsbOpen)
+        CameraEventLog.record(this, "ULTRACAR_USB", "CLOSE_NOW", source)
+        CameraActivity.dismissIfRunning(immediate = true)
+        sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA).setPackage(packageName))
+    }
     private val usbWatcherRunnable = object : Runnable {
         override fun run() {
             checkCameraPresence()
-            handler.postDelayed(this, 400) // Poll every 400ms for instant tail-light response
+            handler.postDelayed(this, 350L) // UltraCar v1.0.17 original
         }
     }
 
@@ -101,6 +119,9 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         updateFloatingView()
+        if (intent?.action == ACTION_USB_REFRESH) {
+            handler.postDelayed({ checkCameraPresence() }, 120L)
+        }
         return START_STICKY
     }
 
@@ -120,30 +141,11 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
                 val targetDisplay = findDexDisplay()
                 val displayId = targetDisplay?.displayId ?: -1
 
-                if (action == UsbManager.ACTION_USB_DEVICE_ATTACHED) {
-                    val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
-                    val isCamera = device != null && UsbUvcManager.isUvc(device)
-                    CameraEventLog.record(this@FloatingCameraService, "SERVICE", "USB_ATTACHED",
-                        "uvc=" + isCamera + " auto=" + settings.isUsbAutoStart)
-                    if (isCamera && settings.isUsbAutoStart) {
-                        Log.i(TAG, "Dynamic USB Attached (Tail-light R=ON) -> Auto-opening Camera")
-                        CameraActivity.launch(this@FloatingCameraService, displayId, reverseActive = true)
-                    }
-                    return
-                }
-
-                if (action == UsbManager.ACTION_USB_DEVICE_DETACHED) {
-                    val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
-                    val isCamera = device != null && UsbUvcManager.isUvc(device)
-                    CameraEventLog.record(this@FloatingCameraService, "SERVICE", "USB_DETACHED",
-                        "uvc=" + isCamera + " close=" + settings.isReverseImmediateClose)
-                    if (isCamera && settings.isReverseImmediateClose) {
-                        Log.i(TAG, "Dynamic USB Detached (Tail-light R=OFF) -> Auto-closing Camera")
-                        CameraActivity.dismissIfRunning(immediate = true)
-                        try {
-                            sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA))
-                        } catch (_: Throwable) {}
-                    }
+                if (action == UsbManager.ACTION_USB_DEVICE_ATTACHED ||
+                    action == UsbManager.ACTION_USB_DEVICE_DETACHED) {
+                    CameraEventLog.record(this@FloatingCameraService, "ULTRACAR_USB",
+                        "SYSTEM_BROADCAST", action)
+                    handler.postDelayed({ checkCameraPresence() }, 120L)
                     return
                 }
 
@@ -189,54 +191,34 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     private fun startUsbCameraWatcher() {
         handler.removeCallbacks(usbWatcherRunnable)
         handler.post(usbWatcherRunnable)
-        Log.i(TAG, "UsbCameraWatcher started (interval 400ms)")
+        Log.i(TAG, "UsbCameraWatcher started (interval 350ms, original UltraCar)")
     }
 
     private fun checkCameraPresence() {
         if (!settings.isUsbAutoStart) return
         val um = usbManager ?: return
-        val deviceList = um.deviceList ?: return
-
-        var cameraConnected = false
-        for ((_, device) in deviceList) {
-            if (UsbUvcManager.isUvc(device) || (device.vendorId == 0xff02 && device.productId == 0xafa1)) {
-                cameraConnected = true
-                break
+        val devices = try { um.deviceList?.values?.toList() ?: return }
+            catch (err: Throwable) {
+                CameraEventLog.record(this, "ULTRACAR_USB", "ENUMERATION_FAILED", err.javaClass.simpleName)
+                return
             }
-        }
-
+        val present = OriginalUltraCarUsbTrigger.hasDevice(devices)
         if (!isWatcherInitialized) {
             isWatcherInitialized = true
-            lastCameraPresent = cameraConnected
-            settings.recordUsbState(cameraConnected, changed = false)
-            // A camera already connected at service startup is not proof of reverse gear.
-            // Do not open a window on app launch, initial attach state or service restart.
-            // Only a *new* USB transition or an explicit reverse broadcast may trigger it.
-            CameraEventLog.record(this, "USB_WATCHER", "BASELINE",
-                "uvc_present=" + cameraConnected + " | not_reverse_signal")
-            Log.i(TAG, "UsbCameraWatcher initial state: present=$cameraConnected; waiting for transition/R")
+            lastCameraPresent = present
+            settings.recordUsbState(present, changed = false)
+            CameraEventLog.record(this, "ULTRACAR_USB", "INITIAL",
+                "present=" + present + " count=" + devices.size)
+            if (present) openFromUsb("initial_usb_present")
             return
         }
-
-        if (cameraConnected != lastCameraPresent) {
-            lastCameraPresent = cameraConnected
-            settings.recordUsbState(cameraConnected, changed = true)
-            CameraEventLog.record(this, "USB_WATCHER",
-                if (cameraConnected) "DEVICE_CONNECTED" else "DEVICE_DISCONNECTED",
-                "source=physical_usb_enumeration | NOT_VERIFIED_GEAR")
-            val targetDisplay = findDexDisplay()
-            val displayId = targetDisplay?.displayId ?: -1
-
-            if (cameraConnected) {
-                Log.i(TAG, ">>> UsbCameraWatcher: Camera CONNECTED (Tail-light R=ON) -> Auto-opening Camera")
-                CameraActivity.launch(this, displayId = displayId, reverseActive = true)
-            } else {
-                Log.i(TAG, ">>> UsbCameraWatcher: Camera DISCONNECTED (Tail-light R=OFF) -> Auto-closing Camera immediately")
-                CameraActivity.dismissIfRunning(immediate = true)
-                try {
-                    sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA))
-                } catch (_: Throwable) {}
-            }
+        if (OriginalUltraCarUsbTrigger.changed(lastCameraPresent, present)) {
+            lastCameraPresent = present
+            settings.recordUsbState(present, changed = true)
+            CameraEventLog.record(this, "ULTRACAR_USB",
+                if (present) "CONNECTED" else "DISCONNECTED",
+                "count=" + devices.size + " source=real_usb_inventory")
+            if (present) openFromUsb("usb_connected") else closeFromUsb("usb_disconnected")
         }
     }
 
@@ -466,6 +448,7 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
 
     override fun onDestroy() {
         handler.removeCallbacks(usbWatcherRunnable)
+        handler.removeCallbacks(pendingUsbOpen)
         displayManager?.unregisterDisplayListener(this)
         dynamicReverseReceiver?.let {
             try { unregisterReceiver(it) } catch (_: Throwable) {}

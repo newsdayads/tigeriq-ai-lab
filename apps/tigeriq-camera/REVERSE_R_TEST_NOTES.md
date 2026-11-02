@@ -29,3 +29,10 @@
 - Settings window closes after successful accepted launch, not before. P test directly requests close.
 - CameraActivity no longer closes just because initial USB enumeration is empty. Actual USB transitions and R broadcasts remain logged.
 - This fixes diagnostic button logic, not unverified vehicle R/P detection. Requires separate parked-vehicle QA of actual gear signals.
+
+# v1.0.15 TEST ? faithful UltraCar USB trigger port
+- Directly decompiled original UltraCar v1.0.17 TigerIQBridge and separate v1.0.73 APK.
+- v1.0.17 has ANY USB device considered present (method falls through to true), 350ms watcher, 400ms delayed open, immediate disconnect close and pending-open cancel.
+- v1.0.73 disables auto-open and ignores R broadcasts, so it cannot be used for auto-open behavior.
+- Standalone service now adopts v1.0.17 USB inventory logic, single writer for USB UI events; USB receiver only wakes watcher.
+- USB transitions are NOT a true car gear/CAN signal. Physical Z Fold 2 and camera on car still require parked vehicle testing; no production acceptance is claimed.
