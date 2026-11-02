@@ -163,28 +163,18 @@ function Get-PadOwnedModalWindow($OwnerWindow) {
   $ownerHandle = [IntPtr][int64]$OwnerWindow.Current.NativeWindowHandle
   if ($ownerHandle -eq [IntPtr]::Zero) { return $null }
 
-  $root = [System.Windows.Automation.AutomationElement]::RootElement
-  $all = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
-  $matches = @()
-  foreach ($candidate in $all) {
-    try {
-      $candidateHandle = [IntPtr][int64]$candidate.Current.NativeWindowHandle
-      if ($candidateHandle -eq [IntPtr]::Zero -or $candidateHandle -eq $ownerHandle) { continue }
-      $probe = $candidateHandle
-      $owned = $false
-      for ($depth = 0; $depth -lt 8; $depth++) {
-        $probe = [TigerIQPadNative]::GetWindow($probe, 4)
-        if ($probe -eq [IntPtr]::Zero) { break }
-        if ($probe -eq $ownerHandle) { $owned = $true; break }
-      }
-      if (-not $owned) { continue }
-      if ($candidate.Current.IsOffscreen -or -not $candidate.Current.IsEnabled) { continue }
-      $matches += $candidate
-    } catch {}
+  # GW_ENABLEDPOPUP (6) returns the enabled popup owned by this window without
+  # enumerating every top-level UIAutomation provider on the desktop.
+  $popupHandle = [TigerIQPadNative]::GetWindow($ownerHandle, 6)
+  if ($popupHandle -eq [IntPtr]::Zero -or $popupHandle -eq $ownerHandle) { return $null }
+  try {
+    $popup = [System.Windows.Automation.AutomationElement]::FromHandle($popupHandle)
+    if ($null -eq $popup -or (Test-SensitiveWindow $popup)) { return $null }
+    if ($popup.Current.IsOffscreen -or -not $popup.Current.IsEnabled) { return $null }
+    return $popup
+  } catch {
+    return $null
   }
-  if ($matches.Count -eq 0) { return $null }
-  if ($matches.Count -ne 1) { throw 'TIGERIQ_PAD_UI_OWNED_MODAL_AMBIGUOUS' }
-  return $matches[0]
 }
 
 function Get-TopWindowElement($Request) {
@@ -260,30 +250,47 @@ function Get-PadSearchCondition($Request, [string]$Mode) {
   return [System.Windows.Automation.Condition]::TrueCondition
 }
 
+function Test-PadElementMatch($Element, $Request, [string]$Mode) {
+  try {
+    $ok = $true
+    if ($Request.name) {
+      $n = [string]$Element.Current.Name
+      $ok = if ($Mode -eq 'contains') { $n -like "*$($Request.name)*" } else { $n -eq [string]$Request.name }
+    }
+    if ($ok -and $Request.automationId) { $ok = [string]$Element.Current.AutomationId -eq [string]$Request.automationId }
+    if ($ok -and $Request.controlType) {
+      $ct = [string]$Element.Current.ControlType.ProgrammaticName
+      $want = [string]$Request.controlType
+      $ok = ($ct -eq $want -or $ct -eq "ControlType.$want")
+    }
+    return $ok
+  } catch {
+    return $false
+  }
+}
+
 function Find-PadElement($Request) {
   $window = Get-TopWindowElement $Request
   $mode = if ($Request.match) { [string]$Request.match } else { 'exact' }
   $searchCondition = Get-PadSearchCondition $Request $mode
+  $index = if ($null -ne $Request.index) { [int]$Request.index } else { 0 }
+
+  # An explicit index=0 is a bounded selector. Use FindFirst so the provider
+  # can stop at the first matching element instead of materializing all matches.
+  if ($index -eq 0 -and $null -ne $Request.index -and ($Request.automationId -or ($Request.name -and $mode -eq 'exact'))) {
+    $first = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $searchCondition)
+    if ($null -eq $first -or -not (Test-PadElementMatch $first $Request $mode)) {
+      throw 'TIGERIQ_PAD_UI_ELEMENT_NOT_FOUND'
+    }
+    return [pscustomobject]@{ Window=$window; Element=$first; Count=1 }
+  }
+
   $all = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $searchCondition)
   $matches = @()
   foreach ($e in $all) {
-    try {
-      $ok = $true
-      if ($Request.name) {
-        $n = [string]$e.Current.Name
-        $ok = if ($mode -eq 'contains') { $n -like "*$($Request.name)*" } else { $n -eq [string]$Request.name }
-      }
-      if ($ok -and $Request.automationId) { $ok = [string]$e.Current.AutomationId -eq [string]$Request.automationId }
-      if ($ok -and $Request.controlType) {
-        $ct = [string]$e.Current.ControlType.ProgrammaticName
-        $want = [string]$Request.controlType
-        $ok = ($ct -eq $want -or $ct -eq "ControlType.$want")
-      }
-      if ($ok) { $matches += $e }
-    } catch {}
+    if (Test-PadElementMatch $e $Request $mode) { $matches += $e }
   }
   if ($matches.Count -eq 0) { throw 'TIGERIQ_PAD_UI_ELEMENT_NOT_FOUND' }
-  $index = if ($null -ne $Request.index) { [int]$Request.index } else { 0 }
   if ($matches.Count -gt 1 -and $null -eq $Request.index) { throw 'TIGERIQ_PAD_UI_ELEMENT_AMBIGUOUS' }
   if ($index -ge $matches.Count) { throw 'TIGERIQ_PAD_UI_INDEX_OUT_OF_RANGE' }
   return [pscustomobject]@{ Window=$window; Element=$matches[$index]; Count=$matches.Count }
