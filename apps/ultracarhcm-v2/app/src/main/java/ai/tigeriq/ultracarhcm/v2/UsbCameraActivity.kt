@@ -27,7 +27,7 @@ class UsbCameraActivity : Activity() {
         private var visible = WeakReference<UsbCameraActivity>(null)
 
         fun toggleFromShortcut(context: Context, displayId: Int) {
-            val existing = visible.get()?.takeUnless { it.isFinishing }
+            val existing = visible.get()?.takeUnless { it.isFinishing || !it.startedVisible }
             val existingDisplayId = existing?.window?.decorView?.display?.displayId
 
             if (CameraDisplayRules.shouldToggleExisting(existingDisplayId, displayId)) {
@@ -72,6 +72,7 @@ class UsbCameraActivity : Activity() {
     private var cameraFrameActive = false
     private var awaitingCameraPermission = false
     private var resumeCameraOnStart = false
+    private var startedVisible = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -250,6 +251,7 @@ class UsbCameraActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
+        startedVisible = true
         if (resumeCameraOnStart) {
             resumeCameraOnStart = false
             openCamera()
@@ -257,6 +259,7 @@ class UsbCameraActivity : Activity() {
     }
 
     override fun onStop() {
+        startedVisible = false
         resumeCameraOnStart = camera.requested
         if (camera.requested) camera.stop()
         cameraFrameActive = false
