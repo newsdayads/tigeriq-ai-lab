@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import assert from 'node:assert/strict';
-import { parseDevices, safeSerial, validInput, privateWifiAddress, parsePrivateWifiIpv4, parseExistingAdbTcpPort, wifiCandidateFromOutputs, wifiEndpointReachable, adbConnectFailure, mirrorOptions, server } from './app.mjs';
+import { parseDevices, safeSerial, validInput, privateWifiAddress, parsePrivateWifiIpv4, parseExistingAdbTcpPort, wifiCandidateFromOutputs, wifiEndpointReachable, normalizeKnownWifiEndpoints, reconnectKnownWifiEndpoints, adbConnectFailure, mirrorOptions, server } from './app.mjs';
 
 test('ADB inventory parses connected, offline, unauthorized devices', () => {
   const devices=parseDevices('List of devices attached\nR3CM400AKRX device product:beyondxks model:SM_G977N transport_id:1\n192.168.0.9:5555 offline\nABCD unauthorized\n');
@@ -267,6 +267,60 @@ test('WiFi ADB connect failures expose bounded structured diagnostics', () => {
   assert.equal(adbConnectFailure({code:1,stderr:'No route to host'}).reason,'ADB_CONNECT_UNREACHABLE');
   assert.equal(adbConnectFailure({code:1,stderr:'device unauthorized'}).reason,'ADB_CONNECT_UNAUTHORIZED');
   assert.equal(adbConnectFailure({stderr:'x'.repeat(400)}).detail.length,250);
+});
+
+test('remembered WiFi ADB endpoints are private, unique and bounded', () => {
+  const many=Array.from({length:80},(_,i)=>`192.168.50.${(i%250)+1}:5555`);
+  const values=normalizeKnownWifiEndpoints([
+    '192.168.50.23:5555',
+    '192.168.50.23:5555',
+    '8.8.8.8:5555',
+    '10.2.3.4:45555',
+    ...many
+  ]);
+  assert.equal(values[0],'192.168.50.23:5555');
+  assert.equal(values[1],'10.2.3.4:45555');
+  assert.equal(values.includes('8.8.8.8:5555'),false);
+  assert.ok(values.length<=64);
+  assert.equal(new Set(values).size,values.length);
+});
+
+test('WiFi ADB reconnect only retries remembered private endpoints that are not already online', async () => {
+  const reachableCalls=[],connectCalls=[];
+  const results=await reconnectKnownWifiEndpoints(
+    ['192.168.50.23:5555','192.168.50.24:5555','10.0.0.8:45555','8.8.8.8:5555'],
+    ['192.168.50.23:5555'],
+    async address=>{
+      reachableCalls.push(address);
+      return address!=='192.168.50.24:5555';
+    },
+    async address=>{
+      connectCalls.push(address);
+      return address==='10.0.0.8:45555'?'connected to 10.0.0.8:45555':'unexpected';
+    }
+  );
+  assert.deepEqual(reachableCalls,['192.168.50.24:5555','10.0.0.8:45555']);
+  assert.deepEqual(connectCalls,['10.0.0.8:45555']);
+  assert.deepEqual(results.map(x=>[x.address,x.state]),[
+    ['192.168.50.23:5555','already_connected'],
+    ['192.168.50.24:5555','unreachable'],
+    ['10.0.0.8:45555','connected']
+  ]);
+});
+
+test('WiFi ADB reconnect source persists only successful user-approved endpoints and never enables TCP mode', () => {
+  const dir=path.dirname(fileURLToPath(import.meta.url));
+  const source=fs.readFileSync(path.join(dir,'app.mjs'),'utf8');
+  const ui=fs.readFileSync(path.join(dir,'ui.js'),'utf8');
+  assert.match(source,/wifi-endpoints\.json/);
+  assert.match(source,/rememberWifiEndpoint\(b\.address\)/);
+  assert.match(source,/remembered:true/);
+  assert.match(source,/autoReconnectKnownWifi/);
+  assert.match(source,/setInterval\(\(\)=>void autoReconnectKnownWifi\(\)/);
+  assert.match(source,/rememberedWifi: knownWifiEndpoints\(\)\.length/);
+  assert.match(ui,/WiFi nhớ/);
+  assert.doesNotMatch(source,/['"]tcpip['"]/);
+  assert.doesNotMatch(source,/setprop\s+service\.adb\.tcp\.port/i);
 });
 
 test('WiFi candidate endpoint remains discovery-only and never enables ADB TCP mode', () => {
