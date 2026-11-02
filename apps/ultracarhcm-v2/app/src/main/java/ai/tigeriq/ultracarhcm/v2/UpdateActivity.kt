@@ -442,12 +442,14 @@ class UpdateActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             !packageManager.canRequestPackageInstalls()
         ) {
-            startActivity(
+            val openedSettings = launchExternalIntent(
                 Intent(
                     Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                     Uri.parse("package:$packageName"),
                 ),
+                "Không thể mở cài đặt quyền nguồn không xác định",
             )
+            if (!openedSettings) return
             status.text =
                 "Android yêu cầu bật quyền cài ứng dụng từ nguồn này. " +
                 "Sau khi cấp quyền, quay lại và bấm MỞ TRÌNH CÀI ĐẶT ANDROID."
@@ -459,16 +461,30 @@ class UpdateActivity : ComponentActivity() {
             "$packageName.fileprovider",
             candidate.file,
         )
-        startActivity(
+        val openedInstaller = launchExternalIntent(
             Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, APK_MIME_TYPE)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             },
+            "Không thể mở trình cài đặt Android",
         )
+        if (!openedInstaller) return
+
         installerHandoff = true
         status.text =
             "Đã chuyển APK đã xác minh sang trình cài đặt Android. " +
             "Android vẫn yêu cầu người dùng xác nhận trước khi cài."
+    }
+
+    private fun launchExternalIntent(intent: Intent, failureMessage: String): Boolean {
+        return try {
+            startActivity(intent)
+            true
+        } catch (error: RuntimeException) {
+            android.util.Log.e("UltraCarV2", "External intent launch failed", error)
+            status.text = "$failureMessage: ${error.message ?: "không thể mở ứng dụng hệ thống"}"
+            false
+        }
     }
 
     private fun beginOperation(): Long {
