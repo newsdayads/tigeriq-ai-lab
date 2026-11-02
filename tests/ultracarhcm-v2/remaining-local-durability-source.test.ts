@@ -50,6 +50,8 @@ describe('GH-5135 remaining local durability paths', () => {
     expect(block).toContain('view.setImageURI(uri)');
     expect(block).toContain('if (view.drawable == null)');
     expect(block).toContain('Custom image could not be decoded');
+    expect(block).toContain('catch (error: RuntimeException)');
+    expect(block).toContain('Custom image setup failed');
     expect(block).toContain('clearInvalidCustomBackground()');
     expect(block).toContain('renderBundledBackground(night)');
     expect(block.indexOf('if (view.drawable == null)')).toBeLessThan(
