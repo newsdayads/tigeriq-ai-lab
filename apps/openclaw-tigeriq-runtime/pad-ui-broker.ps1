@@ -320,9 +320,14 @@ function Invoke-PadElement($Request, [bool]$AllowClickFallback) {
   [TigerIQPadNative]::SetForegroundWindow([IntPtr]$found.Window.Current.NativeWindowHandle) | Out-Null
   $x=[int]($r.X + $r.Width/2); $y=[int]($r.Y + $r.Height/2)
   [TigerIQPadNative]::SetCursorPos($x,$y) | Out-Null
-  [TigerIQPadNative]::mouse_event(0x0002,0,0,0,[UIntPtr]::Zero)
-  [TigerIQPadNative]::mouse_event(0x0004,0,0,0,[UIntPtr]::Zero)
-  return [pscustomobject]@{ Method='ElementCenterClick'; MatchCount=$found.Count; Element=(Element-ToObject $e) }
+  $clickCount = if ([string]$Request.value -eq 'double') { 2 } else { 1 }
+  for ($clickIndex = 0; $clickIndex -lt $clickCount; $clickIndex++) {
+    [TigerIQPadNative]::mouse_event(0x0002,0,0,0,[UIntPtr]::Zero)
+    [TigerIQPadNative]::mouse_event(0x0004,0,0,0,[UIntPtr]::Zero)
+    if ($clickCount -gt 1 -and $clickIndex -eq 0) { Start-Sleep -Milliseconds 80 }
+  }
+  $method = if ($clickCount -eq 2) { 'ElementCenterDoubleClick' } else { 'ElementCenterClick' }
+  return [pscustomobject]@{ Method=$method; MatchCount=$found.Count; Element=(Element-ToObject $e) }
 }
 
 function Set-PadValue($Request) {

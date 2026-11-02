@@ -907,3 +907,13 @@ describe('GH-5291 PAD Console selection contract', () => {
     expect(invoke.indexOf('$selection.Select()')).toBeLessThan(invoke.indexOf('SetCursorPos'));
   });
 });
+
+
+describe('GH-5291 selector-bound double click', () => {
+  it('emits two bounded clicks only when pad_click value is double', async () => {
+    const source = await fs.readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
+    expect(source).toContain("$clickCount = if ([string]$Request.value -eq 'double') { 2 } else { 1 }");
+    expect(source).toContain("ElementCenterDoubleClick");
+    expect(source).toContain('Start-Sleep -Milliseconds 80');
+  });
+});
