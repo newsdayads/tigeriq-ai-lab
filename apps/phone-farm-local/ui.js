@@ -10,8 +10,27 @@ const toast=(message,isError=false)=>{
 async function api(url,payload){
   const response=await fetch(url,payload===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   const data=await response.json();
-  if(!response.ok)throw Error(data.error||('HTTP '+response.status));
+  if(!response.ok){
+    const error=Error(data.error||('HTTP '+response.status));
+    error.status=response.status;
+    for(const key of ['reason','address','detail'])if(typeof data[key]==='string'&&data[key])error[key]=data[key].slice(0,key==='detail'?250:120);
+    throw error;
+  }
   return data;
+}
+const wifiReasonLabel={
+  ADB_ENDPOINT_UNREACHABLE:'Endpoint LAN không phản hồi',
+  ADB_CONNECT_REFUSED:'Kết nối bị từ chối',
+  ADB_CONNECT_TIMEOUT:'Hết thời gian chờ',
+  ADB_CONNECT_UNREACHABLE:'Không tới được endpoint',
+  ADB_CONNECT_UNAUTHORIZED:'Thiết bị chưa cấp quyền ADB',
+  ADB_CONNECT_FAILED:'ADB chưa kết nối'
+};
+function wifiFailureText(prefix,error,fallbackAddress=''){
+  const address=error?.address||fallbackAddress;
+  const reason=error?.reason?(wifiReasonLabel[error.reason]||error.reason):'';
+  const detail=error?.detail&&error.detail!==error.message?error.detail:'';
+  return prefix+(address?' • '+address:'')+(reason?' • '+reason:'')+': '+error.message+(detail?' • '+detail:'');
 }
 const online=()=>current.devices.filter(d=>d.state==='device');
 const active=()=>online().filter(d=>current.selected.has(d.serial)).map(d=>d.serial);
@@ -399,13 +418,14 @@ $('scanWifi').onclick=async()=>{
       const r=await api('/api/wifi/connect',{address:candidate.address});
       toast('Đã kết nối WiFi ADB: '+r.address);
       await refresh();
-    }catch(e){toast('Dò WiFi ADB: '+e.message,true)}
+    }catch(e){toast(wifiFailureText('Dò WiFi ADB',e),true)}
     return;
   }
   const address=prompt('Chọn một thiết bị USB để tự dò, hoặc nhập IP:port Wireless ADB đã bật sẵn trong LAN (vd 192.168.1.20:5555)');
   if(address===null)return;
-  try{const r=await api('/api/wifi/connect',{address:address.trim()});toast('Đã kết nối WiFi ADB: '+r.address);await refresh()}
-  catch(e){toast('WiFi ADB: '+e.message,true)}
+  const requestedAddress=address.trim();
+  try{const r=await api('/api/wifi/connect',{address:requestedAddress});toast('Đã kết nối WiFi ADB: '+r.address);await refresh()}
+  catch(e){toast(wifiFailureText('WiFi ADB',e,requestedAddress),true)}
 };
 $('screenshots').onclick=()=>{
   const list=active();if(!list.length)return toast('Chọn thiết bị trước',true);
