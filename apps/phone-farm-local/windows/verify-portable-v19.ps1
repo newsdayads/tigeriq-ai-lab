@@ -53,13 +53,13 @@ try {
   }
 
   $app = Get-Content -LiteralPath $appPath -Raw
-  if ($app -notmatch 'line\.match\(/\^\(\\S\+\)\\s\+_adb-tls-connect') {
+  if (-not $app.Contains("line.match(/^(\S+)\s+_adb-tls-connect\._tcp\.?\s+/i)")) {
     throw "Official whitespace-separated ADB mDNS parser was not found"
   }
-  if ($app -notmatch 'line\.match\(/\^\(\\S\+\?\)\\\._adb-tls-connect') {
+  if (-not $app.Contains("line.match(/^(\S+?)\._adb-tls-connect\._tcp\.?\s+/i)")) {
     throw "Compact ADB mDNS compatibility parser was not found"
   }
-  if ($app -match "['\"]tcpip['\"]") {
+  if ($app.Contains("'tcpip'") -or $app.Contains('"tcpip"')) {
     throw "Forbidden adb tcpip mutation token detected"
   }
   if ($app -match 'setprop\s+service\.adb\.tcp\.port') {
