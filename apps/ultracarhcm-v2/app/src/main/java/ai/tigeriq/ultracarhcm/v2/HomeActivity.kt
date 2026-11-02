@@ -183,8 +183,8 @@ class HomeActivity : ComponentActivity() {
                         }
                         place(view, 0f, 0f, 1f, 1f)
                     }
-                } catch (error: SecurityException) {
-                    android.util.Log.e("UltraCarV2", "Custom image permission lost", error)
+                } catch (error: RuntimeException) {
+                    android.util.Log.e("UltraCarV2", "Custom image setup failed", error)
                     clearInvalidCustomBackground()
                     renderBundledBackground(night)
                 }
@@ -201,6 +201,9 @@ class HomeActivity : ComponentActivity() {
                 }
                 video.setOnErrorListener { _, _, _ ->
                     if (customBackgroundVideo === video) {
+                        video.setOnPreparedListener(null)
+                        video.setOnErrorListener(null)
+                        video.stopPlayback()
                         clearInvalidCustomBackground()
                         customBackgroundVideo = null
                         root.post { if (homeVisible) render() }
@@ -316,30 +319,56 @@ class HomeActivity : ComponentActivity() {
         place(fallback, left, top, width, height)
     }
 
+    private fun renderUltrabotFallback(
+        left: Float,
+        top: Float,
+        width: Float,
+        height: Float,
+    ) {
+        val fallback = label("ULTRABOT", 10f, 0xffbbbbbb.toInt(), true)
+        fallback.background = shape(0x55101a20, radius = 12f)
+        fallback.isClickable = true
+        fallback.setOnClickListener {
+            toast("Ultrabot media riêng chưa được stage cho bản V2 này")
+        }
+        place(fallback, left, top, width, height)
+    }
+
     private fun renderUltrabot(left: Float, top: Float, width: Float, height: Float) {
         val resourceId = optionalResourceId("raw", "ultrabot_glow_packed")
         if (resourceId == 0) {
-            val fallback = label("ULTRABOT", 10f, 0xffbbbbbb.toInt(), true)
-            fallback.background = shape(0x55101a20, radius = 12f)
-            fallback.isClickable = true
-            fallback.setOnClickListener {
-                toast("Ultrabot media riêng chưa được stage cho bản V2 này")
-            }
-            place(fallback, left, top, width, height)
+            renderUltrabotFallback(left, top, width, height)
             return
         }
 
         val bot = VideoView(this)
         homeVideo = bot
-        bot.setVideoURI(Uri.parse("android.resource://$packageName/$resourceId"))
         bot.setOnPreparedListener { mp ->
             if (homeVideo === bot) {
                 mp.isLooping = true
                 mp.setVolume(0f, 0f)
-                bot.start()
+                if (homeVisible) bot.start()
             }
         }
-        bot.setOnErrorListener { _, _, _ -> true }
+        bot.setOnErrorListener { _, _, _ ->
+            if (homeVideo === bot) {
+                bot.setOnPreparedListener(null)
+                bot.setOnErrorListener(null)
+                bot.stopPlayback()
+                homeVideo = null
+                root.removeView(bot)
+                renderUltrabotFallback(left, top, width, height)
+            }
+            true
+        }
+        try {
+            bot.setVideoURI(Uri.parse("android.resource://$packageName/$resourceId"))
+        } catch (error: RuntimeException) {
+            if (homeVideo === bot) homeVideo = null
+            android.util.Log.e("UltraCarV2", "Ultrabot media setup failed", error)
+            renderUltrabotFallback(left, top, width, height)
+            return
+        }
         place(bot, left, top, width, height)
         bot.setOnClickListener { toast("Ultrabot V2 chưa tích hợp — không đổi nút này thành Camera") }
     }

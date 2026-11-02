@@ -50,10 +50,38 @@ describe('GH-5135 remaining local durability paths', () => {
     expect(block).toContain('view.setImageURI(uri)');
     expect(block).toContain('if (view.drawable == null)');
     expect(block).toContain('Custom image could not be decoded');
+    expect(block).toContain('catch (error: RuntimeException)');
+    expect(block).toContain('Custom image setup failed');
     expect(block).toContain('clearInvalidCustomBackground()');
     expect(block).toContain('renderBundledBackground(night)');
     expect(block.indexOf('if (view.drawable == null)')).toBeLessThan(
       block.indexOf('place(view, 0f, 0f, 1f, 1f)'),
+    );
+  });
+
+  it('releases a failed custom video before clearing the active reference', () => {
+    const start = home.indexOf('AppearanceRules.KIND_VIDEO ->');
+    const end = home.indexOf('// DisplayManager APIs work back to minSdk 26', start);
+    const block = home.slice(start, end);
+    expect(block).toContain('video.stopPlayback()');
+    expect(block).toContain('customBackgroundVideo = null');
+    expect(block.indexOf('video.stopPlayback()')).toBeLessThan(
+      block.indexOf('customBackgroundVideo = null'),
+    );
+  });
+
+  it('falls back instead of leaving a blank Ultrabot video on media failure', () => {
+    const start = home.indexOf('private fun renderUltrabotFallback');
+    const end = home.indexOf('private fun label(', start);
+    const block = home.slice(start, end);
+    expect(block).toContain('renderUltrabotFallback');
+    expect(block).toContain('bot.setOnErrorListener');
+    expect(block).toContain('bot.stopPlayback()');
+    expect(block).toContain('root.removeView(bot)');
+    expect(block).toContain('catch (error: RuntimeException)');
+    expect(block).toContain('Ultrabot media setup failed');
+    expect(block.indexOf('bot.setOnErrorListener')).toBeLessThan(
+      block.indexOf('bot.setVideoURI'),
     );
   });
 
