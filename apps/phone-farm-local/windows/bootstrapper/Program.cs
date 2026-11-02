@@ -14,7 +14,7 @@ internal static class Program {
   private const string BaseSourceHead =
     "d64b2a04558533d0a8690fc9a2ef11fe74d47596";
   private const string OverlaySourceHead =
-    "817ee358892210f09a2f84fbf96b045c1a4d2f51";
+    "b6e0a47c228cae39acf1c583cd09b2371f0c323c";
   private const string AppOverlayResource =
     "TigerIQPhoneFarmBootstrapper.Overlay.app.mjs";
   private const string UiOverlayResource =
