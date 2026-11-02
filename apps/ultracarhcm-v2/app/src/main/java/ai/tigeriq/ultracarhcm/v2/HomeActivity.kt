@@ -175,7 +175,6 @@ class HomeActivity : ComponentActivity() {
             AppearanceRules.KIND_VIDEO -> {
                 val video = VideoView(this)
                 customBackgroundVideo = video
-                video.setVideoURI(uri)
                 video.setOnPreparedListener { player ->
                     if (customBackgroundVideo === video) {
                         player.isLooping = true
@@ -190,6 +189,18 @@ class HomeActivity : ComponentActivity() {
                         root.post { if (homeVisible) render() }
                     }
                     true
+                }
+                try {
+                    // Register listeners before setVideoURI: providers may fail immediately.
+                    video.setVideoURI(uri)
+                } catch (error: RuntimeException) {
+                    if (customBackgroundVideo === video) {
+                        customBackgroundVideo = null
+                    }
+                    android.util.Log.e("UltraCarV2", "Custom video setup failed", error)
+                    clearInvalidCustomBackground()
+                    renderBundledBackground(night)
+                    return
                 }
                 place(video, 0f, 0f, 1f, 1f)
             }
