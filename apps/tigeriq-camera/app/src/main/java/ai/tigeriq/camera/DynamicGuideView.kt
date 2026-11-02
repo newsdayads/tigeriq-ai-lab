@@ -99,15 +99,14 @@ class DynamicGuideView @JvmOverloads constructor(
             val dirMultiplier = if (settings.isSteeringInverted) -1.0f else 1.0f
 
             if (!isTouchSteering) {
-                if (now - lastGyroTime < 1200L && gyroMagnitude > 0.005f) {
+                if (now - lastGyroTime < 800L && gyroMagnitude > 0.025f && abs(signedYaw) > 0.035f) {
                     val yaw = signedYaw
-                    if (abs(yaw) > 0.006f) {
-                        val strength = max(0.12f, min(0.85f, abs(yaw) * 8.5f))
-                        // Vehicle reversing & turning right rotates clockwise (yaw < 0), guidelines must curve right (positive curvature)
-                        targetCurvature = dirMultiplier * (if (yaw < 0f) strength else -strength)
-                    }
-                } else if (abs(targetCurvature) > 0.01f) {
-                    targetCurvature *= 0.88f // return to center smoothly
+                    val strength = min(0.85f, (abs(yaw) - 0.035f) * 6.0f)
+                    // Vehicle reversing & turning right rotates clockwise (yaw < 0), guidelines must curve right (positive curvature)
+                    targetCurvature = dirMultiplier * (if (yaw < 0f) strength else -strength)
+                } else {
+                    targetCurvature *= 0.82f // decay smoothly to center
+                    if (abs(targetCurvature) < 0.005f) targetCurvature = 0f
                 }
             }
 
@@ -199,8 +198,8 @@ class DynamicGuideView @JvmOverloads constructor(
         val warp = settings.warpFactor
         val effectiveCurve = curvature * warp
 
-        val bottomY = h * 0.92f
-        val topY = h * 0.44f
+        val bottomY = h * 0.86f
+        val topY = h * 0.38f
 
         val bottomHalfW = (w * 0.32f * scale).coerceAtMost(w * 0.44f)
         val topHalfW = (w * 0.14f * scale).coerceAtMost(w * 0.25f)
