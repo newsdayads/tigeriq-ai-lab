@@ -138,6 +138,7 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
 
                 if (!settings.isReverseAutoStart) return
                 val isReverse = ReverseGearReceiver.parseIsReverse(intent)
+                settings.recordReverseSignal(action, isReverse)
                 val steering = intent.getFloatExtra("steering", 0f)
 
                 if (isReverse) {
@@ -193,17 +194,17 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
         if (!isWatcherInitialized) {
             isWatcherInitialized = true
             lastCameraPresent = cameraConnected
-            if (cameraConnected && settings.isReverseAutoStart) {
-                val targetDisplay = findDexDisplay()
-                val displayId = targetDisplay?.displayId ?: -1
-                Log.i(TAG, ">>> UsbCameraWatcher: Initial camera present -> Auto-opening Camera on display $displayId")
-                CameraActivity.launch(this, displayId = displayId, reverseActive = true)
-            }
+            settings.recordUsbState(cameraConnected, changed = false)
+            // A camera already connected at service startup is not proof of reverse gear.
+            // Do not open a window on app launch, initial attach state or service restart.
+            // Only a *new* USB transition or an explicit reverse broadcast may trigger it.
+            Log.i(TAG, "UsbCameraWatcher initial state: present=$cameraConnected; waiting for transition/R")
             return
         }
 
         if (cameraConnected != lastCameraPresent) {
             lastCameraPresent = cameraConnected
+            settings.recordUsbState(cameraConnected, changed = true)
             val targetDisplay = findDexDisplay()
             val displayId = targetDisplay?.displayId ?: -1
 

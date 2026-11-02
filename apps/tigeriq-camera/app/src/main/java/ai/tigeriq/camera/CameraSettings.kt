@@ -82,6 +82,37 @@ class CameraSettings(context: Context) {
         get() = prefs.getFloat(KEY_WARP_FACTOR, 1.0f)
         set(value) = prefs.edit().putFloat(KEY_WARP_FACTOR, value).apply()
 
+    // USB presence and genuine vehicle gear broadcasts are independent signals.
+    fun recordReverseSignal(action: String, active: Boolean) {
+        prefs.edit()
+            .putString("last_gear_action", action)
+            .putBoolean("last_gear_reverse", active)
+            .putLong("last_gear_timestamp", System.currentTimeMillis())
+            .apply()
+    }
+
+    fun recordUsbState(present: Boolean, changed: Boolean) {
+        val edit = prefs.edit().putBoolean("last_usb_present", present)
+        if (changed) edit.putLong("last_usb_change", System.currentTimeMillis())
+        edit.apply()
+    }
+
+    fun getReverseDiagnostics(): String {
+        val timestamp = prefs.getLong("last_gear_timestamp", 0L)
+        val usbChanged = prefs.getLong("last_usb_change", 0L)
+        val time: (Long) -> String = { t ->
+            if (t == 0L) "chua ghi nhan"
+            else android.text.format.DateFormat.format("HH:mm:ss", t).toString()
+        }
+        val gear = if (timestamp == 0L) "Chua nhan duoc broadcast so R"
+                   else (prefs.getString("last_gear_action", "?") + " " +
+                         (if (prefs.getBoolean("last_gear_reverse", false)) "R ON" else "R OFF") +
+                         " " + time(timestamp))
+        val usb = (if (prefs.getBoolean("last_usb_present", false)) "Co thiet bi" else "Khong co thiet bi") +
+                  " | Thay doi: " + time(usbChanged)
+        return "Tin hieu so: " + gear + "\nUSB: " + usb
+    }
+
     fun getFloatingX(displayId: Int, defaultVal: Int): Int =
         prefs.getInt("floating_x_$displayId", defaultVal)
 

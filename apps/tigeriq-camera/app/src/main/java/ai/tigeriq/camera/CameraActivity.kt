@@ -121,6 +121,9 @@ class CameraActivity : AppCompatActivity() {
         setContentView(R.layout.activity_camera)
 
         settings = CameraSettings(this)
+        if (settings.isFloatingEnabled || settings.isReverseAutoStart) {
+            FloatingCameraService.start(this)
+        }
 
         guideView = findViewById(R.id.dynamicGuideView)
         tvGearBadge = findViewById(R.id.tvGearBadge)

@@ -96,6 +96,7 @@ class ReverseGearReceiver : BroadcastReceiver() {
         Log.i(TAG, "Received gear signal broadcast: $action")
 
         val isReverse = parseIsReverse(intent)
+        settings.recordReverseSignal(action, isReverse)
         val steering = intent.getFloatExtra("steering", 0f)
 
         if (isReverse) {

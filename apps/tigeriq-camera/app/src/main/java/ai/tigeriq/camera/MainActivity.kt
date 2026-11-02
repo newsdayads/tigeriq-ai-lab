@@ -336,10 +336,12 @@ class MainActivity : AppCompatActivity() {
 
         btnOpenCamera.setOnClickListener {
             CameraActivity.launch(this, reverseActive = false)
+            finish() // Only the camera window remains after selecting Open Camera.
         }
 
         val tvBuildVersion: TextView? = findViewById(R.id.tvBuildVersion)
         tvBuildVersion?.text = "• Bản dựng: TigerIQ Camera v${BuildConfig.VERSION_NAME}"
+        tvBuildVersion?.append("\n" + settings.getReverseDiagnostics())
     }
 
     private fun updateStyleButtonHighlight(style: Int) {
