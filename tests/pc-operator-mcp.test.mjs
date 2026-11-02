@@ -874,6 +874,14 @@ describe('GH-5291 PAD UI broker targeted selector fast path', () => {
     expect(source).toContain('$searchCondition = Get-PadSearchCondition $Request $mode');
     expect(source).toContain('$window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $searchCondition)');
   });
+
+  it('combines exact name and control type in the provider-side selector', async () => {
+    const source = await fs.readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
+    expect(source).toContain('function Get-PadControlTypeValue([string]$ControlTypeName)');
+    expect(source).toContain('ControlTypeProperty');
+    expect(source).toContain('[System.Windows.Automation.AndCondition]::new');
+    expect(source).toContain('[System.Windows.Automation.Condition[]]$conditions');
+  });
 });
 
 describe('GH-5291 PAD UI broker no-broad-scan recovery', () => {

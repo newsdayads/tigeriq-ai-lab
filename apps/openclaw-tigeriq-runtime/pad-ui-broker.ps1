@@ -232,22 +232,55 @@ function Element-ToObject($e) {
   }
 }
 
+function Get-PadControlTypeValue([string]$ControlTypeName) {
+  if ([string]::IsNullOrWhiteSpace($ControlTypeName)) { return $null }
+  $normalized = $ControlTypeName -replace '^ControlType\\.', ''
+  $flags = [System.Reflection.BindingFlags]::Public -bor [System.Reflection.BindingFlags]::Static
+  $field = [System.Windows.Automation.ControlType].GetField($normalized, $flags)
+  if ($null -eq $field) { return $null }
+  return $field.GetValue($null)
+}
+
 function Get-PadSearchCondition($Request, [string]$Mode) {
-  # Prefer exact UIAutomation property conditions so the provider does not need
-  # to materialize every descendant before the broker can apply its selector.
+  # Push every exact selector component that UIAutomation understands into the
+  # provider query. This avoids resolving a same-name element of the wrong
+  # control type (for example the Actions palette instead of a flow row) and
+  # only then rejecting it in Test-PadElementMatch.
+  $conditions = @()
+
   if ($Request.automationId) {
-    return [System.Windows.Automation.PropertyCondition]::new(
+    $conditions += [System.Windows.Automation.PropertyCondition]::new(
       [System.Windows.Automation.AutomationElement]::AutomationIdProperty,
       [string]$Request.automationId
     )
   }
+
   if ($Request.name -and $Mode -eq 'exact') {
-    return [System.Windows.Automation.PropertyCondition]::new(
+    $conditions += [System.Windows.Automation.PropertyCondition]::new(
       [System.Windows.Automation.AutomationElement]::NameProperty,
       [string]$Request.name
     )
   }
-  return [System.Windows.Automation.Condition]::TrueCondition
+
+  if ($Request.controlType) {
+    $controlTypeValue = Get-PadControlTypeValue ([string]$Request.controlType)
+    if ($null -ne $controlTypeValue) {
+      $conditions += [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+        $controlTypeValue
+      )
+    }
+  }
+
+  if ($conditions.Count -eq 0) {
+    return [System.Windows.Automation.Condition]::TrueCondition
+  }
+  if ($conditions.Count -eq 1) {
+    return $conditions[0]
+  }
+  return [System.Windows.Automation.AndCondition]::new(
+    [System.Windows.Automation.Condition[]]$conditions
+  )
 }
 
 function Test-PadElementMatch($Element, $Request, [string]$Mode) {
