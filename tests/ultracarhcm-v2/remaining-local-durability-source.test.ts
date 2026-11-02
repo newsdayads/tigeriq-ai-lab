@@ -70,6 +70,21 @@ describe('GH-5135 remaining local durability paths', () => {
     );
   });
 
+  it('falls back instead of leaving a blank Ultrabot video on media failure', () => {
+    const start = home.indexOf('private fun renderUltrabotFallback');
+    const end = home.indexOf('private fun label(', start);
+    const block = home.slice(start, end);
+    expect(block).toContain('renderUltrabotFallback');
+    expect(block).toContain('bot.setOnErrorListener');
+    expect(block).toContain('bot.stopPlayback()');
+    expect(block).toContain('root.removeView(bot)');
+    expect(block).toContain('catch (error: RuntimeException)');
+    expect(block).toContain('Ultrabot media setup failed');
+    expect(block.indexOf('bot.setOnErrorListener')).toBeLessThan(
+      block.indexOf('bot.setVideoURI'),
+    );
+  });
+
   it('persists invalid custom-background cleanup synchronously and logs failure', () => {
     const start = home.indexOf('private fun clearInvalidCustomBackground()');
     const end = home.indexOf('private fun renderBackground', start);
