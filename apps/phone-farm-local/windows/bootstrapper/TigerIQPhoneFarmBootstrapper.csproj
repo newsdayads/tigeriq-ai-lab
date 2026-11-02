@@ -12,10 +12,12 @@
     <PublishSingleFile>true</PublishSingleFile>
     <DebugType>none</DebugType>
     <PublishTrimmed>false</PublishTrimmed>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="..\..\app.mjs"
                       LogicalName="TigerIQPhoneFarmBootstrapper.Overlay.app.mjs" />
+    <EmbeddedResource Include="..\..\ui.js"
+                      LogicalName="TigerIQPhoneFarmBootstrapper.Overlay.ui.js" />
   </ItemGroup>
 </Project>
