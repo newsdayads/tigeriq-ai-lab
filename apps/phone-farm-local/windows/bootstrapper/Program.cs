@@ -14,7 +14,7 @@ internal static class Program {
   private const string BaseSourceHead =
     "d64b2a04558533d0a8690fc9a2ef11fe74d47596";
   private const string OverlaySourceHead =
-    "f5afda6e2c65d3eadae3e71a1194d75b49bb474c";
+    "4fe82a42b3dace45c43d73751005547c9ad788d3";
   private const string AppOverlayResource =
     "TigerIQPhoneFarmBootstrapper.Overlay.app.mjs";
   private const string UiOverlayResource =
@@ -130,7 +130,7 @@ internal static class Program {
     }) {
       Timeout = TimeSpan.FromMinutes(5)
     };
-    client.DefaultRequestHeaders.UserAgent.ParseAdd("TigerIQ-PhoneFarm-Bootstrapper/1.1");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("TigerIQ-PhoneFarm-Bootstrapper/1.6");
 
     using var response = await client.GetAsync(PackageUrl, HttpCompletionOption.ResponseHeadersRead);
     response.EnsureSuccessStatusCode();
