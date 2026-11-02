@@ -99,20 +99,22 @@ class DynamicGuideView @JvmOverloads constructor(
             val dirMultiplier = if (settings.isSteeringInverted) -1.0f else 1.0f
 
             if (!isTouchSteering) {
-                if (now - lastGyroTime < 800L && gyroMagnitude > 0.025f && abs(signedYaw) > 0.035f) {
+                // Strict Deadband Lock: 0.050 rad/s (~2.9 deg/sec). Engine idle vibration & stationary drift is < 0.035 rad/s.
+                if (now - lastGyroTime < 700L && gyroMagnitude > 0.035f && abs(signedYaw) > 0.050f) {
                     val yaw = signedYaw
-                    val strength = min(0.85f, (abs(yaw) - 0.035f) * 6.0f)
+                    val rawStrength = ((abs(yaw) - 0.050f) * 3.8f).coerceIn(0.0f, 1.0f)
                     // Vehicle reversing & turning right rotates clockwise (yaw < 0), guidelines must curve right (positive curvature)
-                    targetCurvature = dirMultiplier * (if (yaw < 0f) strength else -strength)
+                    targetCurvature = dirMultiplier * (if (yaw < 0f) rawStrength else -rawStrength)
                 } else {
-                    targetCurvature *= 0.82f // decay smoothly to center
-                    if (abs(targetCurvature) < 0.005f) targetCurvature = 0f
+                    // Fast exponential decay back to dead center when straight / stopped
+                    targetCurvature *= 0.70f
+                    if (abs(targetCurvature) < 0.003f) targetCurvature = 0f
                 }
             }
 
             // Smooth interpolation
-            curvature = 0.65f * curvature + 0.35f * targetCurvature
-            if (abs(curvature) < 0.004f) curvature = 0f
+            curvature = 0.68f * curvature + 0.32f * targetCurvature
+            if (abs(curvature) < 0.002f) curvature = 0f
 
             invalidate()
             mainHandler.postDelayed(this, 33) // ~30 fps
@@ -201,22 +203,23 @@ class DynamicGuideView @JvmOverloads constructor(
         val bottomY = h * 0.86f
         val topY = h * 0.38f
 
-        val bottomHalfW = (w * 0.32f * scale).coerceAtMost(w * 0.44f)
-        val topHalfW = (w * 0.14f * scale).coerceAtMost(w * 0.25f)
+        val bottomHalfW = (w * 0.30f * scale).coerceIn(dp(60f), w * 0.38f)
+        val topHalfW = (w * 0.13f * scale).coerceIn(dp(30f), w * 0.20f)
 
         val cx = w * 0.5f
-        val maxCurveShift = w * 0.12f
-        val curveShift = (effectiveCurve * w * 0.12f).coerceIn(-maxCurveShift, maxCurveShift)
+        val maxShift = (w * 0.5f - bottomHalfW - dp(24f)).coerceAtLeast(dp(20f))
+        val shift = (effectiveCurve * maxShift).coerceIn(-maxShift, maxShift)
 
-        val blX = (cx - bottomHalfW).coerceIn(dp(16f), w - dp(16f))
-        val brX = (cx + bottomHalfW).coerceIn(dp(16f), w - dp(16f))
-        val tlX = (cx - topHalfW + curveShift).coerceIn(dp(16f), w - dp(16f))
-        val trX = (cx + topHalfW + curveShift).coerceIn(dp(16f), w - dp(16f))
+        val blX = cx - bottomHalfW
+        val brX = cx + bottomHalfW
+        val tlX = cx - topHalfW + shift
+        val trX = cx + topHalfW + shift
 
-        val ctrlShift = curveShift * 0.55f
+        // Control point has quadratic deflection matching circular arc (t^2 at mid-point is ~0.28)
+        val ctrlShift = shift * 0.30f
         val midY = (bottomY + topY) * 0.5f
-        val ctrlLx = ((blX + tlX) * 0.5f + ctrlShift).coerceIn(dp(16f), w - dp(16f))
-        val ctrlRx = ((brX + trX) * 0.5f + ctrlShift).coerceIn(dp(16f), w - dp(16f))
+        val ctrlLx = (blX + tlX) * 0.5f + ctrlShift
+        val ctrlRx = (brX + trX) * 0.5f + ctrlShift
 
         leftPath.reset()
         leftPath.moveTo(blX, bottomY)
