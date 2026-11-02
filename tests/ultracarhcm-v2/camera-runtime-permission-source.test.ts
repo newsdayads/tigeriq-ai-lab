@@ -32,4 +32,32 @@ describe('GH-5135 F03/F20 camera runtime permission gate', () => {
     expect(activity).toContain('openCamera()');
     expect(activity).not.toContain('UsbManager.requestPermission');
   });
+
+  it('releases a requested UVC session while stopped and resumes only that prior open state', () => {
+    expect(activity).toContain('private var resumeCameraOnStart = false');
+    const start = activity.slice(
+      activity.indexOf('override fun onStart()'),
+      activity.indexOf('override fun onStop()'),
+    );
+    expect(start).toContain('if (resumeCameraOnStart)');
+    expect(start).toContain('resumeCameraOnStart = false');
+    expect(start).toContain('openCamera()');
+
+    const stop = activity.slice(
+      activity.indexOf('override fun onStop()'),
+      activity.indexOf('override fun onDestroy()'),
+    );
+    expect(stop).toContain('resumeCameraOnStart = camera.requested');
+    expect(stop).toContain('if (camera.requested) camera.stop()');
+    expect(stop).toContain('cameraFrameActive = false');
+    expect(stop).toContain('updateGuideVisibility()');
+
+    const toggle = activity.slice(
+      activity.indexOf('private fun toggle()'),
+      activity.indexOf('override fun onNewIntent'),
+    );
+    expect(toggle).toContain('if (camera.requested)');
+    expect(toggle).toContain('camera.stop()');
+    expect(toggle).not.toContain('resumeCameraOnStart = true');
+  });
 });
