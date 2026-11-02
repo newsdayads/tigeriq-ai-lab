@@ -310,10 +310,6 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
         closeForegroundSegment()
         stopLocationUpdates()
         handler.removeCallbacks(tick)
-        running = false
-        rateInput.isEnabled = true
-        toggleButton.text = "Bắt đầu chuyến"
-
         if (save) {
             val fare = TaxiMeterRules.fareVnd(rateVndPerKm, distanceMeters) ?: 0L
             val record = JSONObject()
@@ -322,13 +318,20 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
                 .put("distanceMeters", distanceMeters)
                 .put("rateVndPerKm", rateVndPerKm)
                 .put("fareVnd", fare)
-            if (prependHistory(record)) {
-                renderHistory()
-                toast("Đã lưu chuyến Taxi Meter V2")
-            } else {
-                toast("Không thể lưu lịch sử chuyến Taxi Meter V2")
+            if (!prependHistory(record)) {
+                foregroundSegmentStartedMs = SystemClock.elapsedRealtime()
+                handler.post(tick)
+                startLocationUpdates()
+                toast("Không thể lưu lịch sử chuyến — chuyến vẫn tiếp tục để thử lại")
+                updateMeterUi()
+                return
             }
+            renderHistory()
+            toast("Đã lưu chuyến Taxi Meter V2")
         }
+        running = false
+        rateInput.isEnabled = true
+        toggleButton.text = "Bắt đầu chuyến"
         updateMeterUi()
     }
 
