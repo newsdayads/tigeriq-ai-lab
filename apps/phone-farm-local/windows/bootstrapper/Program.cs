@@ -89,6 +89,7 @@ internal static class Program {
 
   private static async Task DeployAsync(string? localPackagePath) {
     if (!VerifyStaticConfig()) throw new InvalidOperationException("Cấu hình phát hành không hợp lệ.");
+    if (localPackagePath is not null) VerifyPinnedLocalPackage(localPackagePath);
 
     string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
     if (string.IsNullOrWhiteSpace(local)) throw new InvalidOperationException("Không xác định được LOCALAPPDATA.");
@@ -152,37 +153,45 @@ internal static class Program {
       MessageBoxIcon.Information);
   }
 
+  private static void VerifyPinnedLocalPackage(string localPackagePath) {
+    var info = new FileInfo(localPackagePath);
+    if (!info.Exists || info.Length <= 0 || info.Length > MaxPackageBytes)
+      throw new InvalidDataException("Kích thước gói RC6 cục bộ vượt giới hạn.");
+    string actual = HashFile(localPackagePath);
+    if (!actual.Equals(PackageSha256, StringComparison.OrdinalIgnoreCase))
+      throw new InvalidDataException("SHA-256 gói RC6 cục bộ không khớp gói đã ghim.");
+  }
+
   private static async Task PreparePinnedPackageAsync(string destination, string? localPackagePath) {
     if (localPackagePath is null) {
       await DownloadPinnedPackageAsync(destination);
       return;
     }
 
+    VerifyPinnedLocalPackage(localPackagePath);
     TryDeleteFile(destination);
-    await using var input = new FileStream(
-      localPackagePath, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024,
-      FileOptions.SequentialScan);
-    if (input.Length <= 0 || input.Length > MaxPackageBytes)
-      throw new InvalidDataException("Kích thước gói RC6 cục bộ vượt giới hạn.");
-
-    await using var output = new FileStream(
-      destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 1024,
-      FileOptions.SequentialScan);
-    byte[] buffer = new byte[1024 * 1024];
     long total = 0;
-    int read;
-    while ((read = await input.ReadAsync(buffer)) > 0) {
-      total += read;
-      if (total > MaxPackageBytes)
-        throw new InvalidDataException("Gói RC6 cục bộ vượt giới hạn sao chép.");
-      await output.WriteAsync(buffer.AsMemory(0, read));
+    await using (var input = new FileStream(
+      localPackagePath, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024,
+      FileOptions.SequentialScan)) {
+      await using var output = new FileStream(
+        destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 1024,
+        FileOptions.SequentialScan);
+      byte[] buffer = new byte[1024 * 1024];
+      int read;
+      while ((read = await input.ReadAsync(buffer)) > 0) {
+        total += read;
+        if (total > MaxPackageBytes)
+          throw new InvalidDataException("Gói RC6 cục bộ vượt giới hạn sao chép.");
+        await output.WriteAsync(buffer.AsMemory(0, read));
+      }
+      await output.FlushAsync();
     }
-    await output.FlushAsync();
 
     if (total == 0) throw new InvalidDataException("Gói RC6 cục bộ rỗng.");
-    string actual = HashFile(destination);
-    if (!actual.Equals(PackageSha256, StringComparison.OrdinalIgnoreCase))
-      throw new InvalidDataException("SHA-256 gói RC6 cục bộ không khớp gói đã ghim.");
+    string copiedHash = HashFile(destination);
+    if (!copiedHash.Equals(PackageSha256, StringComparison.OrdinalIgnoreCase))
+      throw new InvalidDataException("SHA-256 bản sao gói RC6 cục bộ không khớp gói đã ghim.");
   }
 
   private static async Task DownloadPinnedPackageAsync(string destination) {
@@ -363,7 +372,7 @@ internal static class Program {
     string recordingSha256,
     string packageOrigin) {
     var receipt = new {
-      schema = "TIGERIQ_PHONE_FARM_CURRENT_RELEASE_V3",
+      schema = "TIGERIQ_PHONE_FARM_CURRENT_RELEASE_V2",
       baseSourceHead = BaseSourceHead,
       overlaySourceHead = OverlaySourceHead,
       packageSha256 = PackageSha256,
