@@ -7,9 +7,11 @@ import { validMacro, executeMacro, MacroRuns } from './macro-engine.mjs';
 import { LocalScheduler } from './schedule-engine.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
+import { createServer as createNetServer } from 'node:net';
 
 import assert from 'node:assert/strict';
-import { parseDevices, safeSerial, validInput, privateWifiAddress, parsePrivateWifiIpv4, parseExistingAdbTcpPort, wifiCandidateFromOutputs, wifiEndpointReachable, normalizeKnownWifiEndpoints, reconnectKnownWifiEndpoints, adbConnectFailure, mirrorOptions, server } from './app.mjs';
+import { parseDevices, safeSerial, validInput, privateWifiAddress, parsePrivateWifiIpv4, parseExistingAdbTcpPort, wifiCandidateFromOutputs, wifiEndpointReachable, normalizeKnownWifiEndpoints, reconnectKnownWifiEndpoints, runtimeNetworkPolicy, adbConnectFailure, mirrorOptions, server } from './app.mjs';
 
 test('ADB inventory parses connected, offline, unauthorized devices', () => {
   const devices=parseDevices('List of devices attached\nR3CM400AKRX device product:beyondxks model:SM_G977N transport_id:1\n192.168.0.9:5555 offline\nABCD unauthorized\n');
@@ -360,6 +362,115 @@ test('WiFi ADB UI discovers an existing endpoint from selected USB before connec
 });
 
 
+
+test('F10 source policy declares no Internet dependency for installed runtime', () => {
+  assert.deepEqual(runtimeNetworkPolicy(),{
+    internetRequired:false,
+    controllerBind:'127.0.0.1',
+    controllerScope:'loopback-only',
+    externalServiceDependencies:0,
+    wifiAdbScope:'private-lan-only'
+  });
+  const dir=path.dirname(fileURLToPath(import.meta.url));
+  const appSource=fs.readFileSync(path.join(dir,'app.mjs'),'utf8');
+  const uiSource=fs.readFileSync(path.join(dir,'ui.js'),'utf8');
+  assert.doesNotMatch(appSource,/from ['"]node:(?:https|dns|tls)['"]/);
+  assert.doesNotMatch(appSource,/(?:fetch|request)\(\s*['"]https?:\/\//);
+  assert.doesNotMatch(uiSource,/fetch\(\s*['"]https?:\/\//);
+  assert.match(appSource,/bind = '127\.0\.0\.1'/);
+  assert.match(appSource,/connect-src 'self'/);
+  assert.match(uiSource,/Internet runtime/);
+});
+
+test('F10 outbound-denied simulation still serves local runtime and fails private-LAN connect closed', async (t) => {
+  const dir=path.dirname(fileURLToPath(import.meta.url));
+  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'tigeriq-offline-'));
+  const guard=path.join(temp,'offline-guard.cjs');
+  fs.writeFileSync(guard,`
+const net=require('node:net');
+const {syncBuiltinESMExports}=require('node:module');
+const original=net.createConnection;
+function hostOf(args){
+  if(args[0]&&typeof args[0]==='object')return args[0].host||'localhost';
+  return typeof args[1]==='string'?args[1]:'localhost';
+}
+net.createConnection=function(...args){
+  const host=hostOf(args);
+  if(host!=='127.0.0.1'&&host!=='localhost'&&host!=='::1'){
+    const socket=new net.Socket();
+    queueMicrotask(()=>socket.destroy(Object.assign(new Error('OFFLINE_TEST_BLOCKED'),{code:'ENETUNREACH'})));
+    return socket;
+  }
+  return original.apply(this,args);
+};
+net.connect=net.createConnection;
+syncBuiltinESMExports();
+`,'utf8');
+
+  const port=await new Promise((resolve,reject)=>{
+    const probe=createNetServer();
+    probe.once('error',reject);
+    probe.listen(0,'127.0.0.1',()=>{
+      const address=probe.address();
+      const value=typeof address==='object'&&address?address.port:0;
+      probe.close(error=>error?reject(error):resolve(value));
+    });
+  });
+
+  const child=spawn(process.execPath,['--require',guard,path.join(dir,'app.mjs')],{
+    cwd:dir,
+    env:{
+      ...process.env,
+      TIGERIQ_PHONE_FARM_PORT:String(port),
+      TIGERIQ_ADB:path.join(temp,'missing-adb'),
+      TIGERIQ_SCRCPY:path.join(temp,'missing-scrcpy')
+    },
+    stdio:['ignore','pipe','pipe'],
+    windowsHide:true
+  });
+  let stderr='';
+  child.stderr.on('data',chunk=>{stderr+=String(chunk).slice(0,2000)});
+  t.after(()=>{
+    if(child.exitCode===null)child.kill();
+    fs.rmSync(temp,{recursive:true,force:true});
+  });
+
+  const base='http://127.0.0.1:'+port;
+  let health=null,lastError=null;
+  const deadline=Date.now()+10000;
+  while(Date.now()<deadline){
+    if(child.exitCode!==null)break;
+    try{
+      const response=await fetch(base+'/api/health',{signal:AbortSignal.timeout(500)});
+      if(response.ok){health=await response.json();break}
+    }catch(error){lastError=error}
+    await new Promise(resolve=>setTimeout(resolve,100));
+  }
+  assert.ok(health,'local backend did not become ready: '+(stderr||lastError?.message||'unknown'));
+  assert.equal(health.localOnly,true);
+  assert.equal(health.runtimeNetworkPolicy.internetRequired,false);
+  assert.equal(health.runtimeNetworkPolicy.externalServiceDependencies,0);
+
+  const home=await fetch(base+'/',{signal:AbortSignal.timeout(1000)});
+  assert.equal(home.status,200);
+  assert.match(await home.text(),/TigerIQ Phone Farm/);
+
+  const ui=await fetch(base+'/ui.js',{signal:AbortSignal.timeout(1000)});
+  assert.equal(ui.status,200);
+  assert.match(await ui.text(),/Internet runtime/);
+
+  const wifi=await fetch(base+'/api/wifi/connect',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({address:'192.168.50.23:5555'}),
+    signal:AbortSignal.timeout(2000)
+  });
+  assert.equal(wifi.status,409);
+  const failure=await wifi.json();
+  assert.equal(failure.reason,'ADB_ENDPOINT_UNREACHABLE');
+  assert.equal(failure.address,'192.168.50.23:5555');
+});
+
 test('non-shell RC6 bootstrapper pins base package and applies verified embedded overlay', () => {
   const dir=path.dirname(fileURLToPath(import.meta.url));
   const source=fs.readFileSync(path.join(dir,'windows','bootstrapper','Program.cs'),'utf8');
@@ -368,11 +479,11 @@ test('non-shell RC6 bootstrapper pins base package and applies verified embedded
   assert.match(project,/<SelfContained>true<\/SelfContained>/);
   assert.match(project,/EmbeddedResource Include="\.\.\\\.\.\\app\.mjs"/);
   assert.match(project,/EmbeddedResource Include="\.\.\\\.\.\\ui\.js"/);
-  assert.match(project,/<Version>1\.3\.0<\/Version>/);
+  assert.match(project,/<Version>1\.4\.0<\/Version>/);
   assert.match(source,/https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/releases\/download\/tigeriq-phone-farm-windows-v0\.5\.0-rc6\/TigerIQ-PhoneFarm-Windows-v0\.5\.0-RC6-d64b2a04\.zip/);
   assert.match(source,/bd8375a8712ee8bc18d725bd45e3652414946b9eb834de6879c2c42ff8a30709/);
   assert.match(source,/d64b2a04558533d0a8690fc9a2ef11fe74d47596/);
-  assert.match(source,/a0fd41ceb655a4e2f702c366b988b92832950f57/);
+  assert.match(source,/48c485163abcff2097a2757983f24fa2f739fe9e/);
   assert.match(source,/TIGERIQ_PHONE_FARM_OVERLAY_V1/);
   assert.match(source,/TIGERIQ_PHONE_FARM_CURRENT_RELEASE_V2/);
   assert.match(source,/WriteEmbeddedResourceAtomic/);

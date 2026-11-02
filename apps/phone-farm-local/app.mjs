@@ -25,6 +25,15 @@ const windows = new Map();
 const macros = new MacroRuns();
 const recordings = new Recordings(scrcpy, path.join(base, 'recordings'));
 const now = () => new Date().toISOString();
+export function runtimeNetworkPolicy() {
+  return {
+    internetRequired: false,
+    controllerBind: '127.0.0.1',
+    controllerScope: 'loopback-only',
+    externalServiceDependencies: 0,
+    wifiAdbScope: 'private-lan-only'
+  };
+}
 export function privateWifiAddress(input) {
   if(typeof input!=='string')return false;
   const match=input.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3}):(\d{1,5})$/);
@@ -356,7 +365,7 @@ const server = http.createServer(async (req, res) => {
       }catch(e){return json(res,409,{error:errorText(e)})}
     }
     if (req.method === 'GET' && url.pathname === '/api/health')
-      return json(res, 200, { ok: true, localOnly: true, time: now(), adbExists: fs.existsSync(adb), scrcpyExists: fs.existsSync(scrcpy), rememberedWifi: knownWifiEndpoints().length });
+      return json(res, 200, { ok: true, localOnly: true, time: now(), adbExists: fs.existsSync(adb), scrcpyExists: fs.existsSync(scrcpy), rememberedWifi: knownWifiEndpoints().length, runtimeNetworkPolicy: runtimeNetworkPolicy() });
     if (req.method === 'GET' && url.pathname === '/api/devices') {
       const xs = await devices(), ls = labels();
       return json(res, 200, { devices: xs.map(x => ({ ...x, label: ls[x.serial] || '' })), count: xs.length, time: now() });
