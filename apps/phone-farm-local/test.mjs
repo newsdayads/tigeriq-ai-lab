@@ -238,26 +238,28 @@ test('read-only WiFi ADB discovery accepts only an already-enabled private LAN e
   assert.equal(wifiCandidateFromOutputs('inet 192.168.50.23/24 scope global wlan0', '-1'), null);
 });
 
-test('read-only mDNS discovery finds modern Wireless Debugging connect endpoints on the USB device LAN IP', () => {
+test('read-only mDNS discovery prefers the selected USB serial before IP-only fallback', () => {
   const mdns=[
     'List of discovered mdns services',
     'adb-R3CM400AKRX-abc._adb-tls-pairing._tcp. 172.16.199.197:37123',
+    'adb-OTHER-wrong._adb-tls-connect._tcp. 172.16.199.197:40123',
     'adb-R3CM400AKRX-def._adb-tls-connect._tcp. 172.16.199.197:39111',
     'adb-R3CM400AKRX-dup._adb-tls-connect._tcp. 172.16.199.197:39111',
     'adb-OTHER-ghi._adb-tls-connect._tcp. 192.168.1.50:40123',
     'adb-PUBLIC._adb-tls-connect._tcp. 8.8.8.8:5555'
   ].join('\n');
-  assert.deepEqual(parseAdbMdnsConnectServices(mdns,'172.16.199.197'),['172.16.199.197:39111']);
-  assert.deepEqual(parseAdbMdnsConnectServices(mdns),['172.16.199.197:39111','192.168.1.50:40123']);
+  assert.deepEqual(parseAdbMdnsConnectServices(mdns,'172.16.199.197','R3CM400AKRX'),['172.16.199.197:39111']);
+  assert.deepEqual(parseAdbMdnsConnectServices(mdns,'172.16.199.197','MISSING'),['172.16.199.197:40123','172.16.199.197:39111']);
+  assert.deepEqual(parseAdbMdnsConnectServices(mdns),['172.16.199.197:40123','172.16.199.197:39111','192.168.1.50:40123']);
   assert.deepEqual(
-    wifiCandidatesFromOutputs('inet 172.16.199.197/24 scope global wlan0','5555',mdns),
+    wifiCandidatesFromOutputs('inet 172.16.199.197/24 scope global wlan0','5555',mdns,'R3CM400AKRX'),
     ['172.16.199.197:5555','172.16.199.197:39111']
   );
   assert.deepEqual(
-    wifiCandidatesFromOutputs('inet 172.16.199.197/24 scope global wlan0','-1',mdns),
+    wifiCandidatesFromOutputs('inet 172.16.199.197/24 scope global wlan0','-1',mdns,'R3CM400AKRX'),
     ['172.16.199.197:39111']
   );
-  assert.deepEqual(wifiCandidatesFromOutputs('inet 8.8.8.8/24 scope global wlan0','-1',mdns),[]);
+  assert.deepEqual(wifiCandidatesFromOutputs('inet 8.8.8.8/24 scope global wlan0','-1',mdns,'R3CM400AKRX'),[]);
 });
 
 test('WiFi ADB reachability preflight rejects stale configured endpoints without changing ADB', async () => {
@@ -358,6 +360,8 @@ test('WiFi candidate endpoint remains discovery-only and never enables ADB TCP m
   assert.match(source,/getprop','service\.adb\.tcp\.port/);
   assert.match(source,/ip','-f','inet','addr','show','wlan0/);
   assert.match(source,/run\(\['mdns','services'\]/);
+  assert.match(source,/wifiCandidatesFromOutputs\(ipOutput,portOutput,mdnsOutput,serial\)/);
+  assert.match(source,/mdnsServiceMatchesSerial/);
   assert.match(source,/_adb-tls-connect\\\._tcp/);
   assert.match(source,/source:live\.address===classic\?'legacy-tcp':'adb-mdns'/);
   assert.doesNotMatch(source,/['"]tcpip['"]/);
