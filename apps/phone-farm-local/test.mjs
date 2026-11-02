@@ -525,12 +525,14 @@ test('non-shell RC6 bootstrapper pins base package and applies verified embedded
   assert.match(source,/d64b2a04558533d0a8690fc9a2ef11fe74d47596/);
   assert.match(source,/4fe82a42b3dace45c43d73751005547c9ad788d3/);
   assert.match(source,/TIGERIQ_PHONE_FARM_OVERLAY_V1/);
-  assert.match(source,/TIGERIQ_PHONE_FARM_CURRENT_RELEASE_V3/);
+  assert.match(source,/TIGERIQ_PHONE_FARM_CURRENT_RELEASE_V2/);
   assert.match(source,/--package/);
   assert.match(source,/Path\.IsPathFullyQualified/);
   assert.match(source,/verified-local/);
   assert.match(source,/PreparePinnedPackageAsync/);
+  assert.match(source,/VerifyPinnedLocalPackage/);
   assert.match(source,/SHA-256 gói RC6 cục bộ không khớp gói đã ghim/);
+  assert.match(source,/SHA-256 bản sao gói RC6 cục bộ không khớp gói đã ghim/);
   assert.match(source,/internetRequiredForInstall/);
   assert.match(source,/runtimeInternetRequired = false/);
   assert.match(source,/WriteEmbeddedResourceAtomic/);
