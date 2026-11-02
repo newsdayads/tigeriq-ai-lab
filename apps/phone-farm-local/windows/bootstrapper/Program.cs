@@ -14,11 +14,13 @@ internal static class Program {
   private const string BaseSourceHead =
     "d64b2a04558533d0a8690fc9a2ef11fe74d47596";
   private const string OverlaySourceHead =
-    "48c485163abcff2097a2757983f24fa2f739fe9e";
+    "f5afda6e2c65d3eadae3e71a1194d75b49bb474c";
   private const string AppOverlayResource =
     "TigerIQPhoneFarmBootstrapper.Overlay.app.mjs";
   private const string UiOverlayResource =
     "TigerIQPhoneFarmBootstrapper.Overlay.ui.js";
+  private const string RecordingOverlayResource =
+    "TigerIQPhoneFarmBootstrapper.Overlay.recording.mjs";
   private const long MaxPackageBytes = 160L * 1024 * 1024;
   private const long MaxExtractedBytes = 450L * 1024 * 1024;
   private const int MaxEntries = 2500;
@@ -59,7 +61,9 @@ internal static class Program {
     var assembly = Assembly.GetExecutingAssembly();
     using var app = assembly.GetManifestResourceStream(AppOverlayResource);
     using var ui = assembly.GetManifestResourceStream(UiOverlayResource);
-    return app is not null && app.Length > 0 && ui is not null && ui.Length > 0;
+    using var recording = assembly.GetManifestResourceStream(RecordingOverlayResource);
+    return app is not null && app.Length > 0 && ui is not null && ui.Length > 0 &&
+      recording is not null && recording.Length > 0;
   }
 
   private static async Task DeployAsync() {
@@ -104,8 +108,8 @@ internal static class Program {
 
     ApplyOverlay(target);
     var overlayHashes = VerifyOverlay(target);
-    WriteOverlayReceipt(target, overlayHashes.AppSha256, overlayHashes.UiSha256);
-    WriteCurrentReceipt(root, target, overlayHashes.AppSha256, overlayHashes.UiSha256);
+    WriteOverlayReceipt(target, overlayHashes.AppSha256, overlayHashes.UiSha256, overlayHashes.RecordingSha256);
+    WriteCurrentReceipt(root, target, overlayHashes.AppSha256, overlayHashes.UiSha256, overlayHashes.RecordingSha256);
     RestartTarget(target);
 
     MessageBox.Show(
@@ -219,22 +223,30 @@ internal static class Program {
     WriteEmbeddedResourceAtomic(
       Path.Combine(directory, "ui.js"),
       UiOverlayResource);
+    WriteEmbeddedResourceAtomic(
+      Path.Combine(directory, "recording.mjs"),
+      RecordingOverlayResource);
   }
 
-  private static (string AppSha256, string UiSha256) VerifyOverlay(string directory) {
+  private static (string AppSha256, string UiSha256, string RecordingSha256) VerifyOverlay(string directory) {
     string appPath = Path.Combine(directory, "app.mjs");
     string uiPath = Path.Combine(directory, "ui.js");
+    string recordingPath = Path.Combine(directory, "recording.mjs");
     string appExpected = HashEmbeddedResource(AppOverlayResource);
     string uiExpected = HashEmbeddedResource(UiOverlayResource);
+    string recordingExpected = HashEmbeddedResource(RecordingOverlayResource);
     string appActual = HashFile(appPath);
     string uiActual = HashFile(uiPath);
+    string recordingActual = HashFile(recordingPath);
 
     if (!appActual.Equals(appExpected, StringComparison.OrdinalIgnoreCase))
       throw new InvalidDataException("SHA-256 overlay app.mjs không khớp.");
     if (!uiActual.Equals(uiExpected, StringComparison.OrdinalIgnoreCase))
       throw new InvalidDataException("SHA-256 overlay ui.js không khớp.");
+    if (!recordingActual.Equals(recordingExpected, StringComparison.OrdinalIgnoreCase))
+      throw new InvalidDataException("SHA-256 overlay recording.mjs không khớp.");
 
-    return (appActual, uiActual);
+    return (appActual, uiActual, recordingActual);
   }
 
   private static void WriteEmbeddedResourceAtomic(string destination, string resourceName) {
@@ -263,13 +275,15 @@ internal static class Program {
   private static void WriteOverlayReceipt(
     string directory,
     string appSha256,
-    string uiSha256) {
+    string uiSha256,
+    string recordingSha256) {
     var receipt = new {
       schema = "TIGERIQ_PHONE_FARM_OVERLAY_V1",
       baseSourceHead = BaseSourceHead,
       overlaySourceHead = OverlaySourceHead,
       appSha256,
       uiSha256,
+      recordingSha256,
       appliedAtUtc = DateTime.UtcNow.ToString("O"),
       localOnly = true
     };
@@ -282,7 +296,8 @@ internal static class Program {
     string root,
     string installPath,
     string appSha256,
-    string uiSha256) {
+    string uiSha256,
+    string recordingSha256) {
     var receipt = new {
       schema = "TIGERIQ_PHONE_FARM_CURRENT_RELEASE_V2",
       baseSourceHead = BaseSourceHead,
@@ -290,6 +305,7 @@ internal static class Program {
       packageSha256 = PackageSha256,
       appSha256,
       uiSha256,
+      recordingSha256,
       installPath,
       verifiedAtUtc = DateTime.UtcNow.ToString("O"),
       localOnly = true
