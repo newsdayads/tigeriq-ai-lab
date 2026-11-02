@@ -238,15 +238,15 @@ test('read-only WiFi ADB discovery accepts only an already-enabled private LAN e
   assert.equal(wifiCandidateFromOutputs('inet 192.168.50.23/24 scope global wlan0', '-1'), null);
 });
 
-test('read-only mDNS discovery prefers the selected USB serial before IP-only fallback', () => {
+test('read-only mDNS discovery parses official adb columns and prefers the selected USB serial', () => {
   const mdns=[
     'List of discovered mdns services',
-    'adb-R3CM400AKRX-abc._adb-tls-pairing._tcp. 172.16.199.197:37123',
-    'adb-OTHER-wrong._adb-tls-connect._tcp. 172.16.199.197:40123',
-    'adb-R3CM400AKRX-def._adb-tls-connect._tcp. 172.16.199.197:39111',
+    'adb-R3CM400AKRX-abc          _adb-tls-pairing._tcp  172.16.199.197:37123',
+    'adb-OTHER-wrong             _adb-tls-connect._tcp  172.16.199.197:40123',
+    'adb-R3CM400AKRX-def         _adb-tls-connect._tcp  172.16.199.197:39111',
     'adb-R3CM400AKRX-dup._adb-tls-connect._tcp. 172.16.199.197:39111',
-    'adb-OTHER-ghi._adb-tls-connect._tcp. 192.168.1.50:40123',
-    'adb-PUBLIC._adb-tls-connect._tcp. 8.8.8.8:5555'
+    'adb-OTHER-ghi               _adb-tls-connect._tcp  192.168.1.50:40123',
+    'adb-PUBLIC                  _adb-tls-connect._tcp  8.8.8.8:5555'
   ].join('\n');
   assert.deepEqual(parseAdbMdnsConnectServices(mdns,'172.16.199.197','R3CM400AKRX'),['172.16.199.197:39111']);
   assert.deepEqual(parseAdbMdnsConnectServices(mdns,'172.16.199.197','MISSING'),['172.16.199.197:40123','172.16.199.197:39111']);
@@ -523,11 +523,11 @@ test('non-shell RC6 bootstrapper pins base package and applies verified embedded
   assert.match(project,/EmbeddedResource Include="\.\.\\\.\.\\app\.mjs"/);
   assert.match(project,/EmbeddedResource Include="\.\.\\\.\.\\ui\.js"/);
   assert.match(project,/EmbeddedResource Include="\.\.\\\.\.\\recording\.mjs"/);
-  assert.match(project,/<Version>1\.8\.0<\/Version>/);
+  assert.match(project,/<Version>1\.9\.0<\/Version>/);
   assert.match(source,/https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/releases\/download\/tigeriq-phone-farm-windows-v0\.5\.0-rc6\/TigerIQ-PhoneFarm-Windows-v0\.5\.0-RC6-d64b2a04\.zip/);
   assert.match(source,/bd8375a8712ee8bc18d725bd45e3652414946b9eb834de6879c2c42ff8a30709/);
   assert.match(source,/d64b2a04558533d0a8690fc9a2ef11fe74d47596/);
-  assert.match(source,/43a73553c7494d770d907e9f93c4786c9c897b0a/);
+  assert.match(source,/b5c335376187dded8a25d891cf8508e1aa83fb40/);
   assert.match(source,/TIGERIQ_PHONE_FARM_OVERLAY_V1/);
   assert.match(source,/TIGERIQ_PHONE_FARM_CURRENT_RELEASE_V2/);
   assert.match(source,/--package/);
