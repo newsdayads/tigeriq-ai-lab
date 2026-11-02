@@ -11,7 +11,7 @@ import { spawn } from 'node:child_process';
 import { createServer as createNetServer } from 'node:net';
 
 import assert from 'node:assert/strict';
-import { parseDevices, safeSerial, validInput, privateWifiAddress, parsePrivateWifiIpv4, parseExistingAdbTcpPort, wifiCandidateFromOutputs, wifiEndpointReachable, normalizeKnownWifiEndpoints, reconnectKnownWifiEndpoints, runtimeNetworkPolicy, adbConnectFailure, mirrorOptions, server } from './app.mjs';
+import { parseDevices, safeSerial, validInput, privateWifiAddress, parsePrivateWifiIpv4, parseExistingAdbTcpPort, wifiCandidateFromOutputs, wifiEndpointReachable, normalizeKnownWifiEndpoints, reconnectKnownWifiEndpoints, runtimeNetworkPolicy, sha256Buffer, adbConnectFailure, mirrorOptions, server } from './app.mjs';
 
 test('ADB inventory parses connected, offline, unauthorized devices', () => {
   const devices=parseDevices('List of devices attached\nR3CM400AKRX device product:beyondxks model:SM_G977N transport_id:1\n192.168.0.9:5555 offline\nABCD unauthorized\n');
@@ -471,6 +471,20 @@ syncBuiltinESMExports();
   assert.equal(failure.address,'192.168.50.23:5555');
 });
 
+test('F09 media evidence exposes SHA-256 for screenshot and completed recording', () => {
+  assert.equal(sha256Buffer(Buffer.from('TigerIQ')),'f8f97796ec5469f14d8a3a2f8b847884dc760d8de0eacf7bd8232ef818460029');
+  const dir=path.dirname(fileURLToPath(import.meta.url));
+  const app=fs.readFileSync(path.join(dir,'app.mjs'),'utf8');
+  const ui=fs.readFileSync(path.join(dir,'ui.js'),'utf8');
+  const recording=fs.readFileSync(path.join(dir,'recording.mjs'),'utf8');
+  assert.match(app,/X-TigerIQ-SHA256/);
+  assert.match(app,/X-TigerIQ-Bytes/);
+  assert.match(ui,/Bằng chứng SHA-256\/bytes không hợp lệ/);
+  assert.match(ui,/SHA-256 '\+r\.sha256/);
+  assert.match(recording,/sha256:null/);
+  assert.match(recording,/fileSha256\(r\.file\)/);
+});
+
 test('non-shell RC6 bootstrapper pins base package and applies verified embedded overlay', () => {
   const dir=path.dirname(fileURLToPath(import.meta.url));
   const source=fs.readFileSync(path.join(dir,'windows','bootstrapper','Program.cs'),'utf8');
@@ -479,11 +493,12 @@ test('non-shell RC6 bootstrapper pins base package and applies verified embedded
   assert.match(project,/<SelfContained>true<\/SelfContained>/);
   assert.match(project,/EmbeddedResource Include="\.\.\\\.\.\\app\.mjs"/);
   assert.match(project,/EmbeddedResource Include="\.\.\\\.\.\\ui\.js"/);
-  assert.match(project,/<Version>1\.4\.0<\/Version>/);
+  assert.match(project,/EmbeddedResource Include="\.\.\\\.\.\\recording\.mjs"/);
+  assert.match(project,/<Version>1\.5\.0<\/Version>/);
   assert.match(source,/https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/releases\/download\/tigeriq-phone-farm-windows-v0\.5\.0-rc6\/TigerIQ-PhoneFarm-Windows-v0\.5\.0-RC6-d64b2a04\.zip/);
   assert.match(source,/bd8375a8712ee8bc18d725bd45e3652414946b9eb834de6879c2c42ff8a30709/);
   assert.match(source,/d64b2a04558533d0a8690fc9a2ef11fe74d47596/);
-  assert.match(source,/48c485163abcff2097a2757983f24fa2f739fe9e/);
+  assert.match(source,/f5afda6e2c65d3eadae3e71a1194d75b49bb474c/);
   assert.match(source,/TIGERIQ_PHONE_FARM_OVERLAY_V1/);
   assert.match(source,/TIGERIQ_PHONE_FARM_CURRENT_RELEASE_V2/);
   assert.match(source,/WriteEmbeddedResourceAtomic/);
@@ -499,6 +514,8 @@ test('non-shell RC6 bootstrapper pins base package and applies verified embedded
   assert.match(source,/SHA-256 TigerIQPhoneFarm\.exe không khớp manifest/);
   assert.match(source,/SHA-256 overlay app\.mjs không khớp/);
   assert.match(source,/SHA-256 overlay ui\.js không khớp/);
+  assert.match(source,/SHA-256 overlay recording\.mjs không khớp/);
+  assert.match(source,/recordingSha256/);
   assert.match(source,/UiOverlayResource/);
   assert.match(source,/Path\.Combine\(directory, "ui\.js"\)/);
   assert.match(source,/uiSha256/);
