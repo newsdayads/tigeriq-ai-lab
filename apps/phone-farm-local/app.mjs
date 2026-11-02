@@ -5,6 +5,7 @@ import { createConnection as createNetConnection } from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFile, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { executeBatch, validBatch, safePackage, safeFilename, FILE_LIMIT } from './farm-ops.mjs';
@@ -25,6 +26,10 @@ const windows = new Map();
 const macros = new MacroRuns();
 const recordings = new Recordings(scrcpy, path.join(base, 'recordings'));
 const now = () => new Date().toISOString();
+export function sha256Buffer(value) {
+  if(!Buffer.isBuffer(value))throw Error('SHA-256 chỉ nhận Buffer');
+  return createHash('sha256').update(value).digest('hex');
+}
 export function runtimeNetworkPolicy() {
   return {
     internetRequired: false,
@@ -215,13 +220,14 @@ async function autoReconnectKnownWifi() {
     wifiReconnectBusy=false;
   }
 }
-function reply(res, status, payload, type = 'application/json; charset=utf-8') {
+function reply(res, status, payload, type = 'application/json; charset=utf-8', extraHeaders = {}) {
   const data = type.startsWith('application/json') ? JSON.stringify(payload) : payload;
   res.writeHead(status, {
     'Content-Type': type, 'Content-Length': Buffer.byteLength(data),
     'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
     'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'",
-    'Referrer-Policy': 'no-referrer'
+    'Referrer-Policy': 'no-referrer',
+    ...extraHeaders
   });
   res.end(data);
 }
@@ -378,7 +384,12 @@ const server = http.createServer(async (req, res) => {
       busyScreens++;
       try {
         const { stdout } = await run(['-s', serial, 'exec-out', 'screencap', '-p'], { encoding: 'buffer', timeout: 12000 });
-        return reply(res, 200, stdout, 'image/png');
+        const sha256=sha256Buffer(stdout);
+        return reply(res, 200, stdout, 'image/png', {
+          'X-TigerIQ-SHA256': sha256,
+          'X-TigerIQ-Bytes': String(stdout.length),
+          'X-TigerIQ-Serial': serial
+        });
       } finally { busyScreens--; }
     }
     if (req.method === 'GET' && url.pathname === '/api/size') {
