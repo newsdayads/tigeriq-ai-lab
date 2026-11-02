@@ -71,6 +71,7 @@ class UsbCameraActivity : Activity() {
     private lateinit var guide: DynamicGuideView
     private var cameraFrameActive = false
     private var awaitingCameraPermission = false
+    private var resumeCameraOnStart = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -245,6 +246,22 @@ class UsbCameraActivity : Activity() {
         setIntent(intent)
         applyReverseGuideIntent(intent)
         if (intent.action == "ai.tigeriq.ultracarhcm.v2.TOGGLE") toggle()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (resumeCameraOnStart) {
+            resumeCameraOnStart = false
+            openCamera()
+        }
+    }
+
+    override fun onStop() {
+        resumeCameraOnStart = camera.requested
+        if (camera.requested) camera.stop()
+        cameraFrameActive = false
+        updateGuideVisibility()
+        super.onStop()
     }
 
     override fun onDestroy() {
