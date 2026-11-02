@@ -201,6 +201,9 @@ class HomeActivity : ComponentActivity() {
                 }
                 video.setOnErrorListener { _, _, _ ->
                     if (customBackgroundVideo === video) {
+                        video.setOnPreparedListener(null)
+                        video.setOnErrorListener(null)
+                        video.stopPlayback()
                         clearInvalidCustomBackground()
                         customBackgroundVideo = null
                         root.post { if (homeVisible) render() }
