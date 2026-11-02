@@ -97,6 +97,8 @@ describe('GH-5135 R02 F01-F22 source matrix', () => {
     );
     expect(f08.sourceEvidence).toContain('tests/ultracarhcm-v2/backup-restore-source.test.ts');
     expect(f08.actual).toMatch(/Schema-v5 backup\/restore/);
+    expect(f08.actual).toMatch(/KHỞI ĐỘNG.*no longer a placeholder/i);
+    expect(f08.entryPoints).toContain('HomeActivity.startConfiguredHome');
     expect(f08.gap).not.toMatch(/backup\/restore of these new slot assignments.*remain open/i);
     expect(f16.actual).toMatch(/Schema-v5 restore/);
   });
