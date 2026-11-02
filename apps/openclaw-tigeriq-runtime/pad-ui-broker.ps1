@@ -305,6 +305,16 @@ function Invoke-PadElement($Request, [bool]$AllowClickFallback) {
     return [pscustomobject]@{ Method='InvokePattern'; MatchCount=$found.Count; Element=(Element-ToObject $e) }
   }
   if (-not $AllowClickFallback) { throw 'TIGERIQ_PAD_UI_INVOKE_PATTERN_UNAVAILABLE' }
+
+  # PAD Console flow rows expose SelectionItemPattern but not InvokePattern.
+  # Select them natively before considering a pointer click so selection state
+  # is committed even when the row itself cannot receive keyboard focus.
+  $selection = $null
+  if ($e.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern,[ref]$selection)) {
+    $selection.Select()
+    return [pscustomobject]@{ Method='SelectionItemPattern'; MatchCount=$found.Count; Element=(Element-ToObject $e) }
+  }
+
   $r = $e.Current.BoundingRectangle
   if ($r.Width -le 0 -or $r.Height -le 0) { throw 'TIGERIQ_PAD_UI_ELEMENT_NOT_CLICKABLE' }
   [TigerIQPadNative]::SetForegroundWindow([IntPtr]$found.Window.Current.NativeWindowHandle) | Out-Null
