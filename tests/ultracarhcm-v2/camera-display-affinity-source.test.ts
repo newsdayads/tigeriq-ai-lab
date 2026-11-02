@@ -12,9 +12,24 @@ const rules = readFileSync(
 );
 
 describe('GH-5135 camera display affinity source contract', () => {
-  it('toggles only an existing camera on the requested display', () => {
+  it('toggles only a started-visible existing camera on the requested display', () => {
+    expect(camera).toContain('private var startedVisible = false');
+    expect(camera).toContain('visible.get()?.takeUnless { it.isFinishing || !it.startedVisible }');
     expect(camera).toContain('CameraDisplayRules.shouldToggleExisting(existingDisplayId, displayId)');
     expect(camera).toContain('existing?.window?.decorView?.display?.displayId');
+    const start = camera.slice(
+      camera.indexOf('override fun onStart()'),
+      camera.indexOf('override fun onStop()'),
+    );
+    expect(start).toContain('startedVisible = true');
+    const stop = camera.slice(
+      camera.indexOf('override fun onStop()'),
+      camera.indexOf('override fun onDestroy()'),
+    );
+    expect(stop).toContain('startedVisible = false');
+    expect(stop.indexOf('startedVisible = false')).toBeLessThan(
+      stop.indexOf('resumeCameraOnStart = camera.requested'),
+    );
   });
 
   it('uses a dedicated task when moving camera to another display', () => {
