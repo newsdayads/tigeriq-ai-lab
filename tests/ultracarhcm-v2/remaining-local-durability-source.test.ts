@@ -67,5 +67,11 @@ describe('GH-5135 remaining local durability paths', () => {
     expect(block).not.toContain('.apply()');
     expect(block).toContain('if (!cleared)');
     expect(block).toContain('Failed to persist invalid custom background cleanup');
+    expect(block).toContain('releasePersistableUriPermission');
+    expect(block).toContain('Intent.FLAG_GRANT_READ_URI_PERMISSION');
+    expect(block).toContain('Cannot release invalid custom background URI');
+    expect(block.indexOf('.commit()')).toBeLessThan(
+      block.indexOf('releasePersistableUriPermission'),
+    );
   });
 });
