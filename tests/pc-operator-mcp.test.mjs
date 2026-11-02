@@ -875,3 +875,22 @@ describe('GH-5291 PAD UI broker targeted selector fast path', () => {
     expect(source).toContain('$window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $searchCondition)');
   });
 });
+
+describe('GH-5291 PAD UI broker no-broad-scan recovery', () => {
+  it('uses GW_ENABLEDPOPUP for owned modal resolution instead of desktop-wide FindAll', async () => {
+    const source = await fs.readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
+    const start = source.indexOf('function Get-PadOwnedModalWindow($OwnerWindow)');
+    const end = source.indexOf('function Get-TopWindowElement($Request)');
+    const modal = source.slice(start, end);
+    expect(modal).toContain('GetWindow($ownerHandle, 6)');
+    expect(modal).not.toContain('RootElement');
+    expect(modal).not.toContain('FindAll');
+  });
+
+  it('uses FindFirst for explicit exact index zero selectors', async () => {
+    const source = await fs.readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
+    expect(source).toContain("if ($index -eq 0 -and $null -ne $Request.index");
+    expect(source).toContain('$window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $searchCondition)');
+    expect(source).toContain('function Test-PadElementMatch($Element, $Request, [string]$Mode)');
+  });
+});
