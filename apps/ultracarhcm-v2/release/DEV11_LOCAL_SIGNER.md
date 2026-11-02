@@ -19,6 +19,20 @@ This lane exists only to sign the exact current-main F10 TEST artifact without e
 
 The script does not create/edit a Scheduled Task, upload to Drive, install an APK, mutate V1, or release Production.
 
+## Current-main unsigned handoff preparation
+
+Before any signing authorization is considered, prepare a new unsigned/aligned handoff from the exact accepted `main` SHA with:
+
+```text
+powershell.exe -NoProfile -NonInteractive -File D:\TigerIQ\Workspace\tigeriq-ai-lab\apps\ultracarhcm-v2\release\Prepare-UltraCarV2Dev11UnsignedHandoff.ps1 -ExpectedMainSha <40-hex-main-sha>
+```
+
+The preparer is build-only. It requires the checkout HEAD to equal the supplied SHA and tracked files to be clean, builds `:app:assembleRelease`, verifies the APK is still unsigned, zip-aligns it, validates package/version identity, and writes a JSON receipt containing the exact source SHA and artifact SHA-256.
+
+It does **not** sign, read/enroll credentials, create/start Scheduled Tasks, install by ADB, grant permissions, stage Drive content, or release Production. A successful unsigned handoff does not authorize signing.
+
+Any existing signer task whose name/comment/input is pinned to an older source SHA remains scoped to that older artifact. Do not repurpose it for a newer `main`; a separately authorized exact-artifact signer gate is still required.
+
 ## Execution gate
 
 Do not repurpose or edit the existing `TigerIQ_UltraCar_v66_Sign_TEST` task. Its authorization is scoped to V1 v66.
