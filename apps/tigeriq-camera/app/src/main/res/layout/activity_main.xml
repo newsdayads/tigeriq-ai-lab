@@ -395,7 +395,7 @@
                         android:layout_weight="1"
                         android:layout_marginEnd="4dp"
                         android:backgroundTint="#FF3B30"
-                        android:text="Vào số R (Mở)"
+                        android:text="TH? M? CAMERA (R)"
                         android:textColor="#FFFFFF"
                         android:textSize="11sp"
                         android:textStyle="bold" />
@@ -406,7 +406,7 @@
                         android:layout_weight="1"
                         android:layout_marginStart="4dp"
                         android:backgroundTint="#2D3748"
-                        android:text="Về P/D (Đóng)"
+                        android:text="TH? ??NG CAMERA (P)"
                         android:textColor="#FFFFFF"
                         android:textSize="11sp" />
                 </LinearLayout>

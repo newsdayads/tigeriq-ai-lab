@@ -47,7 +47,7 @@ class CameraActivity : AppCompatActivity() {
             return isRunningFlag && act != null && !act.isFinishing && !act.isDestroyed
         }
 
-        fun launch(context: Context, displayId: Int = -1, reverseActive: Boolean = false, steering: Float = 0f) {
+        fun launch(context: Context, displayId: Int = -1, reverseActive: Boolean = false, steering: Float = 0f): Boolean {
             CameraEventLog.record(context, "WINDOW", "OPEN_REQUEST",
                 "reverse=" + reverseActive + " | display=" + displayId)
             val intent = Intent(context, CameraActivity::class.java).apply {
@@ -62,15 +62,18 @@ class CameraActivity : AppCompatActivity() {
                 }
                 context.startActivity(intent, options.toBundle())
                 CameraEventLog.record(context, "WINDOW", "START_ACTIVITY_ACCEPTED", "display=" + displayId)
+                return true
             } catch (t: Throwable) {
                 CameraEventLog.record(context, "WINDOW", "LAUNCH_DISPLAY_FAILED", t.javaClass.simpleName)
                 Log.w("TigerIQ_Camera", "Failed to launch on display $displayId, falling back", t)
                 try {
                     context.startActivity(intent)
                     CameraEventLog.record(context, "WINDOW", "FALLBACK_ACCEPTED", "display=default")
+                    return true
                 } catch (fallback: Throwable) {
                     CameraEventLog.record(context, "WINDOW", "FALLBACK_FAILED", fallback.javaClass.simpleName)
                     Log.e("TigerIQ_Camera", "Background launch rejected; check visible DeX/overlay context", fallback)
+                    return false
                 }
             }
         }
@@ -393,8 +396,8 @@ class CameraActivity : AppCompatActivity() {
         applyNightBooster(settings.isNightBoosterEnabled)
         updateButtonStates()
         uvcManager?.start()
+        // An absent camera at startup does not prove a real R -> P transition.
         handler.removeCallbacks(usbPresenceWatcher)
-        handler.postDelayed(usbPresenceWatcher, 600)
     }
 
     override fun onPause() {

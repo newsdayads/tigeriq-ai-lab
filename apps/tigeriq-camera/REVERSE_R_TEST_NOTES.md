@@ -23,3 +23,9 @@
 - Instrument source: gear broadcast arrival and parsed R_ON/R_OFF, service dynamic broadcast, USB device attach/detach, USB presence baseline/transitions, attempted window launch, Android launch exception type, window visible lifecycle, and close reason.
 - Settings has XEM LOG and G?I LOG Android share-sheet buttons; user initiates sharing, there is no auto-upload.
 - If no R event and USB does not change on a parked vehicle, the app cannot infer the actual selected gear. A physical signal bridge or verified original source is required; do not treat simulation as vehicle QA.
+
+# v1.0.14 TEST ? feedback from owner
+- Buttons were only sending implicit broadcasts and claiming success without proof. Foreground buttons now invoke CameraActivity directly; logs distinguish manual testing from gear events.
+- Settings window closes after successful accepted launch, not before. P test directly requests close.
+- CameraActivity no longer closes just because initial USB enumeration is empty. Actual USB transitions and R broadcasts remain logged.
+- This fixes diagnostic button logic, not unverified vehicle R/P detection. Requires separate parked-vehicle QA of actual gear signals.

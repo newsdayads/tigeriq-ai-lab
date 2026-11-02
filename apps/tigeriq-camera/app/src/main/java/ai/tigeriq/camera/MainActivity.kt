@@ -300,23 +300,27 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Vạch lùi: Kích thước Cực Đại (1.45x)", Toast.LENGTH_SHORT).show()
         }
 
-        // Reverse gear simulation triggers
+        // Manual foreground R/P window test; NOT a live vehicle gear signal.
         btnSimulateReverseOn.setOnClickListener {
-            val intent = Intent(ReverseGearReceiver.ACTION_REVERSE_GEAR).apply {
-                putExtra("gear", "R")
-                putExtra("state", true)
+            val displayId = DeXDisplayHelper.resolveTargetDisplay(this)?.displayId ?: -1
+            CameraEventLog.record(this, "MANUAL_TEST", "R_OPEN_CLICK",
+                "direct_foreground_window | NOT_VEHICLE_SIGNAL | display=" + displayId)
+            val requested = CameraActivity.launch(this, displayId = displayId, reverseActive = true)
+            if (requested) {
+                finish() // No settings window left visible.
+            } else {
+                Toast.makeText(this, "Kh?ng m? ???c Camera. Ch?n G?I LOG.",
+                    Toast.LENGTH_LONG).show()
             }
-            sendBroadcast(intent)
-            Toast.makeText(this, "Đã phát tín hiệu số R (Mở Camera)", Toast.LENGTH_SHORT).show()
         }
 
         btnSimulateReverseOff.setOnClickListener {
-            val intent = Intent(ReverseGearReceiver.ACTION_REVERSE_GEAR).apply {
-                putExtra("gear", "P")
-                putExtra("state", false)
-            }
-            sendBroadcast(intent)
-            Toast.makeText(this, "Đã phát tín hiệu rời số R (Tắt Camera)", Toast.LENGTH_SHORT).show()
+            CameraEventLog.record(this, "MANUAL_TEST", "P_CLOSE_CLICK",
+                "direct_window_close | NOT_VEHICLE_SIGNAL")
+            CameraActivity.dismissIfRunning(immediate = true)
+            sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA).setPackage(packageName))
+            Toast.makeText(this, "?? g?i y?u c?u ??ng Camera. Xem log n?u ch?a ??ng.",
+                Toast.LENGTH_LONG).show()
         }
 
         btnRestartFloating.setOnClickListener {
@@ -335,8 +339,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnOpenCamera.setOnClickListener {
-            CameraActivity.launch(this, reverseActive = false)
-            finish() // Only the camera window remains after selecting Open Camera.
+            if (CameraActivity.launch(this, reverseActive = false)) {
+                finish()
+            }
         }
 
         val tvBuildVersion: TextView? = findViewById(R.id.tvBuildVersion)
