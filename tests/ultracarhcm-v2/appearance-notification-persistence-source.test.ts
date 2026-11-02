@@ -11,6 +11,10 @@ const notification = readFileSync(
   new URL('../../apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/NotificationActivity.kt', import.meta.url),
   'utf8',
 );
+const home = readFileSync(
+  new URL('../../apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt', import.meta.url),
+  'utf8',
+);
 const update = readFileSync(
   new URL('../../apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UpdateActivity.kt', import.meta.url),
   'utf8',
@@ -66,6 +70,26 @@ describe('GH-5135 F09/F15 durable local UI state', () => {
     expect(block).toContain('if (previous != null) releasePersistedUri(previous)');
     expect(block.indexOf('.commit()')).toBeLessThan(block.indexOf('releasePersistedUri(previous)'));
     expect(block).toContain('toast("Không thể xóa nền tùy chỉnh V2")');
+  });
+
+  it('fails closed when custom video setup throws before media callbacks can run', () => {
+    const start = home.indexOf('AppearanceRules.KIND_VIDEO -> {');
+    const end = home.indexOf('// DisplayManager APIs work back to minSdk 26', start);
+    const block = home.slice(start, end);
+    expect(block).toContain('video.setOnPreparedListener');
+    expect(block).toContain('video.setOnErrorListener');
+    expect(block).toContain('try {');
+    expect(block).toContain('video.setVideoURI(uri)');
+    expect(block).toContain('catch (error: RuntimeException)');
+    expect(block).toContain('Custom video setup failed');
+    expect(block).toContain('clearInvalidCustomBackground()');
+    expect(block).toContain('renderBundledBackground(night)');
+    expect(block.indexOf('video.setOnErrorListener')).toBeLessThan(
+      block.indexOf('video.setVideoURI(uri)'),
+    );
+    expect(block.indexOf('try {')).toBeLessThan(
+      block.indexOf('video.setVideoURI(uri)'),
+    );
   });
 
   it('commits user notification actions before refreshing their visible state', () => {
