@@ -70,6 +70,33 @@ export function wifiCandidateFromOutputs(ipOutput, portOutput) {
   return privateWifiAddress(address)?address:null;
 }
 
+export function parseAdbMdnsConnectServices(input, preferredIp=null) {
+  const preferred=typeof preferredIp==='string' && privateWifiAddress(preferredIp+':5555') ? preferredIp : null;
+  const endpoints=[];
+  for(const rawLine of String(input??'').split(/\r?\n/)){
+    const line=rawLine.trim();
+    if(!line || !/_adb-tls-connect\._tcp\.?/i.test(line))continue;
+    const match=line.match(/(\d{1,3}(?:\.\d{1,3}){3}:\d{1,5})\s*$/);
+    if(!match || !privateWifiAddress(match[1]))continue;
+    if(preferred && !match[1].startsWith(preferred+':'))continue;
+    if(!endpoints.includes(match[1]))endpoints.push(match[1]);
+    if(endpoints.length>=16)break;
+  }
+  return endpoints;
+}
+
+export function wifiCandidatesFromOutputs(ipOutput, portOutput, mdnsOutput='') {
+  const ip=parsePrivateWifiIpv4(ipOutput);
+  if(!ip)return [];
+  const candidates=[];
+  const classic=wifiCandidateFromOutputs(ipOutput,portOutput);
+  if(classic)candidates.push(classic);
+  for(const address of parseAdbMdnsConnectServices(mdnsOutput,ip)){
+    if(!candidates.includes(address))candidates.push(address);
+  }
+  return candidates;
+}
+
 export async function wifiEndpointReachable(address, timeoutMs=1200, createConnection=createNetConnection) {
   if(!privateWifiAddress(address))return false;
   const split=address.lastIndexOf(':'),host=address.slice(0,split),port=Number(address.slice(split+1));
@@ -359,15 +386,20 @@ const server = http.createServer(async (req, res) => {
       if(!attached.some(x=>x.serial===serial&&x.state==='device'))
         return json(res,409,{error:'Thiết bị USB ADB chưa sẵn sàng'});
       try {
-        const [ipResult,portResult]=await Promise.all([
+        const [ipResult,portResult,mdnsResult]=await Promise.all([
           run(['-s',serial,'shell','ip','-f','inet','addr','show','wlan0'],{encoding:'utf8',timeout:8000}),
-          run(['-s',serial,'shell','getprop','service.adb.tcp.port'],{encoding:'utf8',timeout:8000})
+          run(['-s',serial,'shell','getprop','service.adb.tcp.port'],{encoding:'utf8',timeout:8000}),
+          run(['mdns','services'],{encoding:'utf8',timeout:5000}).catch(()=>({stdout:''}))
         ]);
-        const address=wifiCandidateFromOutputs(String(ipResult.stdout||''),String(portResult.stdout||''));
-        if(!address)return json(res,409,{error:'Thiết bị chưa có endpoint WiFi ADB LAN đang bật sẵn; TigerIQ không tự thay đổi cấu hình ADB'});
-        if(!await wifiEndpointReachable(address,1500))
-          return json(res,409,{error:'Thiết bị có cấu hình WiFi ADB nhưng endpoint chưa lắng nghe trên LAN',reason:'ADB_ENDPOINT_UNREACHABLE',address,serial,readOnly:true});
-        return json(res,200,{available:true,address,serial,readOnly:true});
+        const ipOutput=String(ipResult.stdout||''),portOutput=String(portResult.stdout||''),mdnsOutput=String(mdnsResult.stdout||'');
+        const candidates=wifiCandidatesFromOutputs(ipOutput,portOutput,mdnsOutput);
+        if(!candidates.length)return json(res,409,{error:'Thiết bị chưa có endpoint WiFi ADB LAN đang bật sẵn; TigerIQ không tự thay đổi cấu hình ADB'});
+        const checks=await Promise.all(candidates.map(async address=>({address,reachable:await wifiEndpointReachable(address,1500)})));
+        const live=checks.find(x=>x.reachable);
+        if(!live)
+          return json(res,409,{error:'Thiết bị có cấu hình WiFi ADB nhưng chưa có endpoint kết nối đang lắng nghe trên LAN',reason:'ADB_ENDPOINT_UNREACHABLE',address:candidates[0],candidates,serial,readOnly:true});
+        const classic=wifiCandidateFromOutputs(ipOutput,portOutput);
+        return json(res,200,{available:true,address:live.address,candidates,source:live.address===classic?'legacy-tcp':'adb-mdns',serial,readOnly:true});
       }catch(e){return json(res,409,{error:errorText(e)})}
     }
     if (req.method === 'GET' && url.pathname === '/api/health')
