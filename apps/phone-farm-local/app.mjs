@@ -19,6 +19,7 @@ const bind = '127.0.0.1';
 const adb = process.env.TIGERIQ_ADB || 'D:\\TigerIQ\\Tools\\platform-tools\\adb.exe';
 const scrcpy = process.env.TIGERIQ_SCRCPY || 'D:\\TigerIQ\\Tools\\scrcpy\\scrcpy-win64-v4.1\\scrcpy.exe';
 const storePath = path.join(base, 'device-labels.json');
+const wifiStorePath = path.join(base, 'wifi-endpoints.json');
 const dropPath = path.join(base, 'drop');
 const windows = new Map();
 const macros = new MacroRuns();
@@ -76,6 +77,55 @@ export async function wifiEndpointReachable(address, timeoutMs=1200, createConne
   });
 }
 
+export function normalizeKnownWifiEndpoints(value) {
+  if(!Array.isArray(value))return [];
+  const unique=[];
+  for(const address of value){
+    if(!privateWifiAddress(address)||unique.includes(address))continue;
+    unique.push(address);
+    if(unique.length>=64)break;
+  }
+  return unique;
+}
+
+export async function reconnectKnownWifiEndpoints(
+  addresses,
+  attachedSerials,
+  reachable=wifiEndpointReachable,
+  connect=async()=>{throw new Error('connect callback required');}
+) {
+  const attached=new Set(Array.isArray(attachedSerials)?attachedSerials:[]);
+  const candidates=normalizeKnownWifiEndpoints(addresses).filter(address=>!attached.has(address));
+  const checks=await Promise.all(candidates.map(async address=>({
+    address,
+    reachable:await reachable(address,1000).catch(()=>false)
+  })));
+  const results=[];
+  for(const address of normalizeKnownWifiEndpoints(addresses)){
+    if(attached.has(address)){
+      results.push({address,state:'already_connected'});
+      continue;
+    }
+    const check=checks.find(x=>x.address===address);
+    if(!check?.reachable){
+      results.push({address,state:'unreachable'});
+      continue;
+    }
+    try{
+      const output=String(await connect(address)??'').trim();
+      results.push({
+        address,
+        state:/connected to|already connected/i.test(output)?'connected':'failed',
+        detail:boundedProcessText(output)
+      });
+    }catch(error){
+      const failure=adbConnectFailure(error);
+      results.push({address,state:'failed',reason:failure.reason,detail:failure.detail});
+    }
+  }
+  return results;
+}
+
 export function parseDevices(text) {
   return String(text).split(/\r?\n/).slice(1).map(s => {
     const m = s.trim().match(/^([^\s]+)\s+(device|offline|unauthorized|recovery|bootloader)(?:\s+(.*))?$/);
@@ -117,6 +167,44 @@ async function devices() {
 }
 function labels() {
   try { return JSON.parse(fs.readFileSync(storePath, 'utf8')); } catch { return {}; }
+}
+
+function knownWifiEndpoints() {
+  try { return normalizeKnownWifiEndpoints(JSON.parse(fs.readFileSync(wifiStorePath,'utf8'))); }
+  catch { return []; }
+}
+function rememberWifiEndpoint(address) {
+  if(!privateWifiAddress(address))return false;
+  const next=normalizeKnownWifiEndpoints([...knownWifiEndpoints(),address]);
+  const temp=wifiStorePath+'.tmp-'+process.pid+'-'+Date.now();
+  try{
+    fs.writeFileSync(temp,JSON.stringify(next,null,2),{encoding:'utf8',mode:0o600,flag:'wx'});
+    fs.renameSync(temp,wifiStorePath);
+    return true;
+  }finally{
+    try{if(fs.existsSync(temp))fs.unlinkSync(temp)}catch{}
+  }
+}
+let wifiReconnectBusy=false;
+async function autoReconnectKnownWifi() {
+  if(wifiReconnectBusy)return [];
+  const remembered=knownWifiEndpoints();
+  if(!remembered.length)return [];
+  wifiReconnectBusy=true;
+  try{
+    const attached=(await devices()).filter(x=>x.state==='device').map(x=>x.serial);
+    return await reconnectKnownWifiEndpoints(
+      remembered,
+      attached,
+      wifiEndpointReachable,
+      async address=>{
+        const r=await run(['connect',address],{encoding:'utf8',timeout:8000});
+        return String(r.stdout||'');
+      }
+    );
+  }finally{
+    wifiReconnectBusy=false;
+  }
 }
 function reply(res, status, payload, type = 'application/json; charset=utf-8') {
   const data = type.startsWith('application/json') ? JSON.stringify(payload) : payload;
@@ -242,7 +330,8 @@ const server = http.createServer(async (req, res) => {
         const r=await run(['connect',b.address],{encoding:'utf8',timeout:12000});
         const output=String(r.stdout||'').trim();
         if(!/connected to|already connected/i.test(output))return json(res,409,{error:output.slice(0,250)||'ADB chưa kết nối',reason:'ADB_CONNECT_FAILED',address:b.address});
-        return json(res,200,{connected:true,address:b.address,result:output});
+        rememberWifiEndpoint(b.address);
+        return json(res,200,{connected:true,address:b.address,result:output,remembered:true});
       }catch(e){
         const failure=adbConnectFailure(e);
         return json(res,409,{error:failure.detail,address:b.address,...failure});
@@ -267,7 +356,7 @@ const server = http.createServer(async (req, res) => {
       }catch(e){return json(res,409,{error:errorText(e)})}
     }
     if (req.method === 'GET' && url.pathname === '/api/health')
-      return json(res, 200, { ok: true, localOnly: true, time: now(), adbExists: fs.existsSync(adb), scrcpyExists: fs.existsSync(scrcpy) });
+      return json(res, 200, { ok: true, localOnly: true, time: now(), adbExists: fs.existsSync(adb), scrcpyExists: fs.existsSync(scrcpy), rememberedWifi: knownWifiEndpoints().length });
     if (req.method === 'GET' && url.pathname === '/api/devices') {
       const xs = await devices(), ls = labels();
       return json(res, 200, { devices: xs.map(x => ({ ...x, label: ls[x.serial] || '' })), count: xs.length, time: now() });
@@ -398,5 +487,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const timer=setInterval(()=>scheduler.tick().catch(e=>console.error('Local schedule:',e.message)),15000);
   timer.unref();
   void scheduler.tick().catch(e=>console.error('Local schedule:',e.message));
+  const wifiTimer=setInterval(()=>void autoReconnectKnownWifi().catch(e=>console.error('WiFi ADB reconnect:',e.message)),30000);
+  wifiTimer.unref();
+  void autoReconnectKnownWifi().catch(e=>console.error('WiFi ADB reconnect:',e.message));
 }
 export { server };

@@ -408,7 +408,7 @@ $('apps').onclick=()=>setTab('toolbox');
 $('viewDevices').onclick=()=>{setTab('general');document.querySelector('.workspace').scrollTo({top:0,behavior:'smooth'})};
 $('macroTab').onclick=()=>setTab('tasks');
 $('scheduleTab').onclick=()=>{setTab('tasks');showSchedules()};
-$('screenInfo').onclick=async()=>{try{const x=await api('/api/health');toast('ADB '+(x.adbExists?'OK':'MISSING')+' • scrcpy '+(x.scrcpyExists?'OK':'MISSING')+' • '+online().length+' máy online')}catch(e){toast(e.message,true)}};
+$('screenInfo').onclick=async()=>{try{const x=await api('/api/health');toast('ADB '+(x.adbExists?'OK':'MISSING')+' • scrcpy '+(x.scrcpyExists?'OK':'MISSING')+' • '+online().length+' máy online • WiFi nhớ '+Number(x.rememberedWifi||0))}catch(e){toast(e.message,true)}};
 $('scanWifi').onclick=async()=>{
   const usbSerial=active().find(serial=>!serial.includes(':'));
   if(usbSerial){
