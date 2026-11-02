@@ -35,7 +35,8 @@ internal static class Program {
 
     ApplicationConfiguration.Initialize();
     try {
-      DeployAsync().GetAwaiter().GetResult();
+      string? localPackagePath = ParseLocalPackageArgument(args);
+      DeployAsync(localPackagePath).GetAwaiter().GetResult();
       return 0;
     } catch (Exception ex) {
       MessageBox.Show(
@@ -66,7 +67,27 @@ internal static class Program {
       recording is not null && recording.Length > 0;
   }
 
-  private static async Task DeployAsync() {
+  private static string? ParseLocalPackageArgument(string[] args) {
+    if (args.Length == 0) return null;
+    if (args.Length != 2 || !args[0].Equals("--package", StringComparison.OrdinalIgnoreCase))
+      throw new ArgumentException("Tham số hợp lệ: --package <đường-dẫn-tuyệt-đối-tới-RC6.zip>.");
+
+    string raw = args[1];
+    if (!Path.IsPathFullyQualified(raw))
+      throw new ArgumentException("Đường dẫn gói RC6 cục bộ phải là đường dẫn tuyệt đối.");
+
+    string fullPath = Path.GetFullPath(raw);
+    if (!Path.GetExtension(fullPath).Equals(".zip", StringComparison.OrdinalIgnoreCase))
+      throw new ArgumentException("Gói RC6 cục bộ phải là tệp ZIP.");
+
+    var info = new FileInfo(fullPath);
+    if (!info.Exists || info.Length <= 0 || info.Length > MaxPackageBytes)
+      throw new InvalidDataException("Gói RC6 cục bộ không tồn tại, rỗng hoặc vượt giới hạn.");
+
+    return fullPath;
+  }
+
+  private static async Task DeployAsync(string? localPackagePath) {
     if (!VerifyStaticConfig()) throw new InvalidOperationException("Cấu hình phát hành không hợp lệ.");
 
     string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -77,6 +98,7 @@ internal static class Program {
     string target = Path.Combine(releases, BaseSourceHead[..8]);
     Directory.CreateDirectory(releases);
 
+    string packageOrigin = "existing-verified-install";
     if (!Directory.Exists(target)) {
       string staging = Path.Combine(releases, ".staging-" + Guid.NewGuid().ToString("N"));
       string cache = Path.Combine(root, "bootstrap-cache");
@@ -84,7 +106,8 @@ internal static class Program {
       string zip = Path.Combine(cache, "TigerIQ-PhoneFarm-Windows-v0.5.0-RC6-d64b2a04.zip");
 
       try {
-        await DownloadPinnedPackageAsync(zip);
+        packageOrigin = localPackagePath is null ? "github-https" : "verified-local";
+        await PreparePinnedPackageAsync(zip, localPackagePath);
         string actual = HashFile(zip);
         if (!actual.Equals(PackageSha256, StringComparison.OrdinalIgnoreCase))
           throw new InvalidDataException("SHA-256 gói RC6 không khớp.");
@@ -109,17 +132,57 @@ internal static class Program {
     ApplyOverlay(target);
     var overlayHashes = VerifyOverlay(target);
     WriteOverlayReceipt(target, overlayHashes.AppSha256, overlayHashes.UiSha256, overlayHashes.RecordingSha256);
-    WriteCurrentReceipt(root, target, overlayHashes.AppSha256, overlayHashes.UiSha256, overlayHashes.RecordingSha256);
+    WriteCurrentReceipt(
+      root,
+      target,
+      overlayHashes.AppSha256,
+      overlayHashes.UiSha256,
+      overlayHashes.RecordingSha256,
+      packageOrigin);
     RestartTarget(target);
 
     MessageBox.Show(
       "Đã triển khai TigerIQ Phone Farm RC6 + overlay backend/UI đã xác minh.\n\n" +
       "Base: " + BaseSourceHead + "\n" +
       "Overlay: " + OverlaySourceHead + "\n" +
+      "Nguồn gói: " + packageOrigin + "\n" +
       "Gói RC6: SHA-256 " + PackageSha256,
       "TigerIQ Phone Farm Bootstrapper",
       MessageBoxButtons.OK,
       MessageBoxIcon.Information);
+  }
+
+  private static async Task PreparePinnedPackageAsync(string destination, string? localPackagePath) {
+    if (localPackagePath is null) {
+      await DownloadPinnedPackageAsync(destination);
+      return;
+    }
+
+    TryDeleteFile(destination);
+    await using var input = new FileStream(
+      localPackagePath, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024,
+      FileOptions.SequentialScan);
+    if (input.Length <= 0 || input.Length > MaxPackageBytes)
+      throw new InvalidDataException("Kích thước gói RC6 cục bộ vượt giới hạn.");
+
+    await using var output = new FileStream(
+      destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 1024,
+      FileOptions.SequentialScan);
+    byte[] buffer = new byte[1024 * 1024];
+    long total = 0;
+    int read;
+    while ((read = await input.ReadAsync(buffer)) > 0) {
+      total += read;
+      if (total > MaxPackageBytes)
+        throw new InvalidDataException("Gói RC6 cục bộ vượt giới hạn sao chép.");
+      await output.WriteAsync(buffer.AsMemory(0, read));
+    }
+    await output.FlushAsync();
+
+    if (total == 0) throw new InvalidDataException("Gói RC6 cục bộ rỗng.");
+    string actual = HashFile(destination);
+    if (!actual.Equals(PackageSha256, StringComparison.OrdinalIgnoreCase))
+      throw new InvalidDataException("SHA-256 gói RC6 cục bộ không khớp gói đã ghim.");
   }
 
   private static async Task DownloadPinnedPackageAsync(string destination) {
@@ -297,12 +360,16 @@ internal static class Program {
     string installPath,
     string appSha256,
     string uiSha256,
-    string recordingSha256) {
+    string recordingSha256,
+    string packageOrigin) {
     var receipt = new {
-      schema = "TIGERIQ_PHONE_FARM_CURRENT_RELEASE_V2",
+      schema = "TIGERIQ_PHONE_FARM_CURRENT_RELEASE_V3",
       baseSourceHead = BaseSourceHead,
       overlaySourceHead = OverlaySourceHead,
       packageSha256 = PackageSha256,
+      packageOrigin,
+      internetRequiredForInstall = packageOrigin == "github-https",
+      runtimeInternetRequired = false,
       appSha256,
       uiSha256,
       recordingSha256,
