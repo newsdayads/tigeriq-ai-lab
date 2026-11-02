@@ -36,3 +36,8 @@
 - v1.0.73 disables auto-open and ignores R broadcasts, so it cannot be used for auto-open behavior.
 - Standalone service now adopts v1.0.17 USB inventory logic, single writer for USB UI events; USB receiver only wakes watcher.
 - USB transitions are NOT a true car gear/CAN signal. Physical Z Fold 2 and camera on car still require parked vehicle testing; no production acceptance is claimed.
+
+# v1.0.16 TEST ? correct the overbroad USB signal mistake
+- v1.0.15 any-USB detection can be permanently true on a DeX hub and cannot then detect R/P. v1.0.16 tracks per-device USB add/remove, learns USB VID/PID from a UVC Camera actually opened manually, and gates automatic window to that camera. Fallback for a newly attached single unknown USB device (even when a DeX hub is already present), excluding HUB/HID/STORAGE USB interfaces.
+- Event log includes per-transition USB inventory counts/VID/PID (no serial IDs), physical trigger and actual CameraActivity visible/not-visible check 1.5s later. startActivity dispatch does not count as visible.
+- This remains USB-presence detection, not physical CAN gear state. It cannot detect gear shifts if the real USB camera remains enumerated through R/P.

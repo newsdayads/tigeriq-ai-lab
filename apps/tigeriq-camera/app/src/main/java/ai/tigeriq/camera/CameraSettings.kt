@@ -42,6 +42,19 @@ class CameraSettings(context: Context) {
         get() = prefs.getBoolean(KEY_NIGHT_BOOSTER, false)
         set(value) = prefs.edit().putBoolean(KEY_NIGHT_BOOSTER, value).apply()
 
+    // Persist the VID/PID of the USB video device that actually opened.
+    // Prevent a permanently attached DeX hub from impersonating reverse Camera.
+    fun rememberWorkingCamera(device: android.hardware.usb.UsbDevice) {
+        prefs.edit()
+            .putInt("working_camera_vid", device.vendorId)
+            .putInt("working_camera_pid", device.productId)
+            .apply()
+    }
+    fun workingCameraKey(): String? {
+        val vendor = prefs.getInt("working_camera_vid", -1)
+        val product = prefs.getInt("working_camera_pid", -1)
+        return if (vendor >= 0 && product >= 0) "$vendor:$product" else null
+    }
     var isFloatingEnabled: Boolean
         get() = prefs.getBoolean(KEY_FLOATING_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_FLOATING_ENABLED, value).apply()

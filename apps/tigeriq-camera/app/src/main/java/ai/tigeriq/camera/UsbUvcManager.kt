@@ -296,6 +296,9 @@ class UsbUvcManager(
         Log.i(TAG, "Camera Open callback: ${device.deviceName}")
         mainHandler.post {
             if (isRequested && device == selectedDevice) {
+                CameraSettings(activity).rememberWorkingCamera(device)
+                CameraEventLog.record(activity, "USB_VIDEO", "WORKING_CAMERA_LEARNED",
+                    "VID=" + device.vendorId + " PID=" + device.productId)
                 startPreview()
             }
         }

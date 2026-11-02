@@ -61,14 +61,14 @@ class CameraActivity : AppCompatActivity() {
                     options.launchDisplayId = displayId
                 }
                 context.startActivity(intent, options.toBundle())
-                CameraEventLog.record(context, "WINDOW", "START_ACTIVITY_ACCEPTED", "display=" + displayId)
+                CameraEventLog.record(context, "WINDOW", "START_REQUEST_DISPATCHED", "display=" + displayId)
                 return true
             } catch (t: Throwable) {
                 CameraEventLog.record(context, "WINDOW", "LAUNCH_DISPLAY_FAILED", t.javaClass.simpleName)
                 Log.w("TigerIQ_Camera", "Failed to launch on display $displayId, falling back", t)
                 try {
                     context.startActivity(intent)
-                    CameraEventLog.record(context, "WINDOW", "FALLBACK_ACCEPTED", "display=default")
+                    CameraEventLog.record(context, "WINDOW", "FALLBACK_DISPATCHED", "display=default")
                     return true
                 } catch (fallback: Throwable) {
                     CameraEventLog.record(context, "WINDOW", "FALLBACK_FAILED", fallback.javaClass.simpleName)
@@ -130,7 +130,7 @@ class CameraActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         currentInstance = WeakReference(this)
-        isRunningFlag = true
+        isRunningFlag = false // Only onResume confirms a visible running Activity.
         CameraEventLog.record(this, "WINDOW", "ACTIVITY_CREATED", "camera_ui")
         setContentView(R.layout.activity_camera)
 
@@ -402,6 +402,8 @@ class CameraActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        isRunningFlag = false // The activity is not actually foreground-visible.
+        CameraEventLog.record(this, "WINDOW", "ACTIVITY_PAUSED", "visible=false")
         handler.removeCallbacks(usbPresenceWatcher)
         parkAssistEngine?.stop()
         uvcManager?.stop()

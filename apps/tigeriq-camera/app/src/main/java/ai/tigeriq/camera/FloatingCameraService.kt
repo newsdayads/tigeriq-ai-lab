@@ -78,7 +78,17 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     private val pendingUsbOpen = Runnable {
         val display = findDexDisplay()?.displayId ?: -1
         CameraEventLog.record(this, "ULTRACAR_USB", "AUTO_OPEN_EXECUTING", "display=" + display)
-        CameraActivity.launch(this, displayId = display, reverseActive = true)
+        val dispatched = CameraActivity.launch(this, displayId = display, reverseActive = true)
+        if (!dispatched) {
+            CameraEventLog.record(this, "GEAR_SOURCE", "OPEN_DISPATCH_FAILED",
+                "source=service")
+        } else {
+            handler.postDelayed({
+                CameraEventLog.record(this, "GEAR_SOURCE",
+                    if (CameraActivity.isRunning()) "WINDOW_VISIBLE" else "WINDOW_NOT_VISIBLE",
+                    "source=service | Android_background_launch_may_be_denied")
+            }, 1500L)
+        }
     }
     private fun openFromUsb(source: String) {
         handler.removeCallbacks(pendingUsbOpen)
@@ -194,31 +204,90 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
         Log.i(TAG, "UsbCameraWatcher started (interval 350ms, original UltraCar)")
     }
 
+    // Complete USB inventory prevents always-on DeX hubs from masking camera insertion.
+    private var previousUsbKeys: Set<String> = emptySet()
+    private var activeCameraDeviceKey: String? = null
+
     private fun checkCameraPresence() {
         if (!settings.isUsbAutoStart) return
         val um = usbManager ?: return
         val devices = try { um.deviceList?.values?.toList() ?: return }
             catch (err: Throwable) {
-                CameraEventLog.record(this, "ULTRACAR_USB", "ENUMERATION_FAILED", err.javaClass.simpleName)
+                CameraEventLog.record(this, "GEAR_SOURCE", "USB_ENUMERATION_FAILED",
+                    err.javaClass.simpleName)
                 return
             }
-        val present = OriginalUltraCarUsbTrigger.hasDevice(devices)
+        val keyed = devices.associateBy { it.vendorId.toString() + ":" + it.productId + ":" + it.deviceName }
+        val usbKeys = keyed.keys
+        val learnedCamera = settings.workingCameraKey()
+        val strictCamera = devices.firstOrNull { device ->
+            learnedCamera != null &&
+                (device.vendorId.toString() + ":" + device.productId) == learnedCamera
+        }
+        val uvcCamera = devices.firstOrNull { UsbUvcManager.isUvc(it) }
+        val candidate = strictCamera ?: if (learnedCamera == null) uvcCamera else null
+        val matchedKey = candidate?.let { it.vendorId.toString() + ":" + it.productId + ":" + it.deviceName }
+
         if (!isWatcherInitialized) {
             isWatcherInitialized = true
-            lastCameraPresent = present
-            settings.recordUsbState(present, changed = false)
-            CameraEventLog.record(this, "ULTRACAR_USB", "INITIAL",
-                "present=" + present + " count=" + devices.size)
-            if (present) openFromUsb("initial_usb_present")
+            previousUsbKeys = usbKeys
+            activeCameraDeviceKey = matchedKey
+            lastCameraPresent = matchedKey != null
+            settings.recordUsbState(matchedKey != null, changed = false)
+            CameraEventLog.record(this, "GEAR_SOURCE", "USB_BASELINE",
+                "devices=" + devices.size + " learned=" + (learnedCamera != null) +
+                " video_present=" + (matchedKey != null))
+            // Cold-start open only for a recognized/learned video camera, not a generic hub.
+            if (matchedKey != null) openFromUsb("recognized_camera_at_start")
             return
         }
-        if (OriginalUltraCarUsbTrigger.changed(lastCameraPresent, present)) {
-            lastCameraPresent = present
-            settings.recordUsbState(present, changed = true)
-            CameraEventLog.record(this, "ULTRACAR_USB",
-                if (present) "CONNECTED" else "DISCONNECTED",
-                "count=" + devices.size + " source=real_usb_inventory")
-            if (present) openFromUsb("usb_connected") else closeFromUsb("usb_disconnected")
+
+        val added = usbKeys - previousUsbKeys
+        val removed = previousUsbKeys - usbKeys
+        previousUsbKeys = usbKeys
+        if (added.isNotEmpty() || removed.isNotEmpty()) {
+            val summary = devices.joinToString(";") { it.vendorId.toString() + ":" + it.productId }
+            CameraEventLog.record(this, "GEAR_SOURCE", "USB_INVENTORY_CHANGED",
+                "added=" + added.size + " removed=" + removed.size +
+                " count=" + devices.size + " vids=" + summary.take(190))
+        }
+        val previous = activeCameraDeviceKey
+        val lost = previous != null && !usbKeys.contains(previous)
+        val becamePresent = matchedKey != null && (previous == null || previous != matchedKey)
+        if (lost) {
+            activeCameraDeviceKey = null
+            lastCameraPresent = false
+            settings.recordUsbState(false, changed = true)
+            closeFromUsb("recognized_camera_disappeared")
+        }
+
+        if (becamePresent) {
+            activeCameraDeviceKey = matchedKey
+            lastCameraPresent = true
+            settings.recordUsbState(true, changed = true)
+            openFromUsb("recognized_camera_connected")
+            return
+        }
+
+        // Compatibility with old UltraCar's broad USB trigger:
+        // when no device can be classified, a NEW USB device is the only usable
+        // source. Never treat a USB hub that was already there as gear R.
+        if (learnedCamera == null && matchedKey == null && previous == null &&
+            added.size == 1) {
+            val newDevice = keyed[added.first()]
+            val notHubOrUnrelated = newDevice != null &&
+                newDevice.deviceClass !in listOf(3, 8, 9) &&
+                (0 until newDevice.interfaceCount).none {
+                    newDevice.getInterface(it).interfaceClass in listOf(3, 8, 9)
+                }
+            if (newDevice != null && notHubOrUnrelated) {
+                activeCameraDeviceKey = added.first()
+                lastCameraPresent = true
+                settings.recordUsbState(true, changed = true)
+                CameraEventLog.record(this, "GEAR_SOURCE", "LEGACY_UNKNOWN_USB_TRIGGER",
+                    "VID=" + newDevice.vendorId + " PID=" + newDevice.productId)
+                openFromUsb("new_single_unknown_usb_device")
+            }
         }
     }
 
