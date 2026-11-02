@@ -70,28 +70,38 @@ export function wifiCandidateFromOutputs(ipOutput, portOutput) {
   return privateWifiAddress(address)?address:null;
 }
 
-export function parseAdbMdnsConnectServices(input, preferredIp=null) {
+function mdnsServiceMatchesSerial(serviceName, serial) {
+  if(typeof serial!=='string'||!serial||serial.includes(':'))return false;
+  const service=String(serviceName||'').toLowerCase();
+  const token=serial.toLowerCase();
+  return service===('adb-'+token)||service.startsWith('adb-'+token+'-');
+}
+
+export function parseAdbMdnsConnectServices(input, preferredIp=null, preferredSerial=null) {
   const preferred=typeof preferredIp==='string' && privateWifiAddress(preferredIp+':5555') ? preferredIp : null;
-  const endpoints=[];
+  const serial=typeof preferredSerial==='string' && preferredSerial && !preferredSerial.includes(':') ? preferredSerial : null;
+  const serialMatches=[],fallbackMatches=[];
   for(const rawLine of String(input??'').split(/\r?\n/)){
     const line=rawLine.trim();
     if(!line || !/_adb-tls-connect\._tcp\.?/i.test(line))continue;
-    const match=line.match(/(\d{1,3}(?:\.\d{1,3}){3}:\d{1,5})\s*$/);
-    if(!match || !privateWifiAddress(match[1]))continue;
-    if(preferred && !match[1].startsWith(preferred+':'))continue;
-    if(!endpoints.includes(match[1]))endpoints.push(match[1]);
-    if(endpoints.length>=16)break;
+    const addressMatch=line.match(/(\d{1,3}(?:\.\d{1,3}){3}:\d{1,5})\s*$/);
+    if(!addressMatch || !privateWifiAddress(addressMatch[1]))continue;
+    if(preferred && !addressMatch[1].startsWith(preferred+':'))continue;
+    const serviceMatch=line.match(/^(\S+?)\._adb-tls-connect\._tcp\.?/i);
+    const target=serial && serviceMatch && mdnsServiceMatchesSerial(serviceMatch[1],serial) ? serialMatches : fallbackMatches;
+    if(!target.includes(addressMatch[1]))target.push(addressMatch[1]);
+    if(serialMatches.length+fallbackMatches.length>=16)break;
   }
-  return endpoints;
+  return serialMatches.length ? serialMatches : fallbackMatches;
 }
 
-export function wifiCandidatesFromOutputs(ipOutput, portOutput, mdnsOutput='') {
+export function wifiCandidatesFromOutputs(ipOutput, portOutput, mdnsOutput='', preferredSerial=null) {
   const ip=parsePrivateWifiIpv4(ipOutput);
   if(!ip)return [];
   const candidates=[];
   const classic=wifiCandidateFromOutputs(ipOutput,portOutput);
   if(classic)candidates.push(classic);
-  for(const address of parseAdbMdnsConnectServices(mdnsOutput,ip)){
+  for(const address of parseAdbMdnsConnectServices(mdnsOutput,ip,preferredSerial)){
     if(!candidates.includes(address))candidates.push(address);
   }
   return candidates;
@@ -392,7 +402,7 @@ const server = http.createServer(async (req, res) => {
           run(['mdns','services'],{encoding:'utf8',timeout:5000}).catch(()=>({stdout:''}))
         ]);
         const ipOutput=String(ipResult.stdout||''),portOutput=String(portResult.stdout||''),mdnsOutput=String(mdnsResult.stdout||'');
-        const candidates=wifiCandidatesFromOutputs(ipOutput,portOutput,mdnsOutput);
+        const candidates=wifiCandidatesFromOutputs(ipOutput,portOutput,mdnsOutput,serial);
         if(!candidates.length)return json(res,409,{error:'Thiết bị chưa có endpoint WiFi ADB LAN đang bật sẵn; TigerIQ không tự thay đổi cấu hình ADB'});
         const checks=await Promise.all(candidates.map(async address=>({address,reachable:await wifiEndpointReachable(address,1500)})));
         const live=checks.find(x=>x.reachable);
