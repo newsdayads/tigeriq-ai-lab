@@ -115,15 +115,38 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(home).toContain('arrayOf("Áp dụng", "Đặt làm mặc định", "Xóa cấu hình")');
     expect(home).toContain('editor.remove("v2_default_home_config")');
     expect(home).toContain('Corrupt or unsupported default HOME configuration');
-    const defaultApplyStart = home.indexOf('private fun applyDefaultHomeConfiguration()');
-    const defaultApplyEnd = home.indexOf('private fun setDefaultHomeConfiguration', defaultApplyStart);
+    const defaultApplyStart = home.indexOf('private fun applyDefaultHomeConfiguration(');
+    const defaultApplyEnd = home.indexOf('private fun startConfiguredHome', defaultApplyStart);
     const defaultApplyBlock = home.slice(defaultApplyStart, defaultApplyEnd);
     expect(defaultApplyBlock).toContain('.putString("v2_default_home_config", safe.toString())');
     expect(defaultApplyBlock).toContain('.commit()');
     expect(defaultApplyBlock).toContain('Failed to persist normalized default HOME configuration');
     expect(defaultApplyBlock).toContain('Failed to persist default HOME config cleanup');
     expect(defaultApplyBlock).not.toContain('.apply()');
+    expect(defaultApplyBlock).toContain('applyHomeConfiguration(safe, renderAfter)');
+    expect(defaultApplyBlock).toContain('false');
 
+  });
+
+
+  it('turns the HOME start button into a real default-or-saved configuration action', () => {
+    expect(home).toContain('private fun startConfiguredHome()');
+    const start = home.slice(
+      home.indexOf('private fun startConfiguredHome()'),
+      home.indexOf('private fun setDefaultHomeConfiguration', home.indexOf('private fun startConfiguredHome()')),
+    );
+    expect(start).toContain('prefs.contains("v2_default_home_config")');
+    expect(start).toContain('applyDefaultHomeConfiguration(renderAfter = true)');
+    expect(start).toContain('Đã khởi động cấu hình Home mặc định');
+    expect(start).toContain('savedConfigurations().length() > 0');
+    expect(start).toContain('showSaved()');
+    expect(start).toContain('Hãy chọn Lưu cấu hình trước.');
+
+    const renderStart = home.indexOf('button("KHỞI ĐỘNG"');
+    const renderEnd = home.indexOf('button("⟳"', renderStart);
+    const button = home.slice(renderStart, renderEnd);
+    expect(button).toContain('startConfiguredHome()');
+    expect(button).not.toContain('Chưa nghiệm thu chức năng Khởi động');
   });
 
   it('stops retired HOME video decoders before rerender and during Activity teardown', () => {
