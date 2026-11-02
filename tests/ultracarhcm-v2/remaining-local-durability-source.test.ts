@@ -59,6 +59,17 @@ describe('GH-5135 remaining local durability paths', () => {
     );
   });
 
+  it('releases a failed custom video before clearing the active reference', () => {
+    const start = home.indexOf('AppearanceRules.KIND_VIDEO ->');
+    const end = home.indexOf('// DisplayManager APIs work back to minSdk 26', start);
+    const block = home.slice(start, end);
+    expect(block).toContain('video.stopPlayback()');
+    expect(block).toContain('customBackgroundVideo = null');
+    expect(block.indexOf('video.stopPlayback()')).toBeLessThan(
+      block.indexOf('customBackgroundVideo = null'),
+    );
+  });
+
   it('persists invalid custom-background cleanup synchronously and logs failure', () => {
     const start = home.indexOf('private fun clearInvalidCustomBackground()');
     const end = home.indexOf('private fun renderBackground', start);
