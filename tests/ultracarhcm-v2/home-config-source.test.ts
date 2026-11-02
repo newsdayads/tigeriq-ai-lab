@@ -115,7 +115,7 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(home).toContain('arrayOf("Áp dụng", "Đặt làm mặc định", "Xóa cấu hình")');
     expect(home).toContain('editor.remove("v2_default_home_config")');
     expect(home).toContain('Corrupt or unsupported default HOME configuration');
-    const defaultApplyStart = home.indexOf('private fun applyDefaultHomeConfiguration()');
+    const defaultApplyStart = home.indexOf('private fun applyDefaultHomeConfiguration(');
     const defaultApplyEnd = home.indexOf('private fun startConfiguredHome', defaultApplyStart);
     const defaultApplyBlock = home.slice(defaultApplyStart, defaultApplyEnd);
     expect(defaultApplyBlock).toContain('.putString("v2_default_home_config", safe.toString())');
