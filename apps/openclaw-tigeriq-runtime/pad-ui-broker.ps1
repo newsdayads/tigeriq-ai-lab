@@ -115,7 +115,31 @@ function Get-PadWindows {
   return @($out)
 }
 
+function Get-PadWindowByProcessId($Request) {
+  $pidValue = 0
+  if ($Request.processId) { $pidValue = [int]$Request.processId }
+  elseif ($Request.pid) { $pidValue = [int]$Request.pid }
+  if ($pidValue -le 0) { return $null }
+
+  try {
+    $process = Get-Process -Id $pidValue -ErrorAction Stop
+    $handle = [IntPtr][int64]$process.MainWindowHandle
+    if ($handle -eq [IntPtr]::Zero) { throw 'TIGERIQ_PAD_UI_WINDOW_NOT_FOUND' }
+    $window = [System.Windows.Automation.AutomationElement]::FromHandle($handle)
+    if ($null -eq $window -or -not (Test-PadWindow $window) -or -not (Match-WindowTarget $window $Request)) {
+      throw 'TIGERIQ_PAD_UI_WINDOW_NOT_FOUND'
+    }
+    return $window
+  } catch {
+    if ([string]$_.Exception.Message -eq 'TIGERIQ_PAD_UI_WINDOW_NOT_FOUND') { throw }
+    throw 'TIGERIQ_PAD_UI_WINDOW_NOT_FOUND'
+  }
+}
+
 function Find-PadWindow($Request) {
+  $direct = Get-PadWindowByProcessId $Request
+  if ($null -ne $direct) { return $direct }
+
   $targetName = if ($Request.windowName) { [string]$Request.windowName } elseif ($Request.windowTitle) { [string]$Request.windowTitle } else { $null }
   $windows = @(Get-PadWindows)
   if ($targetName -or $Request.processId -or $Request.pid -or $Request.processName -or $Request.windowAutomationId) {
@@ -164,25 +188,31 @@ function Get-PadOwnedModalWindow($OwnerWindow) {
 }
 
 function Get-TopWindowElement($Request) {
-  $root = [System.Windows.Automation.AutomationElement]::RootElement
-  $all = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
-  $matches = @()
-  $targetName = if ($Request.windowName) { [string]$Request.windowName } elseif ($Request.windowTitle) { [string]$Request.windowTitle } else { $null }
-  foreach ($w in $all) {
-    if (-not (Test-PadWindow $w)) { continue }
-    if ($targetName -or $Request.processId -or $Request.pid -or $Request.processName -or $Request.windowAutomationId) {
-      if (-not (Match-WindowTarget $w $Request)) { continue }
+  # PID is already a bounded selector from the MCP contract. Resolve its HWND
+  # directly before touching the desktop UIAutomation tree so a bad/unresponsive
+  # unrelated top-level provider cannot stall every targeted PAD operation.
+  $window = Get-PadWindowByProcessId $Request
+  if ($null -eq $window) {
+    $root = [System.Windows.Automation.AutomationElement]::RootElement
+    $all = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
+    $matches = @()
+    $targetName = if ($Request.windowName) { [string]$Request.windowName } elseif ($Request.windowTitle) { [string]$Request.windowTitle } else { $null }
+    foreach ($w in $all) {
+      if (-not (Test-PadWindow $w)) { continue }
+      if ($targetName -or $Request.processName -or $Request.windowAutomationId) {
+        if (-not (Match-WindowTarget $w $Request)) { continue }
+      }
+      $matches += $w
     }
-    $matches += $w
+    if ($matches.Count -eq 0) { throw 'TIGERIQ_PAD_UI_WINDOW_NOT_FOUND' }
+    if ($matches.Count -gt 1 -and -not $targetName) {
+      $named = @($matches | Where-Object { $_.Current.Name -match 'Power Automate' })
+      if ($named.Count -eq 1) { $matches = $named }
+    }
+    if ($matches.Count -ne 1) { throw 'TIGERIQ_PAD_UI_WINDOW_AMBIGUOUS' }
+    $window = $matches[0]
   }
-  if ($matches.Count -eq 0) { throw 'TIGERIQ_PAD_UI_WINDOW_NOT_FOUND' }
-  if ($matches.Count -gt 1 -and -not $targetName) {
-    $named = @($matches | Where-Object { $_.Current.Name -match 'Power Automate' })
-    if ($named.Count -eq 1) { $matches = $named }
-  }
-  if ($matches.Count -ne 1) { throw 'TIGERIQ_PAD_UI_WINDOW_AMBIGUOUS' }
 
-  $window = $matches[0]
   if (-not $window.Current.IsEnabled) {
     $ownedModal = Get-PadOwnedModalWindow $window
     if ($null -ne $ownedModal) { return $ownedModal }
@@ -212,11 +242,30 @@ function Element-ToObject($e) {
   }
 }
 
+function Get-PadSearchCondition($Request, [string]$Mode) {
+  # Prefer exact UIAutomation property conditions so the provider does not need
+  # to materialize every descendant before the broker can apply its selector.
+  if ($Request.automationId) {
+    return [System.Windows.Automation.PropertyCondition]::new(
+      [System.Windows.Automation.AutomationElement]::AutomationIdProperty,
+      [string]$Request.automationId
+    )
+  }
+  if ($Request.name -and $Mode -eq 'exact') {
+    return [System.Windows.Automation.PropertyCondition]::new(
+      [System.Windows.Automation.AutomationElement]::NameProperty,
+      [string]$Request.name
+    )
+  }
+  return [System.Windows.Automation.Condition]::TrueCondition
+}
+
 function Find-PadElement($Request) {
   $window = Get-TopWindowElement $Request
-  $all = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
-  $matches = @()
   $mode = if ($Request.match) { [string]$Request.match } else { 'exact' }
+  $searchCondition = Get-PadSearchCondition $Request $mode
+  $all = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $searchCondition)
+  $matches = @()
   foreach ($e in $all) {
     try {
       $ok = $true
