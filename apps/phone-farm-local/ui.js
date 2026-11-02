@@ -323,7 +323,7 @@ async function checkRecording(){
     const r=await api('/api/record/status?id='+encodeURIComponent(recordId));
     $('recordStatus').textContent=(r.state==='recording'?'Đang ghi: ':r.state==='completed'?'Đã ghi xong: ':'Ghi thất bại: ')+
       r.serial+' • '+r.seconds+'s'+(r.bytes?' • '+Math.ceil(r.bytes/1024)+' KB':'')+
-      (r.state==='completed'?' • '+r.file:'')+(r.error?' • '+r.error:'');
+      (r.state==='completed'?' • SHA-256 '+r.sha256+' • '+r.file:'')+(r.error?' • '+r.error:'');
     if(r.state!=='recording'){$('recordStop').disabled=true;recordId=null}
   }catch(e){$('recordStatus').textContent=e.message;recordId=null;$('recordStop').disabled=true}
 }
@@ -427,13 +427,30 @@ $('scanWifi').onclick=async()=>{
   try{const r=await api('/api/wifi/connect',{address:requestedAddress});toast('Đã kết nối WiFi ADB: '+r.address);await refresh()}
   catch(e){toast(wifiFailureText('WiFi ADB',e,requestedAddress),true)}
 };
-$('screenshots').onclick=()=>{
-  const list=active();if(!list.length)return toast('Chọn thiết bị trước',true);
-  list.slice(0,10).forEach((serial,i)=>{
-    const a=document.createElement('a');a.href='/api/screen?serial='+encodeURIComponent(serial);a.download='TigerIQ-'+serial+'.png';
-    document.body.append(a);a.click();a.remove();
-  });
-  toast('Đã yêu cầu tải ảnh chụp '+Math.min(10,list.length)+' máy');
+$('screenshots').onclick=async()=>{
+  const list=active().slice(0,10);if(!list.length)return toast('Chọn thiết bị trước',true);
+  const completed=[],failed=[];
+  for(const serial of list){
+    try{
+      const response=await fetch('/api/screen?serial='+encodeURIComponent(serial));
+      if(!response.ok){
+        let message='HTTP '+response.status;
+        try{message=(await response.json()).error||message}catch{}
+        throw Error(message);
+      }
+      const blob=await response.blob();
+      const sha256=(response.headers.get('X-TigerIQ-SHA256')||'').toLowerCase();
+      const bytes=Number(response.headers.get('X-TigerIQ-Bytes')||0);
+      if(!/^[a-f0-9]{64}$/.test(sha256)||bytes!==blob.size)throw Error('Bằng chứng SHA-256/bytes không hợp lệ');
+      const href=URL.createObjectURL(blob);
+      const a=document.createElement('a');a.href=href;a.download='TigerIQ-'+serial+'.png';
+      document.body.append(a);a.click();a.remove();URL.revokeObjectURL(href);
+      completed.push({serial,sha256,bytes});
+    }catch(error){failed.push({serial,error:error.message})}
+  }
+  const first=completed[0];
+  toast((failed.length?'Screenshot '+completed.length+'/'+list.length+' • lỗi '+failed.length:'Screenshot '+completed.length+'/'+list.length+' hoàn tất')+
+    (first?' • '+first.serial+' SHA-256 '+first.sha256:'')+(failed.length?' • '+failed[0].error:''),failed.length>0);
 };
 $('refresh').onclick=refresh;$('refreshMain').onclick=refresh;
 $('search').oninput=renderDevices;
