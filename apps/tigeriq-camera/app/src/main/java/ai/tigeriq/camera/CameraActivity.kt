@@ -347,6 +347,22 @@ class CameraActivity : AppCompatActivity() {
         autoDismissRunnable = null
     }
 
+    private val usbPresenceWatcher = object : Runnable {
+        override fun run() {
+            if (!isFinishing && !isDestroyed && settings.isReverseImmediateClose) {
+                val um = getSystemService(Context.USB_SERVICE) as? android.hardware.usb.UsbManager
+                val list = um?.deviceList?.values
+                val hasCamera = list?.any { UsbUvcManager.isUvc(it) } == true
+                if (!hasCamera) {
+                    Log.i("TigerIQ_Camera", "CameraActivity Watcher: No UVC camera detected (Tail-light R=OFF) -> Auto-closing")
+                    finish()
+                    return
+                }
+            }
+            handler.postDelayed(this, 350)
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         currentInstance = WeakReference(this)
@@ -355,10 +371,13 @@ class CameraActivity : AppCompatActivity() {
         applyNightBooster(settings.isNightBoosterEnabled)
         updateButtonStates()
         uvcManager?.start()
+        handler.removeCallbacks(usbPresenceWatcher)
+        handler.postDelayed(usbPresenceWatcher, 600)
     }
 
     override fun onPause() {
         super.onPause()
+        handler.removeCallbacks(usbPresenceWatcher)
         parkAssistEngine?.stop()
         uvcManager?.stop()
     }
@@ -366,6 +385,7 @@ class CameraActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         isRunningFlag = false
+        handler.removeCallbacks(usbPresenceWatcher)
         try {
             unregisterReceiver(closeReceiver)
         } catch (_: Throwable) {}

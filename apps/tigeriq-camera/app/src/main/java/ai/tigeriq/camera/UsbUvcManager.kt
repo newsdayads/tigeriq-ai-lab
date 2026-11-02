@@ -79,6 +79,8 @@ class UsbUvcManager(
         private const val TAG = "TigerIQ_UVC"
         fun isUvc(device: UsbDevice): Boolean {
             if (device.deviceClass == 14) return true
+            if (device.deviceClass == 239) return true // Composite device (Video + Audio / AFN_CAP)
+            if (device.vendorId == 0xff02 && device.productId == 0xafa1) return true // AFN_CAP capture card
             for (i in 0 until device.interfaceCount) {
                 if (device.getInterface(i).interfaceClass == 14) return true
             }
@@ -292,7 +294,8 @@ class UsbUvcManager(
     override fun onDeviceClose(device: UsbDevice) {
         Log.i(TAG, "Device Closed: ${device.deviceName}")
         mainHandler.post {
-            if (device == selectedDevice) {
+            val isCamera = isUvc(device) || device == selectedDevice
+            if (isCamera) {
                 releasePreview()
                 selectedDevice = null
                 onStatus("USB Camera ngắt kết nối (Đã về P/D)", false)
@@ -308,7 +311,8 @@ class UsbUvcManager(
     override fun onDetach(device: UsbDevice) {
         Log.i(TAG, "USB Device Detached: ${device.deviceName}")
         mainHandler.post {
-            if (device == selectedDevice) {
+            val isCamera = isUvc(device) || device == selectedDevice
+            if (isCamera) {
                 releasePreview()
                 selectedDevice = null
                 onStatus("Camera ngắt nguồn đèn lùi (Đã về P/D) — Đang đóng…", false)

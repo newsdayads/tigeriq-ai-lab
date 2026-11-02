@@ -195,6 +195,12 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
         if (!isWatcherInitialized) {
             isWatcherInitialized = true
             lastCameraPresent = cameraConnected
+            if (cameraConnected && settings.isReverseAutoStart) {
+                val targetDisplay = findDexDisplay()
+                val displayId = targetDisplay?.displayId ?: -1
+                Log.i(TAG, ">>> UsbCameraWatcher: Initial camera present -> Auto-opening Camera on display $displayId")
+                CameraActivity.launch(this, displayId = displayId, reverseActive = true)
+            }
             return
         }
 
@@ -240,6 +246,12 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
 
     @Synchronized
     private fun updateFloatingView() {
+        if (!settings.isFloatingEnabled) {
+            removeFloatingView()
+            currentDisplayId = -1
+            return
+        }
+
         if (!Settings.canDrawOverlays(this)) {
             Log.w(TAG, "Cannot draw overlays: permission not granted")
             return

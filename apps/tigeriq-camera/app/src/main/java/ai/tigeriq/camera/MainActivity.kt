@@ -117,7 +117,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         refreshAllPermissionStatuses()
         refreshUsbDeviceList()
-        if (Settings.canDrawOverlays(this) && settings.isFloatingEnabled) {
+        if (settings.isReverseAutoStart || settings.isFloatingEnabled) {
             FloatingCameraService.start(this)
         }
     }
