@@ -327,10 +327,8 @@ class HomeActivity : ComponentActivity() {
     ) {
         val fallback = label("ULTRABOT", 10f, 0xffbbbbbb.toInt(), true)
         fallback.background = shape(0x55101a20, radius = 12f)
-        fallback.isClickable = true
-        fallback.setOnClickListener {
-            toast("Ultrabot media riêng chưa được stage cho bản V2 này")
-        }
+        fallback.isClickable = false
+        fallback.contentDescription = "ULTRABOT"
         place(fallback, left, top, width, height)
     }
 
@@ -370,7 +368,7 @@ class HomeActivity : ComponentActivity() {
             return
         }
         place(bot, left, top, width, height)
-        bot.setOnClickListener { toast("Ultrabot V2 chưa tích hợp — không đổi nút này thành Camera") }
+        bot.isClickable = false
     }
 
     private fun label(value: String, textSize: Float, color: Int = Color.WHITE,
@@ -392,15 +390,18 @@ class HomeActivity : ComponentActivity() {
         width: Float,
         height: Float,
         outline: Boolean = true,
+        transparent: Boolean = false,
         onLongClick: (() -> Unit)? = null,
         onClick: () -> Unit,
     ) {
         val v = label(value, if (width > .30f) 18f else 13f, accent, true)
-        v.background = shape(
-            if (outline) 0x860a141a.toInt() else 0x9a132631.toInt(),
-            if (outline) accent else Color.TRANSPARENT,
-            16f,
-        )
+        val fill = when {
+            transparent -> Color.TRANSPARENT
+            outline -> 0x860a141a.toInt()
+            else -> 0x9a132631.toInt()
+        }
+        val stroke = if (outline && !transparent) accent else Color.TRANSPARENT
+        v.background = shape(fill, stroke, 16f)
         v.isClickable = true
         v.contentDescription = value
         v.setOnClickListener { onClick() }
@@ -653,9 +654,10 @@ class HomeActivity : ComponentActivity() {
         val name = prefs.getString("driver_name", "Driver") ?: "Driver"
         place(label("Welcome back", 14f, 0xffdddddd.toInt()), .20f, .185f, .60f, .024f)
         place(label(name, 31f, Color.WHITE, true), .17f, .214f, .66f, .038f)
-        button("⚑  RACING", .37f, .268f, .26f, .038f) {
-            toast("Chế độ RACING V2 chưa hoàn tất — đang giữ giao diện chuẩn")
-        }
+        val racing = label("⚑  RACING", 13f, accent, true)
+        racing.background = shape(0x860a141a.toInt(), accent, 16f)
+        racing.contentDescription = "RACING"
+        place(racing, .37f, .268f, .26f, .038f)
         clock = label("", 16f, Color.WHITE, true).apply {
             background = shape(0x800c1a22.toInt(), radius=8f)
         }
@@ -876,6 +878,7 @@ class HomeActivity : ComponentActivity() {
                 .17f,
                 .036f,
                 outline = false,
+                transparent = true,
                 onLongClick = { showSavedLayoutShortcutEditor(index) },
             ) {
                 openSavedLayoutShortcut(index)

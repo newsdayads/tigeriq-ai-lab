@@ -83,6 +83,20 @@ describe('GH-5135 remaining local durability paths', () => {
     expect(block.indexOf('bot.setOnErrorListener')).toBeLessThan(
       block.indexOf('bot.setVideoURI'),
     );
+    expect(block).toContain('fallback.isClickable = false');
+    expect(block).toContain('bot.isClickable = false');
+    expect(block).not.toContain('Ultrabot V2 chưa tích hợp');
+    expect(block).not.toContain('Ultrabot media riêng chưa được stage');
+  });
+
+  it('keeps unverified RACING semantics visual-only instead of exposing a fake action', () => {
+    const start = home.indexOf('private fun render()');
+    const end = home.indexOf('// Real, device-local HOME snapshots only', start);
+    const block = home.slice(start, end);
+    expect(block).toContain('val racing = label("⚑  RACING"');
+    expect(block).toContain('racing.contentDescription = "RACING"');
+    expect(block).not.toContain('button("⚑  RACING"');
+    expect(block).not.toContain('Chế độ RACING V2 chưa hoàn tất');
   });
 
   it('persists invalid custom-background cleanup synchronously and logs failure', () => {

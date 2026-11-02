@@ -46,6 +46,11 @@ describe('GH-5135 F08 saved-layout shortcuts source contract', () => {
     expect(bottom).toBeGreaterThan(shortcuts);
     expect(home).toContain('val left = .05f + index * .1825f');
     expect(home).toContain('String.format(Locale.US, "+%02d", index + 1)');
+    const renderStart = home.indexOf('private fun renderSavedLayoutShortcuts(top: Float)');
+    const renderEnd = home.indexOf('private fun normalizedQuickSlotsForStorage', renderStart);
+    const renderBlock = home.slice(renderStart, renderEnd);
+    expect(renderBlock).toContain('transparent = true');
+    expect(home).toContain('transparent -> Color.TRANSPARENT');
   });
 
   it('clears deleted or stale shortcut references durably and exposes cleanup failure', () => {

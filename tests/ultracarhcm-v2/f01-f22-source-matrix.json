@@ -17,10 +17,11 @@
       "expected": "UltraCar cockpit/home illustrated dashboard with V1 proportions/background/sidebar/shortcuts in DeX",
       "status": "PARTIAL_SOURCE",
       "sourceEvidence": [
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
+        "tests/ultracarhcm-v2/remaining-local-durability-source.test.ts"
       ],
-      "gap": "Home shell exists, but original six governed media are not legally staged and screenshot parity is not accepted.",
-      "actual": "HomeActivity renders the V2 cockpit shell with governed background/logo/vehicle resource references, clock, settings and shortcut grid.",
+      "gap": "Home shell exists and no longer exposes invented RACING/Ultrabot click actions when V1 semantics are unverified. Original six governed media still require authorized private staging and screenshot parity remains unaccepted.",
+      "actual": "HomeActivity renders the V2 cockpit shell with governed background/logo/vehicle resource references, clock, settings and shortcut grid. RACING is visual-only and Ultrabot is non-clickable decorative media so V2 does not fabricate actions that are not verified from V1.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.render"
@@ -186,8 +187,8 @@
         "tests/ultracarhcm-v2/backup-restore-source.test.ts",
         "tests/ultracarhcm-v2/home-config-source.test.ts"
       ],
-      "gap": "Local saved/default Home state is versioned and recovered safely. The HOME KHỞI ĐỘNG action now performs a real device-local operation: it reapplies the default Home configuration when one exists, otherwise opens saved configurations, and gives an actionable save prompt when none exist. User-visible save/apply/default/delete mutations require synchronous persistence success before reporting success. Automatic corrupt-state cleanup and normalization for both saved and default HOME configurations use synchronous commit() and log persistence failure. Stale/deleted saved-layout shortcut references are cleaned synchronously; layout deletion reports a partial-cleanup warning if shortcut cleanup cannot persist. Exact V1 shortcut icon artwork, full multi-zone orchestration, and real-device DeX acceptance remain open.",
-      "actual": "HomeActivity saves/applies/removes versioned local Home configurations and assigns/migrates unique stable config IDs. KHỞI ĐỘNG is no longer a placeholder: startConfiguredHome reapplies the persisted default configuration with rerender, opens the saved-configuration chooser when no default exists, or directs the user to save a configuration when none exist. User-visible mutations use synchronous commit() and surface failure. Automatic recovery/normalization of saved and default HOME JSON also commit synchronously and log failed persistence; HomeActivity contains no SharedPreferences.apply() path for these states. Invalid shortcut IDs are synchronously cleared with failure logging, and deleting a layout reports full success only after linked shortcut cleanup commits. Schema-v5 backup/restore validates stable-ID shortcut references.",
+      "gap": "Local saved/default Home state is versioned and recovered safely. The HOME KHỞI ĐỘNG action performs a real device-local operation: it reapplies the default Home configuration when one exists, otherwise opens saved configurations, and gives an actionable save prompt when none exist. Five stable saved-layout shortcuts now follow the Owner-verified V1 placement contract with equal spacing and transparent cells between KHỞI ĐỘNG and the bottom actions; tap applies and long-press reassigns. User-visible save/apply/default/delete mutations require synchronous persistence success. Exact V1 shortcut icon artwork, full multi-zone orchestration, and real-device DeX acceptance remain open.",
+      "actual": "HomeActivity saves/applies/removes versioned local Home configurations and assigns/migrates unique stable config IDs. KHỞI ĐỘNG is no longer a placeholder: startConfiguredHome reapplies the persisted default configuration, opens saved configurations when no default exists, or prompts the user to save one. Five saved-layout shortcuts use stable config IDs, equal-width spacing and transparent cell backgrounds; tap applies a saved layout and long-press reassigns it. Automatic recovery/normalization uses synchronous commit(), stale shortcut IDs are durably cleaned, and Schema-v5 backup/restore validates stable-ID shortcut references.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.savedConfigurations",
