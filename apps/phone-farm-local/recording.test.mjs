@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { EventEmitter } from 'node:events';
-import { validRecordRequest, buildRecordArgs, isValidMkv, Recordings } from './recording.mjs';
+import { validRecordRequest, buildRecordArgs, isValidMkv, fileSha256, Recordings } from './recording.mjs';
 
 test('video capture only allows bounded serials/durations and local MKV output', () => {
   assert.equal(validRecordRequest({serial:'R3CM400AKRX',seconds:8}),true);
@@ -44,6 +44,8 @@ test('zero-exit recording requires MKV EBML, Segment, Tracks and Cluster structu
     const completed=manager.status(started.id);
     assert.equal(completed.state,'completed');
     assert.equal(completed.bytes,structured.length);
+    assert.match(completed.sha256,/^[a-f0-9]{64}$/);
+    assert.equal(completed.sha256,fileSha256(completed.file));
     assert.equal(completed._child,undefined);
     assert.equal(manager.stop(started.id),false);
     assert.equal(isValidMkv(completed.file),true);
@@ -70,6 +72,7 @@ test('failed or prematurely terminated capture is never reported completed', asy
     await new Promise(resolve=>setTimeout(resolve,15));
     const stopped=manager.status(started.id);
     assert.equal(stopped.state,'failed');
+    assert.equal(stopped.sha256,null);
     assert.notEqual(stopped.state,'completed');
   }finally{fs.rmSync(folder,{recursive:true,force:true})}
 });
