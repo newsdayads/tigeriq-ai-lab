@@ -47,11 +47,23 @@ describe('GH-5135 F15 update Activity lifecycle', () => {
       .toBeLessThan(download.indexOf('verifiedApk = candidate'));
   });
 
-  it('clears verified cache on destroy unless it was already handed to Android installer', () => {
+  it('keeps the verified APK retryable and exposes external installer failures', () => {
     expect(update).toContain('private var installerHandoff = false');
-    const install = block('private fun launchSystemInstaller(candidate: VerifiedApk)', 'private fun beginOperation');
+    const install = block('private fun launchSystemInstaller(candidate: VerifiedApk)', 'private fun launchExternalIntent');
+    expect(install).toContain('val openedSettings = launchExternalIntent(');
+    expect(install).toContain('val openedInstaller = launchExternalIntent(');
+    expect(install).toContain('if (!openedSettings) return');
+    expect(install).toContain('if (!openedInstaller) return');
     expect(install).toContain('installerHandoff = true');
-    expect(install.indexOf('startActivity(')).toBeLessThan(install.indexOf('installerHandoff = true'));
+    expect(install.indexOf('if (!openedInstaller) return')).toBeLessThan(
+      install.indexOf('installerHandoff = true'),
+    );
+
+    const external = block('private fun launchExternalIntent', 'private fun beginOperation');
+    expect(external).toContain('catch (error: RuntimeException)');
+    expect(external).toContain('External intent launch failed');
+    expect(external).toContain('status.text = "$failureMessage:');
+    expect(external).toContain('false');
 
     const clear = block('private fun clearVerifiedCandidate()', 'override fun onDestroy()');
     expect(clear).toContain('installerHandoff = false');
