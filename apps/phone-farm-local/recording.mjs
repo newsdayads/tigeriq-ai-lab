@@ -3,7 +3,7 @@
 // No browser stream, LAIXI binary, license service or network endpoint is required.
 import fs from 'node:fs';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 
 export function validRecordRequest(b) {
@@ -28,6 +28,21 @@ export function isValidMkv(file) {
     } finally { fs.closeSync(fd); }
   } catch { return false; }
 }
+export function fileSha256(file) {
+  const fd=fs.openSync(file,'r');
+  try{
+    const hash=createHash('sha256');
+    const buffer=Buffer.alloc(1024*1024);
+    let offset=0;
+    while(true){
+      const read=fs.readSync(fd,buffer,0,buffer.length,offset);
+      if(!read)break;
+      hash.update(buffer.subarray(0,read));
+      offset+=read;
+    }
+    return hash.digest('hex');
+  }finally{fs.closeSync(fd)}
+}
 export function buildRecordArgs(serial,seconds,target) {
   if(!validRecordRequest({serial,seconds})) throw Error('Thông số ghi màn hình không hợp lệ');
   if(typeof target!=='string'||!path.isAbsolute(target)||!target.toLowerCase().endsWith('.mkv'))
@@ -50,7 +65,7 @@ export class Recordings {
     const id=randomUUID();
     const file=path.join(this.folder,new Date().toISOString().replace(/[:.]/g,'-')+'-'+body.serial+'-'+id.slice(0,8)+'.mkv');
     const r={id,serial:body.serial,seconds:body.seconds,state:'recording',
-      startedAt:new Date().toISOString(),finishedAt:null,file,error:null,bytes:0};
+      startedAt:new Date().toISOString(),finishedAt:null,file,error:null,bytes:0,sha256:null};
     this.items.set(id,r);
     let child;
     try {
@@ -64,8 +79,21 @@ export class Recordings {
       if(r.state!=='recording')return;
       r.finishedAt=new Date().toISOString();
       try{r.bytes=fs.statSync(r.file).size}catch{r.bytes=0}
-      r.state=code===0 && isValidMkv(r.file)?'completed':'failed';
-      r.error=r.state==='failed'?(String(err?.message||stderr||('Exit '+code)).slice(-350)):null;
+      if(code===0 && isValidMkv(r.file)){
+        try{
+          r.sha256=fileSha256(r.file);
+          r.state='completed';
+          r.error=null;
+        }catch(hashError){
+          r.state='failed';
+          r.sha256=null;
+          r.error=('Không tính được SHA-256: '+String(hashError?.message||hashError)).slice(-350);
+        }
+      }else{
+        r.state='failed';
+        r.sha256=null;
+        r.error=String(err?.message||stderr||('Exit '+code)).slice(-350);
+      }
       r._child=null;
     };
     child.once('error',e=>end(e,-1));
