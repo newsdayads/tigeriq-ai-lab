@@ -27,8 +27,7 @@ class UsbAttachReceiver : BroadcastReceiver() {
         val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
 
         if (action == UsbManager.ACTION_USB_DEVICE_ATTACHED) {
-            val isCamera = device == null || UsbUvcManager.isUvc(device) ||
-                    (device.vendorId == 0xff02 && device.productId == 0xafa1)
+            val isCamera = device != null && UsbUvcManager.isUvc(device)
             if (isCamera) {
                 Log.i(TAG, "UVC Camera attached via reverse power -> Auto-launching camera")
                 val targetDisplay = DeXDisplayHelper.resolveTargetDisplay(context)
@@ -40,8 +39,7 @@ class UsbAttachReceiver : BroadcastReceiver() {
                 )
             }
         } else if (action == UsbManager.ACTION_USB_DEVICE_DETACHED) {
-            val isCamera = device == null || UsbUvcManager.isUvc(device) ||
-                    (device.vendorId == 0xff02 && device.productId == 0xafa1)
+            val isCamera = device != null && UsbUvcManager.isUvc(device)
             if (isCamera) {
                 Log.i(TAG, "UVC Camera detached -> Tail-light power cut, auto-dismissing camera immediately")
                 CameraActivity.dismissIfRunning(immediate = true)

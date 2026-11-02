@@ -115,8 +115,7 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
 
                 if (action == UsbManager.ACTION_USB_DEVICE_ATTACHED) {
                     val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
-                    val isCamera = device == null || UsbUvcManager.isUvc(device) ||
-                            (device.vendorId == 0xff02 && device.productId == 0xafa1)
+                    val isCamera = device != null && UsbUvcManager.isUvc(device)
                     if (isCamera && settings.isUsbAutoStart) {
                         Log.i(TAG, "Dynamic USB Attached (Tail-light R=ON) -> Auto-opening Camera")
                         CameraActivity.launch(this@FloatingCameraService, displayId, reverseActive = true)
@@ -126,8 +125,7 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
 
                 if (action == UsbManager.ACTION_USB_DEVICE_DETACHED) {
                     val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
-                    val isCamera = device == null || UsbUvcManager.isUvc(device) ||
-                            (device.vendorId == 0xff02 && device.productId == 0xafa1)
+                    val isCamera = device != null && UsbUvcManager.isUvc(device)
                     if (isCamera && settings.isReverseImmediateClose) {
                         Log.i(TAG, "Dynamic USB Detached (Tail-light R=OFF) -> Auto-closing Camera")
                         CameraActivity.dismissIfRunning(immediate = true)

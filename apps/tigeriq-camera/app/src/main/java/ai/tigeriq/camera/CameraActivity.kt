@@ -61,7 +61,11 @@ class CameraActivity : AppCompatActivity() {
                 context.startActivity(intent, options.toBundle())
             } catch (t: Throwable) {
                 Log.w("TigerIQ_Camera", "Failed to launch on display $displayId, falling back", t)
-                context.startActivity(intent)
+                try {
+                    context.startActivity(intent)
+                } catch (fallback: Throwable) {
+                    Log.e("TigerIQ_Camera", "Background launch rejected; check visible DeX/overlay context", fallback)
+                }
             }
         }
 

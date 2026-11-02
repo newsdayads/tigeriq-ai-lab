@@ -77,12 +77,33 @@ class UsbUvcManager(
 
     companion object {
         private const val TAG = "TigerIQ_UVC"
+        /**
+         * Match capture devices used by the original working UltraCar app,
+         * including vendor-specific USB video dongles.
+         * Never match arbitrary USB hubs, storage or HID devices.
+         */
         fun isUvc(device: UsbDevice): Boolean {
-            if (device.deviceClass == 14) return true
-            if (device.deviceClass == 239) return true // Composite device (Video + Audio / AFN_CAP)
-            if (device.vendorId == 0xff02 && device.productId == 0xafa1) return true // AFN_CAP capture card
+            if (device.deviceClass == 14 || device.deviceClass == 239) return true
+            if (device.vendorId == 0xff02 && device.productId == 0xafa1) return true
+
+            val description = listOfNotNull(device.productName, device.manufacturerName)
+                .joinToString(" ").lowercase()
+            val hasVideoName = listOf("camera", "cam", "uvc", "video", "capture", "grabber", "afn_cap")
+                .any { description.contains(it) }
+            if (hasVideoName) return true
+
             for (i in 0 until device.interfaceCount) {
-                if (device.getInterface(i).interfaceClass == 14) return true
+                val intf = device.getInterface(i)
+                if (intf.interfaceClass == 14) return true
+                if (intf.interfaceClass == 239 && intf.interfaceSubclass == 2) return true
+                // Nonstandard capture devices can expose vendor-specific
+                // isochronous video endpoints with USB class 0/255.
+                if (intf.interfaceClass == 255) {
+                    for (j in 0 until intf.endpointCount) {
+                        if (intf.getEndpoint(j).type == android.hardware.usb.UsbConstants.USB_ENDPOINT_XFER_ISOC)
+                            return true
+                    }
+                }
             }
             return false
         }

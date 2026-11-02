@@ -39,7 +39,7 @@ class ReverseGearReceiver : BroadcastReceiver() {
             // 1. Check explicit string extras
             val gearKeys = arrayOf("gear", "GEAR", "current_gear", "gear_state", "gear_name", "gearName", "new_gear")
             for (key in gearKeys) {
-                val str = intent.getStringExtra(key)
+                val str = try { intent.getStringExtra(key) } catch (_: ClassCastException) { null }
                 if (!str.isNullOrEmpty()) {
                     if (str.equals("R", ignoreCase = true) || str.contains("REVERSE", ignoreCase = true)) {
                         return true
@@ -53,7 +53,7 @@ class ReverseGearReceiver : BroadcastReceiver() {
             // 2. Check explicit int extras (CarGear.GEAR_REVERSE = 8, 2, etc.)
             for (key in gearKeys) {
                 if (intent.hasExtra(key)) {
-                    val intVal = intent.getIntExtra(key, -1)
+                    val intVal = try { intent.getIntExtra(key, -1) } catch (_: ClassCastException) { -1 }
                     if (intVal == 8 || intVal == 2 || intVal == 'R'.code || intVal == 'r'.code) {
                         return true
                     }
@@ -70,7 +70,7 @@ class ReverseGearReceiver : BroadcastReceiver() {
                     return try {
                         intent.getBooleanExtra(key, false)
                     } catch (_: Throwable) {
-                        intent.getIntExtra(key, 0) == 1
+                        try { intent.getIntExtra(key, 0) == 1 } catch (_: ClassCastException) { false }
                     }
                 }
             }
