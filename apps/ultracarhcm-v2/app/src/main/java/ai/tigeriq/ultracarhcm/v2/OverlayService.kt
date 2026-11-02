@@ -147,8 +147,15 @@ class OverlayService : Service(), DisplayManager.DisplayListener {
                                 if (!persisted) {
                                     Log.e(
                                         logTag,
-                                        "Position persistence failed display=$id at (${p.x},${p.y})",
+                                        "Position persistence failed display=$id at (${p.x},${p.y}); rolling back",
                                     )
+                                    p.x = startX
+                                    p.y = startY
+                                    try {
+                                        wm.updateViewLayout(button, p)
+                                    } catch (t: Throwable) {
+                                        Log.e(logTag, "Persistence rollback layout update failed", t)
+                                    }
                                 }
                             } else {
                                 UsbCameraActivity.toggleFromShortcut(this@OverlayService, currentId)
