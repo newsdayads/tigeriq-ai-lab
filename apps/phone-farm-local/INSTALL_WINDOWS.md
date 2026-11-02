@@ -26,6 +26,16 @@ Chạy `powershell -ExecutionPolicy Bypass -File .\uninstall-user.ps1` từ gói
 
 ## Bootstrapper không dùng shell cho RC6
 
+### Chế độ gói cục bộ đã xác minh
+
+Bootstrapper v1.7 hỗ trợ cài không cần tải Internet khi gói RC6 đã được chuẩn bị sẵn:
+
+`TigerIQPhoneFarmBootstrapper.exe --package "D:\\TigerIQ\\Packages\\TigerIQ-PhoneFarm-Windows-v0.5.0-RC6-d64b2a04.zip"`
+
+Chỉ gói ZIP có đúng SHA-256 đã ghim trong mã mới được chấp nhận. Đường dẫn phải tuyệt đối; sai hash/kích thước/định dạng sẽ dừng trước giải nén. Chế độ này không gọi PowerShell/CMD, không đổi firewall, ADB mode hay cấu hình mạng.
+
+## Bootstrapper không dùng shell cho RC6
+
 `TigerIQPhoneFarmBootstrapper.exe` là công cụ giao nhận RC6 theo user, không cần Administrator và không gọi PowerShell/CMD.
 
 Luồng cố định:
