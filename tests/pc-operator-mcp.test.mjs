@@ -910,10 +910,24 @@ describe('GH-5291 PAD Console selection contract', () => {
 
 
 describe('GH-5291 selector-bound double click', () => {
-  it('emits two bounded clicks only when pad_click value is double', async () => {
+  it('emits two bounded clicks only for the explicit pad_click double-click path', async () => {
     const source = await fs.readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
-    expect(source).toContain("$clickCount = if ([string]$Request.value -eq 'double') { 2 } else { 1 }");
+    expect(source).toContain("$forceDoubleClick = $AllowClickFallback -and ([string]$Request.value -eq 'double')");
+    expect(source).toContain("$clickCount = if ($forceDoubleClick) { 2 } else { 1 }");
     expect(source).toContain("ElementCenterDoubleClick");
     expect(source).toContain('Start-Sleep -Milliseconds 80');
+  });
+});
+
+
+describe('GH-5291 PAD action-row double click precedence', () => {
+  it('forces selector-bound double click before InvokePattern when requested', async () => {
+    const source = await fs.readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
+    const start = source.indexOf('function Invoke-PadElement($Request, [bool]$AllowClickFallback)');
+    const end = source.indexOf('function Set-PadValue($Request)');
+    const invoke = source.slice(start, end);
+    expect(invoke).toContain("$forceDoubleClick = $AllowClickFallback -and ([string]$Request.value -eq 'double')");
+    expect(invoke.indexOf('$forceDoubleClick')).toBeLessThan(invoke.indexOf('InvokePattern]::Pattern'));
+    expect(invoke).toContain("$clickCount = if ($forceDoubleClick) { 2 } else { 1 }");
   });
 });

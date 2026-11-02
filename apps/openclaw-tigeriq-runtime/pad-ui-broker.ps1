@@ -299,20 +299,30 @@ function Find-PadElement($Request) {
 function Invoke-PadElement($Request, [bool]$AllowClickFallback) {
   $found = Find-PadElement $Request
   $e = $found.Element
-  $pattern = $null
-  if ($e.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern,[ref]$pattern)) {
-    $pattern.Invoke()
-    return [pscustomobject]@{ Method='InvokePattern'; MatchCount=$found.Count; Element=(Element-ToObject $e) }
-  }
-  if (-not $AllowClickFallback) { throw 'TIGERIQ_PAD_UI_INVOKE_PATTERN_UNAVAILABLE' }
 
-  # PAD Console flow rows expose SelectionItemPattern but not InvokePattern.
-  # Select them natively before considering a pointer click so selection state
-  # is committed even when the row itself cannot receive keyboard focus.
-  $selection = $null
-  if ($e.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern,[ref]$selection)) {
-    $selection.Select()
-    return [pscustomobject]@{ Method='SelectionItemPattern'; MatchCount=$found.Count; Element=(Element-ToObject $e) }
+  # A requested double click is an explicit pointer gesture on the already
+  # selector-resolved element. Perform it before Invoke/Selection patterns,
+  # because PAD action rows expose InvokePattern whose semantic action is not
+  # equivalent to opening the action editor by double click.
+  $forceDoubleClick = $AllowClickFallback -and ([string]$Request.value -eq 'double')
+  if (-not $forceDoubleClick) {
+    $pattern = $null
+    if ($e.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern,[ref]$pattern)) {
+      $pattern.Invoke()
+      return [pscustomobject]@{ Method='InvokePattern'; MatchCount=$found.Count; Element=(Element-ToObject $e) }
+    }
+    if (-not $AllowClickFallback) { throw 'TIGERIQ_PAD_UI_INVOKE_PATTERN_UNAVAILABLE' }
+
+    # PAD Console flow rows expose SelectionItemPattern but not InvokePattern.
+    # Select them natively before considering a pointer click so selection state
+    # is committed even when the row itself cannot receive keyboard focus.
+    $selection = $null
+    if ($e.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern,[ref]$selection)) {
+      $selection.Select()
+      return [pscustomobject]@{ Method='SelectionItemPattern'; MatchCount=$found.Count; Element=(Element-ToObject $e) }
+    }
+  } elseif (-not $AllowClickFallback) {
+    throw 'TIGERIQ_PAD_UI_INVOKE_PATTERN_UNAVAILABLE'
   }
 
   $r = $e.Current.BoundingRectangle
@@ -320,7 +330,7 @@ function Invoke-PadElement($Request, [bool]$AllowClickFallback) {
   [TigerIQPadNative]::SetForegroundWindow([IntPtr]$found.Window.Current.NativeWindowHandle) | Out-Null
   $x=[int]($r.X + $r.Width/2); $y=[int]($r.Y + $r.Height/2)
   [TigerIQPadNative]::SetCursorPos($x,$y) | Out-Null
-  $clickCount = if ([string]$Request.value -eq 'double') { 2 } else { 1 }
+  $clickCount = if ($forceDoubleClick) { 2 } else { 1 }
   for ($clickIndex = 0; $clickIndex -lt $clickCount; $clickIndex++) {
     [TigerIQPadNative]::mouse_event(0x0002,0,0,0,[UIntPtr]::Zero)
     [TigerIQPadNative]::mouse_event(0x0004,0,0,0,[UIntPtr]::Zero)
