@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Explicit AFN_CAP Capture Card (0xff02 / 0xafa1) -->
+    <usb-device vendor-id="65282" product-id="44961" />
+    <!-- Standard USB Video Class (UVC) devices: class 14 (0x0E), subclass 1/2 -->
+    <usb-device class="14" />
+    <usb-device class="239" subclass="2" />
+</resources>

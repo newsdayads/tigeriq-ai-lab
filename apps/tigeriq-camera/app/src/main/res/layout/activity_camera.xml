@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/black"
+    android:keepScreenOn="true">
+
+    <!-- UVC Camera Video Texture -->
+    <TextureView
+        android:id="@+id/cameraTextureView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center" />
+
+    <!-- Reconstructed V1/V2 Dynamic Guidelines Canvas -->
+    <ai.tigeriq.camera.DynamicGuideView
+        android:id="@+id/dynamicGuideView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Top-Left Quick Close Button (UltraCar Style) -->
+    <ImageButton
+        android:id="@+id/btnTopClose"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_gravity="top|start"
+        android:layout_margin="16dp"
+        android:background="@drawable/bg_camera_toolbar"
+        android:contentDescription="Đóng cửa sổ"
+        android:src="@android:drawable/ic_menu_close_clear_cancel"
+        android:tint="#FFFF3B30" />
+
+    <!-- Top Status / Gear HUD -->
+    <LinearLayout
+        android:id="@+id/topStatusBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="16dp"
+        android:background="@drawable/bg_camera_toolbar"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="8dp">
+
+        <TextView
+            android:id="@+id/tvGearBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="#FFFF3B30"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="2dp"
+            android:text="R"
+            android:textColor="@color/white"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvStatusMessage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:text="@string/camera_status_waiting"
+            android:textColor="@color/text_primary"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <!-- Center Card: Interactive Permission Prompt (When USB or Camera permission is needed) -->
+    <LinearLayout
+        android:id="@+id/cardPermissionPrompt"
+        android:layout_width="380dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/bg_setting_card"
+        android:orientation="vertical"
+        android:padding="20dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvPromptTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="CẦN CẤP QUYỀN CAMERA &amp; USB"
+            android:textColor="@color/cyan_accent"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvPromptDesc"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Đã phát hiện thiết bị Camera UVC. Vui lòng bấm nút bên dưới để cấp quyền kết nối."
+            android:textColor="@color/text_primary"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="#33FFAA00"
+            android:padding="8dp"
+            android:text="⚠️ Lưu ý DeX: Hộp thoại xác nhận có thể xuất hiện trên màn hình gập của Fold 2. Hãy mở máy và chọn [Cho phép]."
+            android:textColor="#FFFFCC00"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/btnGrantUsb"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="16dp"
+            android:backgroundTint="@color/cyan_accent"
+            android:text="BẤM CẤP QUYỀN USB NGAY"
+            android:textColor="@color/black"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnOpenSettingsPrompt"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:layout_marginTop="4dp"
+            android:text="Mở Bảng Điều Khiển &amp; Cấp Quyền"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- Bottom Quick Control Bar -->
+    <LinearLayout
+        android:id="@+id/bottomToolBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="24dp"
+        android:background="@drawable/bg_camera_toolbar"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="6dp">
+
+        <!-- Toggle Guidelines / Cycle Style -->
+        <ImageButton
+            android:id="@+id/btnToggleGuide"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Đổi kiểu vạch lùi"
+            android:src="@android:drawable/ic_menu_sort_by_size"
+            android:tint="@color/cyan_accent" />
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="24dp"
+            android:layout_marginHorizontal="6dp"
+            android:background="#33FFFFFF" />
+
+        <!-- Night Booster (Low Light Enhancement) -->
+        <ImageButton
+            android:id="@+id/btnNightBooster"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Chế độ ban đêm Night Booster"
+            android:src="@drawable/ic_night_vision"
+            android:tint="@color/white" />
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="24dp"
+            android:layout_marginHorizontal="6dp"
+            android:background="#33FFFFFF" />
+
+        <!-- Park Assist Sonar Sound Beep -->
+        <ImageButton
+            android:id="@+id/btnToggleSound"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Âm thanh cảnh báo khoảng cách"
+            android:src="@drawable/ic_sound_beep"
+            android:tint="@color/cyan_accent" />
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="24dp"
+            android:layout_marginHorizontal="6dp"
+            android:background="#33FFFFFF" />
+
+        <!-- Settings / Permission Center -->
+        <ImageButton
+            android:id="@+id/btnSettings"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Bảng điều khiển &amp; Cấp quyền"
+            android:src="@android:drawable/ic_menu_manage"
+            android:tint="@color/white" />
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="24dp"
+            android:layout_marginHorizontal="6dp"
+            android:background="#33FFFFFF" />
+
+        <!-- Close / Exit -->
+        <ImageButton
+            android:id="@+id/btnClose"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Đóng Camera"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:tint="@color/white" />
+    </LinearLayout>
+
+</FrameLayout>
