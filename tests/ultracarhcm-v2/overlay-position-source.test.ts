@@ -31,6 +31,18 @@ describe('GH-5135 F07 DeX overlay persistence source contract', () => {
     expect(overlay).toContain('update(forceReattach = forceReattach)');
   });
 
+  it('rolls a completed drag back when position persistence fails', () => {
+    const start = overlay.indexOf('MotionEvent.ACTION_UP ->');
+    const end = overlay.indexOf('MotionEvent.ACTION_CANCEL ->', start);
+    const block = overlay.slice(start, end);
+    expect(block).toContain('if (!persisted)');
+    expect(block).toContain('p.x = startX');
+    expect(block).toContain('p.y = startY');
+    expect(block).toContain('wm.updateViewLayout(button, p)');
+    expect(block).toContain('Persistence rollback layout update failed');
+    expect(block.indexOf('if (!persisted)')).toBeLessThan(block.indexOf('p.x = startX'));
+  });
+
   it('rolls a canceled drag back to the ACTION_DOWN coordinates without persisting', () => {
     const start = overlay.indexOf('MotionEvent.ACTION_CANCEL ->');
     const end = overlay.indexOf('return true', start);
