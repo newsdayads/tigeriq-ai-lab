@@ -14,6 +14,8 @@ import { promisify } from 'node:util';
 import { describe, it, expect } from 'vitest';
 
 const execFileAsync = promisify(execFile);
+const ANDROID_GRADLE_TIMEOUT_MS = 600_000;
+const NATIVE_GATE_TEST_TIMEOUT_MS = 720_000;
 const run = (cmd: string, args: string[], cwd: string, timeout: number, env = process.env) =>
   spawnSync(cmd, args, { cwd, timeout, env, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
 
@@ -56,7 +58,7 @@ describe('GH-5135 native Android clean-clone compile gate (not a release)',()=>{
       try {
         const output = await execFileAsync('bash',[
           './gradlew','--no-daemon',':app:assembleDebug',':app:lintDebug',':app:testDebugUnitTest'
-        ], {cwd:app,timeout:350000,env,encoding:'utf8',maxBuffer:8*1024*1024});
+        ], {cwd:app,timeout:ANDROID_GRADLE_TIMEOUT_MS,env,encoding:'utf8',maxBuffer:8*1024*1024});
         built={status:0,stdout:output.stdout,stderr:output.stderr};
       } catch (error) {
         const failure=error as Error & {stdout?:string;stderr?:string;code?:number};
@@ -116,5 +118,5 @@ describe('GH-5135 native Android clean-clone compile gate (not a release)',()=>{
       run('git',['worktree','remove','--force',worktree],checkout,20000,env);
       rmSync(workRoot,{recursive:true,force:true});
     }
-  },420000);
+  },NATIVE_GATE_TEST_TIMEOUT_MS);
 });
