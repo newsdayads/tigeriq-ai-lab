@@ -2,7 +2,7 @@ import test from 'node:test';
 import {request as nodeRequest} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
-import {normalizeCoreSnapshot, fetchCoreSnapshot, CORE_URL} from '../apps/agents-city-tigeriq/core-readonly.mjs';
+import {normalizeCoreSnapshot, fetchCoreSnapshot, CORE_URL, CORE_REQUEST_TIMEOUT_MS, CORE_REQUEST_TOTAL_BUDGET_MS} from '../apps/agents-city-tigeriq/core-readonly.mjs';
 import {normalizeLiveCoreSnapshot, fetchLiveCoreSnapshot, CORE_STATUS_URL} from '../apps/agents-city-tigeriq/core-live-readonly.mjs';
 import {createAnimalCityServer} from '../apps/agents-city-tigeriq/server.mjs';
 
@@ -144,6 +144,19 @@ test('Core work-order request allows exactly one loopback URL, GET, and fails ba
   assert.deepEqual(calls,[{url:CORE_URL,method:'GET',redirect:'error'}]);
   await assert.rejects(fetchCoreSnapshot({fetchImpl:async()=>new Response('{}',{status:503})}),/CORE_HTTP_UNAVAILABLE/);
   await assert.rejects(fetchCoreSnapshot({fetchImpl:async()=>new Response('not-json',{status:200})}),/CORE_JSON_INVALID/);
+});
+
+test('work-order cold-refresh budget fits inside the PC01 operational readiness probe',()=>{
+  assert.ok(CORE_REQUEST_TIMEOUT_MS > 10_000);
+  assert.ok(CORE_REQUEST_TOTAL_BUDGET_MS >= CORE_REQUEST_TIMEOUT_MS);
+  assert.ok(CORE_REQUEST_TOTAL_BUDGET_MS < 12_000);
+});
+
+test('work-order request rejects an impossible total retry budget',async()=>{
+  await assert.rejects(fetchCoreSnapshot({
+    timeoutMs:1000,totalBudgetMs:999,
+    fetchImpl:async()=>new Response(JSON.stringify(source()),{status:200}),
+  }),/INVALID_TOTAL_BUDGET/);
 });
 
 test('work-order source retries one transient HTTP failure without using cached data',async()=>{
