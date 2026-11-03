@@ -47,3 +47,11 @@
 - Source: UltraCar v1.0.17 MainActivity.openCameraWindow()/closeCameraWindow() delegates to TigerIQBridge ViewModel state in original app; that ViewModel is unavailable to a separately packaged Android app. CameraActivity launch/finish is equivalent *intent* but not same implementation.
 - Removed guessed alternate gear-broadcast receiver registration from FloatingCameraService, one manifest gear receiver only.
 - No proof vehicle ever sends these broadcasts or Gear P/N/D; no on-car acceptance. Do not present this APK or any other as verified physical R/P.
+
+# P0 R-signal feasibility ? UVC video source path (source-only, NOT APK release)
+- Actual 4-camera car system feeds a converter box, whose USB video output is connected to Z Fold 2/DeX. USB enumeration staying live across gear R/P would invalidate USB attach as gear detection.
+- Original UltraCar APK v1.0.65/1.0.73/1.0.74 does NOT implement verified physical R broadcast; no complete trustworthy gear source yet.
+- UVCAndroid 1.0.13 API in local AAR exposes ICameraHelper.setFrameCallback(IFrameCallback,int) and NV21 format: headless/video-signal monitoring can be researched without inventing CAN/Android broadcasts.
+- UvcFrameSignalEvidence prototype computes aggregate NV21 luma signatures ONLY, without images/video storage and WITHOUT window automation. A black/static frame could be dark real video or capture card's idle output; it MUST NOT be used as R-off proof by itself.
+- Next hardware feasibility: (1) inspect real USB interfaces to check HID/vendor control status from the 360 converter (priority explicit state); (2) if absent, measure video signal characteristics in different states with same monotonic time base; (3) if converter USB provides neither gear data nor reliably observable video state, an independently authorized external trigger is required.
+- Acceptance stays FAIL until validated R->ON and P/N/D->OFF in stationary vehicle without false closure in dark or static scenes. No automatic upload, server, device identification or production firmware changes.
