@@ -20,7 +20,10 @@ class ReverseCameraOverlayContractTest {
         assertFalse(source.lines().any { it.trimStart().startsWith("startActivity(") })
     }
     @Test fun usbPreviewLifecycleIsAttachedAndReleased() {
-        assertTrue(source.contains("UsbUvcManager(owner,texture"))
+        assertTrue(source.contains("val texture=TextureView(ctx)"))
+        assertFalse(source.contains("TextureView(ctx).apply{setBackgroundColor"))
+        assertTrue(source.contains("val previewLayer=FrameLayout(ctx).apply"))
+                assertTrue(source.contains("UsbUvcManager(owner,texture"))
         assertTrue(source.contains("helper.start()"))
         assertTrue(source.contains("camera?.release()"))
         assertTrue(source.contains("status.post"))

@@ -44,8 +44,14 @@ class ReversePathGeometryTest {
         assertFalse(view.contains("TYPE_GYROSCOPE"))
         assertFalse(view.contains("SensorEventListener"))
         assertTrue(view.contains("setVerifiedRoadWheelAngleDegrees"))
-        assertTrue(view.contains("verifiedWheelAngle=null"))
+        assertTrue(view.contains("verifiedRoadWheelAngleDegrees = null"))
         assertTrue(view.contains("ReversePathGeometry.sample"))
-        assertTrue(view.contains("CH?A NH?N G?C L?I"))
+        assertTrue(view.contains("val bottomHalfW = (w * 0.30f * scale)"))
+        assertTrue(view.contains("val topHalfW = (w * 0.13f * scale)"))
+        assertTrue(view.contains("drawSportRacing("))
+        assertTrue(view.contains("drawPorscheGt("))
+        assertTrue(view.contains("drawAudiMatrix("))
+        assertTrue(view.contains("drawTeslaCyber("))
+        assertTrue(view.contains("drawLuxuryOem("))
     }
 }

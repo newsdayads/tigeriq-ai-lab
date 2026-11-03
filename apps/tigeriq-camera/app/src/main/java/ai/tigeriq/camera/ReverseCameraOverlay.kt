@@ -82,14 +82,16 @@ class ReverseCameraOverlay(private val owner: Service) {
             val close=Button(ctx).apply{text="ĐÓNG";textSize=13f;setOnClickListener{hide()}}
             titleBar.addView(title,LinearLayout.LayoutParams(0,(45*scale).toInt(),1f))
             titleBar.addView(close,LinearLayout.LayoutParams((90*scale).toInt(),(46*scale).toInt()))
-            val texture=TextureView(ctx).apply{setBackgroundColor(Color.BLACK)}
+            // AOSP TextureView#setBackgroundDrawable throws UOE.
+            // Paint parent background, NEVER TextureView background.
+            val texture=TextureView(ctx)
             val status=TextView(ctx).apply {
                 text="Đang kết nối Camera UVC..."
                 textSize=12f
                 setTextColor(Color.LTGRAY)
             }
             column.addView(titleBar)
-            val previewLayer=FrameLayout(ctx)
+            val previewLayer=FrameLayout(ctx).apply { setBackgroundColor(Color.BLACK) }
             previewLayer.addView(texture,FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,FrameLayout.LayoutParams.MATCH_PARENT))
             previewLayer.addView(DynamicGuideView(ctx),FrameLayout.LayoutParams(

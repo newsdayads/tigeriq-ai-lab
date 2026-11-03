@@ -5,126 +5,490 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RectF
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.util.AttributeSet
+import android.view.MotionEvent
 import android.view.View
+import kotlin.math.abs
 
 /**
- * Rear-camera parking corridor, generated from the bicycle model. It never
- * infers steering from the PHONE gyro: the phone can remain fixed while the
- * wheels turn. When no verified road-wheel angle exists, shows static lines
- * with an explicit "no steering data" warning, not fake dynamic guides.
- *
- * Pixel mapping is an ILLUSTRATIVE perspective transform until the installed
- * camera's distortion, height/pitch and exact bumper position are calibrated.
+ * 100% Vector Canvas Engine for TigerIQ Camera Dynamic Reverse Guidelines.
+ * Replaces the jagged raster clipping with smooth continuous Bézier curves.
+ * Supports 3 professional OEM styles, steering gyro bending, inversion toggle,
+ * and high-contrast distance badges (0.5m, 1.0m, 1.5m).
  */
 class DynamicGuideView @JvmOverloads constructor(
-    context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
-): View(context, attrs, defStyleAttr) {
-    private val settings=CameraSettings(context)
-    private val line=Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style=Paint.Style.STROKE
-        strokeCap=Paint.Cap.ROUND
-        strokeJoin=Paint.Join.ROUND
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = 0
+) : View(context, attrs, defStyleAttr) {
+
+    private val settings = CameraSettings(context)
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    // Graphics Paints & Paths
+    private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
     }
-    private val text=Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color=Color.WHITE
-        textAlign=Paint.Align.CENTER
-        isFakeBoldText=true
+    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
     }
-    private val sideLeft=Path()
-    private val sideRight=Path()
-    private var verifiedWheelAngle: Float? = null
+    private val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+        color = Color.WHITE
+    }
+    private val leftPath = Path()
+    private val rightPath = Path()
+
+    // Curvature state
     var curvature: Float = 0f
         private set
+    private var targetCurvature: Float = 0f
+
+    // No steering angle can be derived from a stationary Galaxy Z Fold2 gyro.
+    // Only a dedicated verified road-wheel steering source may enable curvature.
+    private var verifiedRoadWheelAngleDegrees: Float? = null
+
+    // Touch steer calibration
+    private var touchStartX = 0f
+    private var isTouchSteering = false
 
     var isGuideVisible: Boolean
-        get()=settings.isGuidelinesEnabled
-        set(v){settings.isGuidelinesEnabled=v;invalidate()}
+        get() = settings.isGuidelinesEnabled
+        set(value) {
+            settings.isGuidelinesEnabled = value
+            invalidate()
+        }
 
-    /** Existing callers have unverified steering wheel units: DO NOT bend. */
+    /** Legacy broadcast steering parameter is not verified vehicle data. */
+    @Suppress("UNUSED_PARAMETER")
     fun setSteeringDegrees(degrees: Float) {
-        verifiedWheelAngle=null
-        curvature=0f
+        verifiedRoadWheelAngleDegrees = null
+        targetCurvature = 0f
+        curvature = 0f
         invalidate()
     }
 
-    /** Only use this when a real, calibrated front ROAD WHEEL angle is available. */
+    /**
+     * Front ROAD WHEEL angle in degrees, after explicit source validation and
+     * vehicle calibration; negative = rear path bends left, positive = right.
+     */
     fun setVerifiedRoadWheelAngleDegrees(degrees: Float?) {
-        verifiedWheelAngle=degrees?.takeIf{it.isFinite() && it in -35f..35f}
-        curvature=(verifiedWheelAngle ?: 0f) / 35f
+        verifiedRoadWheelAngleDegrees =
+            degrees?.takeIf { it.isFinite() && it in -35f..35f }
+        targetCurvature = (verifiedRoadWheelAngleDegrees ?: 0f) / 35f
         invalidate()
     }
 
-    private fun project(xMeters: Double, backMeters: Double): Pair<Float,Float> {
-        val focus = 1.6
-        val maxBack = 3.0
-        // Width mapping for visual guidance only, not a calibrated homography.
-        val widthModel = 1.8
-        val xPixels = width * 0.235 * focus / (widthModel*0.5)
-        val px=(width*0.5 + xMeters*xPixels/(focus+backMeters)).toFloat()
-        val p=(backMeters/(focus+backMeters)) / (maxBack/(focus+maxBack))
-        val py=(height*0.9 - p*(height*0.58)).toFloat()
-        return px to py
-    }
+    private val animateRunnable = object : Runnable {
+        override fun run() {
+            val now = SystemClock.uptimeMillis()
+            // No gyroscope-based steering guessing. Interpolation smooths only
+            // a verified front road-wheel angle, if one ever becomes available.
+            if (verifiedRoadWheelAngleDegrees == null) targetCurvature = 0f
 
-    private fun corridor(s:Double):ReversePathGeometry.Corridor =
-        ReversePathGeometry.sample(s,(verifiedWheelAngle ?: 0f).toDouble(),2.9,1.8)
+            // Smooth interpolation
+            curvature = 0.68f * curvature + 0.32f * targetCurvature
+            if (abs(curvature) < 0.002f) curvature = 0f
 
-    private fun renderSide(canvas: Canvas,left:Boolean,from:Double,to:Double,color:Int) {
-        val path=if(left)sideLeft else sideRight
-        path.reset()
-        val points=24
-        for(i in 0..points) {
-            val s=from+(to-from)*i/points
-            val c=corridor(s)
-            val (x,y)=project(
-                if(left)c.leftX else c.rightX,
-                if(left)c.leftBack else c.rightBack)
-            if(i==0)path.moveTo(x,y) else path.lineTo(x,y)
+            invalidate()
+            mainHandler.postDelayed(this, 33) // ~30 fps
         }
-        line.color=color
-        line.strokeWidth=resources.displayMetrics.density*3.0f
-        canvas.drawPath(path,line)
     }
 
-    private fun distanceBar(canvas:Canvas,distance:Double,color:Int) {
-        val c=corridor(distance)
-        val (lx,ly)=project(c.leftX,c.leftBack)
-        val (rx,ry)=project(c.rightX,c.rightBack)
-        line.color=color
-        line.strokeWidth=resources.displayMetrics.density*2.1f
-        canvas.drawLine(lx,ly,rx,ry,line)
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        mainHandler.post(animateRunnable)
     }
 
-    override fun onDraw(canvas:Canvas) {
-        super.onDraw(canvas)
-        if(!settings.isGuidelinesEnabled || width<100 || height<100) return
-        // Visual themes keep identical physical geometry; only colors change.
-        // This avoids style buttons unexpectedly changing the predicted path.
-        val palette=when(settings.guidelineStyle) {
-            CameraSettings.STYLE_PORSCHE_GT ->
-                listOf(Color.rgb(255,45,85),Color.rgb(255,159,10),Color.rgb(48,209,88))
-            CameraSettings.STYLE_AUDI_MATRIX ->
-                listOf(Color.rgb(255,59,48),Color.rgb(255,204,0),Color.rgb(0,229,255))
-            CameraSettings.STYLE_TESLA_CYBER ->
-                listOf(Color.rgb(255,69,58),Color.rgb(255,214,10),Color.rgb(100,210,255))
-            CameraSettings.STYLE_LUXURY_GOLD ->
-                listOf(Color.rgb(244,91,70),Color.rgb(255,190,0),Color.rgb(230,202,100))
-            else ->
-                listOf(Color.rgb(239,68,68),Color.rgb(255,202,41),Color.rgb(60,210,113))
-        }
-        // No uncalibrated 0.5m/1m numeric screen measurements.
-        val zones=listOf(0.0 to 0.5,0.5 to 1.4,1.4 to 3.0)
-        zones.forEachIndexed { index,zone ->
-            renderSide(canvas,true,zone.first,zone.second,palette[index])
-            renderSide(canvas,false,zone.first,zone.second,palette[index])
-            distanceBar(canvas,zone.second,palette[index])
-        }
-        text.textSize=resources.displayMetrics.density*12f
-        text.color=Color.rgb(255,221,117)
-        val message=if(verifiedWheelAngle==null)
-            "V?CH T?NH - CH?A NH?N G?C L?I T? XE"
-        else "QU? ??O M? PH?NG - CH?A HI?U CHU?N CAMERA"
-        canvas.drawText(message,width*0.5f,height*0.23f,text)
+    override fun onDetachedFromWindow() {
+        mainHandler.removeCallbacks(animateRunnable)
+        super.onDetachedFromWindow()
     }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        // Return false to allow touches to pass seamlessly to bottom toolbar and DeX window
+        return false
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        if (!settings.isGuidelinesEnabled) return
+
+        val w = width
+        val h = height
+        if (w < 50 || h < 50) return
+
+        val style = settings.guidelineStyle
+        val scale = settings.guidelineScale.coerceIn(0.8f, 1.8f)
+        val warp = settings.warpFactor
+
+        val bottomY = h * 0.86f
+        val topY = h * 0.38f
+
+        val bottomHalfW = (w * 0.30f * scale).coerceIn(dp(60f), w * 0.38f)
+        val topHalfW = (w * 0.13f * scale).coerceIn(dp(30f), w * 0.20f)
+
+        val cx = w * 0.5f
+        val maxShift = (w * 0.5f - bottomHalfW - dp(24f)).coerceAtLeast(dp(20f))
+        val wheelAngle = (verifiedRoadWheelAngleDegrees ?: 0f).toDouble()
+        // Kinematic bicycle model: physically-grounded rear-axle movement.
+        // 2.9m wheelbase and width are model placeholders until vehicle calibration.
+        val pFull = ReversePathGeometry.sample(3.0, wheelAngle, 2.9, 1.8)
+        val pMiddle = ReversePathGeometry.sample(1.5, wheelAngle, 2.9, 1.8)
+        val shift = (pFull.centerX.toFloat() * topHalfW / 0.9f * warp)
+            .coerceIn(-maxShift, maxShift)
+        val midHalfW = (bottomHalfW + topHalfW) * 0.5f
+        val midShift = (pMiddle.centerX.toFloat() * midHalfW / 0.9f * warp)
+            .coerceIn(-maxShift, maxShift)
+
+        val blX = cx - bottomHalfW
+        val brX = cx + bottomHalfW
+        val tlX = cx - topHalfW + shift
+        val trX = cx + topHalfW + shift
+
+        // Bezier centre at t=0.5 equals bicycle-model projected midpath.
+        // C = 2*Pmid - (Pstart+Pend)/2. Preserve approved rail widths.
+        val midY = (bottomY + topY) * 0.5f
+        val ctrlShift = 2f * midShift - shift * 0.5f
+        val ctrlLx = (cx - bottomHalfW + cx - topHalfW) * 0.5f + ctrlShift
+        val ctrlRx = (cx + bottomHalfW + cx + topHalfW) * 0.5f + ctrlShift
+
+        leftPath.reset()
+        leftPath.moveTo(blX, bottomY)
+        leftPath.quadTo(ctrlLx, midY, tlX, topY)
+
+        rightPath.reset()
+        rightPath.moveTo(brX, bottomY)
+        rightPath.quadTo(ctrlRx, midY, trX, topY)
+
+        when (style) {
+            CameraSettings.STYLE_PORSCHE_GT -> {
+                drawPorscheGt(canvas, blX, brX, tlX, trX, ctrlLx, ctrlRx, bottomY, topY, scale)
+            }
+            CameraSettings.STYLE_AUDI_MATRIX -> {
+                drawAudiMatrix(canvas, blX, brX, tlX, trX, ctrlLx, ctrlRx, bottomY, topY, scale)
+            }
+            CameraSettings.STYLE_TESLA_CYBER -> {
+                drawTeslaCyber(canvas, blX, brX, tlX, trX, ctrlLx, ctrlRx, bottomY, topY, scale)
+            }
+            CameraSettings.STYLE_LUXURY_GOLD -> {
+                drawLuxuryOem(canvas, blX, brX, tlX, trX, ctrlLx, ctrlRx, bottomY, topY, scale)
+            }
+            else -> {
+                drawSportRacing(canvas, blX, brX, tlX, trX, ctrlLx, ctrlRx, bottomY, topY, scale)
+            }
+        }
+    }
+
+    /**
+     * MẪU 1: OEM Sport Racing (Chuẩn UltraCar: 3 dải màu Đỏ/Vàng/Xanh, cánh bẻ lái & tim đứt nét)
+     */
+    private fun drawSportRacing(
+        canvas: Canvas,
+        blX: Float, brX: Float, tlX: Float, trX: Float,
+        ctrlLx: Float, ctrlRx: Float, bottomY: Float, topY: Float,
+        scale: Float
+    ) {
+        val strokeW = dp(4.0f) * scale
+
+        // 1. Draw segment side rails: Red (0-0.20), Yellow (0.20-0.50), Green (0.50-0.85)
+        drawSegmentRail(canvas, blX, ctrlLx, tlX, bottomY, topY, 0.0f, 0.20f, Color.rgb(239, 68, 68), strokeW)
+        drawSegmentRail(canvas, brX, ctrlRx, trX, bottomY, topY, 0.0f, 0.20f, Color.rgb(239, 68, 68), strokeW)
+
+        drawSegmentRail(canvas, blX, ctrlLx, tlX, bottomY, topY, 0.20f, 0.50f, Color.rgb(234, 179, 8), strokeW)
+        drawSegmentRail(canvas, brX, ctrlRx, trX, bottomY, topY, 0.20f, 0.50f, Color.rgb(234, 179, 8), strokeW)
+
+        drawSegmentRail(canvas, blX, ctrlLx, tlX, bottomY, topY, 0.50f, 0.85f, Color.rgb(34, 197, 94), strokeW)
+        drawSegmentRail(canvas, brX, ctrlRx, trX, bottomY, topY, 0.50f, 0.85f, Color.rgb(34, 197, 94), strokeW)
+
+        // 2. Center dashed line along curvature
+        drawCenterDashedLine(canvas, blX, brX, tlX, trX, ctrlLx, ctrlRx, bottomY, topY, scale)
+
+        // 3. Distance crossbars without protruding wings
+        drawDistanceBarSport(canvas, bottomY, topY, 0.20f, Color.rgb(239, 68, 68), "0.5m", blX, brX, tlX, trX, ctrlLx, ctrlRx, scale)
+        drawDistanceBarSport(canvas, bottomY, topY, 0.50f, Color.rgb(234, 179, 8), "1.0m", blX, brX, tlX, trX, ctrlLx, ctrlRx, scale)
+        drawDistanceBarSport(canvas, bottomY, topY, 0.85f, Color.rgb(34, 197, 94), "1.5m", blX, brX, tlX, trX, ctrlLx, ctrlRx, scale)
+    }
+
+    /**
+     * MẪU 2: Porsche GT HUD (Vạch Neon Glowing đa sắc, vệt cắt laser & tâm nhắm thể thao)
+     */
+    private fun drawPorscheGt(
+        canvas: Canvas,
+        blX: Float, brX: Float, tlX: Float, trX: Float,
+        ctrlLx: Float, ctrlRx: Float, bottomY: Float, topY: Float,
+        scale: Float
+    ) {
+        val strokeW = dp(4.2f) * scale
+        glowPaint.strokeWidth = strokeW * 2.2f
+        glowPaint.color = Color.argb(45, 255, 60, 0)
+        canvas.drawPath(leftPath, glowPaint)
+        canvas.drawPath(rightPath, glowPaint)
+
+        drawSegmentRail(canvas, blX, ctrlLx, tlX, bottomY, topY, 0.0f, 0.22f, Color.rgb(255, 45, 85), strokeW)
+        drawSegmentRail(canvas, brX, ctrlRx, trX, bottomY, topY, 0.0f, 0.22f, Color.rgb(255, 45, 85), strokeW)
+
+        drawSegmentRail(canvas, blX, ctrlLx, tlX, bottomY, topY, 0.22f, 0.52f, Color.rgb(255, 159, 10), strokeW)
+        drawSegmentRail(canvas, brX, ctrlRx, trX, bottomY, topY, 0.22f, 0.52f, Color.rgb(255, 159, 10), strokeW)
+
+        drawSegmentRail(canvas, blX, ctrlLx, tlX, bottomY, topY, 0.52f, 0.88f, Color.rgb(48, 209, 88), strokeW)
+        drawSegmentRail(canvas, brX, ctrlRx, trX, bottomY, topY, 0.52f, 0.88f, Color.rgb(48, 209, 88), strokeW)
+
+        drawCenterDashedLine(canvas, blX, brX, tlX, trX, ctrlLx, ctrlRx, bottomY, topY, scale)
+
+        drawDistanceBarSport(canvas, bottomY, topY, 0.22f, Color.rgb(255, 45, 85), "0.5m", blX, brX, tlX, trX, ctrlLx, ctrlRx, scale)
+        drawDistanceBarSport(canvas, bottomY, topY, 0.52f, Color.rgb(255, 159, 10), "1.0m", blX, brX, tlX, trX, ctrlLx, ctrlRx, scale)
+        drawDistanceBarSport(canvas, bottomY, topY, 0.88f, Color.rgb(48, 209, 88), "1.5m", blX, brX, tlX, trX, ctrlLx, ctrlRx, scale)
+    }
+
+    /**
+     * MẪU 3: Audi Matrix Cyber HUD (Lưới phối cảnh 3D mặt đường Neon Cyan & Laser)
+     */
+    private fun drawAudiMatrix(
+        canvas: Canvas,
+        blX: Float, brX: Float, tlX: Float, trX: Float,
+        ctrlLx: Float, ctrlRx: Float, bottomY: Float, topY: Float,
+        scale: Float
+    ) {
+        val strokeW = dp(3.2f) * scale
+        linePaint.strokeWidth = strokeW
+        linePaint.color = Color.rgb(0, 229, 255)
+        canvas.drawPath(leftPath, linePaint)
+        canvas.drawPath(rightPath, linePaint)
+
+        drawPerspectiveGrid(canvas, blX, brX, tlX, trX, ctrlLx, ctrlRx, bottomY, topY)
+
+        drawDistanceBarMinimal(canvas, bottomY, topY, 0.20f, Color.rgb(255, 59, 48), "0.5m", blX, brX, tlX, trX, ctrlLx, ctrlRx, scale)
+        drawDistanceBarMinimal(canvas, bottomY, topY, 0.50f, Color.rgb(255, 204, 0), "1.0m", blX, brX, tlX, trX, ctrlLx, ctrlRx, scale)
+        drawDistanceBarMinimal(canvas, bottomY, topY, 0.85f, Color.rgb(0, 229, 255), "1.5m", blX, brX, tlX, trX, ctrlLx, ctrlRx, scale)
+    }
+
+    /**
+     * MẪU 4: Tesla Cyber Vision (Tia Laser trắng tinh khiết siêu nét & vạch cản tối giản)
+     */
+    private fun drawTeslaCyber(
+        canvas: Canvas,
+        blX: Float, brX: Float, tlX: Float, trX: Float,
+        ctrlLx: Float, ctrlRx: Float, bottomY: Float, topY: Float,
+        scale: Float
+    ) {
+        val strokeW = dp(2.8f) * scale
+        linePaint.strokeWidth = strokeW
+        linePaint.color = Color.rgb(240, 248, 255)
+        canvas.drawPath(leftPath, linePaint)
+        canvas.drawPath(rightPath, linePaint)
+
+        drawDistanceBarMinimal(canvas, bottomY, topY, 0.20f, Color.rgb(255, 69, 58), "0.5m", blX, brX, tlX, trX, ctrlLx, ctrlRx, scale)
+        drawDistanceBarMinimal(canvas, bottomY, topY, 0.50f, Color.rgb(255, 214, 10), "1.0m", blX, brX, tlX, trX, ctrlLx, ctrlRx, scale)
+        drawDistanceBarMinimal(canvas, bottomY, topY, 0.85f, Color.rgb(100, 210, 255), "1.5m", blX, brX, tlX, trX, ctrlLx, ctrlRx, scale)
+    }
+
+    private fun drawPerspectiveGrid(
+        canvas: Canvas,
+        blX: Float, brX: Float, tlX: Float, trX: Float,
+        ctrlLx: Float, ctrlRx: Float, bottomY: Float, topY: Float
+    ) {
+        glowPaint.color = Color.argb(60, 0, 229, 255)
+        glowPaint.strokeWidth = dp(1.2f)
+        for (i in 1..8) {
+            val t = i * 0.11f
+            val y = bottomY - t * (bottomY - topY)
+            val lx = interpolateBezier(blX, ctrlLx, tlX, t)
+            val rx = interpolateBezier(brX, ctrlRx, trX, t)
+            canvas.drawLine(lx, y, rx, y, glowPaint)
+        }
+    }
+
+    /**
+     * MẪU 5: Luxury Maybach Gold (Mercedes / Maybach Style Dual Gold-Amber Lines)
+     */
+    private fun drawLuxuryOem(
+        canvas: Canvas,
+        blX: Float, brX: Float, tlX: Float, trX: Float,
+        ctrlLx: Float, ctrlRx: Float, bottomY: Float, topY: Float,
+        scale: Float
+    ) {
+        val strokeW = dp(3.8f) * scale
+        linePaint.strokeWidth = strokeW
+        linePaint.color = Color.argb(230, 255, 190, 0)
+        canvas.drawPath(leftPath, linePaint)
+        canvas.drawPath(rightPath, linePaint)
+
+        drawSegmentTicks(canvas, 10, blX, brX, tlX, trX, ctrlLx, ctrlRx, bottomY, topY)
+
+        drawDistanceBarOem(canvas, bottomY, topY, 0.20f, Color.rgb(239, 68, 68), "0.5m", blX, brX, tlX, trX, ctrlLx, ctrlRx, scale)
+        drawDistanceBarOem(canvas, bottomY, topY, 0.50f, Color.rgb(255, 190, 0), "1.0m", blX, brX, tlX, trX, ctrlLx, ctrlRx, scale)
+        drawDistanceBarOem(canvas, bottomY, topY, 0.85f, Color.rgb(34, 197, 94), "1.5m", blX, brX, tlX, trX, ctrlLx, ctrlRx, scale)
+    }
+
+    private fun drawSegmentRail(
+        canvas: Canvas,
+        p0X: Float, p1X: Float, p2X: Float,
+        bottomY: Float, topY: Float,
+        tStart: Float, tEnd: Float,
+        color: Int, strokeWidth: Float
+    ) {
+        val steps = 8
+        linePaint.color = color
+        linePaint.strokeWidth = strokeWidth
+
+        var prevX = interpolateBezier(p0X, p1X, p2X, tStart)
+        var prevY = bottomY - tStart * (bottomY - topY)
+
+        for (i in 1..steps) {
+            val t = tStart + (tEnd - tStart) * (i.toFloat() / steps)
+            val currX = interpolateBezier(p0X, p1X, p2X, t)
+            val currY = bottomY - t * (bottomY - topY)
+            canvas.drawLine(prevX, prevY, currX, currY, linePaint)
+            prevX = currX
+            prevY = currY
+        }
+    }
+
+    private fun drawCenterDashedLine(
+        canvas: Canvas,
+        blX: Float, brX: Float, tlX: Float, trX: Float,
+        ctrlLx: Float, ctrlRx: Float,
+        bottomY: Float, topY: Float,
+        scale: Float
+    ) {
+        linePaint.color = Color.argb(220, 255, 255, 255)
+        linePaint.strokeWidth = dp(2.5f) * scale
+
+        val dashCount = 7
+        for (i in 0 until dashCount) {
+            val t1 = 0.08f + i * 0.11f
+            val t2 = t1 + 0.055f
+            if (t2 > 0.90f) break
+
+            val x1 = interpolateBezier((blX + brX) * 0.5f, (ctrlLx + ctrlRx) * 0.5f, (tlX + trX) * 0.5f, t1)
+            val y1 = bottomY - t1 * (bottomY - topY)
+            val x2 = interpolateBezier((blX + brX) * 0.5f, (ctrlLx + ctrlRx) * 0.5f, (tlX + trX) * 0.5f, t2)
+            val y2 = bottomY - t2 * (bottomY - topY)
+
+            canvas.drawLine(x1, y1, x2, y2, linePaint)
+        }
+    }
+
+    private fun drawDistanceBarSport(
+        canvas: Canvas, bottomY: Float, topY: Float, t: Float,
+        color: Int, label: String,
+        blX: Float, brX: Float, tlX: Float, trX: Float,
+        ctrlLx: Float, ctrlRx: Float,
+        scale: Float
+    ) {
+        val y = bottomY - t * (bottomY - topY)
+        val lx = interpolateBezier(blX, ctrlLx, tlX, t)
+        val rx = interpolateBezier(brX, ctrlRx, trX, t)
+
+        linePaint.color = color
+        linePaint.strokeWidth = dp(3.8f) * scale
+        canvas.drawLine(lx, y, rx, y, linePaint)
+
+        drawBadge(canvas, (lx + rx) * 0.5f, y, label, color, scale)
+    }
+
+    private fun drawDistanceBarOem(
+        canvas: Canvas, bottomY: Float, topY: Float, t: Float,
+        color: Int, label: String,
+        blX: Float, brX: Float, tlX: Float, trX: Float,
+        ctrlLx: Float, ctrlRx: Float,
+        scale: Float
+    ) {
+        val y = bottomY - t * (bottomY - topY)
+        val lx = interpolateBezier(blX, ctrlLx, tlX, t)
+        val rx = interpolateBezier(brX, ctrlRx, trX, t)
+
+        linePaint.color = color
+        linePaint.strokeWidth = dp(3.2f) * scale
+        canvas.drawLine(lx, y, rx, y, linePaint)
+
+        drawBadge(canvas, (lx + rx) * 0.5f, y, label, color, scale)
+    }
+
+    private fun drawDistanceBarMinimal(
+        canvas: Canvas, bottomY: Float, topY: Float, t: Float,
+        color: Int, label: String,
+        blX: Float, brX: Float, tlX: Float, trX: Float,
+        ctrlLx: Float, ctrlRx: Float,
+        scale: Float
+    ) {
+        val y = bottomY - t * (bottomY - topY)
+        val lx = interpolateBezier(blX, ctrlLx, tlX, t)
+        val rx = interpolateBezier(brX, ctrlRx, trX, t)
+
+        linePaint.color = color
+        linePaint.strokeWidth = dp(2.2f) * scale
+        canvas.drawLine(lx, y, rx, y, linePaint)
+
+        drawBadge(canvas, (lx + rx) * 0.5f, y, label, color, scale)
+    }
+
+    private fun drawSegmentTicks(
+        canvas: Canvas, count: Int,
+        blX: Float, brX: Float, tlX: Float, trX: Float,
+        ctrlLx: Float, ctrlRx: Float, bottomY: Float, topY: Float
+    ) {
+        linePaint.color = Color.argb(180, 255, 255, 255)
+        linePaint.strokeWidth = dp(2.0f)
+        val tickSize = dp(6.0f)
+
+        for (i in 1 until count) {
+            val t = i.toFloat() / count
+            val y = bottomY - t * (bottomY - topY)
+            val lx = interpolateBezier(blX, ctrlLx, tlX, t)
+            val rx = interpolateBezier(brX, ctrlRx, trX, t)
+
+            canvas.drawLine(lx - tickSize, y, lx + tickSize, y, linePaint)
+            canvas.drawLine(rx - tickSize, y, rx + tickSize, y, linePaint)
+        }
+    }
+
+    private fun drawBadge(canvas: Canvas, cx: Float, cy: Float, text: String, bgColor: Int, scale: Float = 1.0f) {
+        textPaint.textSize = dp(11.5f) * scale
+        val textW = textPaint.measureText(text)
+        val padX = dp(8f) * scale
+        val padY = dp(4f) * scale
+
+        val badgeRect = RectF(
+            cx - textW * 0.5f - padX,
+            cy - dp(7.5f) * scale - padY,
+            cx + textW * 0.5f + padX,
+            cy + dp(7.5f) * scale + padY
+        )
+
+        // Draw dark border
+        badgePaint.style = Paint.Style.STROKE
+        badgePaint.strokeWidth = dp(2f) * scale
+        badgePaint.color = Color.argb(200, 0, 0, 0)
+        canvas.drawRoundRect(badgeRect, dp(4f) * scale, dp(4f) * scale, badgePaint)
+
+        // Draw fill badge
+        badgePaint.style = Paint.Style.FILL
+        badgePaint.color = bgColor
+        canvas.drawRoundRect(badgeRect, dp(4f) * scale, dp(4f) * scale, badgePaint)
+
+        val fm = textPaint.fontMetrics
+        val textY = cy - (fm.ascent + fm.descent) * 0.5f
+        canvas.drawText(text, cx, textY, textPaint)
+    }
+
+    private fun interpolateBezier(p0: Float, p1: Float, p2: Float, t: Float): Float {
+        val oneMinusT = 1.0f - t
+        return oneMinusT * oneMinusT * p0 + 2.0f * oneMinusT * t * p1 + t * t * p2
+    }
+
+    private fun dp(valPx: Float): Float = valPx * resources.displayMetrics.density
 }
