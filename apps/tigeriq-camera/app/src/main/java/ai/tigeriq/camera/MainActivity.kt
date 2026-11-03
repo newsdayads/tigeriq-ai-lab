@@ -16,6 +16,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -90,7 +91,34 @@ class MainActivity : AppCompatActivity() {
         usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
 
         initViews()
+        initOnlineUi()
         registerUsbReceiver()
+    }
+
+    private fun initOnlineUi() {
+        val status = findViewById<TextView>(R.id.tvOnlineStatus)
+        val pairing = findViewById<EditText>(R.id.editOnlinePairCode)
+        status.text = CameraOnlineBridge.status(this)
+        findViewById<Button>(R.id.btnPairOnline).setOnClickListener {
+            status.text = "Dang ghep doi..."
+            CameraOnlineBridge.pair(this, pairing.text.toString().trim()) { result ->
+                status.text = result
+                if (CameraOnlineBridge.isPaired(this)) pairing.text?.clear()
+            }
+        }
+        findViewById<Button>(R.id.btnSyncOnline).setOnClickListener {
+            status.text = "Dang gui log..."
+            CameraOnlineBridge.syncNow(this) { result -> status.text = result }
+        }
+        findViewById<Button>(R.id.btnCheckOnlineUpdate).setOnClickListener {
+            status.text = "Dang kiem tra / tai ban moi..."
+            CameraOnlineBridge.checkUpdate(this) { result -> status.text = result }
+        }
+        findViewById<Button>(R.id.btnInstallOnlineUpdate).setOnClickListener {
+            val result = CameraOnlineBridge.installReady(this)
+            status.text = result
+            Toast.makeText(this, result, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun registerUsbReceiver() {
@@ -117,6 +145,8 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         refreshAllPermissionStatuses()
         refreshUsbDeviceList()
+        findViewById<TextView>(R.id.tvOnlineStatus).text = CameraOnlineBridge.status(this)
+        CameraOnlineBridge.schedule(this)
         if (settings.isReverseAutoStart || settings.isFloatingEnabled) {
             FloatingCameraService.start(this)
         }

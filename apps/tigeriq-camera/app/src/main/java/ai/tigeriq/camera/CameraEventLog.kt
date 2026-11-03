@@ -35,6 +35,8 @@ object CameraEventLog {
         } catch (error: Exception) {
             Log.e(TAG, "Cannot write diagnostic log", error)
         }
+        // Non-blocking, authenticated upload; event recording never depends on network.
+        CameraOnlineBridge.onLogChanged(context)
     }
 
     fun read(context: Context, maxChars: Int = 32000): String =

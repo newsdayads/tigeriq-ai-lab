@@ -735,6 +735,85 @@
                     android:layout_marginBottom="10dp" />
 
                 <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="ONLINE PC01 / CAP NHAT TU DONG"
+                    android:textColor="#00E5FF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvOnlineStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Chua ghep doi voi PC01"
+                    android:textColor="#CBD5E1"
+                    android:textSize="11sp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="5dp" />
+
+                <EditText
+                    android:id="@+id/editOnlinePairCode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Ma ghep doi PC01 (9 chu so, chi mot lan)"
+                    android:textColor="#FFFFFF"
+                    android:textColorHint="#94A3B8"
+                    android:inputType="number"
+                    android:maxLength="9"
+                    android:singleLine="true"
+                    android:textSize="12sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <Button
+                        android:id="@+id/btnPairOnline"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="KET NOI PC01"
+                        android:textSize="11sp" />
+                    <Button
+                        android:id="@+id/btnSyncOnline"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="GUI LOG NGAY"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <Button
+                        android:id="@+id/btnCheckOnlineUpdate"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="CHECK BAN MOI"
+                        android:textSize="11sp" />
+                    <Button
+                        android:id="@+id/btnInstallOnlineUpdate"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="CAI BAN DA TAI"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Log gui tu dong qua HTTPS. App tu tai ban moi va bao cai khi xe dang do."
+                    android:textColor="#94A3B8"
+                    android:textSize="10sp"
+                    android:paddingBottom="8dp" />
+
+                <TextView
                     android:id="@+id/tvCameraEventLog"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
