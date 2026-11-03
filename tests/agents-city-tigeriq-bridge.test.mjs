@@ -207,6 +207,49 @@ test('live projection fails closed on stale data and rejects arbitrary origins',
   assert.deepEqual(calls,[{url:CORE_STATUS_URL,method:'GET',redirect:'error'}]);
 });
 
+test('live source retries one transient HTTP failure and remains bounded',async()=>{
+  let calls=0;
+  const valid=await fetchLiveCoreSnapshot({
+    now:NOW,retryDelayMs:0,
+    fetchImpl:async()=>{
+      calls+=1;
+      if(calls===1)return new Response('{}',{status:503});
+      return new Response(JSON.stringify(liveSource()),{status:200});
+    }
+  });
+  assert.equal(calls,2);
+  assert.equal(valid.totalActiveWorkers,2);
+
+  calls=0;
+  await assert.rejects(fetchLiveCoreSnapshot({
+    attempts:2,retryDelayMs:0,
+    fetchImpl:async()=>{calls+=1;return new Response('{}',{status:503});}
+  }),/CORE_LIVE_HTTP_UNAVAILABLE/);
+  assert.equal(calls,2);
+});
+
+test('readiness tolerates one transient Core live-status HTTP failure',async()=>{
+  let liveCalls=0;
+  const server=createAnimalCityServer({fetchImpl:async(url)=>{
+    if(url===CORE_URL){
+      return new Response(JSON.stringify(source(Date.now())),{status:200});
+    }
+    if(url===CORE_STATUS_URL){
+      liveCalls+=1;
+      if(liveCalls===1)return new Response('{}',{status:503});
+      return new Response(JSON.stringify(liveSource(Date.now())),{status:200});
+    }
+    throw new Error('UNEXPECTED_URL');
+  }});
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  try{
+    const ready=await fetch('http://127.0.0.1:'+server.address().port+'/ready');
+    assert.equal(ready.status,200);
+    assert.equal((await ready.json()).ok,true);
+    assert.equal(liveCalls,2);
+  }finally{await new Promise(resolve=>server.close(resolve))}
+});
+
 test('HTTP operational server exposes work orders, live workers, liveness and readiness only on loopback',async()=>{
   const server=createAnimalCityServer({fetchImpl:fetchBoth({now:Date.now()})});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
