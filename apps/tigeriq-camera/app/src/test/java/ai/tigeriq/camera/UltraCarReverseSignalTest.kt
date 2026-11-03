@@ -23,7 +23,11 @@ class UltraCarReverseSignalTest {
         assertFalse(service.contains("source=dynamic_broadcast"))
         val receiver = File("src/main/java/ai/tigeriq/camera/ReverseGearReceiver.kt").readText()
         assertTrue(receiver.contains("UltraCarReverseSignal.parse("))
-        assertTrue(receiver.contains("CameraActivity.launch("))
+        assertTrue(receiver.contains("FloatingCameraService.gear(context, true)"))
+        assertTrue(receiver.contains("FloatingCameraService.gear(context, false)"))
+        assertTrue(service.contains("cameraOverlay.show(findDexDisplay())"))
+        assertTrue(service.contains("cameraOverlay.hide()"))
+        assertFalse(receiver.contains("CameraActivity.launch("))
         assertTrue(receiver.contains("CameraActivity.dismissIfRunning("))
     }
 }

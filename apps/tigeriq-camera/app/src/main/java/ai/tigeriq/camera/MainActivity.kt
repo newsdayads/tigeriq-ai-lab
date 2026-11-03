@@ -100,18 +100,18 @@ class MainActivity : AppCompatActivity() {
         val pairing = findViewById<EditText>(R.id.editOnlinePairCode)
         status.text = CameraOnlineBridge.status(this)
         findViewById<Button>(R.id.btnPairOnline).setOnClickListener {
-            status.text = "Dang ghep doi..."
+            status.text = "Đang ghép đôi..."
             CameraOnlineBridge.pair(this, pairing.text.toString().trim()) { result ->
                 status.text = result
                 if (CameraOnlineBridge.isPaired(this)) pairing.text?.clear()
             }
         }
         findViewById<Button>(R.id.btnSyncOnline).setOnClickListener {
-            status.text = "Dang gui log..."
+            status.text = "Đang gửi log..."
             CameraOnlineBridge.syncNow(this) { result -> status.text = result }
         }
         findViewById<Button>(R.id.btnCheckOnlineUpdate).setOnClickListener {
-            status.text = "Dang kiem tra / tai ban moi..."
+            status.text = "Đang kiểm tra và tải bản mới..."
             CameraOnlineBridge.checkUpdate(this) { result -> status.text = result }
         }
         findViewById<Button>(R.id.btnInstallOnlineUpdate).setOnClickListener {
@@ -209,7 +209,7 @@ class MainActivity : AppCompatActivity() {
                     REQ_NOTIFICATION
                 )
             } else {
-                Toast.makeText(this, "Phiên bản Android này không yêu cầu quyền thông báo", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Phiên bản Android này không yêu cầu quyền thông báo.", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -248,15 +248,15 @@ class MainActivity : AppCompatActivity() {
                 }
                 settings.isFloatingEnabled = true
                 FloatingCameraService.start(this)
-                btnQuickToggleFloating.text = "Tắt Nút Nổi"
+                btnQuickToggleFloating.text = "Tắt nút nổi"
             } else {
                 settings.isFloatingEnabled = false
                 FloatingCameraService.stop(this)
-                btnQuickToggleFloating.text = "Bật Nút Nổi"
+                btnQuickToggleFloating.text = "Bật nút nổi"
             }
         }
 
-        btnQuickToggleFloating.text = if (settings.isFloatingEnabled) "Tắt Nút Nổi" else "Bật Nút Nổi"
+        btnQuickToggleFloating.text = if (settings.isFloatingEnabled) "Tắt nút nổi" else "Bật nút nổi"
         btnQuickToggleFloating.setOnClickListener {
             switchFloating.isChecked = !switchFloating.isChecked
         }
@@ -275,7 +275,7 @@ class MainActivity : AppCompatActivity() {
 
         switchInvertSteering.setOnCheckedChangeListener { _, isChecked ->
             settings.isSteeringInverted = isChecked
-            Toast.makeText(this, if (isChecked) "Đã đảo chiều bẻ lái" else "Hướng bẻ lái mặc định", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, if (isChecked) "Đã đảo hướng vạch lùi" else "Hướng vạch lùi mặc định", Toast.LENGTH_SHORT).show()
         }
 
         // Style Buttons (5 OEM & Futuristic Styles)
@@ -289,27 +289,27 @@ class MainActivity : AppCompatActivity() {
         btnStyleSport.setOnClickListener {
             settings.guidelineStyle = CameraSettings.STYLE_SPORT_OEM
             updateStyleButtonHighlight(CameraSettings.STYLE_SPORT_OEM)
-            Toast.makeText(this, "Đã chọn: Mẫu Sport OEM", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Đã chọn: Sport OEM", Toast.LENGTH_SHORT).show()
         }
         btnStylePorsche.setOnClickListener {
             settings.guidelineStyle = CameraSettings.STYLE_PORSCHE_GT
             updateStyleButtonHighlight(CameraSettings.STYLE_PORSCHE_GT)
-            Toast.makeText(this, "Đã chọn: Mẫu Porsche GT HUD", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Đã chọn: Porsche GT", Toast.LENGTH_SHORT).show()
         }
         btnStyleAudi.setOnClickListener {
             settings.guidelineStyle = CameraSettings.STYLE_AUDI_MATRIX
             updateStyleButtonHighlight(CameraSettings.STYLE_AUDI_MATRIX)
-            Toast.makeText(this, "Đã chọn: Mẫu Audi Matrix Cyber", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Đã chọn: Audi Matrix", Toast.LENGTH_SHORT).show()
         }
         btnStyleTesla.setOnClickListener {
             settings.guidelineStyle = CameraSettings.STYLE_TESLA_CYBER
             updateStyleButtonHighlight(CameraSettings.STYLE_TESLA_CYBER)
-            Toast.makeText(this, "Đã chọn: Mẫu Tesla Cyber Vision", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Đã chọn: Tesla Cyber", Toast.LENGTH_SHORT).show()
         }
         btnStyleMaybach.setOnClickListener {
             settings.guidelineStyle = CameraSettings.STYLE_LUXURY_GOLD
             updateStyleButtonHighlight(CameraSettings.STYLE_LUXURY_GOLD)
-            Toast.makeText(this, "Đã chọn: Mẫu Maybach Luxury Gold", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Đã chọn: Maybach Gold", Toast.LENGTH_SHORT).show()
         }
 
         // Scale Buttons
@@ -317,17 +317,17 @@ class MainActivity : AppCompatActivity() {
         btnScaleNormal.setOnClickListener {
             settings.guidelineScale = 1.0f
             updateScaleButtonHighlight(1.0f)
-            Toast.makeText(this, "Vạch lùi: Kích thước Chuẩn (1.0x)", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Vạch lùi: kích thước chuẩn (1,0×)", Toast.LENGTH_SHORT).show()
         }
         btnScaleLarge.setOnClickListener {
             settings.guidelineScale = 1.25f
             updateScaleButtonHighlight(1.25f)
-            Toast.makeText(this, "Vạch lùi: Kích thước To Rõ (1.25x)", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Vạch lùi: kích thước lớn (1,25×)", Toast.LENGTH_SHORT).show()
         }
         btnScaleWide.setOnClickListener {
             settings.guidelineScale = 1.45f
             updateScaleButtonHighlight(1.45f)
-            Toast.makeText(this, "Vạch lùi: Kích thước Cực Đại (1.45x)", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Vạch lùi: kích thước rộng (1,45×)", Toast.LENGTH_SHORT).show()
         }
 
         // Manual foreground R/P window test; NOT a live vehicle gear signal.
@@ -335,28 +335,24 @@ class MainActivity : AppCompatActivity() {
             val displayId = DeXDisplayHelper.resolveTargetDisplay(this)?.displayId ?: -1
             CameraEventLog.record(this, "MANUAL_TEST", "R_OPEN_CLICK",
                 "direct_foreground_window | NOT_VEHICLE_SIGNAL | display=" + displayId)
-            val requested = CameraActivity.launch(this, displayId = displayId, reverseActive = true)
-            if (requested) {
-                finish() // No settings window left visible.
-            } else {
-                Toast.makeText(this, "Kh?ng m? ???c Camera. Ch?n G?I LOG.",
-                    Toast.LENGTH_LONG).show()
-            }
+            FloatingCameraService.gear(this,true)
+            Toast.makeText(this,"Đang mở cửa sổ Camera trên DeX.",Toast.LENGTH_SHORT).show()
         }
 
         btnSimulateReverseOff.setOnClickListener {
             CameraEventLog.record(this, "MANUAL_TEST", "P_CLOSE_CLICK",
                 "direct_window_close | NOT_VEHICLE_SIGNAL")
+            FloatingCameraService.gear(this,false)
             CameraActivity.dismissIfRunning(immediate = true)
             sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA).setPackage(packageName))
-            Toast.makeText(this, "?? g?i y?u c?u ??ng Camera. Xem log n?u ch?a ??ng.",
+            Toast.makeText(this, "Đã gửi lệnh đóng Camera.",
                 Toast.LENGTH_LONG).show()
         }
 
         btnRestartFloating.setOnClickListener {
             FloatingCameraService.stop(this)
             FloatingCameraService.start(this)
-            Toast.makeText(this, "Đã khởi động lại Nút nổi trên màn hình DeX", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Đã khởi động lại nút nổi trên DeX.", Toast.LENGTH_SHORT).show()
         }
 
         btnResetFloatingPos.setOnClickListener {
@@ -365,7 +361,7 @@ class MainActivity : AppCompatActivity() {
             settings.setFloatingPosition(dId, 40, 320)
             FloatingCameraService.stop(this)
             FloatingCameraService.start(this)
-            Toast.makeText(this, "Đã đưa Nút nổi về vị trí chuẩn mép trái", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Đã đặt lại vị trí nút nổi.", Toast.LENGTH_SHORT).show()
         }
 
         btnOpenCamera.setOnClickListener {
@@ -375,7 +371,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val tvBuildVersion: TextView? = findViewById(R.id.tvBuildVersion)
-        tvBuildVersion?.text = "• Bản dựng: TigerIQ Camera v${BuildConfig.VERSION_NAME}"
+        tvBuildVersion?.text = "Phiên bản: TigerIQ Camera v${BuildConfig.VERSION_NAME}"
         tvBuildVersion?.append("\n" + settings.getReverseDiagnostics())
         CameraEventLog.record(this, "APP", "SETTINGS_OPENED", "log_view_ready")
         val eventText: TextView = findViewById(R.id.tvCameraEventLog)
@@ -394,9 +390,9 @@ class MainActivity : AppCompatActivity() {
                 putExtra(Intent.EXTRA_TEXT, payload)
             }
             try {
-                startActivity(Intent.createChooser(send, "G?i nh?t k? Camera"))
+                startActivity(Intent.createChooser(send, "Chia sẻ nhật ký Camera"))
             } catch (error: Exception) {
-                Toast.makeText(this, "Kh?ng chia s? ???c: " + error.javaClass.simpleName,
+                Toast.makeText(this, "Không thể chia sẻ: " + error.javaClass.simpleName,
                     Toast.LENGTH_LONG).show()
             }
         }
@@ -442,11 +438,11 @@ class MainActivity : AppCompatActivity() {
         // 1. Camera permission
         val hasCamera = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         if (hasCamera) {
-            tvCameraPermStatus.text = "✓ ĐÃ CẤP QUYỀN CAMERA"
+            tvCameraPermStatus.text = "ĐÃ CẤP QUYỀN CAMERA"
             tvCameraPermStatus.setTextColor(0xFF34C759.toInt())
             btnGrantCamera.visibility = View.GONE
         } else {
-            tvCameraPermStatus.text = "✗ CHƯA CẤP QUYỀN"
+            tvCameraPermStatus.text = "CHƯA CẤP QUYỀN CAMERA"
             tvCameraPermStatus.setTextColor(0xFFFF3B30.toInt())
             btnGrantCamera.visibility = View.VISIBLE
         }
@@ -454,11 +450,11 @@ class MainActivity : AppCompatActivity() {
         // 2. Overlay permission
         val hasOverlay = Settings.canDrawOverlays(this)
         if (hasOverlay) {
-            tvOverlayPermStatus.text = "✓ ĐÃ CẤP QUYỀN HIỂN THỊ NỔI"
+            tvOverlayPermStatus.text = "ĐÃ CẤP QUYỀN CỬA SỔ NỔI"
             tvOverlayPermStatus.setTextColor(0xFF34C759.toInt())
             btnGrantOverlay.visibility = View.GONE
         } else {
-            tvOverlayPermStatus.text = "✗ CHƯA CẤP QUYỀN"
+            tvOverlayPermStatus.text = "CHƯA CẤP QUYỀN CỬA SỔ NỔI"
             tvOverlayPermStatus.setTextColor(0xFFFF3B30.toInt())
             btnGrantOverlay.visibility = View.VISIBLE
         }
@@ -469,11 +465,11 @@ class MainActivity : AppCompatActivity() {
         } else true
 
         if (hasNotification) {
-            tvNotificationPermStatus.text = "✓ ĐÃ CẤP QUYỀN THÔNG BÁO"
+            tvNotificationPermStatus.text = "ĐÃ CẤP QUYỀN THÔNG BÁO"
             tvNotificationPermStatus.setTextColor(0xFF34C759.toInt())
             btnGrantNotification.visibility = View.GONE
         } else {
-            tvNotificationPermStatus.text = "✗ CHƯA CẤP QUYỀN"
+            tvNotificationPermStatus.text = "CHƯA CẤP QUYỀN THÔNG BÁO"
             tvNotificationPermStatus.setTextColor(0xFFFFCC00.toInt())
             btnGrantNotification.visibility = View.VISIBLE
         }
@@ -507,7 +503,7 @@ class MainActivity : AppCompatActivity() {
 
             val titleView = TextView(this).apply {
                 val devName = device.productName ?: device.deviceName
-                text = "📷 [CAMERA UVC] $devName"
+                text = "CAMERA UVC: $devName"
                 setTextColor(0xFF00E5FF.toInt())
                 textSize = 13f
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -523,7 +519,7 @@ class MainActivity : AppCompatActivity() {
 
             val hasPerm = usbManager.hasPermission(device)
             val permStatusView = TextView(this).apply {
-                text = if (hasPerm) "✓ ĐÃ CẤP QUYỀN TRUY CẬP USB" else "✗ CHƯA CẤP QUYỀN TRUY CẬP USB"
+                text = if (hasPerm) "ĐÃ CẤP QUYỀN USB" else "CHƯA CẤP QUYỀN USB"
                 setTextColor(if (hasPerm) 0xFF34C759.toInt() else 0xFFFF3B30.toInt())
                 textSize = 11f
                 setPadding(0, 2, 0, 4)
@@ -533,7 +529,7 @@ class MainActivity : AppCompatActivity() {
 
             if (!hasPerm) {
                 val btnRequest = Button(this).apply {
-                    text = "Bấm xin quyền USB cho Camera này"
+                    text = "Cấp quyền USB cho Camera này"
                     setBackgroundColor(0xFF00E5FF.toInt())
                     setTextColor(Color.BLACK)
                     textSize = 11f

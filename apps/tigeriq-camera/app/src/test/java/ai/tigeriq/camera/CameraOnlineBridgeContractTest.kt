@@ -23,6 +23,12 @@ class CameraOnlineBridgeContractTest {
         assertTrue(bridge.contains("canRequestPackageInstalls"))
         assertFalse(bridge.contains("Runtime.getRuntime().exec"))
     }
+    @Test fun pairingAcceptsExactNineDigits() {
+        assertTrue(bridge.contains("Regex(\"[0-9]{9}\")"))
+        assertFalse(bridge.contains("Regex(\"M"))
+        assertFalse(bridge.contains("M? gh?p"))
+    }
+
     @Test fun backgroundUsesSystemScheduler() {
         assertTrue(bridge.contains("setPeriodic(15*60*1000L)"))
         assertTrue(bridge.contains("JobScheduler"))

@@ -216,8 +216,8 @@ class CameraActivity : AppCompatActivity() {
         } else {
             cardPermissionPrompt.visibility = View.VISIBLE
             val devName = device?.productName ?: device?.deviceName ?: "Camera UVC"
-            tvPromptTitle.text = "CẦN CẤP QUYỀN CHO: $devName"
-            tvPromptDesc.text = "Hệ thống cần quyền truy cập USB Host để hiển thị hình ảnh từ $devName."
+            tvPromptTitle.text = "CẦN CẤP QUYỀN: $devName"
+            tvPromptDesc.text = "Hệ thống cần quyền USB để hiển thị hình ảnh từ $devName."
         }
     }
 
@@ -249,7 +249,7 @@ class CameraActivity : AppCompatActivity() {
                 CameraSettings.STYLE_LUXURY_GOLD -> "Maybach Luxury Gold"
                 else -> "Sport OEM"
             }
-            tvStatusMessage.text = "Mẫu vạch: $styleName"
+            tvStatusMessage.text = "Kiểu vạch: $styleName"
             Toast.makeText(this, "Đã chọn: $styleName", Toast.LENGTH_SHORT).show()
             updateButtonStates()
         }
@@ -269,7 +269,7 @@ class CameraActivity : AppCompatActivity() {
             settings.isNightBoosterEnabled = nextState
             applyNightBooster(nextState)
             updateButtonStates()
-            tvStatusMessage.text = if (nextState) "Chế độ Ban đêm (Night Booster): BẬT" else "Chế độ Ban đêm: TẮT"
+            tvStatusMessage.text = if (nextState) "Tăng sáng ban đêm: BẬT" else "Tăng sáng ban đêm: TẮT"
             Toast.makeText(this, if (nextState) "Night Booster: BẬT" else "Night Booster: TẮT", Toast.LENGTH_SHORT).show()
         }
 
@@ -283,8 +283,8 @@ class CameraActivity : AppCompatActivity() {
                 parkAssistEngine?.stop()
             }
             updateButtonStates()
-            tvStatusMessage.text = if (nextState) "Cảnh báo khoảng cách Sonar: BẬT" else "Cảnh báo Sonar: TẮT"
-            Toast.makeText(this, if (nextState) "Âm thanh cảnh báo: BẬT" else "Âm thanh cảnh báo: TẮT", Toast.LENGTH_SHORT).show()
+            tvStatusMessage.text = if (nextState) "Âm thanh hỗ trợ: BẬT" else "Âm thanh hỗ trợ: TẮT"
+            Toast.makeText(this, if (nextState) "Âm thanh hỗ trợ: BẬT" else "Âm thanh hỗ trợ: TẮT", Toast.LENGTH_SHORT).show()
         }
 
         btnClose.setOnClickListener {
@@ -357,7 +357,7 @@ class CameraActivity : AppCompatActivity() {
     fun finishWithGrace() {
         cancelAutoDismiss()
         parkAssistEngine?.stop()
-        tvStatusMessage.text = "Đã rời số lùi. Đang tự tắt sau 3 giây…"
+        tvStatusMessage.text = "Đã rời chế độ Camera. Sẽ đóng sau 3 giây."
         autoDismissRunnable = Runnable {
             if (!isFinishing) finish()
         }

@@ -43,7 +43,7 @@ object CameraEventLog {
         try {
             synchronized(guard) {
                 val f = File(context.applicationContext.filesDir, FILE_NAME)
-                if (!f.exists()) "Chua co su kien. Hay thu R -> P/D khi xe dung yen."
+                if (!f.exists()) "Chưa có sự kiện. Thử mở và đóng Camera khi xe đang đỗ."
                 else f.readText(Charsets.UTF_8).takeLast(maxChars)
             }
         } catch (error: Exception) {

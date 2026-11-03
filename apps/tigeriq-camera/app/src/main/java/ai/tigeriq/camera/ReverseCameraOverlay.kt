@@ -1,0 +1,115 @@
+package ai.tigeriq.camera
+
+import android.app.Service
+import android.content.Context
+import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
+import android.os.Build
+import android.provider.Settings
+import android.view.Display
+import android.view.Gravity
+import android.view.TextureView
+import android.view.WindowManager
+import android.widget.Button
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.hardware.usb.UsbDevice
+
+/**
+ * Actual TYPE_APPLICATION_OVERLAY window on Samsung DeX.
+ * Unlike background startActivity(), WindowManager.addView() either succeeds or errors.
+ * It displays UVC preview; does not independently know the physical gear.
+ */
+class ReverseCameraOverlay(private val owner: Service) {
+    private var wm: WindowManager? = null
+    private var content: FrameLayout? = null
+    private var camera: UsbUvcManager? = null
+    val isVisible: Boolean get() = content != null
+
+    fun show(display: Display?): Boolean {
+        if (content != null) return true
+        if (!Settings.canDrawOverlays(owner)) {
+            CameraEventLog.record(owner, "WINDOW", "OVERLAY_PERMISSION_MISSING")
+            return false
+        }
+        try {
+            val displayContext = if (display != null) owner.createDisplayContext(display) else owner
+            val ctx: Context =
+                if (Build.VERSION.SDK_INT >= 31) {
+                    try { displayContext.createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null) }
+                    catch (_: Throwable) { displayContext }
+                } else displayContext
+            val manager = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            val dm = ctx.resources.displayMetrics
+            val scale = dm.density
+            val width = (dm.widthPixels * .70f).toInt().coerceIn((320*scale).toInt(), (990*scale).toInt())
+            val height = (dm.heightPixels * .68f).toInt().coerceIn((260*scale).toInt(), (590*scale).toInt())
+            val root = FrameLayout(ctx)
+            val border = GradientDrawable().apply {
+                setColor(Color.rgb(13, 21, 35))
+                cornerRadius = 14f * scale
+                setStroke((2*scale).toInt().coerceAtLeast(1),Color.rgb(0,210,230))
+            }
+            root.background=border
+            val column=LinearLayout(ctx).apply {
+                orientation=LinearLayout.VERTICAL
+                setPadding((8*scale).toInt(),(6*scale).toInt(),(8*scale).toInt(),(8*scale).toInt())
+            }
+            val titleBar=LinearLayout(ctx).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
+            val title=TextView(ctx).apply{ text="TigerIQ Camera - USB";textSize=15f;setTextColor(Color.WHITE) }
+            val close=Button(ctx).apply{text="ĐÓNG";textSize=13f;setOnClickListener{hide()}}
+            titleBar.addView(title,LinearLayout.LayoutParams(0,(45*scale).toInt(),1f))
+            titleBar.addView(close,LinearLayout.LayoutParams((90*scale).toInt(),(46*scale).toInt()))
+            val texture=TextureView(ctx).apply{setBackgroundColor(Color.BLACK)}
+            val status=TextView(ctx).apply {
+                text="Đang kết nối Camera UVC..."
+                textSize=12f
+                setTextColor(Color.LTGRAY)
+            }
+            column.addView(titleBar)
+            column.addView(texture,LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,0,1f))
+            column.addView(status,LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,(30*scale).toInt()))
+            root.addView(column,FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,FrameLayout.LayoutParams.MATCH_PARENT))
+            val params=WindowManager.LayoutParams(width,height,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT).apply {gravity=Gravity.CENTER}
+            manager.addView(root,params)
+            this.wm=manager
+            this.content=root
+            CameraEventLog.record(owner,"WINDOW","OVERLAY_VISIBLE",
+                "display="+(display?.displayId ?: 0)+" size="+width+"x"+height)
+            try {
+                val helper=UsbUvcManager(owner,texture,
+                    onStatus={message,_ -> status.post { status.text=message }},
+                    onPermissionRequired={_:UsbDevice,_:Boolean -> })
+                camera=helper
+                helper.start()
+            } catch(t:Throwable) {
+                CameraEventLog.record(owner,"WINDOW","OVERLAY_CAMERA_FAILED",t.javaClass.simpleName)
+                status.text="Lỗi Camera USB: "+t.javaClass.simpleName
+            }
+            return true
+        } catch(t:Throwable) {
+            CameraEventLog.record(owner,"WINDOW","OVERLAY_OPEN_FAILED",t.javaClass.simpleName)
+            hide()
+            return false
+        }
+    }
+
+    fun hide() {
+        try{camera?.release()}catch(_ : Throwable){}
+        camera=null
+        val view=content
+        content=null
+        if(view!=null){
+            try {wm?.removeViewImmediate(view)}catch(_:Throwable){}
+            CameraEventLog.record(owner,"WINDOW","OVERLAY_CLOSED")
+        }
+        wm=null
+    }
+}

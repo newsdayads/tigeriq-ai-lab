@@ -38,6 +38,21 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
         private const val CHANNEL_ID = "tigeriq_camera_floating"
         private const val NOTIFICATION_ID = 1001
         const val ACTION_USB_REFRESH = "ai.tigeriq.camera.action.USB_REFRESH"
+        const val ACTION_GEAR_ON = "ai.tigeriq.camera.action.GEAR_OVERLAY_ON"
+        const val ACTION_GEAR_OFF = "ai.tigeriq.camera.action.GEAR_OVERLAY_OFF"
+
+        fun gear(context: Context, on: Boolean) {
+            val intent = Intent(context, FloatingCameraService::class.java)
+                .setAction(if (on) ACTION_GEAR_ON else ACTION_GEAR_OFF)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                    context.startForegroundService(intent)
+                else context.startService(intent)
+            } catch(t: Throwable) {
+                CameraEventLog.record(context, "WINDOW", "GEAR_SERVICE_START_FAILED",t.javaClass.simpleName)
+            }
+        }
+
 
         fun start(context: Context) {
             val intent = Intent(context, FloatingCameraService::class.java)
@@ -60,6 +75,8 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     }
 
     private lateinit var settings: CameraSettings
+    private lateinit var cameraOverlay: ReverseCameraOverlay
+
     private val handler = Handler(Looper.getMainLooper())
     private var displayManager: DisplayManager? = null
     private var usbManager: UsbManager? = null
@@ -76,18 +93,11 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     private var isWatcherInitialized = false
     // Single pending open mirrors original UltraCar v1.0.17.
     private val pendingUsbOpen = Runnable {
-        val display = findDexDisplay()?.displayId ?: -1
-        CameraEventLog.record(this, "ULTRACAR_USB", "AUTO_OPEN_EXECUTING", "display=" + display)
-        val dispatched = CameraActivity.launch(this, displayId = display, reverseActive = true)
-        if (!dispatched) {
-            CameraEventLog.record(this, "GEAR_SOURCE", "OPEN_DISPATCH_FAILED",
-                "source=service")
-        } else {
-            handler.postDelayed({
-                CameraEventLog.record(this, "GEAR_SOURCE",
-                    if (CameraActivity.isRunning()) "WINDOW_VISIBLE" else "WINDOW_NOT_VISIBLE",
-                    "source=service | Android_background_launch_may_be_denied")
-            }, 1500L)
+        CameraEventLog.record(this, "ULTRACAR_USB", "AUTO_OPEN_EXECUTING",
+            "source=usb_not_proven_gear")
+        if (!cameraOverlay.show(findDexDisplay())) {
+            // DeX may deny overlay on a secondary display; retry default display.
+            cameraOverlay.show(null)
         }
     }
     private fun openFromUsb(source: String) {
@@ -98,6 +108,7 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     private fun closeFromUsb(source: String) {
         handler.removeCallbacks(pendingUsbOpen)
         CameraEventLog.record(this, "ULTRACAR_USB", "CLOSE_NOW", source)
+        cameraOverlay.hide()
         CameraActivity.dismissIfRunning(immediate = true)
         sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA).setPackage(packageName))
     }
@@ -111,6 +122,7 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     override fun onCreate() {
         super.onCreate()
         settings = CameraSettings(this)
+        cameraOverlay = ReverseCameraOverlay(this)
         usbManager = getSystemService(Context.USB_SERVICE) as? UsbManager
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
@@ -128,6 +140,17 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when(intent?.action) {
+            ACTION_GEAR_ON -> {
+                CameraEventLog.record(this,"WINDOW","GEAR_OVERLAY_OPEN_REQUEST","manual_or_broadcast")
+                handler.removeCallbacks(pendingUsbOpen)
+                if (!cameraOverlay.show(findDexDisplay())) cameraOverlay.show(null)
+            }
+            ACTION_GEAR_OFF -> {
+                CameraEventLog.record(this,"WINDOW","GEAR_OVERLAY_CLOSE_REQUEST")
+                closeFromUsb("gear_off_action")
+            }
+        }
         updateFloatingView()
         if (intent?.action == ACTION_USB_REFRESH) {
             handler.postDelayed({ checkCameraPresence() }, 120L)
@@ -239,8 +262,11 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
                 " video_present=" + (matchedKey != null))
             CameraEventLog.record(this, "GEAR_SOURCE", "USB_DESCRIPTORS",
                 usbSnapshot(devices))
-            // Cold-start open only for a recognized/learned video camera, not a generic hub.
-            if (matchedKey != null) openFromUsb("recognized_camera_at_start")
+            // USB present at startup is not physical R. The capture card can
+            // remain enumerated while the vehicle is in P/N/D.
+            // Only a real gear broadcast or actual USB transition may open it.
+            if (matchedKey != null) CameraEventLog.record(this, "GEAR_SOURCE",
+                "USB_CONNECTED_NOT_GEAR", "cold_start_suppressed")
             return
         }
 
@@ -443,15 +469,16 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
                             }
                         } else {
                             // Tap (< 0.5s): Toggle Camera Window ON / OFF
-                            if (CameraActivity.isRunning()) {
+                            if (cameraOverlay.isVisible || CameraActivity.isRunning()) {
                                 Log.i(TAG, "Floating button TAP -> Camera running, closing immediately")
+                                cameraOverlay.hide()
                                 CameraActivity.dismissIfRunning(immediate = true)
                                 try {
                                     sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA))
                                 } catch (_: Throwable) {}
                             } else {
                                 Log.i(TAG, "Floating button TAP -> Camera not running, launching camera")
-                                CameraActivity.launch(this, displayId = displayId, reverseActive = false)
+                                if (!cameraOverlay.show(findDexDisplay())) cameraOverlay.show(null)
                             }
                         }
                     }
@@ -493,7 +520,7 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     private fun buildNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText("Nút nổi Camera đang sẵn sàng trên DeX")
+            .setContentText("N?t Camera n?i ?? s?n s?ng tr?n DeX")
             .setSmallIcon(R.drawable.ic_camera_floating)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
@@ -517,6 +544,7 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     }
 
     override fun onDestroy() {
+        cameraOverlay.hide()
         handler.removeCallbacks(usbWatcherRunnable)
         handler.removeCallbacks(pendingUsbOpen)
         displayManager?.unregisterDisplayListener(this)

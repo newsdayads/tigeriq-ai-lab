@@ -1,6 +1,5 @@
 package ai.tigeriq.camera
 
-import android.app.Activity
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -29,7 +28,7 @@ import java.util.Locale
  * Provides instant preview, automatic USB permission negotiation, and safe lifecycle recovery.
  */
 class UsbUvcManager(
-    private val activity: Activity,
+    private val activity: Context,
     private val textureView: TextureView,
     private val onStatus: (message: String, isConnected: Boolean) -> Unit,
     private val onPermissionRequired: (device: UsbDevice, hasPermission: Boolean) -> Unit
@@ -118,7 +117,7 @@ class UsbUvcManager(
                     if (device != null) {
                         onPermissionRequired(device, granted)
                         if (granted) {
-                            onStatus("Đã được cấp quyền USB. Đang khởi động camera…", false)
+                            onStatus("Đã cấp quyền USB. Đang khởi động Camera.", false)
                             mainHandler.post {
                                 try {
                                     cameraHelper?.selectDevice(device)
@@ -127,7 +126,7 @@ class UsbUvcManager(
                                 }
                             }
                         } else {
-                            onStatus("Quyền truy cập USB bị từ chối", false)
+                            onStatus("Quyền truy cập USB bị từ chối.", false)
                         }
                     }
                 }
@@ -199,10 +198,10 @@ class UsbUvcManager(
         if (isRequested) return
         isRequested = true
         Log.i(TAG, "Starting UVC Camera helper...")
-        onStatus("Đang khởi động kết nối Camera USB…", false)
+        onStatus("Đang khởi động kết nối Camera USB.", false)
 
         try {
-            UVCUtils.init(activity.application)
+            UVCUtils.init(activity.applicationContext as android.app.Application)
         } catch (t: Throwable) {
             Log.w(TAG, "UVCUtils init error", t)
         }
@@ -220,7 +219,7 @@ class UsbUvcManager(
         if (uvcTarget != null) {
             selectDevice(uvcTarget)
         } else {
-            onStatus("Đang chờ Camera UVC qua USB Host…", false)
+            onStatus("Đang chờ Camera UVC qua USB.", false)
         }
     }
 
@@ -235,7 +234,7 @@ class UsbUvcManager(
         }
         releasePreview()
         selectedDevice = null
-        onStatus("Camera đã đóng", false)
+        onStatus("Camera đã dừng.", false)
     }
 
     fun release() {
@@ -269,7 +268,7 @@ class UsbUvcManager(
         onPermissionRequired(device, hasPerm)
 
         if (!hasPerm) {
-            onStatus("Đã phát hiện Camera. Đang xin quyền USB…", false)
+            onStatus("Đã phát hiện Camera. Đang xin quyền USB.", false)
             requestUsbPermissionDirectly(device)
             try {
                 cameraHelper?.selectDevice(device)
@@ -280,7 +279,7 @@ class UsbUvcManager(
         }
 
         try {
-            onStatus("Đã có quyền USB. Đang mở Camera…", false)
+            onStatus("Đã có quyền USB. Đang mở Camera.", false)
             cameraHelper?.selectDevice(device)
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to select device", t)
@@ -294,7 +293,7 @@ class UsbUvcManager(
         val usbManager = activity.getSystemService(Context.USB_SERVICE) as UsbManager
         if (usbManager.hasPermission(target)) {
             onPermissionRequired(target, true)
-            onStatus("Đã có quyền USB. Đang kết nối…", false)
+            onStatus("Đã có quyền USB. Đang kết nối.", false)
             cameraHelper?.selectDevice(target)
             return
         }
@@ -329,7 +328,7 @@ class UsbUvcManager(
             isPreviewStarted = true
             previewSession++
             verifyFrameArrival(previewSession)
-            onStatus("Camera UVC đang hoạt động", true)
+            onStatus("Camera UVC đang hoạt động.", true)
             selectedDevice?.let { onPermissionRequired(it, true) }
             Log.i(TAG, "UVC preview successfully started")
         } catch (t: Throwable) {
@@ -355,7 +354,7 @@ class UsbUvcManager(
                 cameraHelper?.openCamera()
             } catch (t: Throwable) {
                 Log.e(TAG, "Failed to open camera", t)
-                mainHandler.post { onStatus("Không thể mở Camera", false) }
+                mainHandler.post { onStatus("Không thể mở Camera.", false) }
             }
         }
     }
@@ -378,7 +377,7 @@ class UsbUvcManager(
             if (device == selectedDevice) {
                 releasePreview()
                 selectedDevice = null
-                onStatus("Camera UVC đã đóng — đang chờ kết nối lại", false)
+                onStatus("Camera UVC đã dừng. Đang chờ kết nối lại.", false)
             }
         }
     }
@@ -390,7 +389,7 @@ class UsbUvcManager(
             if (isCamera) {
                 releasePreview()
                 selectedDevice = null
-                onStatus("USB Camera ngắt kết nối (Đã về P/D)", false)
+                onStatus("USB Camera mất kết nối (không xác định số xe).", false)
                 val settings = CameraSettings(activity)
                 if (settings.isReverseImmediateClose && activity is CameraActivity && !activity.isFinishing) {
                     Log.i(TAG, "Auto-closing CameraActivity on Device Close (P/D disengaged)")
@@ -407,7 +406,7 @@ class UsbUvcManager(
             if (isCamera) {
                 releasePreview()
                 selectedDevice = null
-                onStatus("Camera ngắt nguồn đèn lùi (Đã về P/D) — Đang đóng…", false)
+                onStatus("Camera USB ngắt kết nối (không xác định P/D).", false)
                 val settings = CameraSettings(activity)
                 if (settings.isReverseImmediateClose && activity is CameraActivity && !activity.isFinishing) {
                     Log.i(TAG, "Auto-closing CameraActivity on USB Detach (P/D disengaged)")
@@ -422,7 +421,7 @@ class UsbUvcManager(
         mainHandler.post {
             if (isRequested && device == selectedDevice) {
                 onPermissionRequired(device, false)
-                onStatus("Quyền truy cập USB bị từ chối", false)
+                onStatus("Quyền truy cập USB bị từ chối.", false)
             }
         }
     }

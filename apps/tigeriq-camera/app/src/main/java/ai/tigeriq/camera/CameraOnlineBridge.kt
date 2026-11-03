@@ -44,8 +44,8 @@ object CameraOnlineBridge {
     fun isPaired(c: Context) = !prefs(c).getString("token", "").isNullOrEmpty()
     fun readyVersion(c: Context): Int = prefs(c).getInt("ready_code", 0)
     fun status(c: Context): String =
-        if (isPaired(c)) "?? gh?p ??i PC01. Log g?i t? ??ng khi c? m?ng."
-        else "Ch?a gh?p ??i PC01 (m? d?ng m?t l?n)."
+        if (isPaired(c)) "Đã kết nối PC01. Nhật ký tự gửi khi có mạng."
+        else "Chưa ghép đôi với PC01. Nhập mã dùng một lần."
 
     private fun request(route: String, token: String?, data: JSONObject? = null): Pair<Int, ByteArray> {
         require(route.startsWith("/v1/") && !route.contains(".."))
@@ -84,24 +84,24 @@ object CameraOnlineBridge {
 
     fun pair(context: Context, code: String, done: (String) -> Unit) {
         val app = context.applicationContext
-        if (!Regex("[0-9]{9}").matches(code)) { done("M? gh?p ??i c?n ??ng 9 ch? s?.");return }
+        if (!Regex("[0-9]{9}").matches(code)) { done("Mã ghép đôi phải gồm đúng 9 chữ số.");return }
         io.execute {
             val result = try {
                 val (status, bytes) = request("/v1/pair", null, JSONObject().put("code", code))
-                if (status != 200) "Gh?p ??i b? t? ch?i (HTTP " + status + ")."
+                if (status != 200) "Mã ghép đôi không đúng, đã hết hạn hoặc bị khóa (HTTP " + status + ")."
                 else {
                     val obj = json(bytes)
                     val token = obj.optString("token")
                     val id = obj.optString("id")
-                    if (token.length < 35 || id.length < 10) "Ph?n h?i gh?p ??i kh?ng h?p l?."
+                    if (token.length < 35 || id.length < 10) "Phản hồi ghép đôi không hợp lệ."
                     else {
                         prefs(app).edit().putString("token", token).putString("device_id", id)
                             .putLong("cursor", 0L).putLong("ack", 0L).apply()
                         schedule(app)
-                        "?? k?t n?i PC01. T? g?i log v? t?i c?p nh?t."
+                        "Đã kết nối PC01. Tự gửi nhật ký và tải bản mới."
                     }
                 }
-            } catch (t: Throwable) { "PC01 ch?a truy c?p ???c: " + t.javaClass.simpleName }
+            } catch (t: Throwable) { "Chưa kết nối được PC01: " + t.javaClass.simpleName }
             main.post { done(result) }
             if (isPaired(app)) onLogChanged(app)
         }
@@ -132,20 +132,20 @@ object CameraOnlineBridge {
     fun syncNow(context: Context, done:(String)->Unit) {
         val app=context.applicationContext
         io.execute {
-            val result=try{flushInternal(app)}catch(t:Throwable){"Kh?ng ??ng b?: "+t.javaClass.simpleName}
+            val result=try{flushInternal(app)}catch(t:Throwable){"Chưa đồng bộ được: "+t.javaClass.simpleName}
             main.post{done(result)}
         }
     }
 
     private fun flushInternal(context:Context):String {
         val token=prefs(context).getString("token","") ?: ""
-        if(token.isEmpty())return "Ch?a gh?p ??i."
+        if(token.isEmpty())return "Chưa ghép đôi PC01."
         val file=File(context.filesDir,"camera_events.log")
-        if(!file.exists())return "Ch?a c? log."
+        if(!file.exists())return "Chưa có nhật ký."
         val raw=file.readBytes()
         var pos=prefs(context).getLong("cursor",0L).toInt()
         if(pos>raw.size||pos<0) pos=0  // bounded file rotation
-        if(pos==raw.size)return "Log ?? ??ng b?."
+        if(pos==raw.size)return "Nhật ký đã đồng bộ."
         var end=(pos+16_384).coerceAtMost(raw.size)
         if(end<raw.size) {
             while(end>pos && raw[end-1]!='\n'.code.toByte())end--
@@ -155,11 +155,11 @@ object CameraOnlineBridge {
         val seq=prefs(context).getLong("ack",0L)+1
         val (code,bytes)=request("/v1/events",token,
             JSONObject().put("seq",seq).put("events",payload))
-        if(code!=200)return "G?i log HTTP "+code
+        if(code!=200)return "Gửi nhật ký HTTP "+code
         val ack=json(bytes).optLong("ack",-1L)
-        if(ack!=seq)return "ACK kh?ng kh?p."
+        if(ack!=seq)return "Máy chủ trả ACK không khớp."
         prefs(context).edit().putLong("cursor",end.toLong()).putLong("ack",ack).apply()
-        return "?? g?i log ??n PC01, phi?n "+ack
+        return "Đã gửi nhật ký đến PC01, phiên "+ack
     }
 
     fun backgroundSync(context:Context,done:()->Unit) {
@@ -176,7 +176,7 @@ object CameraOnlineBridge {
     fun checkUpdate(context:Context,done:(String)->Unit) {
         val app=context.applicationContext
         io.execute{
-            val result=try{checkUpdateInternal(app)}catch(t:Throwable){"C?p nh?t ch?a s?n s?ng: "+t.javaClass.simpleName}
+            val result=try{checkUpdateInternal(app)}catch(t:Throwable){"Chưa kiểm tra được cập nhật: "+t.javaClass.simpleName}
             main.post{done(result)}
         }
     }
@@ -211,17 +211,17 @@ object CameraOnlineBridge {
 
     private fun checkUpdateInternal(context:Context):String {
         val token=prefs(context).getString("token","") ?: ""
-        if(token.isEmpty())return "Ch?a gh?p ??i."
+        if(token.isEmpty())return "Chưa ghép đôi PC01."
         prefs(context).edit().putLong("last_update_check",System.currentTimeMillis()).apply()
         val (code,bytes)=request("/v1/update",token)
-        if(code!=200)return "Kh?ng l?y ???c b?n m?i HTTP "+code
-        val latest=json(bytes).optJSONObject("latest") ?: return "Ch?a ph?t h?nh b?n m?i."
+        if(code!=200)return "Không lấy được bản mới, HTTP "+code
+        val latest=json(bytes).optJSONObject("Chưa phát hành bản mới.") ?: return "Ch?a ph?t h?nh b?n m?i."
         val version=latest.optInt("versionCode")
-        if(version<=BuildConfig.VERSION_CODE)return "?ang d?ng b?n m?i nh?t."
+        if(version<=BuildConfig.VERSION_CODE)return "Đang dùng phiên bản mới nhất."
         val expected=latest.optString("sha256")
         val size=latest.optLong("bytes",-1)
         if(!Regex("[a-f0-9]{64}").matches(expected)||size !in 100_000..60_000_000L)
-            return "Manifest kh?ng h?p l?."
+            return "Thông tin bản mới không hợp lệ."
         val target=File(context.cacheDir,"updates/TigerIQ_Camera_"+version+".apk")
         target.parentFile?.mkdirs()
         if(!target.exists()||target.length()!=size||hexSha(target)!=expected){
@@ -230,7 +230,7 @@ object CameraOnlineBridge {
             conn.instanceFollowRedirects=false;conn.connectTimeout=8000;conn.readTimeout=25_000
             conn.setRequestProperty("Authorization","Bearer "+token)
             try {
-                if(conn.responseCode!=200)return "T?i APK l?i HTTP "+conn.responseCode
+                if(conn.responseCode!=200)return "Tải APK lỗi HTTP "+conn.responseCode
                 val temp=File(target.absolutePath+".download.apk")
                 temp.outputStream().use { output ->
                     conn.inputStream.use { input ->
@@ -244,28 +244,28 @@ object CameraOnlineBridge {
                     }
                 }
                 if(temp.length()!=size||hexSha(temp)!=expected){temp.delete();return "APK sai SHA-256."}
-                if(!verifyApk(context,temp,version)){temp.delete();return "APK sai ch? k? ho?c package."}
+                if(!verifyApk(context,temp,version)){temp.delete();return "APK sai chữ ký hoặc tên gói."}
                 if(target.exists())target.delete()
-                if(!temp.renameTo(target)){temp.delete();return "Kh?ng l?u ???c APK."}
+                if(!temp.renameTo(target)){temp.delete();return "Không lưu được APK."}
             }finally {conn.disconnect()}
         }
-        if(!verifyApk(context,target,version))return "Ki?m tra ch? k? th?t b?i."
+        if(!verifyApk(context,target,version))return "Kiểm tra chữ ký thất bại."
         prefs(context).edit().putInt("ready_code",version).putString("ready_path",target.absolutePath).apply()
         notifyAvailable(context,version)
-        return "?? t?i b?n "+latest.optString("versionName")+" v? x?c minh SHA/ch? k?."
+        return "Đã tải bản "+latest.optString("versionName")+" v? x?c minh SHA/ch? k?."
     }
 
     private fun notifyAvailable(context:Context,version:Int){
         val nm=context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channel="camera_online_update"
         if(Build.VERSION.SDK_INT>=26)nm.createNotificationChannel(
-            NotificationChannel(channel,"C?p nh?t TigerIQ Camera",NotificationManager.IMPORTANCE_DEFAULT))
+            NotificationChannel(channel,"Cập nhật TigerIQ Camera",NotificationManager.IMPORTANCE_DEFAULT))
         val intent=Intent(context,MainActivity::class.java)
         val pending=PendingIntent.getActivity(context,343,intent,PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val notification=NotificationCompat.Builder(context,channel)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("TigerIQ Camera c? b?n c?p nh?t")
-            .setContentText("?? t?i v? ki?m tra v"+version+". M? app ?? c?i khi xe ?ang ??.")
+            .setContentTitle("TigerIQ Camera có phiên bản mới")
+            .setContentText("?? t?i v? ki?m tra v"+version+". Mở ứng dụng để cài khi xe đang đỗ.")
             .setAutoCancel(true).setContentIntent(pending).build()
         try{nm.notify(343,notification)}catch(_ : Throwable){}
     }
@@ -274,11 +274,11 @@ object CameraOnlineBridge {
         val code=readyVersion(activity)
         val file=File(prefs(activity).getString("ready_path","") ?: "")
         if(code<=BuildConfig.VERSION_CODE||!file.isFile||!verifyApk(activity,file,code))
-            return "Ch?a c? APK c?p nh?t ?? x?c minh."
+            return "Chưa có APK mới đã xác minh."
         if(Build.VERSION.SDK_INT>=26&&!activity.packageManager.canRequestPackageInstalls()){
             activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                 Uri.parse("package:"+activity.packageName)))
-            return "C?p quy?n c?i ?ng d?ng r?i b?m C?I l?i."
+            return "Cấp quyền cài ứng dụng rồi nhấn CÀI lại."
         }
         return try{
             val uri=FileProvider.getUriForFile(activity,activity.packageName+".fileprovider",file)
@@ -287,7 +287,7 @@ object CameraOnlineBridge {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             activity.startActivity(view)
-            "?? m? tr?nh c?i Android. Ch? x?c nh?n khi xe ?ang ??."
-        }catch(t:Throwable){"Tr?nh c?i kh?ng m? ???c: "+t.javaClass.simpleName}
+            "Đã mở trình cài Android. Chỉ xác nhận khi xe đang đỗ."
+        }catch(t:Throwable){"Không mở được trình cài: "+t.javaClass.simpleName}
     }
 }

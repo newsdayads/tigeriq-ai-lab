@@ -10,7 +10,8 @@ class OriginalUltraCarParityTest {
     @Test fun referenceUsbPolling() {
         assertTrue(service.contains("postDelayed(this, 350L)"))
         assertTrue(service.contains("postDelayed(pendingUsbOpen, 400L)"))
-        assertTrue(service.contains("openFromUsb(\"recognized_camera_at_start\")"))
+        assertFalse(service.contains("openFromUsb(\"recognized_camera_at_start\")"))
+        assertTrue(service.contains("USB_CONNECTED_NOT_GEAR"))
         assertTrue(service.contains("closeFromUsb(\"recognized_camera_disappeared\")"))
         assertTrue(service.contains("workingCameraKey()"))
     }

@@ -61,3 +61,11 @@
 - Records last-frame freshness, USB interface classes/subclasses/endpoints at boot and physical USB transitions.
 - Cannot observe frame changes while camera Activity is closed. No reliable R/P inferred or automatic closure from black/static frames.
 - Release as TEST only. Physical car R/P acceptance remains unverified.
+
+# v1.0.20 TEST ? actual DeX WindowManager overlay and Vietnamese UI
+- Owner screenshot of v1.0.19 shows HTTP 403 pairing and background Activity start intent, not proof a Camera window became visible.
+- Pairing screenshot entered a code different from the generated owner code; code mismatch can explain HTTP 403. Rotating one-time code after release, with copy support, avoids lockout.
+- All visible XML labels and app messages repaired as UTF-8. The previous transliteration / mojibake is no longer acceptable.
+- Android Camera now uses TYPE_APPLICATION_OVERLAY hosted by the foreground service for USB event / gear broadcast / bubble / manual test. WindowManager.addView success is logged, rather than trusting startActivity() from background. UVC manager accepts a Context so the service can own the TextureView preview.
+- Safety: USB present during cold start must NOT force-open a Camera. Permanently powered USB converter at P is not reverse gear.
+- Physical R/P signal is still NOT_ACCEPTED and has no on-device signal proof. Overlay may still require Android overlay authorization; correct gear signal must be verified on Z Fold2 separately.

@@ -114,16 +114,16 @@ class CameraSettings(context: Context) {
         val timestamp = prefs.getLong("last_gear_timestamp", 0L)
         val usbChanged = prefs.getLong("last_usb_change", 0L)
         val time: (Long) -> String = { t ->
-            if (t == 0L) "chua ghi nhan"
+            if (t == 0L) "chưa ghi nhận"
             else android.text.format.DateFormat.format("HH:mm:ss", t).toString()
         }
-        val gear = if (timestamp == 0L) "Chua nhan duoc broadcast so R"
+        val gear = if (timestamp == 0L) "Chưa có tín hiệu số R thực từ xe"
                    else (prefs.getString("last_gear_action", "?") + " " +
                          (if (prefs.getBoolean("last_gear_reverse", false)) "R ON" else "R OFF") +
                          " " + time(timestamp))
-        val usb = (if (prefs.getBoolean("last_usb_present", false)) "Co thiet bi" else "Khong co thiet bi") +
-                  " | Thay doi: " + time(usbChanged)
-        return "Tin hieu so: " + gear + "\nUSB: " + usb
+        val usb = (if (prefs.getBoolean("last_usb_present", false)) "Có thiết bị" else "Không có thiết bị") +
+                  " | Thay đổi: " + time(usbChanged)
+        return "Broadcast R (chưa xác minh nguồn xe): " + gear + "\nUSB: " + usb
     }
 
     fun getFloatingX(displayId: Int, defaultVal: Int): Int =

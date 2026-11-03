@@ -59,14 +59,10 @@ class ReverseGearReceiver : BroadcastReceiver() {
             Log.i(TAG, "Reverse Gear ENGAGED (R=ON) -> Launching TigerIQ Camera immediately")
             val targetDisplay = DeXDisplayHelper.resolveTargetDisplay(context)
             val displayId = targetDisplay?.displayId ?: -1
-            CameraActivity.launch(
-                context = context,
-                displayId = displayId,
-                reverseActive = true,
-                steering = steering
-            )
+            FloatingCameraService.gear(context, true)
         } else {
             Log.i(TAG, "Reverse Gear DISENGAGED (R=OFF) -> Auto-closing Camera immediately")
+            FloatingCameraService.gear(context, false)
             CameraActivity.dismissIfRunning(immediate = true)
             try {
                 context.sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA))
