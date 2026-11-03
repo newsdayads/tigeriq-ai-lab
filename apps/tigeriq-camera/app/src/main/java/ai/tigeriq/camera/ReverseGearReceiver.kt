@@ -15,72 +15,22 @@ class ReverseGearReceiver : BroadcastReceiver() {
         private const val TAG = "TigerIQ_Reverse"
         const val ACTION_REVERSE_GEAR = "ai.tigeriq.camera.action.REVERSE_GEAR"
 
+        // Source actions from original UltraCar AndroidManifest.xml.
         val REVERSE_ACTIONS = arrayOf(
-            ACTION_REVERSE_GEAR,
             "com.tigeriq.dexsplit.ACTION_REVERSE_GEAR",
             "com.ultracar.dexsplit.ACTION_REVERSE_GEAR",
             "android.intent.action.REVERSE_GEAR",
-            "com.car.REVERSE",
-            "com.ultracar.dexsplit.REVERSE",
-            "com.android.car.GEAR_CHANGE",
-            "android.hardware.reverse.state",
-            "com.samsung.android.car.GEAR_CHANGED",
-            "com.car.GEAR_CHANGED",
-            "com.mct.action.REVERSE",
-            "com.microntek.action.REVERSE",
-            "com.ts.action.REVERSE",
-            "com.syu.action.REVERSE",
-            "com.xyauto.REVERSE"
+            "com.car.REVERSE"
         )
 
-        fun parseIsReverse(intent: Intent): Boolean {
-            val action = intent.action ?: ""
-
-            // 1. Check explicit string extras
-            val gearKeys = arrayOf("gear", "GEAR", "current_gear", "gear_state", "gear_name", "gearName", "new_gear")
-            for (key in gearKeys) {
-                val str = try { intent.getStringExtra(key) } catch (_: ClassCastException) { null }
-                if (!str.isNullOrEmpty()) {
-                    if (str.equals("R", ignoreCase = true) || str.contains("REVERSE", ignoreCase = true)) {
-                        return true
-                    }
-                    if (str.equals("P", ignoreCase = true) || str.equals("D", ignoreCase = true) || str.equals("N", ignoreCase = true)) {
-                        return false
-                    }
-                }
-            }
-
-            // 2. Check explicit int extras (CarGear.GEAR_REVERSE = 8, 2, etc.)
-            for (key in gearKeys) {
-                if (intent.hasExtra(key)) {
-                    val intVal = try { intent.getIntExtra(key, -1) } catch (_: ClassCastException) { -1 }
-                    if (intVal == 8 || intVal == 2 || intVal == 'R'.code || intVal == 'r'.code) {
-                        return true
-                    }
-                    if (intVal == 4 || intVal == 1 || intVal == 0 || intVal == 'P'.code || intVal == 'p'.code) {
-                        return false
-                    }
-                }
-            }
-
-            // 3. Check explicit boolean extras
-            val boolKeys = arrayOf("reverse", "isReverse", "is_reverse", "state", "r_state", "reverse_state", "active")
-            for (key in boolKeys) {
-                if (intent.hasExtra(key)) {
-                    return try {
-                        intent.getBooleanExtra(key, false)
-                    } catch (_: Throwable) {
-                        try { intent.getIntExtra(key, 0) == 1 } catch (_: ClassCastException) { false }
-                    }
-                }
-            }
-
-            // 4. Fallback on action name
-            if (action.contains("REVERSE", ignoreCase = true)) {
-                return true
-            }
-
-            return false
+        fun parseIsReverse(intent: Intent): Boolean? {
+            // Direct port from original working UltraCar v1.0.17:
+            // action contains "REVERSE", boolean "state", optional "gear" overrides state.
+            return UltraCarReverseSignal.parse(
+                intent.action,
+                intent.getBooleanExtra("state", false),
+                intent.getStringExtra("gear")
+            )
         }
     }
 
@@ -96,7 +46,10 @@ class ReverseGearReceiver : BroadcastReceiver() {
         }
         Log.i(TAG, "Received gear signal broadcast: $action")
 
-        val isReverse = parseIsReverse(intent)
+        val isReverse = parseIsReverse(intent) ?: run {
+            CameraEventLog.record(context, "GEAR", "NOT_ULTRACAR_REVERSE", action)
+            return
+        }
         settings.recordReverseSignal(action, isReverse)
         CameraEventLog.record(context, "GEAR", if (isReverse) "R_ON" else "R_OFF",
             "source=broadcast | synthetic=" + (action == ACTION_REVERSE_GEAR))

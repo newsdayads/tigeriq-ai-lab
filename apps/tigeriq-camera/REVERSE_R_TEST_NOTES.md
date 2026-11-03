@@ -41,3 +41,9 @@
 - v1.0.15 any-USB detection can be permanently true on a DeX hub and cannot then detect R/P. v1.0.16 tracks per-device USB add/remove, learns USB VID/PID from a UVC Camera actually opened manually, and gates automatic window to that camera. Fallback for a newly attached single unknown USB device (even when a DeX hub is already present), excluding HUB/HID/STORAGE USB interfaces.
 - Event log includes per-transition USB inventory counts/VID/PID (no serial IDs), physical trigger and actual CameraActivity visible/not-visible check 1.5s later. startActivity dispatch does not count as visible.
 - This remains USB-presence detection, not physical CAN gear state. It cannot detect gear shifts if the real USB camera remains enumerated through R/P.
+
+# v1.0.17 source-port only ? strict UltraCar broadcast contract
+- Source: UltraCar v1.0.17 decompiled ReverseGearReceiver.java; actual parse is exactly action.contains("REVERSE"), state boolean with default false, optional gear string overrides as equalsIgnoreCase("R").
+- Source: UltraCar v1.0.17 MainActivity.openCameraWindow()/closeCameraWindow() delegates to TigerIQBridge ViewModel state in original app; that ViewModel is unavailable to a separately packaged Android app. CameraActivity launch/finish is equivalent *intent* but not same implementation.
+- Removed guessed alternate gear-broadcast receiver registration from FloatingCameraService, one manifest gear receiver only.
+- No proof vehicle ever sends these broadcasts or Gear P/N/D; no on-car acceptance. Do not present this APK or any other as verified physical R/P.

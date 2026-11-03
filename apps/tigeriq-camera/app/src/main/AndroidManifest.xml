@@ -70,9 +70,6 @@
                 <action android:name="com.ultracar.dexsplit.ACTION_REVERSE_GEAR" />
                 <action android:name="android.intent.action.REVERSE_GEAR" />
                 <action android:name="com.car.REVERSE" />
-                <action android:name="com.ultracar.dexsplit.REVERSE" />
-                <action android:name="com.android.car.GEAR_CHANGE" />
-                <action android:name="android.hardware.reverse.state" />
             </intent-filter>
         </receiver>
 

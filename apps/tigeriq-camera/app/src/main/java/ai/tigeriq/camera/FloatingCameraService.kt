@@ -148,9 +148,6 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
                     CameraEventLog.record(this@FloatingCameraService, "SERVICE", "GEAR_RX",
                         action + " | reverse_auto=" + settings.isReverseAutoStart)
                 }
-                val targetDisplay = findDexDisplay()
-                val displayId = targetDisplay?.displayId ?: -1
-
                 if (action == UsbManager.ACTION_USB_DEVICE_ATTACHED ||
                     action == UsbManager.ACTION_USB_DEVICE_DETACHED) {
                     CameraEventLog.record(this@FloatingCameraService, "ULTRACAR_USB",
@@ -159,29 +156,11 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
                     return
                 }
 
-                if (!settings.isReverseAutoStart) return
-                val isReverse = ReverseGearReceiver.parseIsReverse(intent)
-                settings.recordReverseSignal(action, isReverse)
-                CameraEventLog.record(this@FloatingCameraService, "SERVICE",
-                    if (isReverse) "R_ON" else "R_OFF", "source=dynamic_broadcast")
-                val steering = intent.getFloatExtra("steering", 0f)
-
-                if (isReverse) {
-                    Log.i(TAG, "DynamicReceiver: Reverse ON -> Opening Camera")
-                    CameraActivity.launch(this@FloatingCameraService, displayId, reverseActive = true, steering = steering)
-                } else {
-                    Log.i(TAG, "DynamicReceiver: Reverse OFF -> Closing Camera immediately")
-                    CameraActivity.dismissIfRunning(immediate = true)
-                    try {
-                        sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA))
-                    } catch (_: Throwable) {}
-                }
+                // Gear is handled by the single manifest ReverseGearReceiver
+                // using exact UltraCar source contract; no duplicate activity launch.
             }
         }
         val filter = IntentFilter()
-        for (action in ReverseGearReceiver.REVERSE_ACTIONS) {
-            filter.addAction(action)
-        }
         filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
         filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
         try {
