@@ -334,6 +334,40 @@ test('WiFi ADB reconnect only retries remembered private endpoints that are not 
   ]);
 });
 
+test('WiFi ADB reconnect follows a rotated mDNS TLS port only on the same remembered private IP', async () => {
+  const reachableCalls=[],connectCalls=[],discoverCalls=[];
+  const results=await reconnectKnownWifiEndpoints(
+    ['172.16.199.197:5555'],
+    [],
+    async address=>{
+      reachableCalls.push(address);
+      return address==='172.16.199.197:39111';
+    },
+    async address=>{
+      connectCalls.push(address);
+      return 'connected to '+address;
+    },
+    async address=>{
+      discoverCalls.push(address);
+      return [
+        '192.168.1.50:40123',
+        '172.16.199.197:39111',
+        '8.8.8.8:5555'
+      ];
+    }
+  );
+  assert.deepEqual(discoverCalls,['172.16.199.197:5555']);
+  assert.deepEqual(reachableCalls,['172.16.199.197:5555','172.16.199.197:39111']);
+  assert.deepEqual(connectCalls,['172.16.199.197:39111']);
+  assert.deepEqual(results,[{
+    address:'172.16.199.197:5555',
+    state:'connected',
+    connectedAddress:'172.16.199.197:39111',
+    rotated:true,
+    detail:'connected to 172.16.199.197:39111'
+  }]);
+});
+
 test('WiFi ADB reconnect source persists only successful user-approved endpoints and never enables TCP mode', () => {
   const dir=path.dirname(fileURLToPath(import.meta.url));
   const source=fs.readFileSync(path.join(dir,'app.mjs'),'utf8');
@@ -344,6 +378,8 @@ test('WiFi ADB reconnect source persists only successful user-approved endpoints
   assert.match(source,/autoReconnectKnownWifi/);
   assert.match(source,/setInterval\(\(\)=>void autoReconnectKnownWifi\(\)/);
   assert.match(source,/rememberedWifi: knownWifiEndpoints\(\)\.length/);
+  assert.match(source,/parseAdbMdnsConnectServices\(mdnsOutput,wifiAddressHost\(address\)\)/);
+  assert.match(source,/replaceKnownWifiEndpoint\(result\.address,result\.connectedAddress\)/);
   assert.match(ui,/WiFi nhớ/);
   assert.doesNotMatch(source,/['"]tcpip['"]/);
   assert.doesNotMatch(source,/setprop\s+service\.adb\.tcp\.port/i);

@@ -141,34 +141,57 @@ export function normalizeKnownWifiEndpoints(value) {
   return unique;
 }
 
+function wifiAddressHost(address) {
+  if(!privateWifiAddress(address))return null;
+  return address.slice(0,address.lastIndexOf(':'));
+}
+
 export async function reconnectKnownWifiEndpoints(
   addresses,
   attachedSerials,
   reachable=wifiEndpointReachable,
-  connect=async()=>{throw new Error('connect callback required');}
+  connect=async()=>{throw new Error('connect callback required');},
+  discoverAlternates=async()=>[]
 ) {
   const attached=new Set(Array.isArray(attachedSerials)?attachedSerials:[]);
-  const candidates=normalizeKnownWifiEndpoints(addresses).filter(address=>!attached.has(address));
-  const checks=await Promise.all(candidates.map(async address=>({
-    address,
-    reachable:await reachable(address,1000).catch(()=>false)
-  })));
+  const remembered=normalizeKnownWifiEndpoints(addresses);
   const results=[];
-  for(const address of normalizeKnownWifiEndpoints(addresses)){
+  for(const address of remembered){
     if(attached.has(address)){
       results.push({address,state:'already_connected'});
       continue;
     }
-    const check=checks.find(x=>x.address===address);
-    if(!check?.reachable){
+
+    let resolvedAddress=null;
+    if(await reachable(address,1000).catch(()=>false)){
+      resolvedAddress=address;
+    }else{
+      const host=wifiAddressHost(address);
+      let discovered=[];
+      try{discovered=await discoverAlternates(address)}catch{}
+      const alternates=normalizeKnownWifiEndpoints(discovered)
+        .filter(candidate=>candidate!==address && wifiAddressHost(candidate)===host && !attached.has(candidate));
+      for(const candidate of alternates){
+        if(await reachable(candidate,1000).catch(()=>false)){
+          resolvedAddress=candidate;
+          break;
+        }
+      }
+    }
+
+    if(!resolvedAddress){
       results.push({address,state:'unreachable'});
       continue;
     }
+
     try{
-      const output=String(await connect(address)??'').trim();
+      const output=String(await connect(resolvedAddress)??'').trim();
+      const connected=/connected to|already connected/i.test(output);
       results.push({
         address,
-        state:/connected to|already connected/i.test(output)?'connected':'failed',
+        state:connected?'connected':'failed',
+        connectedAddress:connected?resolvedAddress:null,
+        rotated:connected&&resolvedAddress!==address,
         detail:boundedProcessText(output)
       });
     }catch(error){
@@ -226,9 +249,8 @@ function knownWifiEndpoints() {
   try { return normalizeKnownWifiEndpoints(JSON.parse(fs.readFileSync(wifiStorePath,'utf8'))); }
   catch { return []; }
 }
-function rememberWifiEndpoint(address) {
-  if(!privateWifiAddress(address))return false;
-  const next=normalizeKnownWifiEndpoints([...knownWifiEndpoints(),address]);
+function persistKnownWifiEndpoints(addresses) {
+  const next=normalizeKnownWifiEndpoints(addresses);
   const temp=wifiStorePath+'.tmp-'+process.pid+'-'+Date.now();
   try{
     fs.writeFileSync(temp,JSON.stringify(next,null,2),{encoding:'utf8',mode:0o600,flag:'wx'});
@@ -238,6 +260,17 @@ function rememberWifiEndpoint(address) {
     try{if(fs.existsSync(temp))fs.unlinkSync(temp)}catch{}
   }
 }
+function rememberWifiEndpoint(address) {
+  if(!privateWifiAddress(address))return false;
+  return persistKnownWifiEndpoints([...knownWifiEndpoints(),address]);
+}
+function replaceKnownWifiEndpoint(previousAddress,nextAddress) {
+  if(!privateWifiAddress(previousAddress)||!privateWifiAddress(nextAddress))return false;
+  if(wifiAddressHost(previousAddress)!==wifiAddressHost(nextAddress))return false;
+  const current=knownWifiEndpoints();
+  if(!current.includes(previousAddress))return false;
+  return persistKnownWifiEndpoints(current.map(address=>address===previousAddress?nextAddress:address));
+}
 let wifiReconnectBusy=false;
 async function autoReconnectKnownWifi() {
   if(wifiReconnectBusy)return [];
@@ -246,15 +279,30 @@ async function autoReconnectKnownWifi() {
   wifiReconnectBusy=true;
   try{
     const attached=(await devices()).filter(x=>x.state==='device').map(x=>x.serial);
-    return await reconnectKnownWifiEndpoints(
+    let mdnsOutput=null;
+    const results=await reconnectKnownWifiEndpoints(
       remembered,
       attached,
       wifiEndpointReachable,
       async address=>{
         const r=await run(['connect',address],{encoding:'utf8',timeout:8000});
         return String(r.stdout||'');
+      },
+      async address=>{
+        if(mdnsOutput===null){
+          try{
+            const r=await run(['mdns','services'],{encoding:'utf8',timeout:5000});
+            mdnsOutput=String(r.stdout||'');
+          }catch{mdnsOutput=''}
+        }
+        return parseAdbMdnsConnectServices(mdnsOutput,wifiAddressHost(address));
       }
     );
+    for(const result of results){
+      if(result.state==='connected'&&result.rotated&&result.connectedAddress)
+        replaceKnownWifiEndpoint(result.address,result.connectedAddress);
+    }
+    return results;
   }finally{
     wifiReconnectBusy=false;
   }
