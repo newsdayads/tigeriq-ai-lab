@@ -13,6 +13,10 @@ class ReverseCameraOverlayContractTest {
         assertTrue(source.contains("CameraEventLog.record(owner,\"WINDOW\",\"OVERLAY_VISIBLE\""))
         assertTrue(source.contains("wm?.removeViewImmediate(view)"))
         assertTrue(source.contains("Settings.canDrawOverlays(owner)"))
+        assertTrue(source.contains("owner.createDisplayContext(targetDisplay)"))
+        assertTrue(source.contains("dm.getDisplay(Display.DEFAULT_DISPLAY)") ||
+                   source.contains("displayManager.getDisplay(Display.DEFAULT_DISPLAY)"))
+        assertFalse(source.contains("else owner\n            val ctx"))
         assertFalse(source.lines().any { it.trimStart().startsWith("startActivity(") })
     }
     @Test fun usbPreviewLifecycleIsAttachedAndReleased() {

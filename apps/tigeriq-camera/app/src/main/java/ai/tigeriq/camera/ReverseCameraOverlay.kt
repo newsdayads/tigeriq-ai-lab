@@ -16,6 +16,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.hardware.usb.UsbDevice
+import android.hardware.display.DisplayManager
 
 /**
  * Actual TYPE_APPLICATION_OVERLAY window on Samsung DeX.
@@ -34,13 +35,32 @@ class ReverseCameraOverlay(private val owner: Service) {
             CameraEventLog.record(owner, "WINDOW", "OVERLAY_PERMISSION_MISSING")
             return false
         }
+        var stage = "resolve_display"
         try {
-            val displayContext = if (display != null) owner.createDisplayContext(display) else owner
+            // Service itself has no display association; its WindowManager may throw
+            // UnsupportedOperationException on DeX/Android 12+.
+            val displayManager = owner.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+            val targetDisplay = display?.takeIf { it.isValid }
+                ?: displayManager.getDisplay(Display.DEFAULT_DISPLAY)
+                ?: run {
+                    CameraEventLog.record(owner, "WINDOW", "NO_VALID_DISPLAY")
+                    return false
+                }
+            stage = "create_display_context"
+            val displayContext = owner.createDisplayContext(targetDisplay)
+            stage = "create_window_context"
             val ctx: Context =
-                if (Build.VERSION.SDK_INT >= 31) {
-                    try { displayContext.createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null) }
-                    catch (_: Throwable) { displayContext }
+                if (Build.VERSION.SDK_INT >= 30) {
+                    try {
+                        displayContext.createWindowContext(
+                            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+                    } catch (error: Throwable) {
+                        CameraEventLog.record(owner, "WINDOW", "WINDOW_CONTEXT_FALLBACK",
+                            error.javaClass.simpleName + " " + (error.message ?: "").take(130))
+                        displayContext
+                    }
                 } else displayContext
+            stage = "get_window_manager"
             val manager = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
             val dm = ctx.resources.displayMetrics
             val scale = dm.density
@@ -69,7 +89,13 @@ class ReverseCameraOverlay(private val owner: Service) {
                 setTextColor(Color.LTGRAY)
             }
             column.addView(titleBar)
-            column.addView(texture,LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,0,1f))
+            val previewLayer=FrameLayout(ctx)
+            previewLayer.addView(texture,FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,FrameLayout.LayoutParams.MATCH_PARENT))
+            previewLayer.addView(DynamicGuideView(ctx),FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,FrameLayout.LayoutParams.MATCH_PARENT))
+            column.addView(previewLayer,LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,0,1f))
             column.addView(status,LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,(30*scale).toInt()))
             root.addView(column,FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,FrameLayout.LayoutParams.MATCH_PARENT))
             val params=WindowManager.LayoutParams(width,height,
@@ -78,6 +104,7 @@ class ReverseCameraOverlay(private val owner: Service) {
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT).apply {gravity=Gravity.CENTER}
+            stage = "add_view"
             manager.addView(root,params)
             this.wm=manager
             this.content=root
@@ -95,7 +122,9 @@ class ReverseCameraOverlay(private val owner: Service) {
             }
             return true
         } catch(t:Throwable) {
-            CameraEventLog.record(owner,"WINDOW","OVERLAY_OPEN_FAILED",t.javaClass.simpleName)
+            CameraEventLog.record(owner,"WINDOW","OVERLAY_OPEN_FAILED",
+                "stage=" + stage + " type=" + t.javaClass.simpleName +
+                    " message=" + (t.message ?: "").take(180))
             hide()
             return false
         }
