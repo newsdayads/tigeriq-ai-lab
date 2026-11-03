@@ -183,6 +183,27 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
         Log.i(TAG, "UsbCameraWatcher started (interval 350ms, original UltraCar)")
     }
 
+    // Inspect USB composite classes/endpoints; does NOT infer physical gear.
+    private fun usbInterfaces(device: UsbDevice): String {
+        return try {
+            (0 until device.interfaceCount).joinToString(",") { i ->
+                val itf = device.getInterface(i)
+                val ends = (0 until itf.endpointCount).joinToString(".") { n ->
+                    val ep = itf.getEndpoint(n)
+                    ep.type.toString() + ":" + ep.direction
+                }
+                itf.interfaceClass.toString() + "/" + itf.interfaceSubclass +
+                    "/" + itf.interfaceProtocol + "(" + ends + ")"
+            }.take(130)
+        } catch (t: Throwable) { "UNAVAILABLE_" + t.javaClass.simpleName }
+    }
+
+    private fun usbSnapshot(devices: List<UsbDevice>): String =
+        devices.joinToString(";") { device ->
+            device.vendorId.toString() + ":" + device.productId +
+                " cls=" + device.deviceClass + " if=" + usbInterfaces(device)
+        }.take(280)
+
     // Complete USB inventory prevents always-on DeX hubs from masking camera insertion.
     private var previousUsbKeys: Set<String> = emptySet()
     private var activeCameraDeviceKey: String? = null
@@ -216,6 +237,8 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
             CameraEventLog.record(this, "GEAR_SOURCE", "USB_BASELINE",
                 "devices=" + devices.size + " learned=" + (learnedCamera != null) +
                 " video_present=" + (matchedKey != null))
+            CameraEventLog.record(this, "GEAR_SOURCE", "USB_DESCRIPTORS",
+                usbSnapshot(devices))
             // Cold-start open only for a recognized/learned video camera, not a generic hub.
             if (matchedKey != null) openFromUsb("recognized_camera_at_start")
             return
@@ -225,10 +248,9 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
         val removed = previousUsbKeys - usbKeys
         previousUsbKeys = usbKeys
         if (added.isNotEmpty() || removed.isNotEmpty()) {
-            val summary = devices.joinToString(";") { it.vendorId.toString() + ":" + it.productId }
             CameraEventLog.record(this, "GEAR_SOURCE", "USB_INVENTORY_CHANGED",
                 "added=" + added.size + " removed=" + removed.size +
-                " count=" + devices.size + " vids=" + summary.take(190))
+                " count=" + devices.size + " devices=" + usbSnapshot(devices))
         }
         val previous = activeCameraDeviceKey
         val lost = previous != null && !usbKeys.contains(previous)

@@ -36,4 +36,15 @@ class UvcFrameSignalEvidenceTest {
         assertFalse(source.contains("CameraActivity.dismiss"))
         assertFalse(source.contains("GEAR_REVERSE"))
     }
+    @Test fun runtimeProbeHasNoGearInference() {
+        val manager = java.io.File("src/main/java/ai/tigeriq/camera/UsbUvcManager.kt").readText()
+        val service = java.io.File("src/main/java/ai/tigeriq/camera/FloatingCameraService.kt").readText()
+        assertTrue(manager.contains("setFrameCallback(IFrameCallback"))
+        assertTrue(manager.contains("UVCCamera.PIXEL_FORMAT_NV21"))
+        assertTrue(manager.contains("NO_RECENT_FRAME"))
+        assertTrue(manager.contains("FRAME_METRICS"))
+        assertTrue(service.contains("USB_DESCRIPTORS"))
+        assertTrue(service.contains("usbInterfaces(device)"))
+        assertFalse(manager.contains("onFrame = CameraActivity.launch"))
+    }
 }

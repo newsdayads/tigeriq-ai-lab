@@ -55,3 +55,9 @@
 - UvcFrameSignalEvidence prototype computes aggregate NV21 luma signatures ONLY, without images/video storage and WITHOUT window automation. A black/static frame could be dark real video or capture card's idle output; it MUST NOT be used as R-off proof by itself.
 - Next hardware feasibility: (1) inspect real USB interfaces to check HID/vendor control status from the 360 converter (priority explicit state); (2) if absent, measure video signal characteristics in different states with same monotonic time base; (3) if converter USB provides neither gear data nor reliably observable video state, an independently authorized external trigger is required.
 - Acceptance stays FAIL until validated R->ON and P/N/D->OFF in stationary vehicle without false closure in dark or static scenes. No automatic upload, server, device identification or production firmware changes.
+
+# v1.0.18 TEST ? UVC diagnostics wired into running CameraActivity
+- Real UVCAndroid 1.0.13 frame callback NV21 emits summary metrics roughly every 2s; no images saved.
+- Records last-frame freshness, USB interface classes/subclasses/endpoints at boot and physical USB transitions.
+- Cannot observe frame changes while camera Activity is closed. No reliable R/P inferred or automatic closure from black/static frames.
+- Release as TEST only. Physical car R/P acceptance remains unverified.

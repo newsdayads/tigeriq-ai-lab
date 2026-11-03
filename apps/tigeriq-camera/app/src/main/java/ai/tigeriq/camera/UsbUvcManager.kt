@@ -12,6 +12,7 @@ import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.Surface
 import android.view.TextureView
@@ -19,6 +20,9 @@ import com.herohan.uvcapp.CameraException
 import com.herohan.uvcapp.CameraHelper
 import com.herohan.uvcapp.ICameraHelper
 import com.serenegiant.utils.UVCUtils
+import com.serenegiant.usb.UVCCamera
+import com.serenegiant.usb.IFrameCallback
+import java.util.Locale
 
 /**
  * Dedicated controller for USB UVC Cameras using UVCAndroid engine.
@@ -39,6 +43,62 @@ class UsbUvcManager(
     var isRequested = false
         private set
     private var isPreviewStarted = false
+    @Volatile private var latestFrameAt = 0L
+    @Volatile private var lastFrameMetricsAt = 0L
+    private var previewSession = 0
+
+    /** Frame evidence only. Never uses black frames as proof of a gear change. */
+    private fun attachFrameEvidence(helper: CameraHelper) {
+        try {
+            val preview = helper.previewSize
+            val width = preview?.width ?: 0
+            val height = preview?.height ?: 0
+            if (width <= 0 || height <= 0) {
+                CameraEventLog.record(activity, "UVC_SIGNAL", "FRAME_FORMAT_UNKNOWN", "no_preview_size")
+                return
+            }
+            CameraEventLog.record(activity, "UVC_SIGNAL", "FRAME_MONITOR_REGISTERING",
+                "size=" + width + "x" + height + " format=NV21")
+            helper.setFrameCallback(IFrameCallback { bytes ->
+                val now = SystemClock.elapsedRealtime()
+                latestFrameAt = now
+                if (now - lastFrameMetricsAt >= 2000L) {
+                    lastFrameMetricsAt = now
+                    val m = UvcFrameSignalEvidence.sampleNv21(bytes, width, height)
+                    if (m != null) {
+                        val detail = String.format(Locale.US,
+                            "mean=%.1f variance=%.1f dark=%.2f bins=%d low_info=%s NOT_GEAR",
+                            m.meanLuma, m.lumaVariance, m.darkShare,
+                            m.occupiedLumaBins, m.lowInformation)
+                        mainHandler.post {
+                            CameraEventLog.record(activity, "UVC_SIGNAL", "FRAME_METRICS", detail)
+                        }
+                    } else {
+                        mainHandler.post {
+                            CameraEventLog.record(activity, "UVC_SIGNAL", "FRAME_FORMAT_MISMATCH",
+                                "expected_luma=" + width.toLong()*height)
+                        }
+                    }
+                }
+            }, UVCCamera.PIXEL_FORMAT_NV21)
+        } catch (t: Throwable) {
+            CameraEventLog.record(activity, "UVC_SIGNAL", "FRAME_MONITOR_UNAVAILABLE",
+                t.javaClass.simpleName)
+        }
+    }
+
+    private fun verifyFrameArrival(session: Int) {
+        mainHandler.postDelayed({
+            if (isRequested && isPreviewStarted && session == previewSession) {
+                val last = latestFrameAt
+                val age = if (last == 0L) -1L else SystemClock.elapsedRealtime() - last
+                CameraEventLog.record(activity, "UVC_SIGNAL",
+                    if (age == -1L || age > 3500L) "NO_RECENT_FRAME" else "FRAME_RECEIVED",
+                    "age_ms=" + age + " NOT_GEAR")
+            }
+        }, 3600L)
+    }
+
 
     private val ACTION_USB_PERMISSION = "ai.tigeriq.camera.USB_PERMISSION"
     private var isReceiverRegistered = false
@@ -188,6 +248,9 @@ class UsbUvcManager(
 
     private fun releasePreview() {
         isPreviewStarted = false
+        previewSession++
+        latestFrameAt = 0L
+        lastFrameMetricsAt = 0L
         previewSurface?.let {
             try {
                 cameraHelper?.removeSurface(it)
@@ -259,8 +322,13 @@ class UsbUvcManager(
             val s = Surface(texture)
             previewSurface = s
             helper.addSurface(s, false)
+            latestFrameAt = 0L
+            lastFrameMetricsAt = 0L
+            attachFrameEvidence(helper)
             helper.startPreview()
             isPreviewStarted = true
+            previewSession++
+            verifyFrameArrival(previewSession)
             onStatus("Camera UVC đang hoạt động", true)
             selectedDevice?.let { onPermissionRequired(it, true) }
             Log.i(TAG, "UVC preview successfully started")
