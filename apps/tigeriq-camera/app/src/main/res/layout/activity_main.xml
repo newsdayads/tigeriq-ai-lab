@@ -45,7 +45,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Trung tâm Điều khiển &amp; Cấu hình Toàn diện (DeX Edition)"
+                    android:text="Trung tâm điều khiển và cấu hình Camera (Samsung DeX)"
                     android:textColor="#00E5FF"
                     android:textSize="12sp" />
             </LinearLayout>
@@ -57,7 +57,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="42dp"
                 android:layout_marginEnd="12dp"
-                android:text="Bật Nút Nổi"
+                android:text="Bật nút nổi"
                 android:textColor="#00E5FF"
                 app:strokeColor="#00E5FF" />
 
@@ -92,7 +92,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="1. CẤP QUYỀN HỆ THỐNG"
+                    android:text="1. QUYỀN HỆ THỐNG"
                     android:textColor="#00E5FF"
                     android:textSize="13sp"
                     android:textStyle="bold"
@@ -109,7 +109,7 @@
                     android:id="@+id/tvCameraPermStatus"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Đang kiểm tra…"
+                    android:text="Đang kiểm tra..."
                     android:textSize="11sp"
                     android:layout_marginBottom="4dp" />
                 <Button
@@ -126,14 +126,14 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Quyền hiển thị Nút nổi (Overlay)"
+                    android:text="Quyền hiển thị cửa sổ nổi"
                     android:textColor="#E2E8F0"
                     android:textSize="13sp" />
                 <TextView
                     android:id="@+id/tvOverlayPermStatus"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Đang kiểm tra…"
+                    android:text="Đang kiểm tra..."
                     android:textSize="11sp"
                     android:layout_marginBottom="4dp" />
                 <Button
@@ -141,7 +141,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="36dp"
                     android:backgroundTint="#00E5FF"
-                    android:text="Cấp quyền Nút nổi"
+                    android:text="Cấp quyền cửa sổ nổi"
                     android:textColor="#000000"
                     android:textSize="11sp"
                     android:layout_marginBottom="8dp" />
@@ -150,14 +150,14 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Quyền chạy nền liên tục"
+                    android:text="Quyền thông báo và chạy nền"
                     android:textColor="#E2E8F0"
                     android:textSize="13sp" />
                 <TextView
                     android:id="@+id/tvNotificationPermStatus"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Đang kiểm tra…"
+                    android:text="Đang kiểm tra..."
                     android:textSize="11sp"
                     android:layout_marginBottom="4dp" />
                 <Button
@@ -165,7 +165,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="36dp"
                     android:backgroundTint="#00E5FF"
-                    android:text="Cấp quyền Thông báo"
+                    android:text="Cấp quyền thông báo"
                     android:textColor="#000000"
                     android:textSize="11sp" />
             </LinearLayout>
@@ -216,7 +216,7 @@
                         android:id="@+id/tvNoUsbDevice"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Chưa phát hiện thiết bị USB nào cắm vào cổng."
+                        android:text="Chưa phát hiện thiết bị USB Camera."
                         android:textColor="#94A3B8"
                         android:textSize="12sp"
                         android:paddingVertical="12dp" />
@@ -228,7 +228,7 @@
                     android:layout_marginTop="8dp"
                     android:background="#1A00E5FF"
                     android:padding="8dp"
-                    android:text="ℹ️ Card bắt hình AFN_CAP (VID: ff02 / PID: afa1) được nhận diện tự động."
+                    android:text="Tự nhận dạng camera USB UVC theo thiết bị thực tế."
                     android:textColor="#94A3B8"
                     android:textSize="11sp" />
             </LinearLayout>
@@ -246,7 +246,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="3. TỰ ĐỘNG HÓA SỐ LÙI (GEAR R)"
+                    android:text="3. TỰ ĐỘNG HÓA CAMERA (SỐ R)"
                     android:textColor="#00E5FF"
                     android:textSize="13sp"
                     android:textStyle="bold"
@@ -267,13 +267,13 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Tự bật khi vào số Lùi (R)"
+                            android:text="Tự mở khi nhận tín hiệu R"
                             android:textColor="#E2E8F0"
                             android:textSize="13sp" />
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Nhận diện tín hiệu số R tức thì"
+                            android:text="Chưa xác minh tín hiệu R thực từ xe."
                             android:textColor="#94A3B8"
                             android:textSize="11sp" />
                     </LinearLayout>
@@ -298,13 +298,13 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Tự ẩn / tắt ngay khi về P hoặc D"
+                            android:text="Tự đóng khi nhận tín hiệu rời R"
                             android:textColor="#E2E8F0"
                             android:textSize="13sp" />
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Không đè lên Maps, Be, Grab khi chạy"
+                            android:text="Giữ bản đồ và ứng dụng xe hoạt động bình thường."
                             android:textColor="#34C759"
                             android:textSize="11sp" />
                     </LinearLayout>
@@ -329,13 +329,13 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Âm thanh cảnh báo khoảng cách (Beep)"
+                            android:text="Âm thanh hỗ trợ đỗ xe"
                             android:textColor="#E2E8F0"
                             android:textSize="13sp" />
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Tiếng bíp bíp tăng tốc khi vào vạch đỏ"
+                            android:text="Tiếng bíp hỗ trợ ước lượng khoảng cách."
                             android:textColor="#94A3B8"
                             android:textSize="11sp" />
                     </LinearLayout>
@@ -360,13 +360,13 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Cân bằng sáng ban đêm (Night Booster)"
+                            android:text="Tăng sáng ban đêm (Night Booster)"
                             android:textColor="#E2E8F0"
                             android:textSize="13sp" />
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Tăng tương phản &amp; độ sáng khi lùi hẻm tối"
+                            android:text="Điều chỉnh tương phản và độ sáng khi lùi."
                             android:textColor="#94A3B8"
                             android:textSize="11sp" />
                     </LinearLayout>
@@ -379,7 +379,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Kiểm tra tín hiệu số R:"
+                    android:text="Thử mở/đóng cửa sổ (không phải số xe):"
                     android:textColor="#94A3B8"
                     android:textSize="11sp"
                     android:layout_marginBottom="6dp" />
@@ -395,7 +395,7 @@
                         android:layout_weight="1"
                         android:layout_marginEnd="4dp"
                         android:backgroundTint="#FF3B30"
-                        android:text="Vào số R (Mở)"
+                        android:text="THỬ MỞ CAMERA"
                         android:textColor="#FFFFFF"
                         android:textSize="11sp"
                         android:textStyle="bold" />
@@ -406,7 +406,7 @@
                         android:layout_weight="1"
                         android:layout_marginStart="4dp"
                         android:backgroundTint="#2D3748"
-                        android:text="Về P/D (Đóng)"
+                        android:text="THỬ ĐÓNG CAMERA"
                         android:textColor="#FFFFFF"
                         android:textSize="11sp" />
                 </LinearLayout>
@@ -433,7 +433,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="4. VẠCH CĂN LÙI &amp; ĐÁNH LÁI"
+                    android:text="4. VẠCH CĂN LÙI VÀ ĐÁNH LÁI"
                     android:textColor="#00E5FF"
                     android:textSize="13sp"
                     android:textStyle="bold"
@@ -454,13 +454,13 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Hiển thị Vạch căn lùi"
+                            android:text="Hiển thị vạch căn lùi"
                             android:textColor="#E2E8F0"
                             android:textSize="13sp" />
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Chuẩn mốc 0.5m, 1.0m, 1.5m"
+                            android:text="Vạch tham chiếu 0,5 m / 1,0 m / 1,5 m"
                             android:textColor="#94A3B8"
                             android:textSize="11sp" />
                     </LinearLayout>
@@ -485,13 +485,13 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Đảo chiều uốn cong khi lái"
+                            android:text="Đảo hướng cong khi đánh lái"
                             android:textColor="#E2E8F0"
                             android:textSize="13sp" />
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Chỉnh ngược hướng cua xe"
+                            android:text="Điều chỉnh hướng vạch theo xe."
                             android:textColor="#94A3B8"
                             android:textSize="11sp" />
                     </LinearLayout>
@@ -505,7 +505,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Mẫu vạch kẻ (Style):"
+                    android:text="Kiểu vạch căn lùi:"
                     android:textColor="#94A3B8"
                     android:textSize="11sp"
                     android:layout_marginBottom="4dp" />
@@ -569,7 +569,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Kích thước vạch lùi (Độ to rõ):"
+                    android:text="Kích thước vạch căn lùi:"
                     android:textColor="#94A3B8"
                     android:textSize="11sp"
                     android:layout_marginBottom="4dp" />
@@ -594,7 +594,7 @@
                         android:layout_weight="1"
                         android:layout_marginHorizontal="4dp"
                         android:backgroundTint="#00E5FF"
-                        android:text="To Rõ"
+                        android:text="To rõ"
                         android:textColor="#000000"
                         android:textSize="11sp"
                         android:textStyle="bold" />
@@ -604,7 +604,7 @@
                         android:layout_width="0dp"
                         android:layout_height="34dp"
                         android:layout_weight="1"
-                        android:text="Cực đại"
+                        android:text="Rộng"
                         android:textColor="#FFFFFF"
                         android:textSize="11sp"
                         app:strokeColor="#334155" />
@@ -624,7 +624,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="5. NÚT CAMERA NỔI (POPUP)"
+                    android:text="5. NÚT CAMERA NỔI"
                     android:textColor="#00E5FF"
                     android:textSize="13sp"
                     android:textStyle="bold"
@@ -651,7 +651,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="Avatar xe chữ R thao tác nhanh"
+                            android:text="Chạm để mở hoặc đóng Camera."
                             android:textColor="#94A3B8"
                             android:textSize="11sp" />
                     </LinearLayout>
@@ -666,7 +666,7 @@
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                     android:layout_width="match_parent"
                     android:layout_height="38dp"
-                    android:text="Khởi động lại Nút nổi"
+                    android:text="Khởi động lại nút nổi"
                     android:textColor="#00E5FF"
                     android:textSize="11sp"
                     app:strokeColor="#00E5FF"
@@ -677,7 +677,7 @@
                     style="@style/Widget.MaterialComponents.Button.TextButton"
                     android:layout_width="match_parent"
                     android:layout_height="34dp"
-                    android:text="Đặt lại vị trí nút về mép trái"
+                    android:text="Đặt lại vị trí nút nổi về bên trái"
                     android:textColor="#94A3B8"
                     android:textSize="11sp" />
             </LinearLayout>
@@ -704,7 +704,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="• Nền tảng: Độc lập 100% (Không qua Launcher)"
+                    android:text="Nền tảng: Ứng dụng Camera độc lập"
                     android:textColor="#34C759"
                     android:textSize="12sp"
                     android:layout_marginBottom="4dp" />
@@ -712,7 +712,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="• Nhận diện số R: Broadcast Intent &amp; DeX Window"
+                    android:text="Tín hiệu R: Chưa xác minh nguồn từ xe"
                     android:textColor="#E2E8F0"
                     android:textSize="12sp"
                     android:layout_marginBottom="4dp" />
@@ -720,7 +720,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="• Môi trường: Samsung DeX / Fold 2"
+                    android:text="Môi trường: Samsung DeX / Z Fold 2"
                     android:textColor="#E2E8F0"
                     android:textSize="12sp"
                     android:layout_marginBottom="4dp" />
@@ -729,15 +729,126 @@
                     android:id="@+id/tvBuildVersion"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="• Bản dựng: TigerIQ Camera v1.0.10"
+                    android:text="Phiên bản: TigerIQ Camera"
                     android:textColor="#94A3B8"
                     android:textSize="12sp"
                     android:layout_marginBottom="10dp" />
 
                 <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="KẾT NỐI PC01 / CẬP NHẬT TỰ ĐỘNG"
+                    android:textColor="#00E5FF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvOnlineStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Chưa kết nối với PC01"
+                    android:textColor="#CBD5E1"
+                    android:textSize="11sp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="5dp" />
+
+                <EditText
+                    android:id="@+id/editOnlinePairCode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Mã ghép đôi PC01 (9 chữ số, dùng một lần)"
+                    android:textColor="#FFFFFF"
+                    android:textColorHint="#94A3B8"
+                    android:inputType="number"
+                    android:maxLength="9"
+                    android:singleLine="true"
+                    android:textSize="12sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <Button
+                        android:id="@+id/btnPairOnline"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="KẾT NỐI PC01"
+                        android:textSize="11sp" />
+                    <Button
+                        android:id="@+id/btnSyncOnline"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="GỬI LOG NGAY"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <Button
+                        android:id="@+id/btnCheckOnlineUpdate"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="KIỂM TRA BẢN MỚI"
+                        android:textSize="11sp" />
+                    <Button
+                        android:id="@+id/btnInstallOnlineUpdate"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="CÀI BẢN ĐÃ TẢI"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Sau khi ghép đôi: tự gửi log qua HTTPS và tự tải bản mới. Android yêu cầu xác nhận cài."
+                    android:textColor="#94A3B8"
+                    android:textSize="10sp"
+                    android:paddingBottom="8dp" />
+
+                <TextView
+                    android:id="@+id/tvCameraEventLog"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Nhật ký chưa tải. Nhấn XEM LOG."
+                    android:textSize="11sp"
+                    android:maxLines="18"
+                    android:textIsSelectable="true"
+                    android:textColor="#E2E8F0"
+                    android:padding="8dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <Button
+                        android:id="@+id/btnRefreshCameraLog"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="XEM LOG"
+                        android:textSize="11sp" />
+                    <Button
+                        android:id="@+id/btnShareCameraLog"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="CHIA SẺ LOG"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+
+                <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Được chứng nhận bởi TigerIQ AI Lab."
+                    android:text="TigerIQ AI Lab — bản thử nghiệm."
                     android:textColor="#64748B"
                     android:textSize="10sp" />
             </LinearLayout>

@@ -26,7 +26,7 @@
         android:layout_gravity="top|start"
         android:layout_margin="16dp"
         android:background="@drawable/bg_camera_toolbar"
-        android:contentDescription="Đóng cửa sổ"
+        android:contentDescription="Đóng cửa sổ Camera"
         android:src="@android:drawable/ic_menu_close_clear_cancel"
         android:tint="#FFFF3B30" />
 
@@ -80,7 +80,7 @@
             android:id="@+id/tvPromptTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="CẦN CẤP QUYỀN CAMERA &amp; USB"
+            android:text="CẦN CẤP QUYỀN CAMERA VÀ USB"
             android:textColor="@color/cyan_accent"
             android:textSize="16sp"
             android:textStyle="bold" />
@@ -90,7 +90,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Đã phát hiện thiết bị Camera UVC. Vui lòng bấm nút bên dưới để cấp quyền kết nối."
+            android:text="Đã phát hiện Camera UVC. Cấp quyền USB để xem hình ảnh."
             android:textColor="@color/text_primary"
             android:textSize="13sp" />
 
@@ -100,7 +100,7 @@
             android:layout_marginTop="8dp"
             android:background="#33FFAA00"
             android:padding="8dp"
-            android:text="⚠️ Lưu ý DeX: Hộp thoại xác nhận có thể xuất hiện trên màn hình gập của Fold 2. Hãy mở máy và chọn [Cho phép]."
+            android:text="Lưu ý: Hộp thoại quyền USB có thể hiện trên màn hình Z Fold 2. Chọn Cho phép."
             android:textColor="#FFFFCC00"
             android:textSize="11sp" />
 
@@ -110,7 +110,7 @@
             android:layout_height="48dp"
             android:layout_marginTop="16dp"
             android:backgroundTint="@color/cyan_accent"
-            android:text="BẤM CẤP QUYỀN USB NGAY"
+            android:text="CẤP QUYỀN USB"
             android:textColor="@color/black"
             android:textStyle="bold" />
 
@@ -120,7 +120,7 @@
             android:layout_width="match_parent"
             android:layout_height="40dp"
             android:layout_marginTop="4dp"
-            android:text="Mở Bảng Điều Khiển &amp; Cấp Quyền"
+            android:text="MỞ CÀI ĐẶT QUYỀN"
             android:textColor="@color/text_secondary"
             android:textSize="12sp" />
     </LinearLayout>
@@ -144,7 +144,7 @@
             android:layout_width="44dp"
             android:layout_height="44dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Đổi kiểu vạch lùi"
+            android:contentDescription="Đổi kiểu vạch căn lùi"
             android:src="@android:drawable/ic_menu_sort_by_size"
             android:tint="@color/cyan_accent" />
 
@@ -160,7 +160,7 @@
             android:layout_width="44dp"
             android:layout_height="44dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Chế độ ban đêm Night Booster"
+            android:contentDescription="Chế độ tăng sáng ban đêm"
             android:src="@drawable/ic_night_vision"
             android:tint="@color/white" />
 
@@ -176,7 +176,7 @@
             android:layout_width="44dp"
             android:layout_height="44dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Âm thanh cảnh báo khoảng cách"
+            android:contentDescription="Âm thanh hỗ trợ đỗ xe"
             android:src="@drawable/ic_sound_beep"
             android:tint="@color/cyan_accent" />
 
@@ -192,7 +192,7 @@
             android:layout_width="44dp"
             android:layout_height="44dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Bảng điều khiển &amp; Cấp quyền"
+            android:contentDescription="Cài đặt Camera"
             android:src="@android:drawable/ic_menu_manage"
             android:tint="@color/white" />
 

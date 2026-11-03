@@ -47,7 +47,9 @@ class CameraActivity : AppCompatActivity() {
             return isRunningFlag && act != null && !act.isFinishing && !act.isDestroyed
         }
 
-        fun launch(context: Context, displayId: Int = -1, reverseActive: Boolean = false, steering: Float = 0f) {
+        fun launch(context: Context, displayId: Int = -1, reverseActive: Boolean = false, steering: Float = 0f): Boolean {
+            CameraEventLog.record(context, "WINDOW", "OPEN_REQUEST",
+                "reverse=" + reverseActive + " | display=" + displayId)
             val intent = Intent(context, CameraActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 putExtra(EXTRA_REVERSE_ACTIVE, reverseActive)
@@ -59,13 +61,28 @@ class CameraActivity : AppCompatActivity() {
                     options.launchDisplayId = displayId
                 }
                 context.startActivity(intent, options.toBundle())
+                CameraEventLog.record(context, "WINDOW", "START_REQUEST_DISPATCHED", "display=" + displayId)
+                return true
             } catch (t: Throwable) {
+                CameraEventLog.record(context, "WINDOW", "LAUNCH_DISPLAY_FAILED", t.javaClass.simpleName)
                 Log.w("TigerIQ_Camera", "Failed to launch on display $displayId, falling back", t)
-                context.startActivity(intent)
+                try {
+                    context.startActivity(intent)
+                    CameraEventLog.record(context, "WINDOW", "FALLBACK_DISPATCHED", "display=default")
+                    return true
+                } catch (fallback: Throwable) {
+                    CameraEventLog.record(context, "WINDOW", "FALLBACK_FAILED", fallback.javaClass.simpleName)
+                    Log.e("TigerIQ_Camera", "Background launch rejected; check visible DeX/overlay context", fallback)
+                    return false
+                }
             }
         }
 
         fun dismissIfRunning(immediate: Boolean = true) {
+            val wasRunning = isRunning()
+            currentInstance.get()?.let {
+                CameraEventLog.record(it, "WINDOW", "CLOSE_REQUEST", "running=" + wasRunning)
+            }
             isRunningFlag = false
             val act = currentInstance.get()
             if (act != null && !act.isFinishing && !act.isDestroyed) {
@@ -113,10 +130,14 @@ class CameraActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         currentInstance = WeakReference(this)
-        isRunningFlag = true
+        isRunningFlag = false // Only onResume confirms a visible running Activity.
+        CameraEventLog.record(this, "WINDOW", "ACTIVITY_CREATED", "camera_ui")
         setContentView(R.layout.activity_camera)
 
         settings = CameraSettings(this)
+        if (settings.isFloatingEnabled || settings.isReverseAutoStart) {
+            FloatingCameraService.start(this)
+        }
 
         guideView = findViewById(R.id.dynamicGuideView)
         tvGearBadge = findViewById(R.id.tvGearBadge)
@@ -195,8 +216,8 @@ class CameraActivity : AppCompatActivity() {
         } else {
             cardPermissionPrompt.visibility = View.VISIBLE
             val devName = device?.productName ?: device?.deviceName ?: "Camera UVC"
-            tvPromptTitle.text = "CẦN CẤP QUYỀN CHO: $devName"
-            tvPromptDesc.text = "Hệ thống cần quyền truy cập USB Host để hiển thị hình ảnh từ $devName."
+            tvPromptTitle.text = "CẦN CẤP QUYỀN: $devName"
+            tvPromptDesc.text = "Hệ thống cần quyền USB để hiển thị hình ảnh từ $devName."
         }
     }
 
@@ -228,7 +249,7 @@ class CameraActivity : AppCompatActivity() {
                 CameraSettings.STYLE_LUXURY_GOLD -> "Maybach Luxury Gold"
                 else -> "Sport OEM"
             }
-            tvStatusMessage.text = "Mẫu vạch: $styleName"
+            tvStatusMessage.text = "Kiểu vạch: $styleName"
             Toast.makeText(this, "Đã chọn: $styleName", Toast.LENGTH_SHORT).show()
             updateButtonStates()
         }
@@ -248,7 +269,7 @@ class CameraActivity : AppCompatActivity() {
             settings.isNightBoosterEnabled = nextState
             applyNightBooster(nextState)
             updateButtonStates()
-            tvStatusMessage.text = if (nextState) "Chế độ Ban đêm (Night Booster): BẬT" else "Chế độ Ban đêm: TẮT"
+            tvStatusMessage.text = if (nextState) "Tăng sáng ban đêm: BẬT" else "Tăng sáng ban đêm: TẮT"
             Toast.makeText(this, if (nextState) "Night Booster: BẬT" else "Night Booster: TẮT", Toast.LENGTH_SHORT).show()
         }
 
@@ -262,8 +283,8 @@ class CameraActivity : AppCompatActivity() {
                 parkAssistEngine?.stop()
             }
             updateButtonStates()
-            tvStatusMessage.text = if (nextState) "Cảnh báo khoảng cách Sonar: BẬT" else "Cảnh báo Sonar: TẮT"
-            Toast.makeText(this, if (nextState) "Âm thanh cảnh báo: BẬT" else "Âm thanh cảnh báo: TẮT", Toast.LENGTH_SHORT).show()
+            tvStatusMessage.text = if (nextState) "Âm thanh hỗ trợ: BẬT" else "Âm thanh hỗ trợ: TẮT"
+            Toast.makeText(this, if (nextState) "Âm thanh hỗ trợ: BẬT" else "Âm thanh hỗ trợ: TẮT", Toast.LENGTH_SHORT).show()
         }
 
         btnClose.setOnClickListener {
@@ -300,6 +321,7 @@ class CameraActivity : AppCompatActivity() {
     }
 
     override fun onNewIntent(intent: Intent) {
+        CameraEventLog.record(this, "WINDOW", "NEW_INTENT", "existing_window")
         super.onNewIntent(intent)
         setIntent(intent)
         processIntent(intent)
@@ -335,7 +357,7 @@ class CameraActivity : AppCompatActivity() {
     fun finishWithGrace() {
         cancelAutoDismiss()
         parkAssistEngine?.stop()
-        tvStatusMessage.text = "Đã rời số lùi. Đang tự tắt sau 3 giây…"
+        tvStatusMessage.text = "Đã rời chế độ Camera. Sẽ đóng sau 3 giây."
         autoDismissRunnable = Runnable {
             if (!isFinishing) finish()
         }
@@ -354,6 +376,8 @@ class CameraActivity : AppCompatActivity() {
                 val list = um?.deviceList?.values
                 val hasCamera = list?.any { UsbUvcManager.isUvc(it) } == true
                 if (!hasCamera) {
+                    CameraEventLog.record(this@CameraActivity, "WINDOW", "NO_UVC_CLOSE",
+                        "usb_absent_not_necessarily_R_OFF")
                     Log.i("TigerIQ_Camera", "CameraActivity Watcher: No UVC camera detected (Tail-light R=OFF) -> Auto-closing")
                     finish()
                     return
@@ -367,22 +391,26 @@ class CameraActivity : AppCompatActivity() {
         super.onResume()
         currentInstance = WeakReference(this)
         isRunningFlag = true
+        CameraEventLog.record(this, "WINDOW", "ACTIVITY_RESUMED", "visible_lifecycle")
         checkAndRequestCameraPermission()
         applyNightBooster(settings.isNightBoosterEnabled)
         updateButtonStates()
         uvcManager?.start()
+        // An absent camera at startup does not prove a real R -> P transition.
         handler.removeCallbacks(usbPresenceWatcher)
-        handler.postDelayed(usbPresenceWatcher, 600)
     }
 
     override fun onPause() {
         super.onPause()
+        isRunningFlag = false // The activity is not actually foreground-visible.
+        CameraEventLog.record(this, "WINDOW", "ACTIVITY_PAUSED", "visible=false")
         handler.removeCallbacks(usbPresenceWatcher)
         parkAssistEngine?.stop()
         uvcManager?.stop()
     }
 
     override fun onDestroy() {
+        CameraEventLog.record(this, "WINDOW", "ACTIVITY_DESTROYED", "finishing=" + isFinishing)
         super.onDestroy()
         isRunningFlag = false
         handler.removeCallbacks(usbPresenceWatcher)

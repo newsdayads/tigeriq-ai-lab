@@ -1,20 +1,20 @@
 <resources>
     <string name="app_name">TigerIQ Camera</string>
-    <string name="floating_service_name">TigerIQ Camera Nút Nổi</string>
-    <string name="floating_service_desc">Giữ nút camera nổi để mở nhanh trên mọi màn hình</string>
-    <string name="title_floating_switch">Nút Camera nổi (Quick Popup)</string>
-    <string name="desc_floating_switch">Hiển thị nút camera tròn nổi trên màn hình để bật tắt tức thì</string>
-    <string name="title_reverse_gear">Tự động bật khi vào số Lùi (Gear R)</string>
-    <string name="desc_reverse_gear">Tự mở camera khi vào số R, tự tắt khi về P/D sau 3 giây</string>
-    <string name="title_usb_autostart">Tự động bật khi cắm Camera / Đèn lùi</string>
-    <string name="desc_usb_autostart">Tự kích hoạt khi phát hiện camera USB có nguồn từ đèn lùi</string>
-    <string name="title_guide_toggle">Vạch dẫn hướng lùi xe</string>
-    <string name="desc_guide_toggle">Kế thừa chuẩn vạch cong 3 vạch 0.5m - 1.0m - 1.5m sắc nét</string>
-    <string name="title_calibrate">Căn chỉnh vạch lùi (Calibrate)</string>
-    <string name="desc_calibrate">Chỉnh góc uốn cong, độ rộng và vị trí vạch lùi</string>
-    <string name="btn_test_camera">Mở Camera kiểm tra</string>
-    <string name="camera_status_waiting">Đang chờ Camera UVC qua USB Host…</string>
+    <string name="floating_service_name">Nút nổi TigerIQ Camera</string>
+    <string name="floating_service_desc">Nút nổi giúp mở Camera nhanh trên màn hình DeX.</string>
+    <string name="title_floating_switch">Nút Camera nổi</string>
+    <string name="desc_floating_switch">Hiển thị nút Camera nổi để thao tác.</string>
+    <string name="title_reverse_gear">Tự động mở Camera khi nhận số R</string>
+    <string name="desc_reverse_gear">Cần có nguồn tín hiệu số R thực từ xe. Chưa xác minh.</string>
+    <string name="title_usb_autostart">Tự mở khi phát hiện USB Camera</string>
+    <string name="desc_usb_autostart">Chỉ nhận biết kết nối USB, không đồng nghĩa xe đang ở số R.</string>
+    <string name="title_guide_toggle">Vạch hướng dẫn lùi xe</string>
+    <string name="desc_guide_toggle">Vạch tham chiếu 0,5 m / 1,0 m / 1,5 m.</string>
+    <string name="title_calibrate">Cân chỉnh vạch lùi</string>
+    <string name="desc_calibrate">Chỉnh độ cong, kích thước và vị trí vạch.</string>
+    <string name="btn_test_camera">Thử mở Camera</string>
+    <string name="camera_status_waiting">Đang chờ Camera UVC qua USB...</string>
     <string name="camera_status_connected">Camera UVC đã sẵn sàng</string>
-    <string name="camera_status_reverse_active">Đang lùi xe (Gear R)</string>
-    <string name="permission_overlay_prompt">Cần cấp quyền Hiển thị trên ứng dụng khác để dùng nút nổi</string>
+    <string name="camera_status_reverse_active">Chế độ Camera (R mô phỏng)</string>
+    <string name="permission_overlay_prompt">Cần cấp quyền hiển thị trên ứng dụng khác để mở cửa sổ Camera nổi.</string>
 </resources>

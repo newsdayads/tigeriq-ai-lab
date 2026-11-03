@@ -1,6 +1,5 @@
 package ai.tigeriq.camera
 
-import android.app.Activity
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -12,6 +11,7 @@ import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.Surface
 import android.view.TextureView
@@ -19,16 +19,20 @@ import com.herohan.uvcapp.CameraException
 import com.herohan.uvcapp.CameraHelper
 import com.herohan.uvcapp.ICameraHelper
 import com.serenegiant.utils.UVCUtils
+import com.serenegiant.usb.UVCCamera
+import com.serenegiant.usb.IFrameCallback
+import java.util.Locale
 
 /**
  * Dedicated controller for USB UVC Cameras using UVCAndroid engine.
  * Provides instant preview, automatic USB permission negotiation, and safe lifecycle recovery.
  */
 class UsbUvcManager(
-    private val activity: Activity,
+    private val activity: Context,
     private val textureView: TextureView,
     private val onStatus: (message: String, isConnected: Boolean) -> Unit,
-    private val onPermissionRequired: (device: UsbDevice, hasPermission: Boolean) -> Unit
+    private val onPermissionRequired: (device: UsbDevice, hasPermission: Boolean) -> Unit,
+    private val onVideoMetrics: ((UvcFrameSignalEvidence.Metrics) -> Unit)? = null
 ) : ICameraHelper.StateCallback, TextureView.SurfaceTextureListener {
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -39,6 +43,72 @@ class UsbUvcManager(
     var isRequested = false
         private set
     private var isPreviewStarted = false
+    @Volatile private var latestFrameAt = 0L
+    @Volatile private var lastFrameMetricsAt = 0L
+    @Volatile private var lastVideoDecisionAt = 0L
+    private var previewSession = 0
+
+    /** Frame evidence only. Never uses black frames as proof of a gear change. */
+    private fun attachFrameEvidence(helper: CameraHelper) {
+        try {
+            val preview = helper.previewSize
+            val width = preview?.width ?: 0
+            val height = preview?.height ?: 0
+            if (width <= 0 || height <= 0) {
+                CameraEventLog.record(activity, "UVC_SIGNAL", "FRAME_FORMAT_UNKNOWN", "no_preview_size")
+                return
+            }
+            CameraEventLog.record(activity, "UVC_SIGNAL", "FRAME_MONITOR_REGISTERING",
+                "size=" + width + "x" + height + " format=NV21")
+            helper.setFrameCallback(IFrameCallback { bytes ->
+                val now = SystemClock.elapsedRealtime()
+                latestFrameAt = now
+                val decisionDue = onVideoMetrics != null &&
+                    now - lastVideoDecisionAt >= 300L
+                val logDue = now - lastFrameMetricsAt >= 2000L
+                if (decisionDue || logDue) {
+                    if (decisionDue) lastVideoDecisionAt = now
+                    if (logDue) lastFrameMetricsAt = now
+                    val m = UvcFrameSignalEvidence.sampleNv21(bytes, width, height)
+                    if (m != null) {
+                        mainHandler.post {
+                            if (isRequested && isPreviewStarted) {
+                                if (decisionDue) onVideoMetrics?.invoke(m)
+                                if (logDue) {
+                                    val detail = String.format(Locale.US,
+                                        "mean=%.1f variance=%.1f dark=%.2f bins=%d low_info=%s NOT_GEAR",
+                                        m.meanLuma, m.lumaVariance, m.darkShare,
+                                        m.occupiedLumaBins, m.lowInformation)
+                                    CameraEventLog.record(activity,"UVC_SIGNAL","FRAME_METRICS",detail)
+                                }
+                            }
+                        }
+                    } else if(logDue) {
+                        mainHandler.post {
+                            CameraEventLog.record(activity,"UVC_SIGNAL","FRAME_FORMAT_MISMATCH",
+                                "expected_luma=" + width.toLong()*height)
+                        }
+                    }
+                }
+            }, UVCCamera.PIXEL_FORMAT_NV21)
+        } catch (t: Throwable) {
+            CameraEventLog.record(activity, "UVC_SIGNAL", "FRAME_MONITOR_UNAVAILABLE",
+                t.javaClass.simpleName)
+        }
+    }
+
+    private fun verifyFrameArrival(session: Int) {
+        mainHandler.postDelayed({
+            if (isRequested && isPreviewStarted && session == previewSession) {
+                val last = latestFrameAt
+                val age = if (last == 0L) -1L else SystemClock.elapsedRealtime() - last
+                CameraEventLog.record(activity, "UVC_SIGNAL",
+                    if (age == -1L || age > 3500L) "NO_RECENT_FRAME" else "FRAME_RECEIVED",
+                    "age_ms=" + age + " NOT_GEAR")
+            }
+        }, 3600L)
+    }
+
 
     private val ACTION_USB_PERMISSION = "ai.tigeriq.camera.USB_PERMISSION"
     private var isReceiverRegistered = false
@@ -58,7 +128,7 @@ class UsbUvcManager(
                     if (device != null) {
                         onPermissionRequired(device, granted)
                         if (granted) {
-                            onStatus("Đã được cấp quyền USB. Đang khởi động camera…", false)
+                            onStatus("Đã cấp quyền USB. Đang khởi động Camera.", false)
                             mainHandler.post {
                                 try {
                                     cameraHelper?.selectDevice(device)
@@ -67,7 +137,7 @@ class UsbUvcManager(
                                 }
                             }
                         } else {
-                            onStatus("Quyền truy cập USB bị từ chối", false)
+                            onStatus("Quyền truy cập USB bị từ chối.", false)
                         }
                     }
                 }
@@ -77,12 +147,33 @@ class UsbUvcManager(
 
     companion object {
         private const val TAG = "TigerIQ_UVC"
+        /**
+         * Match capture devices used by the original working UltraCar app,
+         * including vendor-specific USB video dongles.
+         * Never match arbitrary USB hubs, storage or HID devices.
+         */
         fun isUvc(device: UsbDevice): Boolean {
-            if (device.deviceClass == 14) return true
-            if (device.deviceClass == 239) return true // Composite device (Video + Audio / AFN_CAP)
-            if (device.vendorId == 0xff02 && device.productId == 0xafa1) return true // AFN_CAP capture card
+            if (device.deviceClass == 14 || device.deviceClass == 239) return true
+            if (device.vendorId == 0xff02 && device.productId == 0xafa1) return true
+
+            val description = listOfNotNull(device.productName, device.manufacturerName)
+                .joinToString(" ").lowercase()
+            val hasVideoName = listOf("camera", "cam", "uvc", "video", "capture", "grabber", "afn_cap")
+                .any { description.contains(it) }
+            if (hasVideoName) return true
+
             for (i in 0 until device.interfaceCount) {
-                if (device.getInterface(i).interfaceClass == 14) return true
+                val intf = device.getInterface(i)
+                if (intf.interfaceClass == 14) return true
+                if (intf.interfaceClass == 239 && intf.interfaceSubclass == 2) return true
+                // Nonstandard capture devices can expose vendor-specific
+                // isochronous video endpoints with USB class 0/255.
+                if (intf.interfaceClass == 255) {
+                    for (j in 0 until intf.endpointCount) {
+                        if (intf.getEndpoint(j).type == android.hardware.usb.UsbConstants.USB_ENDPOINT_XFER_ISOC)
+                            return true
+                    }
+                }
             }
             return false
         }
@@ -118,10 +209,10 @@ class UsbUvcManager(
         if (isRequested) return
         isRequested = true
         Log.i(TAG, "Starting UVC Camera helper...")
-        onStatus("Đang khởi động kết nối Camera USB…", false)
+        onStatus("Đang khởi động kết nối Camera USB.", false)
 
         try {
-            UVCUtils.init(activity.application)
+            UVCUtils.init(activity.applicationContext as android.app.Application)
         } catch (t: Throwable) {
             Log.w(TAG, "UVCUtils init error", t)
         }
@@ -139,7 +230,7 @@ class UsbUvcManager(
         if (uvcTarget != null) {
             selectDevice(uvcTarget)
         } else {
-            onStatus("Đang chờ Camera UVC qua USB Host…", false)
+            onStatus("Đang chờ Camera UVC qua USB.", false)
         }
     }
 
@@ -154,7 +245,7 @@ class UsbUvcManager(
         }
         releasePreview()
         selectedDevice = null
-        onStatus("Camera đã đóng", false)
+        onStatus("Camera đã dừng.", false)
     }
 
     fun release() {
@@ -167,6 +258,10 @@ class UsbUvcManager(
 
     private fun releasePreview() {
         isPreviewStarted = false
+        previewSession++
+        latestFrameAt = 0L
+        lastFrameMetricsAt = 0L
+        lastVideoDecisionAt = 0L
         previewSurface?.let {
             try {
                 cameraHelper?.removeSurface(it)
@@ -185,7 +280,7 @@ class UsbUvcManager(
         onPermissionRequired(device, hasPerm)
 
         if (!hasPerm) {
-            onStatus("Đã phát hiện Camera. Đang xin quyền USB…", false)
+            onStatus("Đã phát hiện Camera. Đang xin quyền USB.", false)
             requestUsbPermissionDirectly(device)
             try {
                 cameraHelper?.selectDevice(device)
@@ -196,7 +291,7 @@ class UsbUvcManager(
         }
 
         try {
-            onStatus("Đã có quyền USB. Đang mở Camera…", false)
+            onStatus("Đã có quyền USB. Đang mở Camera.", false)
             cameraHelper?.selectDevice(device)
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to select device", t)
@@ -210,7 +305,7 @@ class UsbUvcManager(
         val usbManager = activity.getSystemService(Context.USB_SERVICE) as UsbManager
         if (usbManager.hasPermission(target)) {
             onPermissionRequired(target, true)
-            onStatus("Đã có quyền USB. Đang kết nối…", false)
+            onStatus("Đã có quyền USB. Đang kết nối.", false)
             cameraHelper?.selectDevice(target)
             return
         }
@@ -238,9 +333,14 @@ class UsbUvcManager(
             val s = Surface(texture)
             previewSurface = s
             helper.addSurface(s, false)
+            latestFrameAt = 0L
+            lastFrameMetricsAt = 0L
+            attachFrameEvidence(helper)
             helper.startPreview()
             isPreviewStarted = true
-            onStatus("Camera UVC đang hoạt động", true)
+            previewSession++
+            verifyFrameArrival(previewSession)
+            onStatus("Camera UVC đang hoạt động.", true)
             selectedDevice?.let { onPermissionRequired(it, true) }
             Log.i(TAG, "UVC preview successfully started")
         } catch (t: Throwable) {
@@ -266,7 +366,7 @@ class UsbUvcManager(
                 cameraHelper?.openCamera()
             } catch (t: Throwable) {
                 Log.e(TAG, "Failed to open camera", t)
-                mainHandler.post { onStatus("Không thể mở Camera", false) }
+                mainHandler.post { onStatus("Không thể mở Camera.", false) }
             }
         }
     }
@@ -275,6 +375,9 @@ class UsbUvcManager(
         Log.i(TAG, "Camera Open callback: ${device.deviceName}")
         mainHandler.post {
             if (isRequested && device == selectedDevice) {
+                CameraSettings(activity).rememberWorkingCamera(device)
+                CameraEventLog.record(activity, "USB_VIDEO", "WORKING_CAMERA_LEARNED",
+                    "VID=" + device.vendorId + " PID=" + device.productId)
                 startPreview()
             }
         }
@@ -286,7 +389,7 @@ class UsbUvcManager(
             if (device == selectedDevice) {
                 releasePreview()
                 selectedDevice = null
-                onStatus("Camera UVC đã đóng — đang chờ kết nối lại", false)
+                onStatus("Camera UVC đã dừng. Đang chờ kết nối lại.", false)
             }
         }
     }
@@ -298,7 +401,7 @@ class UsbUvcManager(
             if (isCamera) {
                 releasePreview()
                 selectedDevice = null
-                onStatus("USB Camera ngắt kết nối (Đã về P/D)", false)
+                onStatus("USB Camera mất kết nối (không xác định số xe).", false)
                 val settings = CameraSettings(activity)
                 if (settings.isReverseImmediateClose && activity is CameraActivity && !activity.isFinishing) {
                     Log.i(TAG, "Auto-closing CameraActivity on Device Close (P/D disengaged)")
@@ -315,7 +418,7 @@ class UsbUvcManager(
             if (isCamera) {
                 releasePreview()
                 selectedDevice = null
-                onStatus("Camera ngắt nguồn đèn lùi (Đã về P/D) — Đang đóng…", false)
+                onStatus("Camera USB ngắt kết nối (không xác định P/D).", false)
                 val settings = CameraSettings(activity)
                 if (settings.isReverseImmediateClose && activity is CameraActivity && !activity.isFinishing) {
                     Log.i(TAG, "Auto-closing CameraActivity on USB Detach (P/D disengaged)")
@@ -330,7 +433,7 @@ class UsbUvcManager(
         mainHandler.post {
             if (isRequested && device == selectedDevice) {
                 onPermissionRequired(device, false)
-                onStatus("Quyền truy cập USB bị từ chối", false)
+                onStatus("Quyền truy cập USB bị từ chối.", false)
             }
         }
     }

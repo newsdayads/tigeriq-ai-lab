@@ -11,8 +11,8 @@ android {
         applicationId 'ai.tigeriq.camera'
         minSdk 26
         targetSdk 34
-        versionCode 11
-        versionName '1.0.10'
+        versionCode 24
+        versionName '1.0.23'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
 
@@ -24,6 +24,7 @@ android {
             keyPassword "android"
             v1SigningEnabled true
             v2SigningEnabled true
+            enableV3Signing = true
         }
     }
 
