@@ -9,10 +9,12 @@ class OriginalUltraCarParityTest {
     private val receiver = File("src/main/java/ai/tigeriq/camera/UsbAttachReceiver.kt").readText()
     @Test fun referenceUsbPolling() {
         assertTrue(service.contains("postDelayed(this, 350L)"))
-        assertTrue(service.contains("postDelayed(pendingUsbOpen, 400L)"))
+        assertFalse(service.contains("postDelayed(pendingUsbOpen, 400L)"))
         assertFalse(service.contains("openFromUsb(\"recognized_camera_at_start\")"))
         assertTrue(service.contains("USB_CONNECTED_NOT_GEAR"))
-        assertTrue(service.contains("closeFromUsb(\"recognized_camera_disappeared\")"))
+        assertFalse(service.contains("closeFromUsb(\"recognized_camera_disappeared\")"))
+        assertTrue(service.contains("USB_LOST_NOT_R_OFF"))
+        assertTrue(service.contains("UvcSignalMonitor"))
         assertTrue(service.contains("workingCameraKey()"))
     }
     @Test fun oneUsbWindowController() {

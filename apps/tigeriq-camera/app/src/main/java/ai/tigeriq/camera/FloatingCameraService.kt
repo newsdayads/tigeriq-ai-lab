@@ -76,6 +76,71 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
 
     private lateinit var settings: CameraSettings
     private lateinit var cameraOverlay: ReverseCameraOverlay
+    // Single camera owner: probe only while window closed; release probe before
+    // foreground overlay takes UVC device. No other app/UI components changed.
+    private var signalMonitor: UvcSignalMonitor? = null
+    private val videoClassifier = VideoSignalClassifier()
+    private var autoVideoWindow = false
+    private var autoProbeOpening = false
+    private var manualWindowEpoch = 0
+
+    private val resumeVideoProbe = Runnable {
+        autoProbeOpening = false
+        if (settings.isReverseAutoStart && !cameraOverlay.isVisible &&
+            !CameraActivity.isRunning()) {
+            signalMonitor?.start()
+        }
+    }
+    private fun requestVideoProbe(delayMs: Long = 800L) {
+        handler.removeCallbacks(resumeVideoProbe)
+        if (!settings.isReverseAutoStart || cameraOverlay.isVisible) return
+        handler.postDelayed(resumeVideoProbe,delayMs)
+    }
+    private fun stopVideoProbe() {
+        handler.removeCallbacks(resumeVideoProbe)
+        signalMonitor?.stop()
+    }
+    private fun onVideoProbeMetrics(m: UvcFrameSignalEvidence.Metrics) {
+        val next = videoClassifier.accept(m) ?: return
+        CameraEventLog.record(this, "VIDEO_SIGNAL", next.name,
+            "source=offscreen_uvc confidence=signature_candidate NOT_PHYSICAL_GEAR")
+        if (next == VideoSignalClassifier.State.VIDEO_ACTIVE &&
+            settings.isReverseAutoStart && !cameraOverlay.isVisible && !autoProbeOpening) {
+            autoProbeOpening = true
+            stopVideoProbe()
+            CameraEventLog.record(this, "VIDEO_SIGNAL", "OPEN_REQUEST",
+                "stable_active_frames; signal_inferred_not_gear_verified")
+            // Let native UVC release before opening the approved overlay.
+            handler.postDelayed({
+                autoProbeOpening = false
+                if (!cameraOverlay.isVisible && settings.isReverseAutoStart) {
+                    val opened = cameraOverlay.show(findDexDisplay()) ||
+                        cameraOverlay.show(null)
+                    autoVideoWindow = opened
+                    CameraEventLog.record(this,"VIDEO_SIGNAL",
+                        if(opened)"OVERLAY_OPENED" else "OVERLAY_FAILED",
+                        "candidate_video_active")
+                    if(!opened) {
+                        videoClassifier.reset()
+                        requestVideoProbe(1600L)
+                    }
+                }
+            },800L)
+        }
+    }
+    private fun onOverlayVideoMetrics(m: UvcFrameSignalEvidence.Metrics) {
+        val next=videoClassifier.accept(m) ?: return
+        CameraEventLog.record(this,"VIDEO_SIGNAL",next.name,
+            "source=visible_overlay NOT_PHYSICAL_GEAR")
+        // Never close a manually opened camera on guessed video state.
+        if (autoVideoWindow && next==VideoSignalClassifier.State.IDLE_PATTERN) {
+            CameraEventLog.record(this,"VIDEO_SIGNAL","AUTO_CLOSE_CANDIDATE",
+                "verified_converter_idle_pattern_required; not_usb_disconnect")
+            autoVideoWindow=false
+            cameraOverlay.hide()
+            requestVideoProbe(850L)
+        }
+    }
 
     private val handler = Handler(Looper.getMainLooper())
     private var displayManager: DisplayManager? = null
@@ -93,24 +158,23 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     private var isWatcherInitialized = false
     // Single pending open mirrors original UltraCar v1.0.17.
     private val pendingUsbOpen = Runnable {
-        CameraEventLog.record(this, "ULTRACAR_USB", "AUTO_OPEN_EXECUTING",
-            "source=usb_not_proven_gear")
-        if (!cameraOverlay.show(findDexDisplay())) {
-            // DeX may deny overlay on a secondary display; retry default display.
-            cameraOverlay.show(null)
-        }
+        // Legacy USB attach must not impersonate R.
+        CameraEventLog.record(this,"VIDEO_SIGNAL","USB_OPEN_DISABLED",
+            "awaiting_live_video_from_headless_uvc")
+        requestVideoProbe(350L)
     }
     private fun openFromUsb(source: String) {
-        handler.removeCallbacks(pendingUsbOpen)
-        CameraEventLog.record(this, "ULTRACAR_USB", "OPEN_SCHEDULED", source + " delay=400ms")
-        handler.postDelayed(pendingUsbOpen, 400L)
+        CameraEventLog.record(this,"VIDEO_SIGNAL","USB_ATTACH_NOT_GEAR",source)
+        requestVideoProbe(400L)
     }
     private fun closeFromUsb(source: String) {
         handler.removeCallbacks(pendingUsbOpen)
-        CameraEventLog.record(this, "ULTRACAR_USB", "CLOSE_NOW", source)
+        CameraEventLog.record(this,"WINDOW","EXPLICIT_CLOSE",source)
+        autoVideoWindow=false
         cameraOverlay.hide()
         CameraActivity.dismissIfRunning(immediate = true)
         sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA).setPackage(packageName))
+        requestVideoProbe(800L)
     }
     private val usbWatcherRunnable = object : Runnable {
         override fun run() {
@@ -122,7 +186,10 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     override fun onCreate() {
         super.onCreate()
         settings = CameraSettings(this)
-        cameraOverlay = ReverseCameraOverlay(this)
+        cameraOverlay = ReverseCameraOverlay(this) { metrics ->
+            onOverlayVideoMetrics(metrics)
+        }
+        signalMonitor = UvcSignalMonitor(this) { metrics -> onVideoProbeMetrics(metrics) }
         usbManager = getSystemService(Context.USB_SERVICE) as? UsbManager
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
@@ -137,17 +204,27 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
         registerDynamicReverseReceiver()
         startUsbCameraWatcher()
         updateFloatingView()
+        requestVideoProbe(1200L)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when(intent?.action) {
             ACTION_GEAR_ON -> {
                 CameraEventLog.record(this,"WINDOW","GEAR_OVERLAY_OPEN_REQUEST","manual_or_broadcast")
+                stopVideoProbe()
+                autoVideoWindow=false
                 handler.removeCallbacks(pendingUsbOpen)
-                if (!cameraOverlay.show(findDexDisplay())) cameraOverlay.show(null)
+                // Manual/broadcast request takes precedence over the signal probe.
+                val epoch=++manualWindowEpoch
+                handler.postDelayed({
+                    if(epoch==manualWindowEpoch &&
+                        !cameraOverlay.show(findDexDisplay()))
+                        cameraOverlay.show(null)
+                },650L)
             }
             ACTION_GEAR_OFF -> {
                 CameraEventLog.record(this,"WINDOW","GEAR_OVERLAY_CLOSE_REQUEST")
+                manualWindowEpoch++
                 closeFromUsb("gear_off_action")
             }
         }
@@ -232,7 +309,8 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     private var activeCameraDeviceKey: String? = null
 
     private fun checkCameraPresence() {
-        if (!settings.isUsbAutoStart) return
+        // Inspect USB only to know when the UVC probe can start. No USB event
+        // may be interpreted as gearbox R/PND, regardless of this toggle.
         val um = usbManager ?: return
         val devices = try { um.deviceList?.values?.toList() ?: return }
             catch (err: Throwable) {
@@ -265,8 +343,11 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
             // USB present at startup is not physical R. The capture card can
             // remain enumerated while the vehicle is in P/N/D.
             // Only a real gear broadcast or actual USB transition may open it.
-            if (matchedKey != null) CameraEventLog.record(this, "GEAR_SOURCE",
-                "USB_CONNECTED_NOT_GEAR", "cold_start_suppressed")
+            if (matchedKey != null) {
+                CameraEventLog.record(this, "GEAR_SOURCE",
+                    "USB_CONNECTED_NOT_GEAR", "probe_start_only")
+                requestVideoProbe(800L)
+            }
             return
         }
 
@@ -285,7 +366,10 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
             activeCameraDeviceKey = null
             lastCameraPresent = false
             settings.recordUsbState(false, changed = true)
-            closeFromUsb("recognized_camera_disappeared")
+            stopVideoProbe()
+            // USB disappearance does not prove vehicle left R; preserve any
+            // visible window and let UVC report 'signal unavailable'.
+            CameraEventLog.record(this,"VIDEO_SIGNAL","USB_LOST_NOT_R_OFF")
         }
 
         if (becamePresent) {
@@ -311,9 +395,9 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
                 activeCameraDeviceKey = added.first()
                 lastCameraPresent = true
                 settings.recordUsbState(true, changed = true)
-                CameraEventLog.record(this, "GEAR_SOURCE", "LEGACY_UNKNOWN_USB_TRIGGER",
+                CameraEventLog.record(this, "GEAR_SOURCE", "UNKNOWN_USB_NOT_GEAR",
                     "VID=" + newDevice.vendorId + " PID=" + newDevice.productId)
-                openFromUsb("new_single_unknown_usb_device")
+                requestVideoProbe(500L)
             }
         }
     }
@@ -471,14 +555,24 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
                             // Tap (< 0.5s): Toggle Camera Window ON / OFF
                             if (cameraOverlay.isVisible || CameraActivity.isRunning()) {
                                 Log.i(TAG, "Floating button TAP -> Camera running, closing immediately")
+                                manualWindowEpoch++
+                                autoVideoWindow=false
                                 cameraOverlay.hide()
                                 CameraActivity.dismissIfRunning(immediate = true)
+                                requestVideoProbe(900L)
                                 try {
                                     sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA))
                                 } catch (_: Throwable) {}
                             } else {
                                 Log.i(TAG, "Floating button TAP -> Camera not running, launching camera")
-                                if (!cameraOverlay.show(findDexDisplay())) cameraOverlay.show(null)
+                                stopVideoProbe()
+                                autoVideoWindow=false
+                                val epoch=++manualWindowEpoch
+                                handler.postDelayed({
+                                    if(epoch==manualWindowEpoch &&
+                                        !cameraOverlay.show(findDexDisplay()))
+                                        cameraOverlay.show(null)
+                                },650L)
                             }
                         }
                     }
@@ -544,6 +638,7 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     }
 
     override fun onDestroy() {
+        stopVideoProbe()
         cameraOverlay.hide()
         handler.removeCallbacks(usbWatcherRunnable)
         handler.removeCallbacks(pendingUsbOpen)

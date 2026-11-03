@@ -81,3 +81,13 @@
 - Confirmed exact real-time log failure from Z Fold2 v1.0.21 at 15:26:20 & 15:40:59: OVERLAY_OPEN_FAILED stage=get_window_manager type=UnsupportedOperationException message=TextureView doesn't support displaying a background drawable. Actual root cause is calling setBackgroundColor(Color.BLACK) ON TextureView, not display context or DeX rendering. Removed it and moved black background to parent FrameLayout, with regression test. Based on AOSP TextureView.setBackgroundDrawable throwing UOE.
 - Camera capture sometimes produces flat signal (UVC luma mean 30 variance 0.2) despite UVC stream being available; cannot equate green/flat video to an actual reverse-gear signal without input-state ground truth. This is separate from approved guideline rendering and gear truth.
 - No real steering sensor or physical R/P messages verified, so TEST-only; this is not a production-safe calibrated parking prediction.
+
+# v1.0.23 TEST - headless UVC video source candidate
+- Hardware owner confirms wired vehicle R powers rear video from 360 converter while USB dongle can stay enumerated.
+- New UvcSignalMonitor runs inside already authorized FloatingCameraService when Camera window CLOSED, holds only one UVC CameraHelper at a time, no UI changes, does not store video.
+- It attempts NV21 IFrameCallback using 32x32 drained offscreen ImageReader/EGL surface. Actual UVC callback without visible TextureView is not yet tested on Galaxy Z Fold2; logs VIDEO_PROBE PREVIEW_REQUESTED or NO_FRAMES/OPEN_ERROR, so failures remain visible without user screenshots.
+- VideoSignalClassifier uses actual observed idle converter signature mean~30 variance~0.2 bins<=2; requires 7 consecutive idle frames. Active >=80 luma variance / >=5 bins requires 5 consecutive frames. Darkness/no frame is UNKNOWN, not R_OFF. The exact signature is model hypothesis for installed converter and must be correlated to real shift state before acceptance.
+- The running probe is RELEASED before the approved ReverseCameraOverlay can own UVC. Overlay uses SAME UsbUvcManager NV21 callback and classifier for sustained idle; only auto-opened overlays close on standby, never a manually opened window.
+- USB attach/detach no longer auto opens or auto closes camera, only starts/stops headless observer.
+- Existing approved XML layouts, DynamicGuideView and CameraActivity were NOT touched in this version.
+- 5/50 real-vehicle acceptance remains PENDING, no physical gear truth reflected in Android broadcast. No production or merge until field evidence.

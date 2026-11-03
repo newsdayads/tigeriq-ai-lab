@@ -23,7 +23,10 @@ import android.hardware.display.DisplayManager
  * Unlike background startActivity(), WindowManager.addView() either succeeds or errors.
  * It displays UVC preview; does not independently know the physical gear.
  */
-class ReverseCameraOverlay(private val owner: Service) {
+class ReverseCameraOverlay(
+    private val owner: Service,
+    private val onVideoMetrics: ((UvcFrameSignalEvidence.Metrics) -> Unit)? = null
+) {
     private var wm: WindowManager? = null
     private var content: FrameLayout? = null
     private var camera: UsbUvcManager? = null
@@ -115,7 +118,8 @@ class ReverseCameraOverlay(private val owner: Service) {
             try {
                 val helper=UsbUvcManager(owner,texture,
                     onStatus={message,_ -> status.post { status.text=message }},
-                    onPermissionRequired={_:UsbDevice,_:Boolean -> })
+                    onPermissionRequired={_:UsbDevice,_:Boolean -> },
+                    onVideoMetrics=onVideoMetrics)
                 camera=helper
                 helper.start()
             } catch(t:Throwable) {

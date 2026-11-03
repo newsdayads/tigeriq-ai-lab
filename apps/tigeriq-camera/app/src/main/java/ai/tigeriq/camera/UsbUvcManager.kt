@@ -31,7 +31,8 @@ class UsbUvcManager(
     private val activity: Context,
     private val textureView: TextureView,
     private val onStatus: (message: String, isConnected: Boolean) -> Unit,
-    private val onPermissionRequired: (device: UsbDevice, hasPermission: Boolean) -> Unit
+    private val onPermissionRequired: (device: UsbDevice, hasPermission: Boolean) -> Unit,
+    private val onVideoMetrics: ((UvcFrameSignalEvidence.Metrics) -> Unit)? = null
 ) : ICameraHelper.StateCallback, TextureView.SurfaceTextureListener {
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -44,6 +45,7 @@ class UsbUvcManager(
     private var isPreviewStarted = false
     @Volatile private var latestFrameAt = 0L
     @Volatile private var lastFrameMetricsAt = 0L
+    @Volatile private var lastVideoDecisionAt = 0L
     private var previewSession = 0
 
     /** Frame evidence only. Never uses black frames as proof of a gear change. */
@@ -61,20 +63,29 @@ class UsbUvcManager(
             helper.setFrameCallback(IFrameCallback { bytes ->
                 val now = SystemClock.elapsedRealtime()
                 latestFrameAt = now
-                if (now - lastFrameMetricsAt >= 2000L) {
-                    lastFrameMetricsAt = now
+                val decisionDue = onVideoMetrics != null &&
+                    now - lastVideoDecisionAt >= 300L
+                val logDue = now - lastFrameMetricsAt >= 2000L
+                if (decisionDue || logDue) {
+                    if (decisionDue) lastVideoDecisionAt = now
+                    if (logDue) lastFrameMetricsAt = now
                     val m = UvcFrameSignalEvidence.sampleNv21(bytes, width, height)
                     if (m != null) {
-                        val detail = String.format(Locale.US,
-                            "mean=%.1f variance=%.1f dark=%.2f bins=%d low_info=%s NOT_GEAR",
-                            m.meanLuma, m.lumaVariance, m.darkShare,
-                            m.occupiedLumaBins, m.lowInformation)
                         mainHandler.post {
-                            CameraEventLog.record(activity, "UVC_SIGNAL", "FRAME_METRICS", detail)
+                            if (isRequested && isPreviewStarted) {
+                                if (decisionDue) onVideoMetrics?.invoke(m)
+                                if (logDue) {
+                                    val detail = String.format(Locale.US,
+                                        "mean=%.1f variance=%.1f dark=%.2f bins=%d low_info=%s NOT_GEAR",
+                                        m.meanLuma, m.lumaVariance, m.darkShare,
+                                        m.occupiedLumaBins, m.lowInformation)
+                                    CameraEventLog.record(activity,"UVC_SIGNAL","FRAME_METRICS",detail)
+                                }
+                            }
                         }
-                    } else {
+                    } else if(logDue) {
                         mainHandler.post {
-                            CameraEventLog.record(activity, "UVC_SIGNAL", "FRAME_FORMAT_MISMATCH",
+                            CameraEventLog.record(activity,"UVC_SIGNAL","FRAME_FORMAT_MISMATCH",
                                 "expected_luma=" + width.toLong()*height)
                         }
                     }
@@ -250,6 +261,7 @@ class UsbUvcManager(
         previewSession++
         latestFrameAt = 0L
         lastFrameMetricsAt = 0L
+        lastVideoDecisionAt = 0L
         previewSurface?.let {
             try {
                 cameraHelper?.removeSurface(it)
