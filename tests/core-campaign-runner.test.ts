@@ -1,6 +1,6 @@
 // @ts-nocheck
 import {describe,it,expect} from 'vitest';
-import {normalizeCampaignPhases,currentCampaignGoal,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId,explicitJobRefsFromText,referencedJobEvidenceContext,referencedJobReviewExclusions,normalizeWorkItemLifecycle,executeCoreWorkItemLifecycle} from '../apps/tigeriq-core/campaign-runner.mjs';
+import {normalizeCampaignPhases,currentCampaignGoal,campaignPhaseCapability,campaignReviewIndependence,campaignTransition,makePhaseCheckpoint,campaignNeedsEvidence,campaignEvidenceJobId,explicitJobRefsFromText,referencedJobEvidenceContext,referencedJobReviewExclusions,normalizeWorkItemLifecycle,executeCoreWorkItemLifecycle} from '../apps/tigeriq-core/campaign-runner.mjs';
 import {detectIdleWithBacklog} from '../apps/tigeriq-core/github-backlog-policy.mjs';
 import {runExecutionPreflight} from '../apps/tigeriq-core/execution-preflight.mjs';
 import {readFileSync} from 'node:fs';
@@ -15,6 +15,41 @@ describe('API campaign runner and core lifecycle integration',()=>{
   it('requires at least three phases for a campaign',()=>{
     expect(()=>normalizeCampaignPhases(['one','two'])).toThrow('CAMPAIGN_PHASE_COUNT_INVALID');
     expect(normalizeCampaignPhases(phases)).toHaveLength(3);
+  });
+  it('preserves explicit review capability and supports the legacy capability-review contract',()=>{
+    const normalized=normalizeCampaignPhases([
+      {title:'Build',prompt:'create output',capability:'reasoning'},
+      {title:'QA',prompt:'Tạo job capability review. Reviewer khác implementer.',capability:'review'},
+      {title:'Accept',prompt:'verify end to end',capability:'reasoning'},
+    ]);
+    expect(normalized.map(x=>x.capability)).toEqual(['reasoning','review','reasoning']);
+    expect(campaignPhaseCapability({prompt:'Tạo job capability review. Reviewer phải độc lập.'})).toBe('review');
+    expect(()=>campaignPhaseCapability({capability:'pc_operator'})).toThrow('CAMPAIGN_PHASE_CAPABILITY_INVALID');
+  });
+  it('rejects a review checkpoint that reuses implementer employee or resource',()=>{
+    const reviewPhases=[
+      {title:'Build',prompt:'create',capability:'reasoning'},
+      {title:'QA',prompt:'review',capability:'review'},
+      {title:'Accept',prompt:'accept',capability:'reasoning'},
+    ];
+    const collision=campaignReviewIndependence({phases:reviewPhases,checkpoints:[
+      {phaseIndex:0,employeeId:'NV10',resourceId:'res:nv10'},
+      {phaseIndex:1,employeeId:'NV10',resourceId:'res:nv10'},
+    ]});
+    expect(collision).toMatchObject({accepted:false,code:'REVIEWER_EMPLOYEE_COLLISION',phaseIndex:1});
+    const pass=campaignReviewIndependence({phases:reviewPhases,checkpoints:[
+      {phaseIndex:0,employeeId:'NV10',resourceId:'res:nv10'},
+      {phaseIndex:1,employeeId:'NV12',resourceId:'res:nv12'},
+      {phaseIndex:2,employeeId:'NV10',resourceId:'res:nv10'},
+    ]});
+    expect(pass).toEqual({accepted:true,code:'REVIEW_INDEPENDENCE_ACCEPTED'});
+  });
+  it('wires phase capability and deterministic review-independence gate into Core',()=>{
+    const source=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    expect(source).toContain('const phaseCapability=campaignPhaseCapability(phase);');
+    expect(source).toContain("compiledEvidence.prompt.slice(0,12000),phaseCapability,currentPhase");
+    expect(source).toContain('const reviewIndependence=campaignReviewIndependence({');
+    expect(source).toContain("CAMPAIGN_REVIEW_INDEPENDENCE_REJECTED");
   });
   it('builds a phase-scoped manager goal',()=>{
     const goal=currentCampaignGoal('Optimize TigerIQ',phases,1);
