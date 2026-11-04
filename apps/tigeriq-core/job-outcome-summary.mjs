@@ -5,8 +5,8 @@ const SENSITIVE_RESULT_KEY=/(?:secret|token|password|passwd|credential|authoriza
 const RAW_RESULT_KEY=/^(?:text|content|stdout|stderr|raw|rawText|raw_text|payload|body)$/i;
 function redactResultString(value=''){
   return String(value)
-    .replace(/\\bBearer\\s+[A-Za-z0-9._~+\\/=-]+/gi,'Bearer [REDACTED]')
-    .replace(/((?:secret|token|password|passwd|credential|authorization|cookie|api[_-]?key|private[_-]?key)\\s*[:=]\\s*)[^\\s,;]+/gi,'$1[REDACTED]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+\/=-]+/gi,'Bearer [REDACTED]')
+    .replace(/((?:secret|token|password|passwd|credential|authorization|cookie|api[_-]?key|private[_-]?key)\s*[:=]\s*)[^\s,;]+/gi,'$1[REDACTED]')
     .slice(0,RESULT_MAX_STRING);
 }
 function safeResultValue(value,depth=0){
