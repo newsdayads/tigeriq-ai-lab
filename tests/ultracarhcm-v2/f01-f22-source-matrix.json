@@ -238,10 +238,11 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/QuickBarCompose.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/QuickSlotRules.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
-        "tests/ultracarhcm-v2/quickbar-source.test.ts"
+        "tests/ultracarhcm-v2/quickbar-source.test.ts",
+        "tests/ultracarhcm-v2/bottom-camera-action-source.test.ts"
       ],
-      "gap": "Nine assignable/launchable slots exist. Quick-slot writes are synchronously committed and surfaced as failure if persistence fails; malformed stored quick-slot JSON is logged and synchronously cleared so corrupt state cannot silently survive relaunch. Full V1 bottom-zone behavior/parity and real-device persistence acceptance remain open.",
-      "actual": "QuickBarGrid renders exactly nine slots in three rows; long press assigns/removes supported presets or package targets and click launches package/camera targets. saveQuickSlot synchronously commits bounded nine-slot JSON before rendering success. quickSlots() recovers malformed JSON by removing the corrupt preference with commit() and logs cleanup failure instead of silently continuing with persistent corruption.",
+      "gap": "Nine assignable/launchable slots exist. The verified V1 bottom action row now preserves saved layouts/new layout/Camera semantics: the third action explicitly opens UsbCameraActivity while Ultrabot remains decorative media behind the transparent Camera action. Quick-slot writes are synchronously committed and malformed state is durably cleared. Exact V1 icon artwork and real-device Camera/DeX persistence acceptance remain open.",
+      "actual": "QuickBarGrid renders exactly nine assignable slots; long press assigns/removes presets or package targets and click launches package/camera targets. The Home bottom row includes saved layouts, new layout and an explicit transparent CAMERA action that launches UsbCameraActivity while preserving Ultrabot decorative media. saveQuickSlot commits bounded JSON synchronously before success.",
       "testStatus": "DEVICE_QA_NOT_TESTED",
       "entryPoints": [
         "HomeActivity.quickSlots",
@@ -249,7 +250,8 @@
         "HomeActivity.renderQuickBar",
         "HomeActivity.showQuickSlotEditor",
         "HomeActivity.launchQuickSlot",
-        "QuickBarGrid"
+        "QuickBarGrid",
+        "HomeActivity.render"
       ],
       "permissions": []
     },
