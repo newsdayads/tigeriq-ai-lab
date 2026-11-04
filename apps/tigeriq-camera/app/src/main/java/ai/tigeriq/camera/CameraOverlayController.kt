@@ -10,6 +10,7 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.view.Display
@@ -42,11 +43,20 @@ object CameraOverlayController {
     private var currentDisplayId: Int = -1
 
     private var isOverlayVisible: Boolean = false
+    private var autoOpenedByReverse: Boolean = false
+    private var openTimestamp: Long = 0L
+
+    private val overlayVideoClassifier = VideoSignalClassifier(activeSamples = 2, idleSamples = 4)
+    private var onOverlayClosedListener: (() -> Unit)? = null
 
     fun isShowing(): Boolean = isOverlayVisible && overlayView != null && overlayView?.visibility == View.VISIBLE
 
+    fun setOnOverlayClosedListener(listener: (() -> Unit)?) {
+        onOverlayClosedListener = listener
+    }
+
     @Synchronized
-    fun show(context: Context, display: Display?, isReverse: Boolean = false, steering: Float = 0f) {
+    fun show(context: Context, display: Display? = null, isReverse: Boolean = false, steering: Float = 0f) {
         val targetDisplay = display ?: DeXDisplayHelper.resolveTargetDisplay(context) ?: return
         val displayId = targetDisplay.displayId
 
@@ -66,6 +76,10 @@ object CameraOverlayController {
                 val tvGearBadge = view.findViewById<TextView>(R.id.tvGearBadge)
                 val settings = CameraSettings(context)
 
+                autoOpenedByReverse = isReverse
+                openTimestamp = SystemClock.elapsedRealtime()
+                overlayVideoClassifier.reset()
+
                 if (isReverse) {
                     tvGearBadge?.text = "R"
                     tvGearBadge?.setBackgroundColor(0xFFFF3B30.toInt())
@@ -83,9 +97,11 @@ object CameraOverlayController {
                 view.visibility = View.VISIBLE
                 isOverlayVisible = true
                 uvcManager?.start()
+                CameraEventLog.record(context, "WINDOW", "OVERLAY_VISIBLE", "display=$displayId isReverse=$isReverse")
                 Log.i(TAG, "Camera Overlay shown (isReverse=$isReverse, display=$displayId)")
             } catch (t: Throwable) {
                 Log.e(TAG, "Failed to show camera overlay", t)
+                CameraEventLog.record(context, "WINDOW", "OVERLAY_SHOW_FAILED", t.javaClass.simpleName)
             }
         }
     }
@@ -99,14 +115,16 @@ object CameraOverlayController {
                 uvcManager?.stop()
                 overlayView?.visibility = View.GONE
                 isOverlayVisible = false
+                autoOpenedByReverse = false
                 Log.i(TAG, "Camera Overlay hidden")
+                onOverlayClosedListener?.invoke()
             } catch (t: Throwable) {
                 Log.e(TAG, "Failed to hide camera overlay", t)
             }
         }
     }
 
-    fun toggle(context: Context, display: Display?) {
+    fun toggle(context: Context, display: Display? = null) {
         if (isShowing()) {
             hide()
         } else {
@@ -116,6 +134,20 @@ object CameraOverlayController {
 
     fun updateSteering(degrees: Float) {
         guideView?.setSteeringDegrees(degrees)
+    }
+
+    private fun handleOverlayVideoMetrics(context: Context, metrics: UvcFrameSignalEvidence.Metrics) {
+        val next = overlayVideoClassifier.accept(metrics) ?: return
+        if (autoOpenedByReverse && next == VideoSignalClassifier.State.IDLE_PATTERN) {
+            val elapsed = SystemClock.elapsedRealtime() - openTimestamp
+            // Grace period: ignore idle pattern for first 2.5s to prevent false closing on camera init
+            if (elapsed > 2500L) {
+                Log.i(TAG, "Converter returned to IDLE pattern (P/D engaged) -> auto-closing overlay")
+                CameraEventLog.record(context, "VIDEO_SIGNAL", "AUTO_CLOSE_IDLE_PATTERN",
+                    "elapsed=${elapsed}ms mean=${metrics.meanLuma}")
+                hide()
+            }
+        }
     }
 
     private fun initOverlay(context: Context, targetDisplay: Display) {
@@ -182,15 +214,18 @@ object CameraOverlayController {
         // Setup park assist audio
         parkAssistEngine = ParkAssistAudioEngine(ctx)
 
-        // Setup UVC manager
+        // Setup UVC manager with video metrics classification
         val uvc = UsbUvcManager(
-            context = ctx,
+            activity = ctx,
             textureView = textureView,
             onStatus = { msg, _ ->
                 tvStatusMessage?.text = msg
             },
             onPermissionRequired = { _, hasPerm ->
                 cardPermissionPrompt?.visibility = if (hasPerm) View.GONE else View.VISIBLE
+            },
+            onVideoMetrics = { metrics ->
+                handleOverlayVideoMetrics(ctx, metrics)
             },
             onDeviceDisconnected = {
                 if (settings.isReverseImmediateClose) {

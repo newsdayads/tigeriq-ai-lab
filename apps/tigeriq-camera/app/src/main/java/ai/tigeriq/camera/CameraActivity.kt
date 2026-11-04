@@ -154,7 +154,7 @@ class CameraActivity : AppCompatActivity() {
 
         // Initialize UVC Engine with permission callback
         uvcManager = UsbUvcManager(
-            context = this,
+            activity = this,
             textureView = findViewById(R.id.cameraTextureView),
             onStatus = { message, _ ->
                 runOnUiThread {
@@ -408,3 +408,4 @@ class CameraActivity : AppCompatActivity() {
         }
     }
 }
+

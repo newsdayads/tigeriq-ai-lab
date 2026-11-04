@@ -42,6 +42,19 @@ class CameraSettings(context: Context) {
         get() = prefs.getBoolean(KEY_NIGHT_BOOSTER, false)
         set(value) = prefs.edit().putBoolean(KEY_NIGHT_BOOSTER, value).apply()
 
+    // Persist the VID/PID of the USB video device that actually opened.
+    // Prevent a permanently attached DeX hub from impersonating reverse Camera.
+    fun rememberWorkingCamera(device: android.hardware.usb.UsbDevice) {
+        prefs.edit()
+            .putInt("working_camera_vid", device.vendorId)
+            .putInt("working_camera_pid", device.productId)
+            .apply()
+    }
+    fun workingCameraKey(): String? {
+        val vendor = prefs.getInt("working_camera_vid", -1)
+        val product = prefs.getInt("working_camera_pid", -1)
+        return if (vendor >= 0 && product >= 0) "$vendor:$product" else null
+    }
     var isFloatingEnabled: Boolean
         get() = prefs.getBoolean(KEY_FLOATING_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_FLOATING_ENABLED, value).apply()
@@ -81,6 +94,37 @@ class CameraSettings(context: Context) {
     var warpFactor: Float
         get() = prefs.getFloat(KEY_WARP_FACTOR, 1.0f)
         set(value) = prefs.edit().putFloat(KEY_WARP_FACTOR, value).apply()
+
+    // USB presence and genuine vehicle gear broadcasts are independent signals.
+    fun recordReverseSignal(action: String, active: Boolean) {
+        prefs.edit()
+            .putString("last_gear_action", action)
+            .putBoolean("last_gear_reverse", active)
+            .putLong("last_gear_timestamp", System.currentTimeMillis())
+            .apply()
+    }
+
+    fun recordUsbState(present: Boolean, changed: Boolean) {
+        val edit = prefs.edit().putBoolean("last_usb_present", present)
+        if (changed) edit.putLong("last_usb_change", System.currentTimeMillis())
+        edit.apply()
+    }
+
+    fun getReverseDiagnostics(): String {
+        val timestamp = prefs.getLong("last_gear_timestamp", 0L)
+        val usbChanged = prefs.getLong("last_usb_change", 0L)
+        val time: (Long) -> String = { t ->
+            if (t == 0L) "chưa ghi nhận"
+            else android.text.format.DateFormat.format("HH:mm:ss", t).toString()
+        }
+        val gear = if (timestamp == 0L) "Chưa có tín hiệu số R thực từ xe"
+                   else (prefs.getString("last_gear_action", "?") + " " +
+                         (if (prefs.getBoolean("last_gear_reverse", false)) "R ON" else "R OFF") +
+                         " " + time(timestamp))
+        val usb = (if (prefs.getBoolean("last_usb_present", false)) "Có thiết bị" else "Không có thiết bị") +
+                  " | Thay đổi: " + time(usbChanged)
+        return "Broadcast R (chưa xác minh nguồn xe): " + gear + "\nUSB: " + usb
+    }
 
     fun getFloatingX(displayId: Int, defaultVal: Int): Int =
         prefs.getInt("floating_x_$displayId", defaultVal)
