@@ -2,6 +2,11 @@
 // Source: PC01 TigerIQ Core /api/work-orders. Never creates jobs, leases or status.
 export const CORE_URL = 'http://127.0.0.1:8795/api/work-orders';
 export const MAX_SOURCE_AGE_MS = 120_000;
+// Core may perform sequential open + recent-closed GitHub page reads on a cold cache.
+// Keep the Animal City client inside the PC01 12s operational probe while allowing
+// one legitimate cold refresh to finish instead of aborting at the old 4s boundary.
+export const CORE_REQUEST_TIMEOUT_MS = 10_500;
+export const CORE_REQUEST_TOTAL_BUDGET_MS = 11_500;
 const MAX_ITEMS = 2500;
 const MAX_BODY_BYTES = 2_000_000;
 
@@ -110,8 +115,9 @@ export function normalizeCoreSnapshot(source, {now = Date.now()} = {}) {
 }
 
 export async function fetchCoreSnapshot({
-  fetchImpl = fetch, now = Date.now(), url = CORE_URL, timeoutMs = 4000,
-  attempts = 2, retryDelayMs = 150,
+  fetchImpl = fetch, now = Date.now(), url = CORE_URL,
+  timeoutMs = CORE_REQUEST_TIMEOUT_MS, attempts = 2, retryDelayMs = 150,
+  totalBudgetMs = CORE_REQUEST_TOTAL_BUDGET_MS,
 } = {}) {
   // Refuse arbitrary destinations/redirects: keep Core reads on loopback.
   if (url !== CORE_URL) throw new Error('CORE_ORIGIN_NOT_ALLOWED');
@@ -121,28 +127,38 @@ export async function fetchCoreSnapshot({
     throw new Error('INVALID_ATTEMPTS');
   if (!Number.isInteger(retryDelayMs) || retryDelayMs < 0 || retryDelayMs > 1000)
     throw new Error('INVALID_RETRY_DELAY');
+  if (!Number.isInteger(totalBudgetMs) || totalBudgetMs < 100 ||
+      totalBudgetMs > 15_000 || totalBudgetMs < timeoutMs)
+    throw new Error('INVALID_TOTAL_BUDGET');
+
+  const deadline = Date.now() + totalBudgetMs;
+  const retryAvailable = async attempt => {
+    if (attempt >= attempts) return false;
+    const remaining = deadline - Date.now();
+    if (remaining <= 100) return false;
+    const waitMs = Math.min(retryDelayMs, Math.max(0, remaining - 100));
+    if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
+    return deadline - Date.now() > 100;
+  };
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 100) throw new Error('CORE_HTTP_UNAVAILABLE');
+    const attemptTimeoutMs = Math.min(timeoutMs, remaining);
     let response;
     try {
       response = await fetchImpl(url, {
         method:'GET', redirect:'error', cache:'no-store',
         headers:{accept:'application/json'},
-        signal:AbortSignal.timeout(timeoutMs),
+        signal:AbortSignal.timeout(attemptTimeoutMs),
       });
     } catch {
-      if (attempt < attempts) {
-        if (retryDelayMs) await new Promise(resolve => setTimeout(resolve, retryDelayMs));
-        continue;
-      }
+      if (await retryAvailable(attempt)) continue;
       throw new Error('CORE_HTTP_UNAVAILABLE');
     }
 
     if (!response || response.ok !== true || response.status !== 200) {
-      if (attempt < attempts) {
-        if (retryDelayMs) await new Promise(resolve => setTimeout(resolve, retryDelayMs));
-        continue;
-      }
+      if (await retryAvailable(attempt)) continue;
       throw new Error('CORE_HTTP_UNAVAILABLE');
     }
 
