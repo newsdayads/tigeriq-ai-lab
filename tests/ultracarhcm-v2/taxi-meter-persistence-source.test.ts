@@ -61,6 +61,19 @@ describe('GH-5135 F13 Taxi Meter persistence source contract', () => {
     expect(taxi).toContain('Không thể xóa lịch sử Taxi Meter V2');
   });
 
+  it('drops structurally valid but semantically invalid history rows fail closed', () => {
+    const start = taxi.indexOf('private fun validHistoryRecord(item: JSONObject): Boolean');
+    const end = taxi.indexOf('private fun prependHistory', start);
+    const block = taxi.slice(start, end);
+    expect(block).toContain('TaxiMeterRules.exactLong(item.opt("startedAt"))');
+    expect(block).toContain('TaxiMeterRules.exactDouble(item.opt("rateVndPerKm"))');
+    expect(block).toContain('TaxiMeterRules.validPersistedTrip(');
+    expect(block).toContain('Dropped invalid Taxi Meter history rows');
+    expect(block).toContain('putString(TaxiMeterRules.KEY_HISTORY, cleaned.toString()).commit()');
+    expect(block).toContain('Failed to persist invalid Taxi Meter history cleanup');
+    expect(block).not.toContain('.apply()');
+  });
+
   it('preserves an active trip across Activity recreation without counting background time', () => {
     expect(taxi).toContain('restoreActiveTrip(savedInstanceState)');
     const save = taxi.slice(
