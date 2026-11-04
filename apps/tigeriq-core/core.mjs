@@ -3119,10 +3119,10 @@ async function managerTick() {
         }
         return;
       }
-      const finalCheckpoint={...makePhaseCheckpoint({currentPhase,phases,summary:`Verified by ${proofId}`}),jobId:proofId,employeeId:proof.employee_id,resourceId:proof.resource_id};
+      const candidateFinalCheckpoint={...makePhaseCheckpoint({currentPhase,phases,summary:`Verified by ${proofId}`}),jobId:proofId,employeeId:proof.employee_id,resourceId:proof.resource_id};
       const reviewIndependence=campaignReviewIndependence({
         phases,
-        checkpoints:[...(Array.isArray(o.metadata?.campaign?.checkpoints)?o.metadata.campaign.checkpoints:[]),finalCheckpoint],
+        checkpoints:[...(Array.isArray(o.metadata?.campaign?.checkpoints)?o.metadata.campaign.checkpoints:[]),candidateFinalCheckpoint],
       });
       if(!reviewIndependence.accepted){
         const summary=`campaign review independence rejected: ${reviewIndependence.code}`;
@@ -3133,6 +3133,7 @@ async function managerTick() {
         if(denied.rowCount===1)await event('CAMPAIGN_REVIEW_INDEPENDENCE_REJECTED',{objectiveId:o.id,jobId:proofId,phaseIndex:currentPhase,...reviewIndependence});
         return;
       }
+      const finalCheckpoint=candidateFinalCheckpoint;
       const finalGate=objectiveCompletionGate(o.metadata||{});
       if(!finalGate.allow){
         const summary=`final campaign verified but release/acceptance gate pending: ${finalGate.reason}`;
