@@ -40,6 +40,14 @@
         const done=item.campaign.checkpoints.map(c=>'P'+c.phaseNumber+' '+(c.phaseTitle||'')+' · '+(c.employeeId||'')+'/'+(c.resourceId||'')).join(' | ');
         el.append(node('div','Checkpoint: '+done,'meta'));
       }
+      if(item.acceptance){
+        const state=item.acceptance.accepted?'ĐẠT':'CHƯA ĐẠT';
+        const product=item.acceptance.productEvidenceVerified?'ĐẠT':'CHƯA XÁC MINH';
+        const qa=item.acceptance.independentQaVerified?'ĐẠT':'CHƯA ĐẠT';
+        el.append(node('div','Nghiệm thu Animal City: '+state+' · Sản phẩm có bằng chứng: '+product+' · QA độc lập: '+qa,'meta'));
+        if(item.acceptance.reasons?.length)
+          el.append(node('div','Lý do: '+item.acceptance.reasons.join(' · '),'meta'));
+      }
       if(item.summary)el.append(node('div',item.summary,'meta'));
       recent.append(el);
     }
