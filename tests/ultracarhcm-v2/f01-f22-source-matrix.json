@@ -528,10 +528,11 @@
         "apps/ultracarhcm-v1-v69/src/com/tigeriq/v69/UpdateController.java",
         "tests/ultracarhcm-v2/camera-runtime-permission-source.test.ts",
         "tests/ultracarhcm-v2/update-channel-source.test.ts",
-        "tests/ultracarhcm-v2/update-payload-integrity-source.test.ts"
+        "tests/ultracarhcm-v2/update-payload-integrity-source.test.ts",
+        "tests/ultracarhcm-v2/privacy-settings-fail-visible-source.test.ts"
       ],
-      "gap": "Runtime source có fail-visible CAMERA gate, location/Bluetooth/overlay state và package-install channel dựa trên V1 V69 nhưng hẹp hơn: signed APK phải qua metadata/hash/package/exact versionCode/exact versionName/signer verification trước; FileProvider chỉ lộ cache updates; unknown-sources và Android installer confirmation là bắt buộc. Privacy-policy parity và full real-device validation vẫn chưa nghiệm thu.",
-      "actual": "UsbCameraActivity chỉ khởi động UVC sau CAMERA runtime grant; PrivacyActivity hiển thị permission state và mở OS settings khi cần. UpdateActivity tải candidate vào cache riêng, giới hạn redirect/size, kiểm SHA-256, ZIP/package/exact versionCode/exact versionName, signer pin + signer continuity, rồi dùng FileProvider mở Android system installer. Không broad storage, shell, ADB hay silent install.",
+      "gap": "Runtime source có fail-visible CAMERA gate, location/Bluetooth/overlay state và package-install channel dựa trên V1 V69 nhưng hẹp hơn: signed APK phải qua metadata/hash/package/exact versionCode/exact versionName/signer verification trước; FileProvider chỉ lộ cache updates; unknown-sources và Android installer confirmation là bắt buộc. Hai Android Settings handoff trong PrivacyActivity được bắt RuntimeException và báo lỗi cho người dùng thay vì crash trên OEM không hỗ trợ. Privacy-policy parity và full real-device validation vẫn chưa nghiệm thu.",
+      "actual": "UsbCameraActivity chỉ khởi động UVC sau CAMERA runtime grant; PrivacyActivity hiển thị permission state và mở app-details/overlay Settings qua một launcher fail-visible, không tự cấp quyền. UpdateActivity tải candidate vào cache riêng, giới hạn redirect/size, kiểm SHA-256, ZIP/package/exact versionCode/exact versionName, signer pin + signer continuity, rồi dùng FileProvider mở Android system installer. Không broad storage, shell, ADB hay silent install.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "AndroidManifest.xml",
@@ -539,6 +540,7 @@
         "UsbCameraActivity.onRequestPermissionsResult",
         "PrivacyActivity.onResume",
         "PrivacyActivity.refreshStatus",
+        "PrivacyActivity.openSystemSettings",
         "PrivacyRules.statusLabel",
         "UsbUvcController.start",
         "TelemetryActivity.refreshLocation",
