@@ -27,7 +27,7 @@ function compactEvidence(value,limit=320){
 function artifactLocator(value){
   if(typeof value!=='string')return false;
   const s=value.trim();
-  return /^https?:\/\//i.test(s)||/^[a-z]:\\\\[^\r\n]+$/i.test(s)||/^\/[^\r\n]+$/.test(s);
+  return /^https?:\/\//i.test(s)||/^[a-z]:[\\/][^\r\n]+$/i.test(s)||/^\/[^\r\n]+$/.test(s);
 }
 
 function hasStructuredArtifactEvidence(value){
