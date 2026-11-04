@@ -35,6 +35,7 @@ describe('GH-5135 F19 trip report hub source', () => {
     expect(block).toContain('Dropped invalid Taxi Meter report rows');
     expect(block).toContain('putString(TaxiMeterRules.KEY_HISTORY, cleaned.toString()).commit()');
     expect(block).toContain('Failed to persist invalid Taxi Meter report-history cleanup');
+    expect(block).toContain('minOf(history.length(), TaxiMeterRules.MAX_HISTORY)');
     expect(block).not.toContain('.apply()');
   });
 
