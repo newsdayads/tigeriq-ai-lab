@@ -55,11 +55,12 @@ class PrivacyActivity : ComponentActivity() {
         body.addView(Button(this).apply {
             text = "MỞ CÀI ĐẶT ỨNG DỤNG"
             setOnClickListener {
-                startActivity(
+                openExternalSettings(
                     Intent(
                         Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                         Uri.parse("package:$packageName"),
                     ),
+                    "Không thể mở cài đặt ứng dụng",
                 )
             }
         })
@@ -67,11 +68,12 @@ class PrivacyActivity : ComponentActivity() {
         body.addView(Button(this).apply {
             text = "MỞ QUYỀN HIỂN THỊ TRÊN ỨNG DỤNG KHÁC"
             setOnClickListener {
-                startActivity(
+                openExternalSettings(
                     Intent(
                         Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                         Uri.parse("package:$packageName"),
                     ),
+                    "Không thể mở cài đặt quyền hiển thị",
                 )
             }
         })
@@ -102,6 +104,16 @@ class PrivacyActivity : ComponentActivity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 ),
             )
+        }
+    }
+
+    private fun openExternalSettings(intent: Intent, failureMessage: String) {
+        try {
+            startActivity(intent)
+        } catch (error: RuntimeException) {
+            android.util.Log.e("UltraCarV2", "External privacy settings launch failed", error)
+            status.text =
+                failureMessage + ": " + (error.message ?: "không thể mở cài đặt hệ thống")
         }
     }
 
