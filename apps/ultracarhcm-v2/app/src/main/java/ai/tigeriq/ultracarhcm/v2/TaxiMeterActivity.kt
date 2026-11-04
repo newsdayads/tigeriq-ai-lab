@@ -335,8 +335,43 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
         updateMeterUi()
     }
 
+    private fun validHistoryRecord(item: JSONObject): Boolean {
+        val startedAt = TaxiMeterRules.exactLong(item.opt("startedAt")) ?: return false
+        val duration = TaxiMeterRules.exactLong(item.opt("durationSeconds")) ?: return false
+        val distance = TaxiMeterRules.exactDouble(item.opt("distanceMeters")) ?: return false
+        val rate = TaxiMeterRules.exactDouble(item.opt("rateVndPerKm")) ?: return false
+        val fare = TaxiMeterRules.exactLong(item.opt("fareVnd")) ?: return false
+        return TaxiMeterRules.validPersistedTrip(
+            startedAt,
+            duration,
+            distance,
+            rate,
+            fare,
+        )
+    }
+
     private fun history(): JSONArray = try {
-        JSONArray(prefs.getString(TaxiMeterRules.KEY_HISTORY, "[]") ?: "[]")
+        val parsed = JSONArray(prefs.getString(TaxiMeterRules.KEY_HISTORY, "[]") ?: "[]")
+        val cleaned = JSONArray()
+        for (index in 0 until parsed.length()) {
+            val item = parsed.optJSONObject(index)
+            if (item != null && validHistoryRecord(item)) {
+                cleaned.put(item)
+            }
+        }
+        if (cleaned.length() != parsed.length()) {
+            android.util.Log.w(
+                "UltraCarV2",
+                "Dropped invalid Taxi Meter history rows",
+            )
+            if (!prefs.edit().putString(TaxiMeterRules.KEY_HISTORY, cleaned.toString()).commit()) {
+                android.util.Log.e(
+                    "UltraCarV2",
+                    "Failed to persist invalid Taxi Meter history cleanup",
+                )
+            }
+        }
+        cleaned
     } catch (error: Exception) {
         android.util.Log.w("UltraCarV2", "Corrupt Taxi Meter history", error)
         val cleared = prefs.edit().remove(TaxiMeterRules.KEY_HISTORY).commit()
