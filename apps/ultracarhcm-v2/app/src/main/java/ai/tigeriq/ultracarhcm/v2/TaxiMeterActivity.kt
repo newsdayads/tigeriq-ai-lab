@@ -353,7 +353,7 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
     private fun history(): JSONArray = try {
         val parsed = JSONArray(prefs.getString(TaxiMeterRules.KEY_HISTORY, "[]") ?: "[]")
         val cleaned = JSONArray()
-        for (index in 0 until parsed.length()) {
+        for (index in 0 until minOf(parsed.length(), TaxiMeterRules.MAX_HISTORY)) {
             val item = parsed.optJSONObject(index)
             if (item != null && validHistoryRecord(item)) {
                 cleaned.put(item)
@@ -425,7 +425,8 @@ class TaxiMeterActivity : ComponentActivity(), LocationListener {
         val entries = history()
         var revenue = 0L
         for (index in 0 until entries.length()) {
-            revenue += entries.optJSONObject(index)?.optLong("fareVnd", 0L) ?: 0L
+            val fare = entries.optJSONObject(index)?.optLong("fareVnd", 0L) ?: 0L
+            revenue = TaxiMeterRules.saturatingAddNonNegative(revenue, fare)
         }
         val number = NumberFormat.getNumberInstance(Locale("vi", "VN"))
         val lines = mutableListOf<String>()
