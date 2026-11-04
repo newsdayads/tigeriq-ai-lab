@@ -48,7 +48,7 @@ internal object TaxiMeterRules {
     }
 
     fun fareVnd(rateVndPerKm: Double, distanceMeters: Double): Long? {
-        if (!rateVndPerKm.isFinite() || rateVndPerKm <= 0.0 ||
+        if (!validRateVndPerKm(rateVndPerKm) ||
             !distanceMeters.isFinite() || distanceMeters < 0.0) return null
         return (rateVndPerKm * distanceMeters / 1000.0).roundToLong()
     }
