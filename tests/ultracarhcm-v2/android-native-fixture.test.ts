@@ -9,14 +9,14 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { describe, it, expect } from 'vitest';
 import {
-  shouldPublishGh5135Artifact,
-  uploadActionsArtifactArchive,
-} from './actions-artifact-runtime.js';
+  shouldExportGh5135ArtifactViaCiLog,
+  writeArtifactToCiLog,
+} from './artifact-log-transport.js';
 
 const execFileAsync = promisify(execFile);
 const ANDROID_GRADLE_TIMEOUT_MS = 600_000;
@@ -153,33 +153,22 @@ describe('GH-5135 native Android clean-clone compile gate (not a release)',()=>{
       console.log('ANDROID_UNSIGNED_ALIGNED_HANDOFF_SHA256='+handoffDigest);
       console.log('ANDROID_UNSIGNED_ALIGNED_HANDOFF_BYTES='+readFileSync(alignedRelease).length);
 
-      if (shouldPublishGh5135Artifact(eventName, event, process.env.GITHUB_HEAD_REF)) {
-        const artifactName=
-          'ultracarhcm-v2-unsigned-release-'+shortSha+'-attempt-'+
-          (process.env.GITHUB_RUN_ATTEMPT || '1');
-        const archive=join(workRoot,artifactName+'.zip');
-        let archived=run('zip',['-j','-q',archive,alignedRelease],checkout,30000,env);
-        if (archived.status !== 0) {
-          archived=run(
-            'jar',
-            ['--create','--file',archive,'-C',dirname(alignedRelease),basename(alignedRelease)],
-            checkout,
-            30000,
-            env,
-          );
-        }
-        requireSuccess(archived,'Create GitHub Actions artifact archive');
-        const uploaded=await uploadActionsArtifactArchive(archive,artifactName,env);
-        console.log('ANDROID_UNSIGNED_ARTIFACT_NAME='+artifactName);
-        console.log('ANDROID_UNSIGNED_ARTIFACT_ID='+uploaded.artifactId);
-        console.log('ANDROID_UNSIGNED_ARTIFACT_ARCHIVE_SHA256='+uploaded.archiveSha256);
-        console.log('ANDROID_UNSIGNED_ARTIFACT_UPLOAD_PASS_NOT_SIGNED_NOT_RELEASED');
+      if (shouldExportGh5135ArtifactViaCiLog(
+        process.env.GITHUB_WORKFLOW,
+        eventName,
+        event,
+        process.env.GITHUB_HEAD_REF,
+      )) {
+        const exported=writeArtifactToCiLog(alignedRelease,handoffName);
+        expect(exported.sha256).toBe(handoffDigest);
+        expect(exported.bytes).toBe(readFileSync(alignedRelease).length);
+        console.log('ANDROID_UNSIGNED_ARTIFACT_LOG_TRANSPORT_PASS|CHUNKS='+exported.chunks);
       } else {
-        console.log('ANDROID_UNSIGNED_ARTIFACT_UPLOAD_SKIPPED_SCOPE');
+        console.log('ANDROID_UNSIGNED_ARTIFACT_LOG_TRANSPORT_SKIPPED_SCOPE');
       }
       console.log('ANDROID_R01_CLEAN_CLONE_NATIVE_BUILD_PASS_NOT_FOR_RELEASE');
     } finally {
-      // Remove the isolated build after any scoped artifact upload completes.
+      // Remove the isolated build after any scoped log transport completes.
       run('git',['worktree','remove','--force',worktree],checkout,20000,env);
       rmSync(workRoot,{recursive:true,force:true});
     }
