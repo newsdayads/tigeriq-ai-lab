@@ -50,7 +50,9 @@ internal object TaxiMeterRules {
     fun fareVnd(rateVndPerKm: Double, distanceMeters: Double): Long? {
         if (!validRateVndPerKm(rateVndPerKm) ||
             !distanceMeters.isFinite() || distanceMeters < 0.0) return null
-        return (rateVndPerKm * distanceMeters / 1000.0).roundToLong()
+        val fare = rateVndPerKm * distanceMeters / 1000.0
+        if (!fare.isFinite() || fare < 0.0 || fare >= Long.MAX_VALUE.toDouble()) return null
+        return fare.roundToLong()
     }
 
     fun validActiveTripState(
