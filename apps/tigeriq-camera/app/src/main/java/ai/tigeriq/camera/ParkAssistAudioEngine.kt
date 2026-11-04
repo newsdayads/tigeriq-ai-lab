@@ -16,6 +16,8 @@ import android.util.Log
  */
 class ParkAssistAudioEngine(private val settings: CameraSettings) {
 
+    constructor(context: android.content.Context) : this(CameraSettings(context))
+
     companion object {
         private const val TAG = "ParkAssistAudio"
     }

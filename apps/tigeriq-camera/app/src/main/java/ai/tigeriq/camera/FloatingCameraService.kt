@@ -118,8 +118,12 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
                     val isCamera = device == null || UsbUvcManager.isUvc(device) ||
                             (device.vendorId == 0xff02 && device.productId == 0xafa1)
                     if (isCamera && settings.isUsbAutoStart) {
-                        Log.i(TAG, "Dynamic USB Attached (Tail-light R=ON) -> Auto-opening Camera")
-                        CameraActivity.launch(this@FloatingCameraService, displayId, reverseActive = true)
+                        Log.i(TAG, "Dynamic USB Attached (Tail-light R=ON) -> Auto-opening Camera Overlay")
+                        if (Settings.canDrawOverlays(this@FloatingCameraService)) {
+                            CameraOverlayController.show(this@FloatingCameraService, targetDisplay, isReverse = true)
+                        } else {
+                            CameraActivity.launch(this@FloatingCameraService, displayId, reverseActive = true)
+                        }
                     }
                     return
                 }
@@ -130,6 +134,7 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
                             (device.vendorId == 0xff02 && device.productId == 0xafa1)
                     if (isCamera && settings.isReverseImmediateClose) {
                         Log.i(TAG, "Dynamic USB Detached (Tail-light R=OFF) -> Auto-closing Camera")
+                        CameraOverlayController.hide()
                         CameraActivity.dismissIfRunning(immediate = true)
                         try {
                             sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA))
@@ -143,10 +148,15 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
                 val steering = intent.getFloatExtra("steering", 0f)
 
                 if (isReverse) {
-                    Log.i(TAG, "DynamicReceiver: Reverse ON -> Opening Camera")
-                    CameraActivity.launch(this@FloatingCameraService, displayId, reverseActive = true, steering = steering)
+                    Log.i(TAG, "DynamicReceiver: Reverse ON -> Opening Camera Overlay")
+                    if (Settings.canDrawOverlays(this@FloatingCameraService)) {
+                        CameraOverlayController.show(this@FloatingCameraService, targetDisplay, isReverse = true, steering = steering)
+                    } else {
+                        CameraActivity.launch(this@FloatingCameraService, displayId, reverseActive = true, steering = steering)
+                    }
                 } else {
                     Log.i(TAG, "DynamicReceiver: Reverse OFF -> Closing Camera immediately")
+                    CameraOverlayController.hide()
                     CameraActivity.dismissIfRunning(immediate = true)
                     try {
                         sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA))
@@ -199,7 +209,11 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
                 val targetDisplay = findDexDisplay()
                 val displayId = targetDisplay?.displayId ?: -1
                 Log.i(TAG, ">>> UsbCameraWatcher: Initial camera present -> Auto-opening Camera on display $displayId")
-                CameraActivity.launch(this, displayId = displayId, reverseActive = true)
+                if (Settings.canDrawOverlays(this)) {
+                    CameraOverlayController.show(this, targetDisplay, isReverse = true)
+                } else {
+                    CameraActivity.launch(this, displayId = displayId, reverseActive = true)
+                }
             }
             return
         }
@@ -210,10 +224,15 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
             val displayId = targetDisplay?.displayId ?: -1
 
             if (cameraConnected) {
-                Log.i(TAG, ">>> UsbCameraWatcher: Camera CONNECTED (Tail-light R=ON) -> Auto-opening Camera")
-                CameraActivity.launch(this, displayId = displayId, reverseActive = true)
+                Log.i(TAG, ">>> UsbCameraWatcher: Camera CONNECTED (Tail-light R=ON) -> Auto-opening Camera Overlay")
+                if (Settings.canDrawOverlays(this)) {
+                    CameraOverlayController.show(this, targetDisplay, isReverse = true)
+                } else {
+                    CameraActivity.launch(this, displayId = displayId, reverseActive = true)
+                }
             } else {
-                Log.i(TAG, ">>> UsbCameraWatcher: Camera DISCONNECTED (Tail-light R=OFF) -> Auto-closing Camera immediately")
+                Log.i(TAG, ">>> UsbCameraWatcher: Camera DISCONNECTED (Tail-light R=OFF) -> Auto-closing Camera")
+                CameraOverlayController.hide()
                 CameraActivity.dismissIfRunning(immediate = true)
                 try {
                     sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA))
@@ -373,15 +392,21 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
                             }
                         } else {
                             // Tap (< 0.5s): Toggle Camera Window ON / OFF
-                            if (CameraActivity.isRunning()) {
-                                Log.i(TAG, "Floating button TAP -> Camera running, closing immediately")
+                            val targetDisplay = findDexDisplay()
+                            if (Settings.canDrawOverlays(this)) {
+                                CameraOverlayController.toggle(this, targetDisplay)
                                 CameraActivity.dismissIfRunning(immediate = true)
-                                try {
-                                    sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA))
-                                } catch (_: Throwable) {}
                             } else {
-                                Log.i(TAG, "Floating button TAP -> Camera not running, launching camera")
-                                CameraActivity.launch(this, displayId = displayId, reverseActive = false)
+                                if (CameraActivity.isRunning()) {
+                                    Log.i(TAG, "Floating button TAP -> Camera running, closing immediately")
+                                    CameraActivity.dismissIfRunning(immediate = true)
+                                    try {
+                                        sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA))
+                                    } catch (_: Throwable) {}
+                                } else {
+                                    Log.i(TAG, "Floating button TAP -> Camera not running, launching camera")
+                                    CameraActivity.launch(this, displayId = displayId, reverseActive = false)
+                                }
                             }
                         }
                     }
@@ -447,6 +472,7 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     }
 
     override fun onDestroy() {
+        CameraOverlayController.destroyOverlay()
         handler.removeCallbacks(usbWatcherRunnable)
         displayManager?.unregisterDisplayListener(this)
         dynamicReverseReceiver?.let {

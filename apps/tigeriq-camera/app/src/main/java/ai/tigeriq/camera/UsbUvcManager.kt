@@ -1,6 +1,7 @@
 package ai.tigeriq.camera
 
 import android.app.Activity
+import android.app.Application
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -8,6 +9,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.SurfaceTexture
 import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbInterface
 import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Handler
@@ -25,10 +27,11 @@ import com.serenegiant.utils.UVCUtils
  * Provides instant preview, automatic USB permission negotiation, and safe lifecycle recovery.
  */
 class UsbUvcManager(
-    private val activity: Activity,
+    private val context: Context,
     private val textureView: TextureView,
     private val onStatus: (message: String, isConnected: Boolean) -> Unit,
-    private val onPermissionRequired: (device: UsbDevice, hasPermission: Boolean) -> Unit
+    private val onPermissionRequired: (device: UsbDevice, hasPermission: Boolean) -> Unit,
+    private val onDeviceDisconnected: (() -> Unit)? = null
 ) : ICameraHelper.StateCallback, TextureView.SurfaceTextureListener {
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -58,16 +61,10 @@ class UsbUvcManager(
                     if (device != null) {
                         onPermissionRequired(device, granted)
                         if (granted) {
-                            onStatus("Đã được cấp quyền USB. Đang khởi động camera…", false)
-                            mainHandler.post {
-                                try {
-                                    cameraHelper?.selectDevice(device)
-                                } catch (t: Throwable) {
-                                    Log.e(TAG, "selectDevice after permission grant failed", t)
-                                }
-                            }
+                            onStatus("Quyền USB đã cấp. Đang mở Camera…", false)
+                            cameraHelper?.selectDevice(device)
                         } else {
-                            onStatus("Quyền truy cập USB bị từ chối", false)
+                            onStatus("Chưa có quyền USB. Bấm để cấp quyền.", false)
                         }
                     }
                 }
@@ -76,13 +73,30 @@ class UsbUvcManager(
     }
 
     companion object {
-        private const val TAG = "TigerIQ_UVC"
-        fun isUvc(device: UsbDevice): Boolean {
+        private const val TAG = "UsbUvcManager"
+
+        fun isUvc(device: UsbDevice?): Boolean {
+            if (device == null) return false
+            // Standard USB Video Class
             if (device.deviceClass == 14) return true
-            if (device.deviceClass == 239) return true // Composite device (Video + Audio / AFN_CAP)
-            if (device.vendorId == 0xff02 && device.productId == 0xafa1) return true // AFN_CAP capture card
+            // Miscellaneous / composite devices (e.g. video + audio streaming)
+            if (device.deviceClass == 239) return true
+
+            // Known Hardware Capture Card IDs (e.g. AFN_CAP / MacroSilicon / USB3.0 HDMI)
+            if (device.vendorId == 0xff02 && device.productId == 0xafa1) return true
+            if (device.vendorId == 0x534d && device.productId == 0x2109) return true // MS2109
+            if (device.vendorId == 0x534d && device.productId == 0x0021) return true
+
+            val name = ((device.productName ?: "") + " " + (device.deviceName ?: "")).lowercase()
+            if (name.contains("cam") || name.contains("video") || name.contains("uvc") ||
+                name.contains("capture") || name.contains("grabber") || name.contains("afn_cap")) {
+                return true
+            }
+
             for (i in 0 until device.interfaceCount) {
-                if (device.getInterface(i).interfaceClass == 14) return true
+                val itf = device.getInterface(i)
+                if (itf.interfaceClass == 14) return true
+                if (itf.interfaceClass == 239 && itf.interfaceSubclass == 2) return true
             }
             return false
         }
@@ -97,9 +111,9 @@ class UsbUvcManager(
         if (!isReceiverRegistered) {
             val filter = IntentFilter(ACTION_USB_PERMISSION)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                activity.registerReceiver(usbPermissionReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                context.registerReceiver(usbPermissionReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
             } else {
-                activity.registerReceiver(usbPermissionReceiver, filter)
+                context.registerReceiver(usbPermissionReceiver, filter)
             }
             isReceiverRegistered = true
         }
@@ -108,7 +122,7 @@ class UsbUvcManager(
     private fun unregisterReceiver() {
         if (isReceiverRegistered) {
             try {
-                activity.unregisterReceiver(usbPermissionReceiver)
+                context.unregisterReceiver(usbPermissionReceiver)
             } catch (_: Throwable) {}
             isReceiverRegistered = false
         }
@@ -121,7 +135,10 @@ class UsbUvcManager(
         onStatus("Đang khởi động kết nối Camera USB…", false)
 
         try {
-            UVCUtils.init(activity.application)
+            val app = (context.applicationContext as? Application)
+            if (app != null) {
+                UVCUtils.init(app)
+            }
         } catch (t: Throwable) {
             Log.w(TAG, "UVCUtils init error", t)
         }
@@ -132,7 +149,7 @@ class UsbUvcManager(
             }
         }
 
-        val usbManager = activity.getSystemService(Context.USB_SERVICE) as UsbManager
+        val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
         val deviceList = usbManager.deviceList.values
         val uvcTarget = deviceList.firstOrNull { isUvc(it) }
 
@@ -179,7 +196,7 @@ class UsbUvcManager(
     fun selectDevice(device: UsbDevice) {
         if (!isRequested) return
         selectedDevice = device
-        val usbManager = activity.getSystemService(Context.USB_SERVICE) as UsbManager
+        val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
         val hasPerm = usbManager.hasPermission(device)
 
         onPermissionRequired(device, hasPerm)
@@ -207,7 +224,7 @@ class UsbUvcManager(
 
     fun requestUsbPermissionDirectly(device: UsbDevice? = selectedDevice) {
         val target = device ?: return
-        val usbManager = activity.getSystemService(Context.USB_SERVICE) as UsbManager
+        val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
         if (usbManager.hasPermission(target)) {
             onPermissionRequired(target, true)
             onStatus("Đã có quyền USB. Đang kết nối…", false)
@@ -221,7 +238,7 @@ class UsbUvcManager(
             PendingIntent.FLAG_UPDATE_CURRENT
         }
         val permissionIntent = PendingIntent.getBroadcast(
-            activity,
+            context,
             0,
             Intent(ACTION_USB_PERMISSION),
             flags
@@ -254,8 +271,13 @@ class UsbUvcManager(
 
     override fun onAttach(device: UsbDevice) {
         Log.i(TAG, "USB Device Attached: ${device.deviceName}")
-        if (isUvc(device) && selectedDevice == null) {
-            mainHandler.post { selectDevice(device) }
+        mainHandler.post {
+            if (isUvc(device)) {
+                onStatus("Đã phát hiện thiết bị UVC: ${device.productName ?: device.deviceName}", false)
+                if (selectedDevice == null) {
+                    selectDevice(device)
+                }
+            }
         }
     }
 
@@ -265,18 +287,17 @@ class UsbUvcManager(
             try {
                 cameraHelper?.openCamera()
             } catch (t: Throwable) {
-                Log.e(TAG, "Failed to open camera", t)
-                mainHandler.post { onStatus("Không thể mở Camera", false) }
+                Log.e(TAG, "Failed to call cameraHelper.openCamera()", t)
+                onStatus("Lỗi mở camera: ${t.localizedMessage}", false)
             }
         }
     }
 
     override fun onCameraOpen(device: UsbDevice) {
-        Log.i(TAG, "Camera Open callback: ${device.deviceName}")
+        Log.i(TAG, "Camera Opened: ${device.deviceName}")
         mainHandler.post {
-            if (isRequested && device == selectedDevice) {
-                startPreview()
-            }
+            selectedDevice = device
+            startPreview()
         }
     }
 
@@ -299,10 +320,13 @@ class UsbUvcManager(
                 releasePreview()
                 selectedDevice = null
                 onStatus("USB Camera ngắt kết nối (Đã về P/D)", false)
-                val settings = CameraSettings(activity)
-                if (settings.isReverseImmediateClose && activity is CameraActivity && !activity.isFinishing) {
-                    Log.i(TAG, "Auto-closing CameraActivity on Device Close (P/D disengaged)")
-                    activity.finish()
+                val settings = CameraSettings(context)
+                if (settings.isReverseImmediateClose) {
+                    onDeviceDisconnected?.invoke()
+                    if (context is Activity && !context.isFinishing) {
+                        Log.i(TAG, "Auto-closing CameraActivity on Device Close (P/D disengaged)")
+                        context.finish()
+                    }
                 }
             }
         }
@@ -316,10 +340,13 @@ class UsbUvcManager(
                 releasePreview()
                 selectedDevice = null
                 onStatus("Camera ngắt nguồn đèn lùi (Đã về P/D) — Đang đóng…", false)
-                val settings = CameraSettings(activity)
-                if (settings.isReverseImmediateClose && activity is CameraActivity && !activity.isFinishing) {
-                    Log.i(TAG, "Auto-closing CameraActivity on USB Detach (P/D disengaged)")
-                    activity.finish()
+                val settings = CameraSettings(context)
+                if (settings.isReverseImmediateClose) {
+                    onDeviceDisconnected?.invoke()
+                    if (context is Activity && !context.isFinishing) {
+                        Log.i(TAG, "Auto-closing CameraActivity on USB Detach (P/D disengaged)")
+                        context.finish()
+                    }
                 }
             }
         }

@@ -335,7 +335,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnOpenCamera.setOnClickListener {
-            CameraActivity.launch(this, reverseActive = false)
+            if (Settings.canDrawOverlays(this)) {
+                val targetDisplay = DeXDisplayHelper.resolveTargetDisplay(this)
+                CameraOverlayController.show(this, targetDisplay, isReverse = false)
+            } else {
+                CameraActivity.launch(this, reverseActive = false)
+            }
         }
 
         val tvBuildVersion: TextView? = findViewById(R.id.tvBuildVersion)

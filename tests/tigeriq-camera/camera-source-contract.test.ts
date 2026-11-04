@@ -9,6 +9,8 @@ const floatingServicePath = new URL('../../apps/tigeriq-camera/app/src/main/java
 const reverseReceiverPath = new URL('../../apps/tigeriq-camera/app/src/main/java/ai/tigeriq/camera/ReverseGearReceiver.kt', import.meta.url);
 const usbReceiverPath = new URL('../../apps/tigeriq-camera/app/src/main/java/ai/tigeriq/camera/UsbAttachReceiver.kt', import.meta.url);
 const uvcManagerPath = new URL('../../apps/tigeriq-camera/app/src/main/java/ai/tigeriq/camera/UsbUvcManager.kt', import.meta.url);
+const overlayControllerPath = new URL('../../apps/tigeriq-camera/app/src/main/java/ai/tigeriq/camera/CameraOverlayController.kt', import.meta.url);
+const overlayLayoutPath = new URL('../../apps/tigeriq-camera/app/src/main/res/layout/view_camera_overlay.xml', import.meta.url);
 
 describe('TigerIQ Camera Standalone Architecture & Reverse Guide Contract', () => {
   it('ensures all core components and Kotlin source files exist', () => {
@@ -20,6 +22,8 @@ describe('TigerIQ Camera Standalone Architecture & Reverse Guide Contract', () =
     expect(existsSync(reverseReceiverPath)).toBe(true);
     expect(existsSync(usbReceiverPath)).toBe(true);
     expect(existsSync(uvcManagerPath)).toBe(true);
+    expect(existsSync(overlayControllerPath)).toBe(true);
+    expect(existsSync(overlayLayoutPath)).toBe(true);
   });
 
   it('declares necessary hardware features and permissions in AndroidManifest.xml', () => {
@@ -83,5 +87,22 @@ describe('TigerIQ Camera Standalone Architecture & Reverse Guide Contract', () =
     expect(uvc).toContain('startPreview');
     expect(uvc).toContain('UVCUtils.init');
     expect(uvc).toContain('requestUsbPermissionDirectly');
+  });
+
+  it('provides dedicated WindowManager Overlay Camera window (Cách 2)', () => {
+    const overlay = readFileSync(overlayControllerPath, 'utf8');
+    const layout = readFileSync(overlayLayoutPath, 'utf8');
+
+    expect(overlay).toContain('object CameraOverlayController');
+    expect(overlay).toContain('TYPE_APPLICATION_OVERLAY');
+    expect(overlay).toContain('fun show(');
+    expect(overlay).toContain('fun hide()');
+    expect(overlay).toContain('fun toggle(');
+
+    expect(layout).toContain('android:id="@+id/cameraTextureView"');
+    expect(layout).toContain('android:id="@+id/dynamicGuideView"');
+    expect(layout).toContain('android:id="@+id/overlayHeader"');
+    expect(layout).toContain('android:id="@+id/btnCloseTop"');
+    expect(layout).toContain('android:id="@+id/bottomToolBar"');
   });
 });

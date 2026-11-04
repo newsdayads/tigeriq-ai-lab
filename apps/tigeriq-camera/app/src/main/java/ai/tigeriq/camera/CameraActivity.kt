@@ -112,6 +112,15 @@ class CameraActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (android.provider.Settings.canDrawOverlays(this)) {
+            val reverseActive = intent?.getBooleanExtra(EXTRA_REVERSE_ACTIVE, false) ?: false
+            val steering = intent?.getFloatExtra(EXTRA_STEERING_DEGREES, 0f) ?: 0f
+            Log.i("TigerIQ_Camera", "CameraActivity: Delegating to unified CameraOverlayController")
+            CameraOverlayController.show(this, null, isReverse = reverseActive, steering = steering)
+            finish()
+            return
+        }
+
         currentInstance = WeakReference(this)
         isRunningFlag = true
         setContentView(R.layout.activity_camera)
@@ -145,7 +154,7 @@ class CameraActivity : AppCompatActivity() {
 
         // Initialize UVC Engine with permission callback
         uvcManager = UsbUvcManager(
-            activity = this,
+            context = this,
             textureView = findViewById(R.id.cameraTextureView),
             onStatus = { message, _ ->
                 runOnUiThread {
