@@ -32,7 +32,10 @@ class TaxiMeterRulesTest {
     @Test fun calculatesDistanceBasedFareOnlyFromConfiguredRate() {
         assertEquals(14000L, TaxiMeterRules.fareVnd(7000.0, 2000.0))
         assertEquals(0L, TaxiMeterRules.fareVnd(7000.0, 0.0))
+        assertEquals(1_000_000L, TaxiMeterRules.fareVnd(1_000_000.0, 1000.0))
         assertNull(TaxiMeterRules.fareVnd(0.0, 1000.0))
+        assertNull(TaxiMeterRules.fareVnd(1_000_000.01, 1000.0))
+        assertNull(TaxiMeterRules.fareVnd(Double.POSITIVE_INFINITY, 1000.0))
         assertNull(TaxiMeterRules.fareVnd(7000.0, -1.0))
     }
 
