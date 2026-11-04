@@ -2,8 +2,9 @@
  * GH-5135 R01 — native compilation of the EXACT PR head from an unmodified
  * clean checkout. Optional governed V1 media is intentionally absent here;
  * runtime fallbacks must keep the source buildable without inventing rights.
- * This is compile/lint/unit evidence only, never V1 asset parity, device QA,
- * or an APK eligible for publication. No APK is uploaded.
+ * This is compile/lint/unit evidence plus a narrowly scoped unsigned release
+ * handoff for exact-head build provenance. It is never V1 asset parity, device
+ * QA, a signed TEST release, or Production publication.
  */
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -12,6 +13,10 @@ import { join, resolve } from 'node:path';
 import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { describe, it, expect } from 'vitest';
+import {
+  shouldExportGh5135ArtifactViaCiLog,
+  writeArtifactToCiLog,
+} from './artifact-log-transport.js';
 
 const execFileAsync = promisify(execFile);
 const ANDROID_GRADLE_TIMEOUT_MS = 600_000;
@@ -57,7 +62,7 @@ describe('GH-5135 native Android clean-clone compile gate (not a release)',()=>{
       let built: {status: number; stdout: string; stderr: string};
       try {
         const output = await execFileAsync('bash',[
-          './gradlew','--no-daemon',':app:assembleDebug',':app:lintDebug',':app:testDebugUnitTest'
+          './gradlew','--no-daemon',':app:assembleDebug',':app:assembleRelease',':app:lintDebug',':app:testDebugUnitTest'
         ], {cwd:app,timeout:ANDROID_GRADLE_TIMEOUT_MS,env,encoding:'utf8',maxBuffer:8*1024*1024});
         built={status:0,stdout:output.stdout,stderr:output.stderr};
       } catch (error) {
@@ -72,6 +77,38 @@ describe('GH-5135 native Android clean-clone compile gate (not a release)',()=>{
       requireSuccess(built,'Android SDK compile/lint/unit at '+expected);
       const apk=join(app,'app/build/outputs/apk/debug/app-debug.apk');
       expect(existsSync(apk),'Debug APK missing after Gradle passed').toBe(true);
+
+      const unsignedRelease=join(app,'app/build/outputs/apk/release/app-release-unsigned.apk');
+      expect(existsSync(unsignedRelease),'Unsigned release APK missing after Gradle passed').toBe(true);
+      const buildTools=join(sdk!,'build-tools','35.0.0');
+      const apksigner=join(buildTools,'apksigner');
+      const zipalign=join(buildTools,'zipalign');
+      const aapt2=join(buildTools,'aapt2');
+      for (const tool of [apksigner,zipalign,aapt2]) {
+        expect(existsSync(tool),'Required Android build tool missing: '+tool).toBe(true);
+      }
+      const unsignedVerify=run(apksigner,['verify','--verbose',unsignedRelease],app,30000,env);
+      expect(unsignedVerify.status,'Release APK must remain unsigned before handoff').not.toBe(0);
+
+      const shortSha=expected.slice(0,12);
+      const handoffName='UltraCarHCM_V2_2.0.0_dev11_MAIN_'+shortSha+'_UNSIGNED_ALIGNED_HANDOFF.apk';
+      const alignedRelease=join(workRoot,handoffName);
+      requireSuccess(
+        run(zipalign,['-f','4',unsignedRelease,alignedRelease],app,30000,env),
+        'Align exact-head unsigned release APK',
+      );
+      requireSuccess(
+        run(zipalign,['-c','-v','4',alignedRelease],app,30000,env),
+        'Verify exact-head release APK alignment',
+      );
+      const alignedVerify=run(apksigner,['verify','--verbose',alignedRelease],app,30000,env);
+      expect(alignedVerify.status,'Aligned handoff must remain unsigned').not.toBe(0);
+      const badging=run(aapt2,['dump','badging',alignedRelease],app,30000,env);
+      requireSuccess(badging,'Read exact-head release APK identity');
+      expect(badging.stdout).toContain(
+        "package: name='ai.tigeriq.ultracarhcm.v2' versionCode='11' versionName='2.0.0-dev.11'",
+      );
+
       const junitSuites = [
         ['HomeConfigRulesTest', 5],
         ['SavedLayoutShortcutRulesTest', 4],
@@ -109,12 +146,29 @@ describe('GH-5135 native Android clean-clone compile gate (not a release)',()=>{
         assertedJvmTests += expectedTests;
       }
       const digest=createHash('sha256').update(readFileSync(apk)).digest('hex');
+      const handoffDigest=createHash('sha256').update(readFileSync(alignedRelease)).digest('hex');
       console.log('ANDROID_JUNIT_ULTRACAR_RULES=' + assertedJvmTests + '_OF_' + assertedJvmTests + '_PASS');
       console.log('ANDROID_EXACT_HEAD='+expected);
       console.log('ANDROID_CLEAN_CLONE_DEBUG_APK_SHA256='+digest);
+      console.log('ANDROID_UNSIGNED_ALIGNED_HANDOFF_SHA256='+handoffDigest);
+      console.log('ANDROID_UNSIGNED_ALIGNED_HANDOFF_BYTES='+readFileSync(alignedRelease).length);
+
+      if (shouldExportGh5135ArtifactViaCiLog(
+        process.env.GITHUB_WORKFLOW,
+        eventName,
+        event,
+        process.env.GITHUB_HEAD_REF,
+      )) {
+        const exported=writeArtifactToCiLog(alignedRelease,handoffName);
+        expect(exported.sha256).toBe(handoffDigest);
+        expect(exported.bytes).toBe(readFileSync(alignedRelease).length);
+        console.log('ANDROID_UNSIGNED_ARTIFACT_LOG_TRANSPORT_PASS|CHUNKS='+exported.chunks);
+      } else {
+        console.log('ANDROID_UNSIGNED_ARTIFACT_LOG_TRANSPORT_SKIPPED_SCOPE');
+      }
       console.log('ANDROID_R01_CLEAN_CLONE_NATIVE_BUILD_PASS_NOT_FOR_RELEASE');
     } finally {
-      // Never upload, publish, stage, or retain this debug verification APK.
+      // Remove the isolated build after any scoped log transport completes.
       run('git',['worktree','remove','--force',worktree],checkout,20000,env);
       rmSync(workRoot,{recursive:true,force:true});
     }
