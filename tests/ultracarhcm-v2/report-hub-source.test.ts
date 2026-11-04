@@ -22,13 +22,19 @@ describe('GH-5135 F19 trip report hub source', () => {
     expect(manifest).toContain('<activity android:name=".ReportActivity" android:exported="false"');
   });
 
-  it('recovers corrupt Taxi history before rendering or export without broad storage', () => {
+  it('recovers corrupt and semantically invalid Taxi history before rendering or export', () => {
     const start = report.indexOf('private fun readRows(): List<TripReportRow>');
-    const end = report.indexOf('private fun exactLong', start);
+    const end = report.indexOf('private fun writeCsv', start);
     const block = report.slice(start, end);
     expect(block).toContain('Corrupt Taxi Meter history in report');
     expect(block).toContain('remove(TaxiMeterRules.KEY_HISTORY).commit()');
     expect(block).toContain('Failed to persist corrupt Taxi Meter report-history cleanup');
+    expect(block).toContain('TaxiMeterRules.exactLong(item.opt("startedAt"))');
+    expect(block).toContain('TaxiMeterRules.exactDouble(item.opt("rateVndPerKm"))');
+    expect(block).toContain('TaxiMeterRules.validPersistedTrip(');
+    expect(block).toContain('Dropped invalid Taxi Meter report rows');
+    expect(block).toContain('putString(TaxiMeterRules.KEY_HISTORY, cleaned.toString()).commit()');
+    expect(block).toContain('Failed to persist invalid Taxi Meter report-history cleanup');
     expect(block).not.toContain('.apply()');
   });
 
