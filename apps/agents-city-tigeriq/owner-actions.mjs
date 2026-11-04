@@ -149,7 +149,7 @@ export function createOwnerActions({fetchImpl=fetch, now=Date.now}={}) {
                 provider:truncate(j.provider,60),capability:truncate(j.capability,60),
                 leaseUntil:Number.isFinite(leaseMs)?new Date(leaseMs).toISOString():null,
                 leaseActive:Number.isFinite(leaseMs)&&leaseMs>now(),
-                resultSummary:compactEvidence(j.result,320),
+                resultSummary:compactEvidence(j.result_summary??j.result,320),
                 failureSummary:compactEvidence(j.failure,220),
                 completedAt:j.completed_at||null,
               };
