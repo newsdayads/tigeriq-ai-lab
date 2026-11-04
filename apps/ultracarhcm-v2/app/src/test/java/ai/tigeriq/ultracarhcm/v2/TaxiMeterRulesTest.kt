@@ -48,6 +48,57 @@ class TaxiMeterRulesTest {
         assertFalse(TaxiMeterRules.validActiveTripState(7000.0, 1250.5, 61_000L, 0L))
     }
 
+    @Test fun validatesExactPersistedNumericScalars() {
+        assertEquals(7L, TaxiMeterRules.exactLong(7))
+        assertEquals(7L, TaxiMeterRules.exactLong(7.0))
+        assertNull(TaxiMeterRules.exactLong(7.5))
+        assertNull(TaxiMeterRules.exactLong("7"))
+        assertEquals(7.5, TaxiMeterRules.exactDouble(7.5)!!, 0.0)
+        assertNull(TaxiMeterRules.exactDouble("7.5"))
+        assertNull(TaxiMeterRules.exactDouble(Double.POSITIVE_INFINITY))
+    }
+
+    @Test fun validatesPersistedTripAgainstCanonicalRateAndFare() {
+        assertTrue(
+            TaxiMeterRules.validPersistedTrip(
+                1_700_000_000_000L,
+                120L,
+                2_000.0,
+                7_000.0,
+                14_000L,
+            ),
+        )
+        assertFalse(
+            TaxiMeterRules.validPersistedTrip(
+                1_700_000_000_000L,
+                120L,
+                2_000.0,
+                1_000_000.01,
+                2_000_000L,
+            ),
+        )
+        assertFalse(
+            TaxiMeterRules.validPersistedTrip(
+                1_700_000_000_000L,
+                120L,
+                2_000.0,
+                7_000.0,
+                14_001L,
+            ),
+        )
+        assertFalse(TaxiMeterRules.validPersistedTrip(0L, 120L, 2_000.0, 7_000.0, 14_000L))
+        assertFalse(TaxiMeterRules.validPersistedTrip(1L, -1L, 2_000.0, 7_000.0, 14_000L))
+        assertFalse(
+            TaxiMeterRules.validPersistedTrip(
+                1L,
+                1L,
+                Double.POSITIVE_INFINITY,
+                7_000.0,
+                Long.MAX_VALUE,
+            ),
+        )
+    }
+
     @Test fun reportsOnlyNonNegativeElapsedSeconds() {
         assertEquals(0L, TaxiMeterRules.elapsedSeconds(-1000L))
         assertEquals(0L, TaxiMeterRules.elapsedSeconds(999L))
