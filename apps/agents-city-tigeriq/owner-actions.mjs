@@ -29,16 +29,19 @@ export function ownerCampaignPhases(objective=''){
   return [
     {
       title:'Thực thi và tạo sản phẩm',
+      capability:'reasoning',
       prompt:`Thực thi mục tiêu Owner: ${goal}. Tạo một kết quả/sản phẩm cụ thể có thể kiểm chứng trong phạm vi LOCAL/P2. Phải có ít nhất một job không phải review hoàn tất với worker/resource thực, kết quả và bằng chứng quan sát được. Không tự nhận QA độc lập trong giai đoạn này.`,
       acceptance:'Có ít nhất một job không phải review hoàn tất cho đúng mục tiêu, có employee/resource thật, kết quả cụ thể và bằng chứng kiểm chứng được.'
     },
     {
       title:'QA độc lập',
+      capability:'review',
       prompt:'Rà soát độc lập kết quả giai đoạn trước. Tạo job capability review. Reviewer phải khác employee và resource của mọi job không phải review đã hoàn tất trong objective. Kiểm tra tiêu chí, nêu lỗi nếu có; không tự sửa bằng cùng reviewer.',
       acceptance:'Có job review hoàn tất bằng employee/resource khác implementer, kết luận rõ ĐẠT hoặc chỉ ra lỗi có bằng chứng.'
     },
     {
       title:'Nghiệm thu đầu-cuối',
+      capability:'reasoning',
       prompt:'Đối chiếu lịch sử objective: sản phẩm thật, job/worker binding, lease khi chạy, QA độc lập và kết quả cuối. Chỉ hoàn tất khi các bằng chứng khớp; không tạo lại việc đã xong và không suy đoán DONE.',
       acceptance:'Có bằng chứng đầu-cuối cho sản phẩm, worker/job, lease lúc chạy, QA độc lập và trạng thái Core cuối không còn job trùng đang chạy.'
     }

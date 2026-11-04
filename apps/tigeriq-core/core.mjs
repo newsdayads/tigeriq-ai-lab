@@ -35,7 +35,7 @@ import { CONTINUOUS_VERIFY_CADENCE_MS, cadenceContinuousVerifyDue, githubContinu
 import { planContinuousVerifyRecovery, CONTINUOUS_VERIFY_RECOVERY_EVENT_LIMIT } from './continuous-verify-recovery.mjs';
 import { assessMainCiGate } from './main-ci-health.mjs';
 import { autonomousRcaCanonicalAction, autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
-import { normalizeCampaignPhases, currentCampaignGoal, campaignPriorEvidenceContext, explicitJobRefsFromText, referencedJobEvidenceContext, referencedJobReviewExclusions, repairCampaignReviewPrompt, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt } from './campaign-runner.mjs';
+import { normalizeCampaignPhases, currentCampaignGoal, campaignPhaseCapability, campaignReviewIndependence, campaignPriorEvidenceContext, explicitJobRefsFromText, referencedJobEvidenceContext, referencedJobReviewExclusions, repairCampaignReviewPrompt, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt } from './campaign-runner.mjs';
 import { buildAutonomousCodingHandoffWorkOrder, normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
 import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, functionalReprobeCandidates, functionalRoutingReadiness, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
@@ -3048,10 +3048,11 @@ async function managerTick() {
     )).rows[0]||null;
     if(!proof){
       const proofGoal=`Verify campaign phase ${currentPhase+1}/${phases.length}: ${phase.title}. Task: ${phase.prompt}. Only claim completion when the listed acceptance is evidenced.`;
+      const phaseCapability=campaignPhaseCapability(phase);
       const packet=compileTaskPrompt({
         taskId:proofId,objectiveId:o.id,
         sourceRevision:String(o.metadata?.sourceRevision||o.metadata?.source_revision||o.updated_at||o.id),
-        capability:'reasoning',
+        capability:phaseCapability,
         goal:proofGoal,
         contextRefs:[`objective:${o.id}`,`campaign-phase:${currentPhase+1}`],
         allowedScope:['read/analyze the authorized phase only','no repository or production mutation'],
@@ -3078,8 +3079,8 @@ async function managerTick() {
         if(proofContext)proofPrompt=repairCampaignReviewPrompt(packet.prompt,proofContext).prompt;
       }
       const inserted=await pool.query(
-        "insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index,routing_profile) values($1,$2,$3,$4,'reasoning','compiled_campaign',$5,$6) on conflict(id) do nothing",
-        [proofId,o.id,`Phase ${currentPhase+1} verification: ${phase.title}`.slice(0,200),proofPrompt.slice(0,12000),currentPhase,objectiveJobRoutingProfile(o.metadata)],
+        "insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index,routing_profile) values($1,$2,$3,$4,$5,'compiled_campaign',$6,$7) on conflict(id) do nothing",
+        [proofId,o.id,`Phase ${currentPhase+1} verification: ${phase.title}`.slice(0,200),proofPrompt.slice(0,12000),phaseCapability,currentPhase,objectiveJobRoutingProfile(o.metadata)],
       );
       if(inserted.rowCount===1){
         await event('CAMPAIGN_PHASE_VERIFICATION_QUEUED',{objectiveId:o.id,jobId:proofId,phaseIndex:currentPhase,phaseCount:phases.length});
@@ -3116,6 +3117,20 @@ async function managerTick() {
           await event('CAMPAIGN_PHASE_COMPLETED',{objectiveId:o.id,phaseIndex:currentPhase,nextPhaseIndex:currentPhase+1,checkpoint,verifiedEvidenceJobId:proofId});
           await event('CAMPAIGN_PHASE_ADVANCED',{objectiveId:o.id,phaseIndex:currentPhase+1,phaseCount:phases.length});
         }
+        return;
+      }
+      const reviewCheckpoint={...makePhaseCheckpoint({currentPhase,phases,summary:`Verified by ${proofId}`}),jobId:proofId,employeeId:proof.employee_id,resourceId:proof.resource_id};
+      const reviewIndependence=campaignReviewIndependence({
+        phases,
+        checkpoints:[...(Array.isArray(o.metadata?.campaign?.checkpoints)?o.metadata.campaign.checkpoints:[]),reviewCheckpoint],
+      });
+      if(!reviewIndependence.accepted){
+        const summary=`campaign review independence rejected: ${reviewIndependence.code}`;
+        const denied=await pool.query(
+          "update tigeriq_objectives set status='blocked',summary=$2,updated_at=now() where id=$1 and status='active' and coalesce((metadata#>>'{campaign,currentPhase}')::int,0)=$3",
+          [o.id,summary,currentPhase],
+        );
+        if(denied.rowCount===1)await event('CAMPAIGN_REVIEW_INDEPENDENCE_REJECTED',{objectiveId:o.id,jobId:proofId,phaseIndex:currentPhase,...reviewIndependence});
         return;
       }
       const finalGate=objectiveCompletionGate(o.metadata||{});
@@ -3291,6 +3306,7 @@ async function managerTick() {
     const doneJobs=history.filter(x=>x.status==='done').length;
     if(campaignNeedsEvidence({status:decision.status,phases,doneJobs})){
       const phase=phases[currentPhase]; const id=campaignEvidenceJobId(o.id,currentPhase);
+      const phaseCapability=campaignPhaseCapability(phase);
       const evidenceGoal=[
         `Execute campaign phase ${currentPhase+1}/${phases.length}: ${phase.title}.`,
         `Task: ${phase.prompt}`,
@@ -3299,7 +3315,7 @@ async function managerTick() {
         taskId:id,
         objectiveId:o.id,
         sourceRevision:String(o.metadata?.sourceRevision||o.metadata?.source_revision||o.updated_at||o.id),
-        capability:'reasoning',
+        capability:phaseCapability,
         skillIds:skillContext.evidence.map(x=>x.id),
         goal:evidenceGoal,
         contextRefs:[`objective:${o.id}`,`campaign-phase:${currentPhase+1}`],
@@ -3308,7 +3324,7 @@ async function managerTick() {
         acceptance:[phase.acceptance||`Produce concrete evidence that phase ${currentPhase+1} is complete.`],
         evidenceRequired:['Concrete observations, identifiers, tests, sources, or artifacts that prove the acceptance criterion.'],
       });
-      const inserted=await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index,routing_profile) values($1,$2,$3,$4,$5,'compiled_campaign',$6,$7) on conflict(id) do nothing",[id,o.id,`Phase ${currentPhase+1} evidence: ${phase.title}`.slice(0,200),compiledEvidence.prompt.slice(0,12000),'reasoning',currentPhase,objectiveJobRoutingProfile(o.metadata)]);
+      const inserted=await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,phase_index,routing_profile) values($1,$2,$3,$4,$5,'compiled_campaign',$6,$7) on conflict(id) do nothing",[id,o.id,`Phase ${currentPhase+1} evidence: ${phase.title}`.slice(0,200),compiledEvidence.prompt.slice(0,12000),phaseCapability,currentPhase,objectiveJobRoutingProfile(o.metadata)]);
       if(inserted.rowCount===0){
         const existing=(await pool.query('select status,attempts,max_attempts from tigeriq_jobs where id=$1 and objective_id=$2 and phase_index=$3',[id,o.id,currentPhase])).rows[0];
         if(existing?.status==='failed'&&Number(existing.attempts)<Number(existing.max_attempts)){await pool.query("update tigeriq_jobs set status='queued',employee_id=null,resource_id=null,provider=null,lease_until=null,started_at=null,completed_at=null where id=$1",[id]);await event('CAMPAIGN_PHASE_EVIDENCE_REQUEUED',{objectiveId:o.id,jobId:id,phaseIndex:currentPhase});return;}
