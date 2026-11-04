@@ -1,5 +1,21 @@
 import { executionPacketFromPrompt, executionResultGate } from './task-prompt-compiler.mjs';
 
+const CAMPAIGN_PHASE_CAPABILITIES=new Set(['general','reasoning','review']);
+
+export function campaignPhaseCapability(phase,{fallback='reasoning'}={}){
+  const explicit=String(phase?.capability||'').trim().toLowerCase();
+  if(explicit){
+    if(!CAMPAIGN_PHASE_CAPABILITIES.has(explicit))throw new Error('CAMPAIGN_PHASE_CAPABILITY_INVALID');
+    return explicit;
+  }
+  // Backward compatibility for already-persisted Animal City campaigns created
+  // before phase capability was explicit. The prompt itself used this exact
+  // contract phrase, so this is deterministic rather than semantic guessing.
+  if(/\bcapability\s*[:=]?\s*review\b/i.test(String(phase?.prompt||'')))return 'review';
+  const normalizedFallback=String(fallback||'reasoning').trim().toLowerCase();
+  return CAMPAIGN_PHASE_CAPABILITIES.has(normalizedFallback)?normalizedFallback:'reasoning';
+}
+
 export function normalizeCampaignPhases(input) {
   if (input == null) return [];
   if (!Array.isArray(input)) throw new Error('CAMPAIGN_PHASES_INVALID');
@@ -11,7 +27,8 @@ export function normalizeCampaignPhases(input) {
     const prompt = String(raw?.prompt || raw?.goal || title).trim();
     const acceptance = String(raw?.acceptance || '').trim();
     if (!title || !prompt) throw new Error(`CAMPAIGN_PHASE_INVALID:${index}`);
-    return { title: title.slice(0,200), prompt: prompt.slice(0,6000), acceptance: acceptance.slice(0,3000) };
+    const capability=campaignPhaseCapability(raw);
+    return { title: title.slice(0,200), prompt: prompt.slice(0,6000), acceptance: acceptance.slice(0,3000), capability };
   });
 }
 
@@ -190,6 +207,28 @@ export function repairCampaignReviewPrompt(prompt,priorContext,{maxChars=12000}=
     prompt:`${base}${marker}${context.slice(0,available)}`,
     reason:'prior_context_appended',
   };
+}
+
+export function campaignReviewIndependence({phases=[],checkpoints=[]}={}){
+  const list=Array.isArray(phases)?phases:[];
+  const cps=Array.isArray(checkpoints)?checkpoints:[];
+  const implementerEmployees=new Set();
+  const implementerResources=new Set();
+  for(let index=0;index<list.length;index++){
+    const checkpoint=cps.filter(item=>Number(item?.phaseIndex)===index).slice(-1)[0]||null;
+    if(!checkpoint)continue;
+    const employeeId=String(checkpoint?.employeeId||'').trim().toUpperCase();
+    const resourceId=String(checkpoint?.resourceId||'').trim();
+    if(campaignPhaseCapability(list[index])==='review'){
+      if(!employeeId||!resourceId)return {accepted:false,code:'REVIEWER_IDENTITY_MISSING',phaseIndex:index};
+      if(implementerEmployees.has(employeeId))return {accepted:false,code:'REVIEWER_EMPLOYEE_COLLISION',phaseIndex:index,employeeId,resourceId};
+      if(implementerResources.has(resourceId))return {accepted:false,code:'REVIEWER_RESOURCE_COLLISION',phaseIndex:index,employeeId,resourceId};
+      continue;
+    }
+    if(employeeId)implementerEmployees.add(employeeId);
+    if(resourceId)implementerResources.add(resourceId);
+  }
+  return {accepted:true,code:'REVIEW_INDEPENDENCE_ACCEPTED'};
 }
 
 export function campaignTransition({status,currentPhase=0,phases=[]}) {
