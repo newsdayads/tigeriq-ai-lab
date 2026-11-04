@@ -1,6 +1,6 @@
 // GH-5135 post-merge CI regression: the native clean-clone Gradle gate must
 // have enough time to download Gradle and complete assemble + lint + JVM tests
-// on a cold hosted runner. Source-only guard; no APK publication.
+// on a cold hosted runner. The fixture may retain only a scoped unsigned exact-head artifact; no signing or release.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
