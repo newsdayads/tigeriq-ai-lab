@@ -475,7 +475,16 @@ class HomeActivity : ComponentActivity() {
                 if (launch == null) {
                     toast("Chưa tìm thấy ứng dụng: $label")
                 } else {
-                    startActivity(launch)
+                    try {
+                        startActivity(launch)
+                    } catch (error: RuntimeException) {
+                        android.util.Log.e(
+                            "UltraCarV2",
+                            "QuickBar external app launch failed for target=$target",
+                            error,
+                        )
+                        toast("Không thể mở ứng dụng: $label")
+                    }
                 }
             }
         }
@@ -696,6 +705,17 @@ class HomeActivity : ComponentActivity() {
         button("▣\nCấu hình đã lưu", .045f, .890f, .29f, .055f, false) { showSaved() }
         button("+\nLưu cấu hình", .357f, .890f, .29f, .055f, false) { saveHomeConfiguration() }
         renderUltrabot(.675f, .887f, .278f, .062f)
+        button(
+            "CAMERA",
+            .675f,
+            .890f,
+            .278f,
+            .055f,
+            outline = false,
+            transparent = true,
+        ) {
+            startActivity(Intent(this, UsbCameraActivity::class.java))
+        }
         val footer = label("UltraCarHCM V2 • DEVELOPMENT • CHƯA NGHIỆM THU", 9f, 0xffbbbbbb.toInt())
         place(footer, .02f, .972f, .96f, .016f)
     }
@@ -1731,8 +1751,13 @@ class HomeActivity : ComponentActivity() {
                     2 -> startActivity(Intent(this, UsbCameraActivity::class.java))
                     3 -> {
                         if (!Settings.canDrawOverlays(this)) {
-                            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                Uri.parse("package:$packageName")))
+                            launchExternalSettings(
+                                Intent(
+                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    Uri.parse("package:$packageName"),
+                                ),
+                                "Không thể mở quyền Camera nổi DeX",
+                            )
                         } else if (DexUtils.isDesktop(this)) {
                             startService(Intent(this, OverlayService::class.java)
                                 .putExtra("displayId", requestedCameraDisplayId()))
@@ -1753,6 +1778,15 @@ class HomeActivity : ComponentActivity() {
                     11 -> startActivity(Intent(this, RecoveryActivity::class.java))
                 }
             }.show()
+    }
+
+    private fun launchExternalSettings(intent: Intent, failureMessage: String) {
+        try {
+            startActivity(intent)
+        } catch (error: RuntimeException) {
+            android.util.Log.e("UltraCarV2", "External settings launch failed", error)
+            toast(failureMessage + ": " + (error.message ?: "không thể mở cài đặt hệ thống"))
+        }
     }
 
     private fun toast(message: String) =

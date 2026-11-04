@@ -11,6 +11,30 @@ class UpdateRulesTest {
     private val releaseUrl =
         "https://github.com/newsdayads/tigeriq-ai-lab/releases/download/ultracarhcm-v2-test.12/app.apk"
 
+    private fun validateJson(
+        latestVersionCode: Any?,
+        latestVersionName: Any?,
+        releaseAvailable: Any?,
+        apkUrl: Any?,
+        sha256: Any?,
+        releaseNotes: Any?,
+        mandatory: Any?,
+        schemaVersion: Any? = 1,
+        channel: Any? = "ultracarhcm-v2-test",
+        packageName: Any? = "ai.tigeriq.ultracarhcm.v2",
+    ): UpdateMetadata? = UpdateRules.validateJsonMetadataScalars(
+        schemaVersion,
+        channel,
+        packageName,
+        latestVersionCode,
+        latestVersionName,
+        releaseAvailable,
+        apkUrl,
+        sha256,
+        releaseNotes,
+        mandatory,
+    )
+
     @Test fun acceptsOnlyHttpsUrlsWithoutEmbeddedCredentials() {
         assertTrue(UpdateRules.isSecureHttpsUrl("https://example.com/version.json"))
         assertFalse(UpdateRules.isSecureHttpsUrl("http://example.com/version.json"))
@@ -77,7 +101,7 @@ class UpdateRulesTest {
 
     @Test fun acceptsOnlyExactJsonScalarTypes() {
         assertNotNull(
-            UpdateRules.validateJsonMetadataScalars(
+            validateJson(
                 11,
                 "2.0.0-dev.11",
                 false,
@@ -88,7 +112,7 @@ class UpdateRulesTest {
             ),
         )
         assertNotNull(
-            UpdateRules.validateJsonMetadataScalars(
+            validateJson(
                 12L,
                 "2.0.0-test.12",
                 true,
@@ -100,9 +124,19 @@ class UpdateRulesTest {
         )
     }
 
+
+    @Test fun rejectsWrongOrMissingUpdateChannelIdentity() {
+        assertNull(validateJson(11, "2.0.0-dev.11", false, null, null, null, null, schemaVersion = 2))
+        assertNull(validateJson(11, "2.0.0-dev.11", false, null, null, null, null, schemaVersion = null))
+        assertNull(validateJson(11, "2.0.0-dev.11", false, null, null, null, null, channel = "ultracarhcm-v1"))
+        assertNull(validateJson(11, "2.0.0-dev.11", false, null, null, null, null, channel = null))
+        assertNull(validateJson(11, "2.0.0-dev.11", false, null, null, null, null, packageName = "ai.tigeriq.ultracarhcm"))
+        assertNull(validateJson(11, "2.0.0-dev.11", false, null, null, null, null, packageName = null))
+    }
+
     @Test fun rejectsJsonScalarTypeCoercion() {
         assertNull(
-            UpdateRules.validateJsonMetadataScalars(
+            validateJson(
                 "12",
                 "2.0.0-test.12",
                 true,
@@ -113,7 +147,7 @@ class UpdateRulesTest {
             ),
         )
         assertNull(
-            UpdateRules.validateJsonMetadataScalars(
+            validateJson(
                 12.0,
                 "2.0.0-test.12",
                 true,
@@ -124,7 +158,7 @@ class UpdateRulesTest {
             ),
         )
         assertNull(
-            UpdateRules.validateJsonMetadataScalars(
+            validateJson(
                 12,
                 200,
                 true,
@@ -135,7 +169,7 @@ class UpdateRulesTest {
             ),
         )
         assertNull(
-            UpdateRules.validateJsonMetadataScalars(
+            validateJson(
                 12,
                 "2.0.0-test.12",
                 "true",
@@ -146,7 +180,7 @@ class UpdateRulesTest {
             ),
         )
         assertNull(
-            UpdateRules.validateJsonMetadataScalars(
+            validateJson(
                 12,
                 "2.0.0-test.12",
                 true,
@@ -157,7 +191,7 @@ class UpdateRulesTest {
             ),
         )
         assertNull(
-            UpdateRules.validateJsonMetadataScalars(
+            validateJson(
                 12,
                 "2.0.0-test.12",
                 true,
@@ -168,7 +202,7 @@ class UpdateRulesTest {
             ),
         )
         assertNull(
-            UpdateRules.validateJsonMetadataScalars(
+            validateJson(
                 12,
                 "2.0.0-test.12",
                 true,
@@ -179,7 +213,7 @@ class UpdateRulesTest {
             ),
         )
         assertNull(
-            UpdateRules.validateJsonMetadataScalars(
+            validateJson(
                 12,
                 "2.0.0-test.12",
                 true,

@@ -32,6 +32,9 @@ class QuickSlotRulesTest {
 
         assertNull(QuickSlotRules.parseCustomAssignment("Thiếu package"))
         assertNull(QuickSlotRules.parseCustomAssignment("Tên | not-a-package"))
+        assertNull(QuickSlotRules.parseCustomAssignment("Tên | 1bad.package"))
+        assertNull(QuickSlotRules.parseCustomAssignment("Tên | com.1bad.app"))
+        assertNull(QuickSlotRules.parseCustomAssignment("Tên | _bad.package"))
         assertNull(QuickSlotRules.parseCustomAssignment(" | com.example.app"))
     }
 
@@ -48,6 +51,9 @@ class QuickSlotRulesTest {
         assertTrue(QuickSlotRules.isValidPersistedAssignment("Maps", "com.google.android.apps.maps"))
         assertFalse(QuickSlotRules.isValidPersistedAssignment("", "com.example.app"))
         assertFalse(QuickSlotRules.isValidPersistedAssignment("Broken", "not-a-package"))
+        assertFalse(QuickSlotRules.isValidPersistedAssignment("Broken", "1bad.package"))
+        assertFalse(QuickSlotRules.isValidPersistedAssignment("Broken", "com.1bad.app"))
+        assertFalse(QuickSlotRules.isValidPersistedAssignment("Broken", "_bad.package"))
         assertFalse(QuickSlotRules.isValidPersistedAssignment("x".repeat(29), "com.example.app"))
         assertFalse(QuickSlotRules.isValidPersistedAssignment("App", "x".repeat(161)))
     }

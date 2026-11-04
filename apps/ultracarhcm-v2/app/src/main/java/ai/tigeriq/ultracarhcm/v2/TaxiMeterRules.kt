@@ -48,9 +48,11 @@ internal object TaxiMeterRules {
     }
 
     fun fareVnd(rateVndPerKm: Double, distanceMeters: Double): Long? {
-        if (!rateVndPerKm.isFinite() || rateVndPerKm <= 0.0 ||
+        if (!validRateVndPerKm(rateVndPerKm) ||
             !distanceMeters.isFinite() || distanceMeters < 0.0) return null
-        return (rateVndPerKm * distanceMeters / 1000.0).roundToLong()
+        val fare = rateVndPerKm * distanceMeters / 1000.0
+        if (!fare.isFinite() || fare < 0.0 || fare >= Long.MAX_VALUE.toDouble()) return null
+        return fare.roundToLong()
     }
 
     fun validActiveTripState(
@@ -64,6 +66,43 @@ internal object TaxiMeterRules {
             distanceMeters >= 0.0 &&
             activeElapsedMs >= 0L &&
             tripStartedEpochMs > 0L
+
+    fun exactLong(value: Any?): Long? {
+        if (value !is Number) return null
+        val doubleValue = value.toDouble()
+        if (!doubleValue.isFinite()) return null
+        val longValue = value.toLong()
+        return longValue.takeIf { doubleValue == longValue.toDouble() }
+    }
+
+    fun exactDouble(value: Any?): Double? =
+        (value as? Number)?.toDouble()?.takeIf { it.isFinite() }
+
+    fun validPersistedTrip(
+        startedAtEpochMs: Long,
+        durationSeconds: Long,
+        distanceMeters: Double,
+        rateVndPerKm: Double,
+        recordedFareVnd: Long,
+    ): Boolean {
+        if (startedAtEpochMs <= 0L ||
+            durationSeconds < 0L ||
+            !distanceMeters.isFinite() ||
+            distanceMeters < 0.0 ||
+            !validRateVndPerKm(rateVndPerKm) ||
+            recordedFareVnd < 0L
+        ) {
+            return false
+        }
+        val expectedFare = fareVnd(rateVndPerKm, distanceMeters) ?: return false
+        return recordedFareVnd == expectedFare
+    }
+
+    fun saturatingAddNonNegative(left: Long, right: Long): Long {
+        val safeLeft = left.coerceAtLeast(0L)
+        val safeRight = right.coerceAtLeast(0L)
+        return if (Long.MAX_VALUE - safeLeft < safeRight) Long.MAX_VALUE else safeLeft + safeRight
+    }
 
     fun elapsedSeconds(elapsedMillis: Long): Long =
         elapsedMillis.coerceAtLeast(0L) / 1000L

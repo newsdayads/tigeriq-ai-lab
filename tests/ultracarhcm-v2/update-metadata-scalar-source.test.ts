@@ -15,6 +15,9 @@ const rules = readFileSync(
 describe('GH-5135 F15 strict update metadata scalar types', () => {
   it('routes remote JSON through the strict scalar validator', () => {
     expect(activity).toContain('UpdateRules.validateJsonMetadataScalars(');
+    expect(activity).toContain('json.opt("schemaVersion")');
+    expect(activity).toContain('json.opt("channel")');
+    expect(activity).toContain('json.opt("packageName")');
     expect(activity).toContain('json.opt("latestVersionCode")');
     expect(activity).toContain('json.opt("latestVersionName")');
     expect(activity).toContain('json.opt("releaseAvailable")');
@@ -29,6 +32,17 @@ describe('GH-5135 F15 strict update metadata scalar types', () => {
     expect(activity).not.toContain('json.optString("sha256"');
     expect(activity).not.toContain('json.optBoolean("releaseAvailable"');
     expect(activity).not.toContain('json.optBoolean("mandatory"');
+  });
+
+  it('fails closed on exact V2 TEST channel identity before release fields', () => {
+    expect(rules).toContain('private const val EXPECTED_SCHEMA_VERSION = 1');
+    expect(rules).toContain('private const val EXPECTED_CHANNEL = "ultracarhcm-v2-test"');
+    expect(rules).toContain('private const val EXPECTED_PACKAGE_NAME = "ai.tigeriq.ultracarhcm.v2"');
+    expect(rules).toContain('val schema = schemaVersion as? Int ?: return null');
+    expect(rules).toContain('val channelName = channel as? String ?: return null');
+    expect(rules).toContain('val packageId = packageName as? String ?: return null');
+    expect(rules).toContain('channelName != EXPECTED_CHANNEL');
+    expect(rules).toContain('packageId != EXPECTED_PACKAGE_NAME');
   });
 
   it('accepts only typed release state and typed optional release fields', () => {

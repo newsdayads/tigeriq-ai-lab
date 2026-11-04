@@ -100,6 +100,9 @@ export function createOwnerActions({fetchImpl=fetch, now=Date.now}={}) {
           return {status:502,body:{ok:false,reason:'CORE_RECEIPT_UNVERIFIED'}};
         return {status:201,body:{ok:true,objectiveId:result.id,priority:'P2',routingProfile:'LOCAL',
           source:'TigerIQ Core /api/objectives',receiptVerified:true,campaign:true,phaseCount:3,currentPhase:0,
+          plan:phases.map((phase,index)=>({
+            phaseNumber:index+1,title:truncate(phase.title,120),capability:truncate(phase.capability,60),
+          })),
           note:'Core đã NHẬN campaign 3 giai đoạn; chưa khẳng định AI đã bắt đầu hoặc đã hoàn tất.'}};
       }catch{return {status:503,body:{ok:false,reason:'CORE_UNAVAILABLE'}}}
     })();
@@ -132,6 +135,11 @@ export function createOwnerActions({fetchImpl=fetch, now=Date.now}={}) {
             campaign:campaign&&Array.isArray(campaign.phases)?{
               phaseCount:campaign.phases.length,
               currentPhase:Math.max(0,Number(campaign.currentPhase)||0),
+              phases:campaign.phases.slice(0,6).map((phase,index)=>({
+                phaseNumber:index+1,
+                title:truncate(phase?.title,120),
+                capability:truncate(phase?.capability,60),
+              })),
               checkpoints:Array.isArray(campaign.checkpoints)?campaign.checkpoints.slice(-6).map(c=>({
                 phaseNumber:Number(c?.phaseNumber)||null,
                 phaseTitle:truncate(c?.phaseTitle,120),
@@ -149,7 +157,7 @@ export function createOwnerActions({fetchImpl=fetch, now=Date.now}={}) {
                 provider:truncate(j.provider,60),capability:truncate(j.capability,60),
                 leaseUntil:Number.isFinite(leaseMs)?new Date(leaseMs).toISOString():null,
                 leaseActive:Number.isFinite(leaseMs)&&leaseMs>now(),
-                resultSummary:compactEvidence(j.result,320),
+                resultSummary:compactEvidence(j.result_summary??j.result,320),
                 failureSummary:compactEvidence(j.failure,220),
                 completedAt:j.completed_at||null,
               };

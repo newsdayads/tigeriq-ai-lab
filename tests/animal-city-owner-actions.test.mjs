@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import {createAnimalCityServer} from '../apps/agents-city-tigeriq/server.mjs';
 
 const objectiveId='OBJ-123e4567-e89b-42d3-a456-426614174000';
@@ -45,6 +46,11 @@ test('local browser action creates one actual Core LOCAL/P2 objective and return
     assert.equal(data.objectiveId,objectiveId);
     assert.equal(data.receiptVerified,true);
     assert.equal(data.routingProfile,'LOCAL');
+    assert.deepEqual(data.plan.map(x=>x.phaseNumber),[1,2,3]);
+    assert.deepEqual(data.plan.map(x=>x.capability),['reasoning','review','reasoning']);
+    assert.match(data.plan[0].title,/Thực thi/);
+    assert.match(data.plan[1].title,/QA độc lập/);
+    assert.match(data.plan[2].title,/Nghiệm thu/);
     assert.equal(counter.count,1);
     assert.equal(counter.last.objective,body.objective);
     assert.equal(counter.last.priority,'P2');
@@ -65,7 +71,16 @@ test('local browser action creates one actual Core LOCAL/P2 objective and return
     assert.equal(recent.objectives[0].jobs[0].leaseActive,true);
     assert.equal(recent.objectives[0].campaign.phaseCount,3);
     assert.equal(recent.objectives[0].campaign.currentPhase,0);
+    assert.deepEqual(recent.objectives[0].campaign.phases.map(x=>x.phaseNumber),[1,2,3]);
+    assert.deepEqual(recent.objectives[0].campaign.phases.map(x=>x.title),['P1','P2','P3']);
   }finally{await app.close()}
+});
+
+test('Owner console renders verified objective plan in receipt and recent history',async()=>{
+  const source=await readFile(new URL('../apps/agents-city-tigeriq/owner-console.js',import.meta.url),'utf8');
+  assert.match(source,/Kế hoạch: /);
+  assert.match(source,/item\.campaign\?\.phases\?\.length/);
+  assert.match(source,/data\.plan\|\|\[\]/);
 });
 test('invalid origin, missing token, paid AUTO and P0 are rejected before Core',async()=>{
   const counter={count:0};const app=await boot(coreMock(counter));

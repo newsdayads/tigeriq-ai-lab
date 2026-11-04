@@ -97,12 +97,14 @@ export function parseAdbMdnsConnectServices(input, preferredIp=null, preferredSe
   return serialMatches.length ? serialMatches : fallbackMatches;
 }
 
-export function wifiCandidatesFromOutputs(ipOutput, portOutput, mdnsOutput='', preferredSerial=null) {
+export function wifiCandidatesFromOutputs(ipOutput, portOutput, mdnsOutput='', preferredSerial=null, tlsPortOutput='') {
   const ip=parsePrivateWifiIpv4(ipOutput);
   if(!ip)return [];
   const candidates=[];
   const classic=wifiCandidateFromOutputs(ipOutput,portOutput);
   if(classic)candidates.push(classic);
+  const tls=wifiCandidateFromOutputs(ipOutput,tlsPortOutput);
+  if(tls&&!candidates.includes(tls))candidates.push(tls);
   for(const address of parseAdbMdnsConnectServices(mdnsOutput,ip,preferredSerial)){
     if(!candidates.includes(address))candidates.push(address);
   }
@@ -446,20 +448,23 @@ const server = http.createServer(async (req, res) => {
       if(!attached.some(x=>x.serial===serial&&x.state==='device'))
         return json(res,409,{error:'Thiết bị USB ADB chưa sẵn sàng'});
       try {
-        const [ipResult,portResult,mdnsResult]=await Promise.all([
+        const [ipResult,portResult,tlsPortResult,mdnsResult]=await Promise.all([
           run(['-s',serial,'shell','ip','-f','inet','addr','show','wlan0'],{encoding:'utf8',timeout:8000}),
           run(['-s',serial,'shell','getprop','service.adb.tcp.port'],{encoding:'utf8',timeout:8000}),
+          run(['-s',serial,'shell','getprop','service.adb.tls.port'],{encoding:'utf8',timeout:8000}),
           run(['mdns','services'],{encoding:'utf8',timeout:5000}).catch(()=>({stdout:''}))
         ]);
-        const ipOutput=String(ipResult.stdout||''),portOutput=String(portResult.stdout||''),mdnsOutput=String(mdnsResult.stdout||'');
-        const candidates=wifiCandidatesFromOutputs(ipOutput,portOutput,mdnsOutput,serial);
+        const ipOutput=String(ipResult.stdout||''),portOutput=String(portResult.stdout||''),tlsPortOutput=String(tlsPortResult.stdout||''),mdnsOutput=String(mdnsResult.stdout||'');
+        const candidates=wifiCandidatesFromOutputs(ipOutput,portOutput,mdnsOutput,serial,tlsPortOutput);
         if(!candidates.length)return json(res,409,{error:'Thiết bị chưa có endpoint WiFi ADB LAN đang bật sẵn; TigerIQ không tự thay đổi cấu hình ADB'});
         const checks=await Promise.all(candidates.map(async address=>({address,reachable:await wifiEndpointReachable(address,1500)})));
         const live=checks.find(x=>x.reachable);
         if(!live)
           return json(res,409,{error:'Thiết bị có cấu hình WiFi ADB nhưng chưa có endpoint kết nối đang lắng nghe trên LAN',reason:'ADB_ENDPOINT_UNREACHABLE',address:candidates[0],candidates,serial,readOnly:true});
         const classic=wifiCandidateFromOutputs(ipOutput,portOutput);
-        return json(res,200,{available:true,address:live.address,candidates,source:live.address===classic?'legacy-tcp':'adb-mdns',serial,readOnly:true});
+        const tls=wifiCandidateFromOutputs(ipOutput,tlsPortOutput);
+        const source=live.address===classic?'legacy-tcp':live.address===tls?'adb-tls-port':'adb-mdns';
+        return json(res,200,{available:true,address:live.address,candidates,source,serial,readOnly:true});
       }catch(e){return json(res,409,{error:errorText(e)})}
     }
     if (req.method === 'GET' && url.pathname === '/api/health')

@@ -103,6 +103,19 @@ describe('GH-5135 R02 F01-F22 source matrix', () => {
     expect(f16.actual).toMatch(/Schema-v5 restore/);
   });
 
+
+  it('pins F15 to the exact V2 TEST metadata identity gate', () => {
+    const f15 = matrix.features.find(feature => feature.id === 'F15')!;
+    expect(f15.sourceEvidence).toContain(
+      'tests/ultracarhcm-v2/update-metadata-scalar-source.test.ts',
+    );
+    expect(f15.gap).toMatch(/schemaVersion=1/);
+    expect(f15.gap).toMatch(/channel=ultracarhcm-v2-test/);
+    expect(f15.gap).toMatch(/packageName=ai\.tigeriq\.ultracarhcm\.v2/);
+    expect(f15.actual).toMatch(/sai hoặc thiếu identity bị từ chối trước render\/download/i);
+    expect(f15.entryPoints).toContain('UpdateRules.validateJsonMetadataScalars');
+  });
+
   it('records no fully absent business feature group after F18 gains fail-closed source coverage', () => {
     const absent = matrix.features
       .filter(feature => feature.status === 'NOT_IMPLEMENTED')

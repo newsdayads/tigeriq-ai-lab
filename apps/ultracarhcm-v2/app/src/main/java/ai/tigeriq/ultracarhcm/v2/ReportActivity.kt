@@ -143,29 +143,39 @@ class ReportActivity : ComponentActivity() {
         }
 
         val rows = ArrayList<TripReportRow>(history.length())
-        for (index in 0 until history.length()) {
+        val cleaned = JSONArray()
+        for (index in 0 until minOf(history.length(), TaxiMeterRules.MAX_HISTORY)) {
             val item = history.optJSONObject(index) ?: continue
-            val startedAt = exactLong(item.opt("startedAt")) ?: continue
-            val duration = exactLong(item.opt("durationSeconds")) ?: continue
-            val distance = exactDouble(item.opt("distanceMeters")) ?: continue
-            val rate = exactDouble(item.opt("rateVndPerKm")) ?: continue
-            val fare = exactLong(item.opt("fareVnd")) ?: continue
-            if (startedAt < 0L || duration < 0L || distance < 0.0 || rate <= 0.0 || fare < 0L) continue
+            val startedAt = TaxiMeterRules.exactLong(item.opt("startedAt")) ?: continue
+            val duration = TaxiMeterRules.exactLong(item.opt("durationSeconds")) ?: continue
+            val distance = TaxiMeterRules.exactDouble(item.opt("distanceMeters")) ?: continue
+            val rate = TaxiMeterRules.exactDouble(item.opt("rateVndPerKm")) ?: continue
+            val fare = TaxiMeterRules.exactLong(item.opt("fareVnd")) ?: continue
+            if (!TaxiMeterRules.validPersistedTrip(
+                    startedAt,
+                    duration,
+                    distance,
+                    rate,
+                    fare,
+                )
+            ) {
+                continue
+            }
+            cleaned.put(item)
             rows += TripReportRow(startedAt, duration, distance, rate, fare)
+        }
+
+        if (cleaned.length() != history.length()) {
+            android.util.Log.w("UltraCarV2", "Dropped invalid Taxi Meter report rows")
+            if (!prefs.edit().putString(TaxiMeterRules.KEY_HISTORY, cleaned.toString()).commit()) {
+                android.util.Log.e(
+                    "UltraCarV2",
+                    "Failed to persist invalid Taxi Meter report-history cleanup",
+                )
+            }
         }
         return rows
     }
-
-    private fun exactLong(value: Any?): Long? {
-        val number = value as? Number ?: return null
-        val doubleValue = number.toDouble()
-        if (!doubleValue.isFinite()) return null
-        val longValue = number.toLong()
-        return longValue.takeIf { doubleValue == longValue.toDouble() }
-    }
-
-    private fun exactDouble(value: Any?): Double? =
-        (value as? Number)?.toDouble()?.takeIf { it.isFinite() }
 
     private fun writeCsv(uri: Uri) {
         try {

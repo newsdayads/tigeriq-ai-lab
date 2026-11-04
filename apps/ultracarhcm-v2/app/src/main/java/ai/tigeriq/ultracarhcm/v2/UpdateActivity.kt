@@ -185,6 +185,9 @@ class UpdateActivity : ComponentActivity() {
             }
             val json = JSONObject(payload)
             return UpdateRules.validateJsonMetadataScalars(
+                schemaVersion = json.opt("schemaVersion"),
+                channel = json.opt("channel"),
+                packageName = json.opt("packageName"),
                 latestVersionCode = json.opt("latestVersionCode"),
                 latestVersionName = json.opt("latestVersionName"),
                 releaseAvailable = json.opt("releaseAvailable"),

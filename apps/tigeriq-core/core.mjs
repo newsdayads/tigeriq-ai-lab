@@ -23,7 +23,7 @@ import { FAILED_LOGICAL_JOB_BLOCK_SUMMARY, MANAGER_NO_PROGRESS_BLOCK_SUMMARY, ca
 import { NV09_EMPLOYEE_ID, NV09_MODEL, NV09_ENDPOINT, nv09ModelAvailability, registerNv09, runBoundedInferenceNv09 } from './registry.mjs';
 // NV09_CANARY_MARKER
 import { appendSkillContextToPrompt, focusedSkillRoutingText, matchAndLoadSkills } from './skill-loader.mjs';
-import { summarizeCoreJobEvidence } from './job-outcome-summary.mjs';
+import { projectCoreExecutionResult, summarizeCoreJobEvidence } from './job-outcome-summary.mjs';
 import { compileTaskPrompt, executionPacketFromPrompt, executionResultGate, assertExecutionResultAccepted, assertExecutionResultRoutable, strictExecutionRetryPrompt, repairCompactExecutionPrompt, compactLocalExecutionPrompt } from './task-prompt-compiler.mjs';
 import { invokeNativeStructuredExecution, structuredExecutionSchema, compactStructuredExecutionSchema } from './ollama-native-structured.mjs';
 import { buildSkillRoutingPreflight, finalizeSkillRoutingPreflight } from './skill-preflight.mjs';
@@ -3634,7 +3634,8 @@ async function snapshot(){
     "select employee_id,provider,agent_version,last_seen_at,revoked from tigeriq_mobile_devices where revoked=false order by last_seen_at desc nulls last limit 100"
   )).rows);
   const objectives=(await pool.query("select id,objective,priority,status,summary,manager_cycles,metadata,updated_at from tigeriq_objectives order by created_at desc limit 20")).rows;
-  const jobs=(await pool.query("select id,objective_id,title,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,phase_index,attempts,created_at,started_at,lease_until,completed_at from tigeriq_jobs order by created_at desc limit 40")).rows;
+  const rawJobs=(await pool.query("select id,objective_id,title,capability,kind,status,employee_id,resource_id,provider,routing_profile,routing_decision,phase_index,attempts,created_at,started_at,lease_until,completed_at,result from tigeriq_jobs order by created_at desc limit 40")).rows;
+  const jobs=rawJobs.map(({result,...row})=>({...row,result_summary:projectCoreExecutionResult(result)}));
   const events=(await pool.query("select seq,ts,type,objective_id,job_id,employee_id,resource_id,task_kind,data from tigeriq_events order by seq desc limit 80")).rows;
   const telemetry=(await pool.query(`select ts,employee_id,resource_id,task_kind,type,(data->>'latencyMs')::int as latency_ms from tigeriq_events where ts>=now()-interval '24 hours' and type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK') and data ? 'latencyMs' order by ts asc limit 500`)).rows;
   const performanceByTask=(await pool.query(`select resource_id,coalesce(task_kind,'general') as task_kind,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as success,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as failure,count(*) filter(where type='ROUTING_RETRY')::int as retries,count(*) filter(where type='ROUTING_FAILOVER')::int as failovers,round(avg((data->>'latencyMs')::numeric) filter(where data ? 'latencyMs'))::int as avg_latency_ms from tigeriq_events where resource_id is not null and ts>=now()-interval '7 days' group by resource_id,coalesce(task_kind,'general') order by resource_id,task_kind`)).rows;

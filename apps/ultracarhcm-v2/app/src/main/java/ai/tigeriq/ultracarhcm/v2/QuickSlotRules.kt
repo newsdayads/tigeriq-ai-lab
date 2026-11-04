@@ -26,7 +26,7 @@ internal object QuickSlotRules {
     private const val MAX_LABEL_LENGTH = 28
     private const val MAX_TARGET_LENGTH = 160
     private val packageNamePattern =
-        Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+$")
+        Regex("^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+$")
 
     fun normalizeLabel(value: String): String =
         value.trim().replace(Regex("\\s+"), " ").take(MAX_LABEL_LENGTH)
