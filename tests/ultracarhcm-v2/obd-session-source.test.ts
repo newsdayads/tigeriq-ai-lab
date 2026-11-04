@@ -9,6 +9,18 @@ const obd = readFileSync(
 );
 
 describe('GH-5135 F12 OBD session lifecycle', () => {
+  it('fails visibly when system Bluetooth settings cannot be opened', () => {
+    expect(obd).toContain('setOnClickListener { openBluetoothSettings() }');
+    const start = obd.indexOf('private fun openBluetoothSettings()');
+    const end = obd.indexOf('private fun adapter()', start);
+    const block = obd.slice(start, end);
+    expect(block).toContain('Settings.ACTION_BLUETOOTH_SETTINGS');
+    expect(block).toContain('catch (error: RuntimeException)');
+    expect(block).toContain('Bluetooth settings launch failed');
+    expect(block).toContain('OBD: không thể mở cài đặt Bluetooth');
+    expect(block).not.toMatch(/bluetooth\.enable\(|setBluetoothEnabled|WRITE_SECURE_SETTINGS/);
+  });
+
   it('closes a candidate socket when connection or initialization fails before publication', () => {
     const start = obd.indexOf('private fun connect(device: BluetoothDevice)');
     const end = obd.indexOf('private fun initializeAdapter', start);
