@@ -105,9 +105,7 @@ class ObdActivity : ComponentActivity() {
         body.addView(refreshButton)
         body.addView(Button(this).apply {
             text = "Mở cài đặt ghép đôi Bluetooth"
-            setOnClickListener {
-                startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
-            }
+            setOnClickListener { openBluetoothSettings() }
         })
 
         return ScrollView(this).apply {
@@ -117,6 +115,18 @@ class ObdActivity : ComponentActivity() {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 ),
+            )
+        }
+    }
+
+    private fun openBluetoothSettings() {
+        try {
+            startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+        } catch (error: RuntimeException) {
+            android.util.Log.e("UltraCarV2", "Bluetooth settings launch failed", error)
+            setConnection(
+                "OBD: không thể mở cài đặt Bluetooth: " +
+                    (error.message ?: "không thể mở cài đặt hệ thống"),
             )
         }
     }
