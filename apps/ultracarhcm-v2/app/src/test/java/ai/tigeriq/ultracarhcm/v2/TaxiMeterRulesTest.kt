@@ -36,6 +36,7 @@ class TaxiMeterRulesTest {
         assertNull(TaxiMeterRules.fareVnd(0.0, 1000.0))
         assertNull(TaxiMeterRules.fareVnd(1_000_000.01, 1000.0))
         assertNull(TaxiMeterRules.fareVnd(Double.POSITIVE_INFINITY, 1000.0))
+        assertNull(TaxiMeterRules.fareVnd(1_000_000.0, Double.MAX_VALUE))
         assertNull(TaxiMeterRules.fareVnd(7000.0, -1.0))
     }
 
@@ -94,6 +95,15 @@ class TaxiMeterRulesTest {
                 1L,
                 Double.POSITIVE_INFINITY,
                 7_000.0,
+                Long.MAX_VALUE,
+            ),
+        )
+        assertFalse(
+            TaxiMeterRules.validPersistedTrip(
+                1L,
+                1L,
+                Double.MAX_VALUE,
+                1_000_000.0,
                 Long.MAX_VALUE,
             ),
         )
