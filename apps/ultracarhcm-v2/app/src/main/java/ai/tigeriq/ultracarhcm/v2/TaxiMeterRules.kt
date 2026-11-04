@@ -96,6 +96,12 @@ internal object TaxiMeterRules {
         return recordedFareVnd == expectedFare
     }
 
+    fun saturatingAddNonNegative(left: Long, right: Long): Long {
+        val safeLeft = left.coerceAtLeast(0L)
+        val safeRight = right.coerceAtLeast(0L)
+        return if (Long.MAX_VALUE - safeLeft < safeRight) Long.MAX_VALUE else safeLeft + safeRight
+    }
+
     fun elapsedSeconds(elapsedMillis: Long): Long =
         elapsedMillis.coerceAtLeast(0L) / 1000L
 }
