@@ -86,7 +86,7 @@ describe('GH-5135 native Android clean-clone compile gate (not a release)',()=>{
         ['ObdProtocolTest', 3],
         ['TaxiMeterRulesTest', 8],
         ['ProfileRulesTest', 3],
-        ['UpdateRulesTest', 11],
+        ['UpdateRulesTest', 12],
         ['ReportRulesTest', 6],
         ['ProfileLayoutRulesTest', 3],
         ['AppearanceRulesTest', 4],
