@@ -572,7 +572,7 @@ test('non-shell RC6 bootstrapper pins base package and applies verified embedded
   assert.match(source,/https:\/\/github\.com\/newsdayads\/tigeriq-ai-lab\/releases\/download\/tigeriq-phone-farm-windows-v0\.5\.0-rc6\/TigerIQ-PhoneFarm-Windows-v0\.5\.0-RC6-d64b2a04\.zip/);
   assert.match(source,/bd8375a8712ee8bc18d725bd45e3652414946b9eb834de6879c2c42ff8a30709/);
   assert.match(source,/d64b2a04558533d0a8690fc9a2ef11fe74d47596/);
-  assert.match(source,/b5c335376187dded8a25d891cf8508e1aa83fb40/);
+  assert.match(source,/4017b9f9692f36eff497e069dd0a831668568e76/);
   assert.match(source,/TIGERIQ_PHONE_FARM_OVERLAY_V1/);
   assert.match(source,/TIGERIQ_PHONE_FARM_CURRENT_RELEASE_V2/);
   assert.match(source,/--package/);
