@@ -475,7 +475,16 @@ class HomeActivity : ComponentActivity() {
                 if (launch == null) {
                     toast("Chưa tìm thấy ứng dụng: $label")
                 } else {
-                    startActivity(launch)
+                    try {
+                        startActivity(launch)
+                    } catch (error: RuntimeException) {
+                        android.util.Log.e(
+                            "UltraCarV2",
+                            "QuickBar external app launch failed for target=$target",
+                            error,
+                        )
+                        toast("Không thể mở ứng dụng: $label")
+                    }
                 }
             }
         }
