@@ -71,7 +71,14 @@ describe('GH-5135 F13 Taxi Meter persistence source contract', () => {
     expect(block).toContain('Dropped invalid Taxi Meter history rows');
     expect(block).toContain('putString(TaxiMeterRules.KEY_HISTORY, cleaned.toString()).commit()');
     expect(block).toContain('Failed to persist invalid Taxi Meter history cleanup');
+    expect(block).toContain('minOf(parsed.length(), TaxiMeterRules.MAX_HISTORY)');
     expect(block).not.toContain('.apply()');
+
+    const render = taxi.slice(
+      taxi.indexOf('private fun renderHistory()'),
+      taxi.indexOf('private fun formatDuration', taxi.indexOf('private fun renderHistory()')),
+    );
+    expect(render).toContain('TaxiMeterRules.saturatingAddNonNegative(revenue, fare)');
   });
 
   it('preserves an active trip across Activity recreation without counting background time', () => {
