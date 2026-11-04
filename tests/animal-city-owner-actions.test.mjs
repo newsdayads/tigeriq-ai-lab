@@ -54,6 +54,7 @@ test('local browser action creates one actual Core LOCAL/P2 objective and return
     assert.match(counter.last.phases[0].title,/Thực thi/);
     assert.match(counter.last.phases[1].title,/QA độc lập/);
     assert.match(counter.last.phases[2].title,/Nghiệm thu/);
+    assert.deepEqual(counter.last.phases.map(x=>x.capability),['reasoning','review','reasoning']);
     const second=await send();
     assert.equal(second.status,201);
     assert.equal(counter.count,1,'idempotency key must never enqueue duplicate Core objective');
