@@ -103,5 +103,8 @@ class TaxiMeterRulesTest {
         assertEquals(0L, TaxiMeterRules.elapsedSeconds(-1000L))
         assertEquals(0L, TaxiMeterRules.elapsedSeconds(999L))
         assertEquals(61L, TaxiMeterRules.elapsedSeconds(61_999L))
+        assertEquals(12L, TaxiMeterRules.saturatingAddNonNegative(5L, 7L))
+        assertEquals(7L, TaxiMeterRules.saturatingAddNonNegative(-5L, 7L))
+        assertEquals(Long.MAX_VALUE, TaxiMeterRules.saturatingAddNonNegative(Long.MAX_VALUE, 1L))
     }
 }
