@@ -29,6 +29,11 @@
       const phase=item.campaign?(' · Giai đoạn '+Math.min(item.campaign.currentPhase+1,item.campaign.phaseCount)+'/'+item.campaign.phaseCount):'';
       const summary=item.id+' · Trạng thái Core: '+item.state+phase+' · '+jobs.length+' job trong cửa sổ dữ liệu';
       el.append(node('div',summary,'meta'));
+      if(item.campaign?.phases?.length){
+        const plan=item.campaign.phases.map(phase=>
+          'P'+phase.phaseNumber+' '+phase.title+(phase.capability?' ['+phase.capability+']':'')).join(' → ');
+        el.append(node('div','Kế hoạch: '+plan,'meta'));
+      }
       for(const job of jobs.slice(0,6)){
         const lease=job.status==='running'?(job.leaseActive?' · lease ĐẠT':' · lease CHƯA XÁC MINH'):'';
         const identity=(job.employeeId||'chưa gán')+(job.resourceId?' / '+job.resourceId:'');
@@ -92,7 +97,9 @@
       const data=await r.json();
       if(!r.ok||data.ok!==true||data.receiptVerified!==true)
         throw Error(data.reason||'CORE_REJECTED');
-      inform('CORE ĐÃ NHẬN: '+data.objectiveId+' · LOCAL P2 · '+data.phaseCount+' giai đoạn. Đây là biên nhận tiếp nhận, không phải DONE.');
+      const plan=(data.plan||[]).map(phase=>'P'+phase.phaseNumber+' '+phase.title).join(' → ');
+      inform('CORE ĐÃ NHẬN: '+data.objectiveId+' · LOCAL P2 · '+data.phaseCount+' giai đoạn'+
+        (plan?' · Kế hoạch: '+plan:'')+'. Đây là biên nhận tiếp nhận, không phải DONE.');
       $('ownerObjective').value='';
       await loadRecent();
       window.dispatchEvent(new Event('tigeriq:refresh'));
