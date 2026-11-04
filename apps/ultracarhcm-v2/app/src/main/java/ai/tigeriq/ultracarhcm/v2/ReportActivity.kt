@@ -144,7 +144,7 @@ class ReportActivity : ComponentActivity() {
 
         val rows = ArrayList<TripReportRow>(history.length())
         val cleaned = JSONArray()
-        for (index in 0 until history.length()) {
+        for (index in 0 until minOf(history.length(), TaxiMeterRules.MAX_HISTORY)) {
             val item = history.optJSONObject(index) ?: continue
             val startedAt = TaxiMeterRules.exactLong(item.opt("startedAt")) ?: continue
             val duration = TaxiMeterRules.exactLong(item.opt("durationSeconds")) ?: continue
