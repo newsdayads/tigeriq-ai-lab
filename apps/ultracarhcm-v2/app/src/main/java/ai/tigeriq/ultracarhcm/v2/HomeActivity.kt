@@ -696,6 +696,17 @@ class HomeActivity : ComponentActivity() {
         button("▣\nCấu hình đã lưu", .045f, .890f, .29f, .055f, false) { showSaved() }
         button("+\nLưu cấu hình", .357f, .890f, .29f, .055f, false) { saveHomeConfiguration() }
         renderUltrabot(.675f, .887f, .278f, .062f)
+        button(
+            "CAMERA",
+            .675f,
+            .890f,
+            .278f,
+            .055f,
+            outline = false,
+            transparent = true,
+        ) {
+            startActivity(Intent(this, UsbCameraActivity::class.java))
+        }
         val footer = label("UltraCarHCM V2 • DEVELOPMENT • CHƯA NGHIỆM THU", 9f, 0xffbbbbbb.toInt())
         place(footer, .02f, .972f, .96f, .016f)
     }
