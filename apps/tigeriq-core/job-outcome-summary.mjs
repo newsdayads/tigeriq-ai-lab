@@ -10,7 +10,7 @@ function redactResultString(value=''){
     .slice(0,RESULT_MAX_STRING);
 }
 function safeResultValue(value,depth=0){
-  if(depth>3)return '[TRUNCATED_DEPTH]';
+  if(depth>4)return '[TRUNCATED_DEPTH]';
   if(value==null||typeof value==='boolean'||typeof value==='number')return value;
   if(typeof value==='string')return redactResultString(value);
   if(Array.isArray(value))return value.slice(0,RESULT_MAX_ITEMS).map(item=>safeResultValue(item,depth+1));
