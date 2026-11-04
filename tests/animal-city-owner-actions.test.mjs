@@ -83,6 +83,67 @@ test('invalid origin, missing token, paid AUTO and P0 are rejected before Core',
     assert.equal(counter.count,0);
   }finally{await app.close()}
 });
+
+test('completed Core campaign is not accepted when artifact evidence is absent and QA reuses implementer',async()=>{
+  const now=new Date().toISOString();
+  const app=await boot(async url=>{
+    if(url!=='http://127.0.0.1:8795/api/status')throw Error('UNEXPECTED_FETCH:'+url);
+    return new Response(JSON.stringify({
+      ok:true,core:{time:now},
+      objectives:[{id:objectiveId,objective:body.objective,priority:'P2',status:'completed',
+        summary:'Core says completed',metadata:{source:'animal-city-local',campaign:{
+          currentPhase:2,phases:[{title:'P1'},{title:'P2'},{title:'P3'}],checkpoints:[
+            {phaseNumber:1,employeeId:'NV10',resourceId:'res:ollama:gemma3-4b:default:core'},
+            {phaseNumber:2,employeeId:'NV10',resourceId:'res:ollama:gemma3-4b:default:core'},
+            {phaseNumber:3,employeeId:'NV10',resourceId:'res:ollama:gemma3-4b:default:core'}]}},
+        updated_at:now}],
+      jobs:[{id:'JOB-P0',objective_id:objectiveId,status:'done',phase_index:0,
+        employee_id:'NV10',resource_id:'res:ollama:gemma3-4b:default:core',
+        provider:'ollama',capability:'general',result:null,failure:null,completed_at:now}],
+    }),{status:200});
+  });
+  try{
+    const recent=await (await fetch(app.root+'/api/owner-objectives')).json();
+    assert.equal(recent.objectives[0].state,'completed');
+    assert.equal(recent.objectives[0].acceptance.accepted,false);
+    assert.equal(recent.objectives[0].acceptance.productEvidenceVerified,false);
+    assert.equal(recent.objectives[0].acceptance.independentQaVerified,false);
+    assert.deepEqual(recent.objectives[0].acceptance.reasons,
+      ['SAN_PHAM_CHUA_CO_BANG_CHUNG_CAU_TRUC','QA_CHUA_DOC_LAP']);
+  }finally{await app.close()}
+});
+
+test('campaign acceptance requires structured artifact evidence and distinct QA employee plus resource',async()=>{
+  const now=new Date().toISOString();
+  const app=await boot(async url=>{
+    if(url!=='http://127.0.0.1:8795/api/status')throw Error('UNEXPECTED_FETCH:'+url);
+    return new Response(JSON.stringify({
+      ok:true,core:{time:now},
+      objectives:[{id:objectiveId,objective:body.objective,priority:'P2',status:'completed',
+        summary:'verified',metadata:{source:'animal-city-local',campaign:{
+          currentPhase:2,phases:[{title:'P1'},{title:'P2'},{title:'P3'}],checkpoints:[
+            {phaseNumber:1,employeeId:'NV10',resourceId:'res:ollama:gemma3-4b:default:core'},
+            {phaseNumber:2,employeeId:'NV09',resourceId:'res:ollama:qwen3.5-9b:default:core'},
+            {phaseNumber:3,employeeId:'NV08',resourceId:'res:ollama:qwen3-8b:nv08-manager:core'}]}},
+        updated_at:now}],
+      jobs:[{id:'JOB-P0',objective_id:objectiveId,status:'done',phase_index:0,
+        employee_id:'NV10',resource_id:'res:ollama:gemma3-4b:default:core',
+        provider:'ollama',capability:'general',
+        result:{schema:'EXECUTION_RESULT_V1',status:'complete',
+          evidence:[{id:'e1',type:'artifact',value:'D:\\TigerIQ\\Evidence\\animal-city-canary-20261104.md'}]},
+        failure:null,completed_at:now}],
+    }),{status:200});
+  });
+  try{
+    const recent=await (await fetch(app.root+'/api/owner-objectives')).json();
+    assert.equal(recent.objectives[0].acceptance.accepted,true);
+    assert.equal(recent.objectives[0].acceptance.productEvidenceVerified,true);
+    assert.equal(recent.objectives[0].acceptance.independentQaVerified,true);
+    assert.deepEqual(recent.objectives[0].acceptance.reasons,[]);
+    assert.equal(recent.objectives[0].jobs[0].phaseIndex,0);
+  }finally{await app.close()}
+});
+
 test('Core outage has fail-closed status; never invents accepted job',async()=>{
   const app=await boot(async()=>new Response('down',{status:503}));
   try{
