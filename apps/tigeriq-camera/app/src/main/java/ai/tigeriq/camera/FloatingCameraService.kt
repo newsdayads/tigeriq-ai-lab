@@ -67,6 +67,36 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     private var layoutParams: WindowManager.LayoutParams? = null
     private var currentDisplayId = -1
 
+    // Headless background probe for auto-detecting reverse video when camera is closed
+    private var signalMonitor: UvcSignalMonitor? = null
+    private val backgroundVideoClassifier = VideoSignalClassifier(activeSamples = 2, idleSamples = 4)
+    private var isProbeActive = false
+
+    private val resumeVideoProbe = Runnable {
+        if (settings.isReverseAutoStart && !CameraOverlayController.isShowing() && !isProbeActive) {
+            val um = usbManager ?: return@Runnable
+            val hasUvc = um.deviceList?.values?.any { UsbUvcManager.isUvc(it) } == true
+            if (hasUvc) {
+                isProbeActive = true
+                backgroundVideoClassifier.reset()
+                signalMonitor?.start()
+                CameraEventLog.record(this, "VIDEO_PROBE", "RESUMED", "background_observer_active")
+            }
+        }
+    }
+
+    private fun requestVideoProbe(delayMs: Long = 800L) {
+        handler.removeCallbacks(resumeVideoProbe)
+        if (!settings.isReverseAutoStart || CameraOverlayController.isShowing()) return
+        handler.postDelayed(resumeVideoProbe, delayMs)
+    }
+
+    private fun stopVideoProbe() {
+        handler.removeCallbacks(resumeVideoProbe)
+        isProbeActive = false
+        signalMonitor?.stop()
+    }
+
     // Reverse gear dynamic broadcast receiver for Android 12+
     private var dynamicReverseReceiver: BroadcastReceiver? = null
 
@@ -92,13 +122,32 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
             it.registerDisplayListener(this, handler)
         }
 
+        // Setup headless probe
+        signalMonitor = UvcSignalMonitor(this) { metrics ->
+            val next = backgroundVideoClassifier.accept(metrics)
+            if (next == VideoSignalClassifier.State.VIDEO_ACTIVE && !CameraOverlayController.isShowing()) {
+                Log.i(TAG, "Headless probe detected VIDEO_ACTIVE -> Auto-opening Camera Overlay")
+                CameraEventLog.record(this, "VIDEO_SIGNAL", "VIDEO_ACTIVE",
+                    "mean=${metrics.meanLuma} var=${metrics.lumaVariance} bins=${metrics.occupiedLumaBins}")
+                stopVideoProbe()
+                val targetDisplay = findDexDisplay()
+                CameraOverlayController.show(this@FloatingCameraService, targetDisplay, isReverse = true)
+            }
+        }
+
+        CameraOverlayController.setOnOverlayClosedListener {
+            requestVideoProbe(800L)
+        }
+
         registerDynamicReverseReceiver()
         startUsbCameraWatcher()
         updateFloatingView()
+        requestVideoProbe(1200L)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         updateFloatingView()
+        requestVideoProbe(800L)
         return START_STICKY
     }
 
@@ -117,12 +166,16 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
                     val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
                     val isCamera = device == null || UsbUvcManager.isUvc(device) ||
                             (device.vendorId == 0xff02 && device.productId == 0xafa1)
-                    if (isCamera && settings.isUsbAutoStart) {
-                        Log.i(TAG, "Dynamic USB Attached (Tail-light R=ON) -> Auto-opening Camera Overlay")
-                        if (Settings.canDrawOverlays(this@FloatingCameraService)) {
-                            CameraOverlayController.show(this@FloatingCameraService, targetDisplay, isReverse = true)
-                        } else {
-                            CameraActivity.launch(this@FloatingCameraService, displayId, reverseActive = true)
+                    if (isCamera) {
+                        requestVideoProbe(400L)
+                        if (settings.isUsbAutoStart) {
+                            Log.i(TAG, "Dynamic USB Attached (Tail-light R=ON) -> Auto-opening Camera Overlay")
+                            if (Settings.canDrawOverlays(this@FloatingCameraService)) {
+                                stopVideoProbe()
+                                CameraOverlayController.show(this@FloatingCameraService, targetDisplay, isReverse = true)
+                            } else {
+                                CameraActivity.launch(this@FloatingCameraService, displayId, reverseActive = true)
+                            }
                         }
                     }
                     return
@@ -132,13 +185,16 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
                     val device: UsbDevice? = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
                     val isCamera = device == null || UsbUvcManager.isUvc(device) ||
                             (device.vendorId == 0xff02 && device.productId == 0xafa1)
-                    if (isCamera && settings.isReverseImmediateClose) {
-                        Log.i(TAG, "Dynamic USB Detached (Tail-light R=OFF) -> Auto-closing Camera")
-                        CameraOverlayController.hide()
-                        CameraActivity.dismissIfRunning(immediate = true)
-                        try {
-                            sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA))
-                        } catch (_: Throwable) {}
+                    if (isCamera) {
+                        stopVideoProbe()
+                        if (settings.isReverseImmediateClose) {
+                            Log.i(TAG, "Dynamic USB Detached (Tail-light R=OFF) -> Auto-closing Camera")
+                            CameraOverlayController.hide()
+                            CameraActivity.dismissIfRunning(immediate = true)
+                            try {
+                                sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA))
+                            } catch (_: Throwable) {}
+                        }
                     }
                     return
                 }
@@ -149,6 +205,7 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
 
                 if (isReverse) {
                     Log.i(TAG, "DynamicReceiver: Reverse ON -> Opening Camera Overlay")
+                    stopVideoProbe()
                     if (Settings.canDrawOverlays(this@FloatingCameraService)) {
                         CameraOverlayController.show(this@FloatingCameraService, targetDisplay, isReverse = true, steering = steering)
                     } else {
@@ -158,6 +215,7 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
                     Log.i(TAG, "DynamicReceiver: Reverse OFF -> Closing Camera immediately")
                     CameraOverlayController.hide()
                     CameraActivity.dismissIfRunning(immediate = true)
+                    requestVideoProbe(800L)
                     try {
                         sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA))
                     } catch (_: Throwable) {}
@@ -190,7 +248,6 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     }
 
     private fun checkCameraPresence() {
-        if (!settings.isUsbAutoStart) return
         val um = usbManager ?: return
         val deviceList = um.deviceList ?: return
 
@@ -205,15 +262,8 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
         if (!isWatcherInitialized) {
             isWatcherInitialized = true
             lastCameraPresent = cameraConnected
-            if (cameraConnected && settings.isReverseAutoStart) {
-                val targetDisplay = findDexDisplay()
-                val displayId = targetDisplay?.displayId ?: -1
-                Log.i(TAG, ">>> UsbCameraWatcher: Initial camera present -> Auto-opening Camera on display $displayId")
-                if (Settings.canDrawOverlays(this)) {
-                    CameraOverlayController.show(this, targetDisplay, isReverse = true)
-                } else {
-                    CameraActivity.launch(this, displayId = displayId, reverseActive = true)
-                }
+            if (cameraConnected && !CameraOverlayController.isShowing()) {
+                requestVideoProbe(500L)
             }
             return
         }
@@ -224,133 +274,130 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
             val displayId = targetDisplay?.displayId ?: -1
 
             if (cameraConnected) {
-                Log.i(TAG, ">>> UsbCameraWatcher: Camera CONNECTED (Tail-light R=ON) -> Auto-opening Camera Overlay")
-                if (Settings.canDrawOverlays(this)) {
-                    CameraOverlayController.show(this, targetDisplay, isReverse = true)
-                } else {
-                    CameraActivity.launch(this, displayId = displayId, reverseActive = true)
+                Log.i(TAG, "Tail-light turned ON -> Camera USB became present")
+                requestVideoProbe(300L)
+                if (settings.isUsbAutoStart) {
+                    if (Settings.canDrawOverlays(this)) {
+                        stopVideoProbe()
+                        CameraOverlayController.show(this, targetDisplay, isReverse = true)
+                    } else {
+                        CameraActivity.launch(this, displayId, reverseActive = true)
+                    }
                 }
             } else {
-                Log.i(TAG, ">>> UsbCameraWatcher: Camera DISCONNECTED (Tail-light R=OFF) -> Auto-closing Camera")
-                CameraOverlayController.hide()
-                CameraActivity.dismissIfRunning(immediate = true)
-                try {
-                    sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA))
-                } catch (_: Throwable) {}
+                Log.i(TAG, "Tail-light turned OFF -> Camera USB disappeared")
+                stopVideoProbe()
+                if (settings.isReverseImmediateClose) {
+                    CameraOverlayController.hide()
+                    CameraActivity.dismissIfRunning(immediate = true)
+                    try {
+                        sendBroadcast(Intent(CameraActivity.ACTION_CLOSE_CAMERA))
+                    } catch (_: Throwable) {}
+                }
             }
         }
     }
 
     private fun findDexDisplay(): Display? {
         val dm = displayManager ?: return null
-        try {
-            // Priority 1: Samsung DeX desktop category display
-            val desktopDisplays = dm.getDisplays("com.samsung.android.hardware.display.category.DESKTOP")
-            if (!desktopDisplays.isNullOrEmpty() && desktopDisplays[0].isValid) {
-                return desktopDisplays[0]
+        val displays = dm.displays
+        for (display in displays) {
+            if (display.displayId != Display.DEFAULT_DISPLAY) {
+                return display
             }
-
-            // Priority 2: Any valid external non-default display
-            val allDisplays = dm.displays
-            val external = allDisplays.firstOrNull { it.displayId != Display.DEFAULT_DISPLAY && it.isValid }
-            if (external != null) return external
-
-            // Priority 3: Default display
-            return dm.getDisplay(Display.DEFAULT_DISPLAY)
-        } catch (t: Throwable) {
-            Log.w(TAG, "Error resolving display", t)
-            return dm.getDisplay(Display.DEFAULT_DISPLAY)
         }
+        return dm.getDisplay(Display.DEFAULT_DISPLAY)
     }
 
     @Synchronized
     private fun updateFloatingView() {
         if (!settings.isFloatingEnabled) {
             removeFloatingView()
-            currentDisplayId = -1
             return
         }
 
         if (!Settings.canDrawOverlays(this)) {
-            Log.w(TAG, "Cannot draw overlays: permission not granted")
+            Log.w(TAG, "Overlay permission not granted, skipping floating view creation")
             return
         }
 
-        val targetDisplay = findDexDisplay() ?: run {
-            removeFloatingView()
-            currentDisplayId = -1
-            return
-        }
-
+        val targetDisplay = findDexDisplay() ?: return
         val displayId = targetDisplay.displayId
+
         if (floatingView != null && currentDisplayId == displayId) {
-            return // already attached on this display
+            return
         }
 
         removeFloatingView()
         currentDisplayId = displayId
 
-        try {
-            val displayContext = createDisplayContext(targetDisplay)
-            val ctx: Context = if (Build.VERSION.SDK_INT >= 31) {
-                try {
-                    displayContext.createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
-                } catch (t: Throwable) {
-                    Log.w(TAG, "createWindowContext fallback: ${t.message}")
-                    displayContext
-                }
-            } else {
+        val displayContext = createDisplayContext(targetDisplay)
+        val ctx: Context = if (Build.VERSION.SDK_INT >= 31) {
+            try {
+                displayContext.createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+            } catch (t: Throwable) {
+                Log.w(TAG, "createWindowContext fallback: ${t.message}")
                 displayContext
             }
+        } else {
+            displayContext
+        }
 
-            windowManager = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        windowManager = wm
 
-            val size = (64f * resources.displayMetrics.density).toInt()
-            val initialX = settings.getFloatingX(displayId, 40)
-            val initialY = settings.getFloatingY(displayId, 320)
+        val inflater = LayoutInflater.from(ctx)
+        val view = inflater.inflate(R.layout.view_floating_button, null)
+        floatingView = view
 
-            val params = WindowManager.LayoutParams(
-                size, size,
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                PixelFormat.TRANSLUCENT
-            ).apply {
-                gravity = Gravity.TOP or Gravity.START
-                x = initialX
-                y = initialY
-            }
-            layoutParams = params
+        val density = ctx.resources.displayMetrics.density
+        val btnSize = (64 * density).toInt()
 
-            val view = LayoutInflater.from(ctx).inflate(R.layout.view_floating_button, null)
-            attachTouchListener(view, params, displayId)
+        val initialX = settings.getFloatingX(displayId, (20 * density).toInt())
+        val initialY = settings.getFloatingY(displayId, (180 * density).toInt())
 
-            windowManager?.addView(view, params)
-            floatingView = view
-            Log.i(TAG, "Floating Avatar attached to DeX display #$displayId at ($initialX, $initialY)")
+        val params = WindowManager.LayoutParams(
+            btnSize,
+            btnSize,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = initialX
+            y = initialY
+        }
+        layoutParams = params
+
+        attachTouchListener(view, params, displayId)
+
+        try {
+            wm.addView(view, params)
+            Log.i(TAG, "Floating button added to display $displayId at ($initialX, $initialY)")
         } catch (t: Throwable) {
-            Log.e(TAG, "Failed to attach floating view to display $displayId", t)
+            Log.e(TAG, "Failed to add floating view to display $displayId", t)
         }
     }
 
     private fun attachTouchListener(view: View, params: WindowManager.LayoutParams, displayId: Int) {
-        val dragSlop = 28f * resources.displayMetrics.density
+        val dragSlop = ViewConfiguration.get(this).scaledTouchSlop
+        var downTime = 0L
         var downRawX = 0f
         var downRawY = 0f
         var startX = 0
         var startY = 0
-        var downTime = 0L
         var isDragging = false
 
         view.setOnTouchListener { _, event ->
-            when (event.actionMasked) {
+            when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    downTime = SystemClock.uptimeMillis()
                     downRawX = event.rawX
                     downRawY = event.rawY
                     startX = params.x
                     startY = params.y
-                    downTime = SystemClock.uptimeMillis()
                     isDragging = false
                     true
                 }
@@ -472,6 +519,8 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     }
 
     override fun onDestroy() {
+        stopVideoProbe()
+        signalMonitor = null
         CameraOverlayController.destroyOverlay()
         handler.removeCallbacks(usbWatcherRunnable)
         displayManager?.unregisterDisplayListener(this)

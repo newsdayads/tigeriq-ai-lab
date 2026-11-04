@@ -6,10 +6,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -17,8 +13,6 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.abs
-import kotlin.math.max
-import kotlin.math.min
 
 /**
  * 100% Vector Canvas Engine for TigerIQ Camera Dynamic Reverse Guidelines.
@@ -30,7 +24,7 @@ class DynamicGuideView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
-) : View(context, attrs, defStyleAttr), SensorEventListener {
+) : View(context, attrs, defStyleAttr) {
 
     private val settings = CameraSettings(context)
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -63,18 +57,9 @@ class DynamicGuideView @JvmOverloads constructor(
         private set
     private var targetCurvature: Float = 0f
 
-    // Sensor State
-    private var sensorManager: SensorManager? = null
-    private var gyroSensor: Sensor? = null
-    private var gravitySensor: Sensor? = null
-    private var isSensorRegistered = false
-    private var lastGyroTime: Long = 0L
-    private var signedYaw: Float = 0f
-    private var gyroMagnitude: Float = 0f
-    private var gravityX = 0f
-    private var gravityY = 9.81f
-    private var gravityZ = 0f
-    private var gravityReady = false
+    // No steering angle can be derived from a stationary Galaxy Z Fold2 gyro.
+    // Only a dedicated verified road-wheel steering source may enable curvature.
+    private var verifiedRoadWheelAngleDegrees: Float? = null
 
     // Touch steer calibration
     private var touchStartX = 0f
@@ -87,30 +72,32 @@ class DynamicGuideView @JvmOverloads constructor(
             invalidate()
         }
 
+    /** Legacy broadcast steering parameter is not verified vehicle data. */
+    @Suppress("UNUSED_PARAMETER")
     fun setSteeringDegrees(degrees: Float) {
-        val dirMultiplier = if (settings.isSteeringInverted) -1.0f else 1.0f
-        targetCurvature = (degrees / 450f * dirMultiplier).coerceIn(-1.0f, 1.0f)
+        verifiedRoadWheelAngleDegrees = null
+        targetCurvature = 0f
+        curvature = 0f
+        invalidate()
+    }
+
+    /**
+     * Front ROAD WHEEL angle in degrees, after explicit source validation and
+     * vehicle calibration; negative = rear path bends left, positive = right.
+     */
+    fun setVerifiedRoadWheelAngleDegrees(degrees: Float?) {
+        verifiedRoadWheelAngleDegrees =
+            degrees?.takeIf { it.isFinite() && it in -35f..35f }
+        targetCurvature = (verifiedRoadWheelAngleDegrees ?: 0f) / 35f
         invalidate()
     }
 
     private val animateRunnable = object : Runnable {
         override fun run() {
             val now = SystemClock.uptimeMillis()
-            val dirMultiplier = if (settings.isSteeringInverted) -1.0f else 1.0f
-
-            if (!isTouchSteering) {
-                // Strict Deadband Lock: 0.050 rad/s (~2.9 deg/sec). Engine idle vibration & stationary drift is < 0.035 rad/s.
-                if (now - lastGyroTime < 700L && gyroMagnitude > 0.035f && abs(signedYaw) > 0.050f) {
-                    val yaw = signedYaw
-                    val rawStrength = ((abs(yaw) - 0.050f) * 3.8f).coerceIn(0.0f, 1.0f)
-                    // Vehicle reversing & turning right rotates clockwise (yaw < 0), guidelines must curve right (positive curvature)
-                    targetCurvature = dirMultiplier * (if (yaw < 0f) rawStrength else -rawStrength)
-                } else {
-                    // Fast exponential decay back to dead center when straight / stopped
-                    targetCurvature *= 0.70f
-                    if (abs(targetCurvature) < 0.003f) targetCurvature = 0f
-                }
-            }
+            // No gyroscope-based steering guessing. Interpolation smooths only
+            // a verified front road-wheel angle, if one ever becomes available.
+            if (verifiedRoadWheelAngleDegrees == null) targetCurvature = 0f
 
             // Smooth interpolation
             curvature = 0.68f * curvature + 0.32f * targetCurvature
@@ -123,64 +110,12 @@ class DynamicGuideView @JvmOverloads constructor(
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        registerSensors()
         mainHandler.post(animateRunnable)
     }
 
     override fun onDetachedFromWindow() {
-        unregisterSensors()
         mainHandler.removeCallbacks(animateRunnable)
         super.onDetachedFromWindow()
-    }
-
-    private fun registerSensors() {
-        if (isSensorRegistered) return
-        try {
-            sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
-            sensorManager?.let { sm ->
-                gyroSensor = sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
-                gyroSensor?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
-                gravitySensor = sm.getDefaultSensor(Sensor.TYPE_GRAVITY)
-                gravitySensor?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
-                isSensorRegistered = true
-            }
-        } catch (_: Throwable) {}
-    }
-
-    private fun unregisterSensors() {
-        if (!isSensorRegistered) return
-        try {
-            sensorManager?.unregisterListener(this)
-            isSensorRegistered = false
-        } catch (_: Throwable) {}
-    }
-
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-
-    override fun onSensorChanged(event: SensorEvent?) {
-        val ev = event ?: return
-        val v = ev.values ?: return
-        if (v.size < 3) return
-
-        when (ev.sensor.type) {
-            Sensor.TYPE_GRAVITY -> {
-                gravityX = v[0]
-                gravityY = v[1]
-                gravityZ = v[2]
-                gravityReady = true
-            }
-            Sensor.TYPE_GYROSCOPE -> {
-                val mag = max(abs(v[0]), max(abs(v[1]), abs(v[2])))
-                gyroMagnitude = gyroMagnitude * 0.65f + 0.35f * mag
-                val yaw = if (gravityReady) {
-                    (v[0] * gravityX + v[1] * gravityY + v[2] * gravityZ) / 9.81f
-                } else {
-                    v[1]
-                }
-                signedYaw = 0.55f * signedYaw + 0.45f * yaw
-                lastGyroTime = SystemClock.uptimeMillis()
-            }
-        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -198,7 +133,6 @@ class DynamicGuideView @JvmOverloads constructor(
         val style = settings.guidelineStyle
         val scale = settings.guidelineScale.coerceIn(0.8f, 1.8f)
         val warp = settings.warpFactor
-        val effectiveCurve = curvature * warp
 
         val bottomY = h * 0.86f
         val topY = h * 0.38f
@@ -208,18 +142,28 @@ class DynamicGuideView @JvmOverloads constructor(
 
         val cx = w * 0.5f
         val maxShift = (w * 0.5f - bottomHalfW - dp(24f)).coerceAtLeast(dp(20f))
-        val shift = (effectiveCurve * maxShift).coerceIn(-maxShift, maxShift)
+        val wheelAngle = (verifiedRoadWheelAngleDegrees ?: 0f).toDouble()
+        // Kinematic bicycle model: physically-grounded rear-axle movement.
+        // 2.9m wheelbase and width are model placeholders until vehicle calibration.
+        val pFull = ReversePathGeometry.sample(3.0, wheelAngle, 2.9, 1.8)
+        val pMiddle = ReversePathGeometry.sample(1.5, wheelAngle, 2.9, 1.8)
+        val shift = (pFull.centerX.toFloat() * topHalfW / 0.9f * warp)
+            .coerceIn(-maxShift, maxShift)
+        val midHalfW = (bottomHalfW + topHalfW) * 0.5f
+        val midShift = (pMiddle.centerX.toFloat() * midHalfW / 0.9f * warp)
+            .coerceIn(-maxShift, maxShift)
 
         val blX = cx - bottomHalfW
         val brX = cx + bottomHalfW
         val tlX = cx - topHalfW + shift
         val trX = cx + topHalfW + shift
 
-        // Control point has quadratic deflection matching circular arc (t^2 at mid-point is ~0.28)
-        val ctrlShift = shift * 0.30f
+        // Bezier centre at t=0.5 equals bicycle-model projected midpath.
+        // C = 2*Pmid - (Pstart+Pend)/2. Preserve approved rail widths.
         val midY = (bottomY + topY) * 0.5f
-        val ctrlLx = (blX + tlX) * 0.5f + ctrlShift
-        val ctrlRx = (brX + trX) * 0.5f + ctrlShift
+        val ctrlShift = 2f * midShift - shift * 0.5f
+        val ctrlLx = (cx - bottomHalfW + cx - topHalfW) * 0.5f + ctrlShift
+        val ctrlRx = (cx + bottomHalfW + cx + topHalfW) * 0.5f + ctrlShift
 
         leftPath.reset()
         leftPath.moveTo(blX, bottomY)
