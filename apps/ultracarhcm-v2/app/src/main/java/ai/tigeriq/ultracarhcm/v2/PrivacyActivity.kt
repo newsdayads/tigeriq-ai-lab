@@ -55,11 +55,12 @@ class PrivacyActivity : ComponentActivity() {
         body.addView(Button(this).apply {
             text = "MỞ CÀI ĐẶT ỨNG DỤNG"
             setOnClickListener {
-                startActivity(
+                openSystemSettings(
                     Intent(
                         Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                         Uri.parse("package:$packageName"),
                     ),
+                    "Không thể mở cài đặt ứng dụng trên thiết bị này",
                 )
             }
         })
@@ -67,11 +68,12 @@ class PrivacyActivity : ComponentActivity() {
         body.addView(Button(this).apply {
             text = "MỞ QUYỀN HIỂN THỊ TRÊN ỨNG DỤNG KHÁC"
             setOnClickListener {
-                startActivity(
+                openSystemSettings(
                     Intent(
                         Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                         Uri.parse("package:$packageName"),
                     ),
+                    "Không thể mở quyền hiển thị trên ứng dụng khác",
                 )
             }
         })
@@ -123,6 +125,19 @@ class PrivacyActivity : ComponentActivity() {
             append("\nBluetooth Connect: ").append(PrivacyRules.statusLabel(bluetooth))
             append("\nOverlay DeX: ").append(PrivacyRules.statusLabel(overlay))
             append("\nInternet: khai báo trong manifest, không có runtime prompt")
+        }
+    }
+
+    private fun openSystemSettings(intent: Intent, failureMessage: String) {
+        try {
+            startActivity(intent)
+        } catch (error: RuntimeException) {
+            android.util.Log.w("UltraCarV2", "Unable to open Android settings", error)
+            android.widget.Toast.makeText(
+                this,
+                failureMessage,
+                android.widget.Toast.LENGTH_SHORT,
+            ).show()
         }
     }
 
