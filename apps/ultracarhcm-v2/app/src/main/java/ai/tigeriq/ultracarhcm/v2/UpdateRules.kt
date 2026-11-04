@@ -13,6 +13,9 @@ internal data class UpdateMetadata(
 )
 
 internal object UpdateRules {
+    private const val EXPECTED_SCHEMA_VERSION = 1
+    private const val EXPECTED_CHANNEL = "ultracarhcm-v2-test"
+    private const val EXPECTED_PACKAGE_NAME = "ai.tigeriq.ultracarhcm.v2"
     private const val TRUSTED_METADATA_URL =
         "https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/main/apps/ultracarhcm-v2/release/update-channel.json"
     private const val TRUSTED_RELEASE_PREFIX =
@@ -63,6 +66,9 @@ internal object UpdateRules {
     }
 
     fun validateJsonMetadataScalars(
+        schemaVersion: Any?,
+        channel: Any?,
+        packageName: Any?,
         latestVersionCode: Any?,
         latestVersionName: Any?,
         releaseAvailable: Any?,
@@ -71,6 +77,14 @@ internal object UpdateRules {
         releaseNotes: Any?,
         mandatory: Any?,
     ): UpdateMetadata? {
+        val schema = schemaVersion as? Int ?: return null
+        val channelName = channel as? String ?: return null
+        val packageId = packageName as? String ?: return null
+        if (schema != EXPECTED_SCHEMA_VERSION ||
+            channelName != EXPECTED_CHANNEL ||
+            packageId != EXPECTED_PACKAGE_NAME
+        ) return null
+
         val versionCode = when (latestVersionCode) {
             is Int -> latestVersionCode.toLong()
             is Long -> latestVersionCode
