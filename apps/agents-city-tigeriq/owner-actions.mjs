@@ -23,6 +23,52 @@ function compactEvidence(value,limit=320){
   try{return truncate(JSON.stringify(v),limit)}catch{return ''}
 }
 
+
+function artifactLocator(value){
+  if(typeof value!=='string')return false;
+  const s=value.trim();
+  return /^https?:\/\//i.test(s)||/^[a-z]:\\\\[^\r\n]+$/i.test(s)||/^\/[^\r\n]+$/.test(s);
+}
+
+function hasStructuredArtifactEvidence(value){
+  if(value==null)return false;
+  let v=value;
+  if(typeof v==='string'){
+    const s=v.trim();
+    if(!s)return false;
+    try{v=JSON.parse(s)}catch{return false}
+  }
+  if(!v||typeof v!=='object'||Array.isArray(v))return false;
+  const evidence=Array.isArray(v.evidence)?v.evidence:[];
+  if(evidence.some(e=>e&&e.type==='artifact'&&artifactLocator(
+    typeof e.value==='string'?e.value:e.path||e.url)))return true;
+  const artifacts=Array.isArray(v.artifacts)?v.artifacts:[];
+  return artifacts.some(item=>artifactLocator(
+    typeof item==='string'?item:item?.path||item?.url||item?.value));
+}
+
+export function deriveCampaignAcceptance({objectiveState='',campaign=null,jobs=[]}={}){
+  const checkpoints=Array.isArray(campaign?.checkpoints)?campaign.checkpoints:[];
+  const implementer=checkpoints.find(c=>Number(c?.phaseNumber)===1);
+  const reviewer=checkpoints.find(c=>Number(c?.phaseNumber)===2);
+  const identitiesKnown=Boolean(
+    implementer?.employeeId&&implementer?.resourceId&&reviewer?.employeeId&&reviewer?.resourceId);
+  const independentQaVerified=identitiesKnown&&
+    implementer.employeeId!==reviewer.employeeId&&implementer.resourceId!==reviewer.resourceId;
+  const productEvidenceVerified=jobs.some(j=>Number(j?.phase_index)===0&&j?.status==='done'&&
+    hasStructuredArtifactEvidence(j?.result));
+  const coreTerminal=objectiveState==='completed';
+  const reasons=[];
+  if(!coreTerminal)reasons.push('CORE_CHUA_KET_THUC');
+  if(!productEvidenceVerified)reasons.push('SAN_PHAM_CHUA_CO_BANG_CHUNG_CAU_TRUC');
+  if(!independentQaVerified)reasons.push('QA_CHUA_DOC_LAP');
+  return {
+    accepted:coreTerminal&&productEvidenceVerified&&independentQaVerified,
+    coreTerminal,productEvidenceVerified,independentQaVerified,
+    reasons,
+  };
+}
+
 export function ownerCampaignPhases(objective=''){
   const goal=truncate(objective,2000);
   if(goal.length<12)throw new Error('OBJECTIVE_TOO_SHORT');
@@ -123,12 +169,14 @@ export function createOwnerActions({fetchImpl=fetch, now=Date.now}={}) {
         .slice(0,12).map(x=>{
           const jobs=data.jobs.filter(j=>j?.objective_id===x.id).slice(0,12);
           const campaign=x?.metadata?.campaign||null;
+          const acceptance=deriveCampaignAcceptance({objectiveState:x.status,campaign,jobs});
           return {
             id:truncate(x.id,55),
             objective:truncate(x.objective,220),
             priority:truncate(x.priority,4),
             state:truncate(x.status,50)||'UNKNOWN',
             summary:truncate(x.summary,240),
+            acceptance,
             campaign:campaign&&Array.isArray(campaign.phases)?{
               phaseCount:campaign.phases.length,
               currentPhase:Math.max(0,Number(campaign.currentPhase)||0),
@@ -147,6 +195,7 @@ export function createOwnerActions({fetchImpl=fetch, now=Date.now}={}) {
                 id:truncate(j.id,70),status:truncate(j.status,50),
                 employeeId:truncate(j.employee_id,30),resourceId:truncate(j.resource_id,180),
                 provider:truncate(j.provider,60),capability:truncate(j.capability,60),
+                phaseIndex:Number.isInteger(j.phase_index)?j.phase_index:null,
                 leaseUntil:Number.isFinite(leaseMs)?new Date(leaseMs).toISOString():null,
                 leaseActive:Number.isFinite(leaseMs)&&leaseMs>now(),
                 resultSummary:compactEvidence(j.result,320),
