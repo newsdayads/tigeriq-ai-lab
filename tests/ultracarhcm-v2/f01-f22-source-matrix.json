@@ -318,8 +318,8 @@
         "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
         "tests/ultracarhcm-v2/taxi-meter-persistence-source.test.ts"
       ],
-      "gap": "Foreground GPS trip distance/time, Owner-configured rate, local trip history and revenue are implemented in source. Rate, completed-trip history and explicit history deletion require synchronous persistence success before UI acknowledgement. Fare calculation now reuses the same bounded rate invariant as parsing/restored state, so out-of-contract rates fail closed instead of producing revenue. Corrupt stored trip-history JSON is fail-visible in logs and removed with synchronous commit() before the screen proceeds with an empty history. Real-device GPS accuracy, V1 tariff semantics/UI parity and long-trip behavior are not accepted.",
-      "actual": "TaxiMeterActivity tracks foreground-only elapsed time and GPS distance, uses only an explicit Owner-entered VND/km rate, commits the rate before starting, commits bounded history before saved acknowledgement, and only refreshes explicit delete after durable persistence. TaxiMeterRules.fareVnd reuses validRateVndPerKm so both invalid and above-contract rates are rejected consistently. If stored Taxi history is malformed, the app logs it, synchronously clears the corrupt preference with failure logging, and returns an empty local history. No V1 tariff is guessed.",
+      "gap": "Foreground GPS trip distance/time, Owner-configured rate, local trip history and revenue are implemented in source. Rate, completed-trip history and explicit history deletion require synchronous persistence success before UI acknowledgement. Fare calculation reuses the bounded rate invariant. Persisted history requires exact numeric scalars, a positive timestamp, nonnegative duration/distance, an in-range rate and a recorded fare that exactly matches the canonical calculation; reads are capped at MAX_HISTORY, invalid/excess rows are synchronously cleaned, and revenue aggregation saturates instead of overflowing. Real-device GPS accuracy, V1 tariff semantics/UI parity and long-trip behavior are not accepted.",
+      "actual": "TaxiMeterActivity tracks foreground-only elapsed time and GPS distance, uses only an explicit Owner-entered VND/km rate, commits the rate before starting, and commits bounded history before saved acknowledgement. TaxiMeterRules centralizes exact scalar parsing, validPersistedTrip and nonnegative saturating addition; TaxiMeterActivity sanitizes JSON-valid but semantically invalid/excess history before rendering/export and prevents revenue overflow. No V1 tariff is guessed.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "TelemetryActivity.buildContent",
@@ -489,13 +489,14 @@
       "status": "PARTIAL_SOURCE",
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TaxiMeterActivity.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TaxiMeterRules.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ReportActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ReportRules.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt",
         "tests/ultracarhcm-v2/report-hub-source.test.ts"
       ],
-      "gap": "A dedicated V2 report hub summarizes V2-owned Taxi Meter trip count, distance, duration and recorded revenue and exports CSV through Storage Access Framework. Malformed stored Taxi history is logged and synchronously cleared before reporting proceeds with an empty dataset. Exact V1 XLS/report templates, dashboards and other feature-domain exports remain unverified and are not claimed.",
-      "actual": "ProfileActivity opens ReportActivity, which reads bounded local V2 Taxi Meter history, rejects malformed row scalars, recovers corrupt history JSON with synchronous preference cleanup plus failure logging, shows aggregate trip/revenue/distance/time and exports stable UTF-8 BOM CSV through user-selected SAF. It requests no broad storage permission and exports no credentials or V1 data.",
+      "gap": "A dedicated V2 report hub summarizes V2-owned Taxi Meter trip count, distance, duration and recorded revenue and exports CSV through Storage Access Framework. Malformed JSON is fail-visible and synchronously cleared. JSON-valid rows with wrong numeric types, out-of-range rates, invalid timestamps/distance/duration or a fare inconsistent with the canonical calculation are excluded; reads are capped at MAX_HISTORY and the cleaned history is synchronously persisted. Exact V1 XLS/report templates, dashboards and other feature-domain exports remain unverified and are not claimed.",
+      "actual": "ProfileActivity opens ReportActivity, which reads at most TaxiMeterRules.MAX_HISTORY V2 Taxi Meter rows, uses exact scalar parsing and validPersistedTrip to reject semantically invalid rows, synchronously cleans rejected/excess rows, shows aggregate trip/revenue/distance/time with saturating report totals and exports stable UTF-8 BOM CSV through user-selected SAF. It requests no broad storage permission and exports no credentials or V1 data.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "ProfileActivity.buildContent",
