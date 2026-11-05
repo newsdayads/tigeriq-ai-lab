@@ -17,6 +17,9 @@ describe('runtime source isolation',()=>{
       expect(src).toContain("throw 'RUNTIME_SOURCE_SHA_INVALID'");
       expect(src).toContain("throw 'RUNTIME_SOURCE_HEAD_MISMATCH'");
       expect(src).toContain("throw 'RUNTIME_SOURCE_DIRTY'");
+      if(path!=='scripts/tigeriq-core/run-web-control-bundle.ps1'){
+        expect(src).toContain("throw 'CREDENTIAL_STORE_ACL_UNTRUSTED'");
+      }
       expect(src).not.toContain("$defaultRepo='D:\\TigerIQ\\Workspace\\tigeriq-ai-lab'");
       expect(src).not.toContain('$repo=$defaultRepo');
       expect(src).not.toContain('$repo=[string]$meta.sourcePath');
@@ -53,7 +56,8 @@ describe('runtime source isolation',()=>{
     expect(src).toContain("Set-TaskAction $coreTask");
     expect(src).toContain("Set-TaskAction $codingTask");
     expect(src).toContain("Set-TaskAction $updaterTask");
-    expect(src).toContain("D:\\TigerIQ\\Runtime\\CoreLaunchers");
+    expect(src).toContain("C:\\ProgramData\\TigerIQCoreRelease\\Launchers");
+    expect(src).toContain("C:\\ProgramData\\TigerIQCoreRelease\\Updater\\update-core-runtime.ps1");
     expect(src).toContain("C:\\ProgramData\\TigerIQCoreRelease\\State\\core-runtime-source.json");
     expect(src).toContain("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
     expect(src).toContain('-NonInteractive');
@@ -68,8 +72,8 @@ describe('runtime source isolation',()=>{
     expect(src).toContain('currentSha=$currentSha');
     expect(src).toContain('previousSha=$previousSha');
     expect(src).toContain('gateSha=$gateSha');
-    expect(src).toContain("$updaterRuntime='D:\\TigerIQ\\Runtime\\CoreUpdater\\update-core-runtime.ps1'");
-    expect(src).toContain("$launcherRuntime='D:\\TigerIQ\\Runtime\\CoreLaunchers'");
+    expect(src).toContain("$updaterRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-updater.ps1'}else{'C:\\ProgramData\\TigerIQCoreRelease\\Updater\\update-core-runtime.ps1'}");
+    expect(src).toContain("$launcherRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-launchers'}else{'C:\\ProgramData\\TigerIQCoreRelease\\Launchers'}");
   });
 
   it('satisfies 3x E2E closeout requirements for issue #1003',()=>{
