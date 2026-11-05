@@ -1,165 +1,114 @@
 "use strict";
-(function () {
-  const motionOK = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const finePointer = window.matchMedia("(pointer:fine)").matches;
-  const serviceData = [
-    {name:"Thiết kế Website",symbol:"WWW",tag:"DESIGN / DIGITAL",description:"Website có nhận diện độc bản, hiệu ứng tinh tế, bố cục dễ sử dụng và mục tiêu chuyển đổi rõ ràng."},
-    {name:"Phần mềm",symbol:"</>",tag:"SOFTWARE / SYSTEMS",description:"Ứng dụng, công cụ tự động hóa và hệ thống quản lý được thiết kế theo quy trình thực tế."},
-    {name:"UltraCar",symbol:"CAR",tag:"MOBILITY / TECHNOLOGY",description:"Hệ sinh thái giải pháp dành cho ô tô, đang phát triển và kiểm thử theo từng tính năng và thiết bị."},
-    {name:"Driver",symbol:"DRIVE",tag:"DRIVER / OPERATIONS",description:"Ý tưởng và công cụ hỗ trợ tài xế, công việc di chuyển và quy trình vận hành dịch vụ."},
-    {name:"In 3D",symbol:"3D",tag:"MAKE / PROTOTYPE",description:"Thiết kế, tạo mẫu và hiện thực hóa sản phẩm vật lý bằng quy trình in 3D theo yêu cầu."},
-    {name:"Marketing",symbol:"GROW",tag:"BRAND / CONTENT",description:"Xây dựng nhận diện, nội dung và trải nghiệm truyền thông gắn với mục tiêu kinh doanh."},
-    {name:"PhoneFarm",symbol:"PF",tag:"DEVICE / TEST LAB",description:"Hạ tầng thiết bị, kiểm thử và tự động hóa công việc trên thiết bị trong phạm vi tuân thủ nền tảng."}
-  ];
-  const choices = Array.from(document.querySelectorAll(".service-option"));
-  const title = document.getElementById("service-name");
-  const description = document.getElementById("service-description");
-  const symbol = document.getElementById("service-symbol");
-  const category = document.getElementById("service-category");
-  const count = document.getElementById("service-number");
-  const showcase = document.getElementById("showcase-object");
-  let selected = 0;
-  function setService(index) {
-    if (!Number.isInteger(index) || index < 0 || index >= serviceData.length || !title) return;
-    selected = index;
-    const data = serviceData[index];
-    choices.forEach(function (b, i) {
-      b.classList.toggle("selected", i === index);
-      b.setAttribute("aria-pressed", String(i === index));
-    });
-    title.textContent = data.name;
-    description.textContent = data.description;
-    symbol.textContent = data.symbol;
-    category.textContent = data.tag;
-    count.textContent = String(index + 1).padStart(2, "0") + " / 07";
-    if (showcase) {
-      showcase.style.borderRadius = ["38% 44% 37% 44%","18% 42% 16% 47%","46% 26% 46% 24%","32% 32% 32% 32%","10% 48% 13% 48%","50% 10% 50% 10%","8% 8% 42% 42%"][index];
-      showcase.style.transform = "rotate(" + (index * 12 - 22) + "deg)";
-    }
-  }
-  choices.forEach(function (button) {
-    const i = Number(button.dataset.service);
-    button.addEventListener("click", function () { setService(i); });
-    if (finePointer) button.addEventListener("mouseenter", function () { setService(i); });
-    button.addEventListener("keydown", function (event) {
-      if (event.key === "ArrowDown" || event.key === "ArrowRight") {
-        event.preventDefault();
-        choices[(i + 1) % choices.length].focus();
-        setService((i + 1) % choices.length);
-      }
-      if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
-        event.preventDefault();
-        choices[(i + choices.length - 1) % choices.length].focus();
-        setService((i + choices.length - 1) % choices.length);
-      }
-    });
-  });
-  const toggle = document.getElementById("menu-toggle");
-  const nav = document.getElementById("main-nav");
-  function closeMenu() {
-    if (!toggle || !nav) return;
-    toggle.setAttribute("aria-expanded", "false");
-    toggle.setAttribute("aria-label", "Mở menu");
+(() => {
+  const menu = document.getElementById("menu-toggle");
+  const nav = document.getElementById("site-nav");
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const closeMenu = () => {
+    if (!menu || !nav) return;
     nav.classList.remove("open");
-  }
-  if (toggle && nav) {
-    toggle.addEventListener("click", function () {
-      const open = toggle.getAttribute("aria-expanded") !== "true";
-      toggle.setAttribute("aria-expanded", String(open));
-      toggle.setAttribute("aria-label", open ? "Đóng menu" : "Mở menu");
+    menu.setAttribute("aria-expanded", "false");
+    menu.setAttribute("aria-label", "Mở menu");
+  };
+  if (menu && nav) {
+    menu.addEventListener("click", () => {
+      const open = menu.getAttribute("aria-expanded") !== "true";
       nav.classList.toggle("open", open);
+      menu.setAttribute("aria-expanded", String(open));
+      menu.setAttribute("aria-label", open ? "Đóng menu" : "Mở menu");
     });
-    nav.querySelectorAll("a").forEach(function (a) { a.addEventListener("click", closeMenu); });
-    document.addEventListener("keydown", function (event) { if (event.key === "Escape") closeMenu(); });
+    nav.querySelectorAll("a").forEach((link) => link.addEventListener("click", closeMenu));
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeMenu(); });
+    document.addEventListener("click", (event) => {
+      if (nav.classList.contains("open") && !nav.contains(event.target) && !menu.contains(event.target)) closeMenu();
+    });
   }
-  const reveals = document.querySelectorAll(".reveal");
-  if (!motionOK || !("IntersectionObserver" in window)) {
-    reveals.forEach(function (el) { el.classList.add("in"); });
-  } else {
-    const observer = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
+
+  const sections = document.querySelectorAll(".reveal");
+  if (!reduceMotion && "IntersectionObserver" in window) {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
         if (entry.isIntersecting) {
-          entry.target.classList.add("in");
+          entry.target.classList.add("visible");
           observer.unobserve(entry.target);
         }
       });
-    }, { threshold: 0.11, rootMargin: "0px 0px -10px 0px" });
-    reveals.forEach(function (el) { observer.observe(el); });
+    }, { threshold: 0.07, rootMargin: "0px 0px -5px 0px" });
+    sections.forEach((section) => observer.observe(section));
+  } else {
+    sections.forEach((section) => section.classList.add("visible"));
   }
-  if (motionOK && finePointer) {
-    const art = document.querySelector(".hero-art");
-    const light = document.getElementById("pointer-light");
-    window.addEventListener("pointermove", function (event) {
-      if (light) light.style.transform = "translate3d(" + (event.clientX - 220) + "px," + (event.clientY - 220) + "px,0)";
-      if (art && window.innerWidth > 1100) {
-        const x = (event.clientX / window.innerWidth - 0.5) * 13;
-        const y = (event.clientY / window.innerHeight - 0.5) * -11;
-        art.style.transform = "rotateY(" + x.toFixed(2) + "deg) rotateX(" + y.toFixed(2) + "deg)";
-      }
-    }, { passive: true });
-  }
-  function formatTime(iso) {
-    const time = new Date(iso);
-    if (Number.isNaN(time.valueOf())) return null;
-    return time.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
-  }
-  const feed = document.getElementById("feed-status");
-  // Public-only metadata. Never expose issues, commit messages, test APK URLs, private repos or credentials.
-  async function getGitHub(url) {
+
+  // Metadata is obtained solely from public repositories under the approved account.
+  // Source activity is NOT proof that an app or service is in production.
+  const status = document.getElementById("feed-status");
+  const sourceURL = "https://api.github.com/repos/newsdayads/tigeriq-media-content";
+  const curatedTopic = "tigeriq-public-showcase";
+  const trustedOwner = "newsdayads";
+  async function publicGitHubFetch(url) {
     const controller = new AbortController();
-    const timer = setTimeout(function () { controller.abort(); }, 7000);
+    const timeout = setTimeout(() => controller.abort(), 7000);
     try {
-      const response = await fetch(url, { headers: { Accept: "application/vnd.github+json" }, signal: controller.signal, cache: "no-store" });
-      if (!response.ok) throw new Error("GitHub HTTP " + response.status);
+      const response = await fetch(url, {
+        method: "GET",
+        headers: { Accept: "application/vnd.github+json" },
+        signal: controller.signal,
+        cache: "no-store"
+      });
+      if (!response.ok) throw new Error("PUBLIC_SOURCE_UNAVAILABLE");
       return await response.json();
-    } finally { clearTimeout(timer); }
+    } finally { clearTimeout(timeout); }
   }
-  async function refreshPublicFeed() {
-    if (!feed) return;
-    const base = "https://api.github.com";
-    let hasVerified = false;
+  function formatDate(raw) {
+    if (!raw) return null;
+    const date = new Date(raw);
+    if (!Number.isFinite(date.valueOf())) return null;
+    return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+  }
+  async function refreshPublicStatus() {
+    if (!status) return;
+    let verified = false;
     try {
-      const source = await getGitHub(base + "/repos/newsdayads/tigeriq-media-content");
-      if (source && source.private === false && source.archived === false && source.owner && source.owner.login === "newsdayads") {
-        const date = formatTime(source.pushed_at);
-        feed.textContent = date
-          ? "TigerIQ News: kho mã nguồn công khai cập nhật " + date + " (không phải xác nhận bản phát hành)."
-          : "TigerIQ News: đã đối chiếu được kho nguồn công khai.";
-        hasVerified = true;
+      const repo = await publicGitHubFetch(sourceURL);
+      if (repo && repo.private === false && repo.archived === false && repo.owner && repo.owner.login === trustedOwner) {
+        verified = true;
+        const date = formatDate(repo.pushed_at);
+        status.textContent = date
+          ? "Kho nguồn công khai TigerIQ News có cập nhật ngày " + date + ". Đây không phải xác nhận bản phát hành sản phẩm."
+          : "Kho nguồn TigerIQ News đã được xác minh là công khai.";
       }
-    } catch (_error) {
-      feed.textContent = "Chưa thể đồng bộ GitHub. Thông tin dự án hiển thị theo danh mục đã đối chiếu trước đó.";
+    } catch (_err) {
+      status.textContent = "Chưa kết nối được nguồn GitHub. Nội dung hiển thị theo danh mục đã được rà soát.";
     }
     try {
-      // A repo appears automatically only after the Owner sets the explicit public-showcase topic.
-      const search = await getGitHub(base + "/search/repositories?q=user%3Anewsdayads%20topic%3Atigeriq-public-showcase&per_page=10");
-      const approved = Array.isArray(search.items) ? search.items.filter(function (repo) {
+      const results = await publicGitHubFetch("https://api.github.com/search/repositories?q=user%3Anewsdayads%20topic%3Atigeriq-public-showcase&per_page=10");
+      const list = Array.isArray(results.items) ? results.items.filter((repo) => {
         return repo && repo.private === false && repo.archived === false &&
-          repo.owner && repo.owner.login === "newsdayads" &&
-          Array.isArray(repo.topics) && repo.topics.includes("tigeriq-public-showcase") &&
-          /^https:\/\/github\.com\/newsdayads\/[A-Za-z0-9_.-]+$/.test(repo.html_url || "");
-      }) : [];
-      if (approved.length) {
-        const list = document.createElement("ul");
-        list.className = "approved-project-list";
-        approved.slice(0, 5).forEach(function (repo) {
+          repo.owner && repo.owner.login === trustedOwner &&
+          Array.isArray(repo.topics) && repo.topics.includes(curatedTopic) &&
+          /^https:\/\/github\.com\/newsdayads\/[a-zA-Z0-9_.-]+$/.test(repo.html_url || "");
+      }).slice(0, 4) : [];
+      if (list.length > 0) {
+        const intro = document.createElement("span");
+        intro.textContent = " Các kho công khai được duyệt:";
+        status.appendChild(intro);
+        const ul = document.createElement("ul");
+        ul.className = "approved-project-list";
+        list.forEach((repo) => {
           const li = document.createElement("li");
-          const a = document.createElement("a");
-          a.href = repo.html_url;
-          a.target = "_blank";
-          a.rel = "noopener noreferrer";
-          a.textContent = repo.name + " ↗";
-          li.appendChild(a);
-          list.appendChild(li);
+          const link = document.createElement("a");
+          link.href = repo.html_url;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = repo.name + " ↗";
+          li.appendChild(link);
+          ul.appendChild(li);
         });
-        feed.appendChild(document.createTextNode(" Dự án công khai được duyệt:"));
-        feed.appendChild(list);
-        hasVerified = true;
+        status.appendChild(ul);
       }
-    } catch (_error) {
-      // Never invent extra projects on rate-limit, network or permission failures.
-      if (!hasVerified) feed.textContent += " Mục dự án mới chưa được kiểm chứng.";
+    } catch (_err) {
+      if (!verified) status.appendChild(document.createTextNode(" Dữ liệu dự án mới chưa thể xác minh."));
     }
   }
-  refreshPublicFeed();
+  refreshPublicStatus();
 })();
