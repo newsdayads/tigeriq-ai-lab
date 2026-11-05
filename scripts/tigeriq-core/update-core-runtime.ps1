@@ -9,7 +9,7 @@ Set-StrictMode -Version Latest
 $rollbackCanaryMode=[bool]($RollbackCanaryRuntimeRepo -and $RollbackCanaryPreviousSha -and $RollbackCanaryCandidateSha)
 $controlRepo=if($rollbackCanaryMode){$RollbackCanaryRuntimeRepo}else{'D:\TigerIQ\Workspace\tigeriq-ai-lab'}
 $runtimeRepo=if($rollbackCanaryMode){$RollbackCanaryRuntimeRepo}else{'D:\TigerIQ\Runtime\CoreSource'}
-$runtimeSourceState=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-core-runtime-source.json'}else{'D:\TigerIQ\State\core-runtime-source.json'}
+$runtimeSourceState=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-core-runtime-source.json'}else{'C:\ProgramData\TigerIQCoreRelease\State\core-runtime-source.json'}
 $updaterRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-updater.ps1'}else{'C:\ProgramData\TigerIQCoreRelease\Updater\update-core-runtime.ps1'}
 $launcherRuntime=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-launchers'}else{'D:\TigerIQ\Runtime\CoreLaunchers'}
 $state=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-updater-state.json'}else{'D:\TigerIQ\State\core-runtime-updater.json'}
@@ -75,6 +75,7 @@ function Save-State([hashtable]$d){$d.updatedAt=(Get-Date).ToUniversalTime().ToS
 function Head([string]$repoPath,[string]$ref){(& git -C $repoPath rev-parse $ref 2>$null|Out-String).Trim()}
 function Save-RuntimeSourceState([string]$currentSha,[string]$previousSha,[string]$gateSha){
   $d=[ordered]@{schema='TIGERIQ_RUNTIME_SOURCE_V1';sourcePath=$runtimeRepo;currentSha=$currentSha;previousSha=$previousSha;gateSha=$gateSha;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
+  New-Item -ItemType Directory -Path (Split-Path -Parent $runtimeSourceState) -Force|Out-Null
   $tmp="$runtimeSourceState.tmp";[IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $runtimeSourceState
 }
 function Resolve-DeployedSourceSha([string]$checkedOutSha,[string]$remoteSha){
