@@ -23,6 +23,17 @@ test("TigerIQ 3D site origin serves only expected public routes", async () => {
         assert.match(body, /zalo\.me\/0392960003/);
         assert.match(body, /data-tilt/);
         assert.match(body, /prefers-reduced-motion/);
+        const renderedBody = body.split("<body>")[1]?.split("</body>")[0] ?? "";
+        assert.equal((renderedBody.match(/href="https:\/\/zalo\.me\/0392960003"/g) ?? []).length, 1, "one Zalo link");
+        assert.equal((renderedBody.match(/href="tel:\+84392960003"/g) ?? []).length, 1, "one phone link");
+        assert.equal((renderedBody.match(/0392 960 003/g) ?? []).length, 1, "phone displayed once");
+        assert.equal((renderedBody.match(/class="contact-hub"/g) ?? []).length, 1, "one unified contact dock");
+        assert.match(body, /@keyframes prismTurn/, "animated 3D prism");
+        assert.match(body, /fx-ring-a/, "animated 3D ring");
+        assert.match(body, /IntersectionObserver/, "scroll reveal");
+        assert.match(body, /motion-progress/, "scroll progress");
+        assert.match(body, /motion-ticker/, "continuous motion band");
+
       }
     }
     assert.equal((await fetch(url + "/index.html", { method: "HEAD" })).status, 200);
