@@ -131,6 +131,7 @@ export function projectWorkOrder(issue, source = {}) {
   const rawOwner=machineValue(body,'MUTATION_OWNER') || machineValue(body,'TARGET_EMPLOYEE') || machineValue(body,'OWNER_PROXY') || issue?.assignee?.login || '—';
   const owner=ownerControlled&&!executable?'OWNER':rawOwner;
   const closed=String(issue?.state||'').toLowerCase()==='closed';
+  const stoppedByOwner=closed&&String(issue?.state_reason||'').toLowerCase()==='not_planned';
   const proof=closed?completionProof(issue):{verified:false,timing:null};
   const completionSync=sourceCompletionDiagnostic(issue);
   const isSystem=systemWorkOrder(issue,body);
@@ -142,7 +143,7 @@ export function projectWorkOrder(issue, source = {}) {
   const blocked=/(?:^|[\s_])(?:BLOCKED|BLOCK|EXTERNAL_WAIT|NO_GO)(?:[_\s]|$)/.test(marker);
   const working=!isSystem && !/\bNOT_(?:EXECUTING|WORKING)\b/.test(marker) && (machineValue(body,'ACTIVE_EXECUTION').toLowerCase()==='true'||/\b(?:CLAIM|WORKING|ACTIVE_EXECUTION|IMPLEMENTING|RUNNING)\b/.test(marker));
   let bucket='CẦN XỬ LÝ';
-  if(closed) bucket=proof.verified?'HOÀN THÀNH':'CHỜ NGHIỆM THU';
+  if(closed) bucket=proof.verified?'HOÀN THÀNH':stoppedByOwner?'ĐÃ ĐÓNG':'CHỜ NGHIỆM THU';
   else if(isSystem||ownerControlled) bucket='HỆ THỐNG';
   else if(blocked) bucket=ownerStatusLabel('BLOCKED');
   else if(ownerGate) bucket='CHỜ ANH SƠN';
@@ -153,6 +154,7 @@ export function projectWorkOrder(issue, source = {}) {
   let state='MỞ';
   if(bucket==='HOÀN THÀNH') state='HOÀN THÀNH';
   else if(bucket==='CHỜ NGHIỆM THU') state='CHỜ NGHIỆM THU';
+  else if(bucket==='ĐÃ ĐÓNG') state='ĐÃ ĐÓNG';
   else if(bucket===ownerStatusLabel('BLOCKED')) state=ownerStatusLabel('BLOCKED');
   else if(bucket===ownerStatusLabel('WORKING')) state=ownerStatusLabel('WORKING');
   else if(bucket==='RÀ SOÁT') state='RÀ SOÁT';
@@ -161,7 +163,7 @@ export function projectWorkOrder(issue, source = {}) {
   else if(/WAIT|PENDING/.test(marker)) state='CHỜ';
   return {
     issue_number:issue.number,number:issue.number,title:issue.title,priority,effectivePriority:priority,
-    status:proof.verified?'DONE':closed?'VERIFY':isSystem?'SYSTEM':review?'REVIEW':blocked?'BLOCKED':working&&executable?'WORKING':ownerGate?'OWNER_GATE':'OPEN',
+    status:proof.verified?'DONE':closed?(stoppedByOwner?'CLOSED_UNVERIFIED':'VERIFY'):isSystem?'SYSTEM':review?'REVIEW':blocked?'BLOCKED':working&&executable?'WORKING':ownerGate?'OWNER_GATE':'OPEN',
     state,statusIcon:ownerStatusIcon(state),statusIconName:ownerStatusVectorIcon(state),
     bucket,bucketIcon:ownerStatusIcon(bucket),bucketIconName:ownerStatusVectorIcon(bucket),
     owner,assignee:owner,closed,ownerApproval:approvalProjection.ok?approvalProjection.card:null,

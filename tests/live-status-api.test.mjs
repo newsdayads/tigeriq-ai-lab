@@ -544,6 +544,12 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(parseRecentClosedIssue({...base,body:'CURRENT_STATE=WAIT_REAL_JOB\nDONE=false\nPRIORITY=P1'},now)?.closureConflict).toBe(true);
     expect(parseRecentClosedIssue({...base,body:'CURRENT_STATE=READY_AUTO_EXECUTION\nDONE=true\nPRIORITY=P1'},now)?.closureConflict).toBe(false);
     expect(parseRecentClosedIssue({...base,state_reason:'not_planned'},now)).toBeNull();
+    const ownerClosed={...base,number:5365,state_reason:'not_planned',
+      body:'WORK_ORDER_LIFECYCLE=V2\\nOWNER_DIRECT=true\\nCURRENT_STATE=NOT_PLANNED\\nDONE=false\\nPRIORITY=P0'};
+    expect(parseRecentClosedIssue(ownerClosed,now)).toMatchObject({
+      status:'CLOSED_UNVERIFIED',closureReason:'not_planned',
+      completionVerified:false,progressPercent:null,
+    });
     expect(parseRecentClosedIssue({...base,state_reason:'duplicate'},now)).toBeNull();
   });
 

@@ -704,12 +704,16 @@ export function parseRecentClosedIssue(issue, now = Date.now()) {
   const phase = bodyValue(body, 'CURRENT_STATE').toUpperCase();
   // GitHub closure terminates dispatch, but "completed" with DONE=false is an
   // explicit acceptance conflict in ANY lifecycle phase (READY/WAIT/BLOCKED).
-  // Preserve historic not_planned filtering except proven blocked conflicts.
+  // Preserve historic filtering while showing explicit Owner-closed V2 cards in the archive.
   const declaredIncomplete = bodyValue(body, 'DONE').toLowerCase() === 'false';
   const blockedPhase = /(?:^|_)BLOCKED(?:_|$)/.test(phase);
   const closureConflict = declaredIncomplete && (reason === 'completed' ||
     (reason === 'not_planned' && blockedPhase));
-  if (reason === 'duplicate' || (reason === 'not_planned' && !closureConflict)) return null;
+  const ownerClosedV2 = reason === 'not_planned'
+    && /^WORK_ORDER_LIFECYCLE=V2$/m.test(body)
+    && bodyValue(body, 'OWNER_DIRECT').toLowerCase() === 'true'
+    && bodyValue(body, 'CURRENT_STATE').toUpperCase() === 'NOT_PLANNED';
+  if (reason === 'duplicate' || (reason === 'not_planned' && !closureConflict && !ownerClosedV2)) return null;
   if (['CANCELLED','CANCELED','SUPERSEDED','NOT_PLANNED'].includes(bodyValue(body,'STATE').toUpperCase()) ||
       /^SUPERSEDED(?:_BY)?=/mi.test(body)) return null;
   const closedAt = issue.closed_at || issue.updated_at || null;
