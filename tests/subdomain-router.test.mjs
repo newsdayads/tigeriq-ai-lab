@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -26,7 +26,17 @@ test('wildcard router defaults to 404, dynamically registers one-label hosts and
   const router = createRouterServer({ registryPath: registry });
   const routerPort = await listen(router);
   t.after(async () => { await stop(router); await stop(origin); rmSync(dir, { recursive: true, force: true }); });
-  const send = (host, path = '/x') => fetch('http://127.0.0.1:' + routerPort + path, { headers: { Host: host } });
+  const send = (host, path = '/x') => new Promise((resolve, reject) => {
+    // Node fetch ignores caller-specified Host; use raw HTTP request to test virtual hosting.
+    const req = httpRequest({ hostname: '127.0.0.1', port: routerPort, path, headers: { Host: host } }, (res) => {
+      let data = '';
+      res.setEncoding('utf8');
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => resolve({ status: res.statusCode, json: () => JSON.parse(data) }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
 
   assert.equal((await send('unregistered.tigeriq.io.vn')).status, 404);
   assert.equal((await send('evil.com')).status, 404);
