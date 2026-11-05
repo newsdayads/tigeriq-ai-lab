@@ -1,6 +1,19 @@
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-. 'D:\TigerIQ\Rebuild\credential-store.ps1'
+$credentialStore='D:\TigerIQ\Rebuild\credential-store.ps1'
+function Assert-TrustedCredentialStore {
+  if(-not(Test-Path -LiteralPath $credentialStore)){throw 'CREDENTIAL_STORE_MISSING'}
+  $unsafeSids=@('S-1-1-0','S-1-5-11','S-1-5-32-545')
+  $unsafe=@(Get-Acl -LiteralPath $credentialStore | Select-Object -ExpandProperty Access | Where-Object {
+    if($_.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow){return $false}
+    try{$sid=$_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value}catch{return $true}
+    if($sid -notin $unsafeSids){return $false}
+    return [string]$_.FileSystemRights -match 'FullControl|Modify|Write|Delete|ChangePermissions|TakeOwnership'
+  })
+  if($unsafe.Count){throw 'CREDENTIAL_STORE_ACL_UNTRUSTED'}
+}
+Assert-TrustedCredentialStore
+. $credentialStore
 $runtimeRepo='D:\TigerIQ\Runtime\CoreSource'
 $runtimeSourceState='C:\ProgramData\TigerIQCoreRelease\State\core-runtime-source.json'
 function Resolve-TrustedRuntimeRepo {
