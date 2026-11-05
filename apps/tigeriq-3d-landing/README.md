@@ -1,0 +1,11 @@
+# TigerIQ 3D — Landing Page
+- Production domain: https://3d.tigeriq.io.vn
+- Static HTML, CSS and JS — no build dependencies.
+- Source of truth: TigerIQ main, issue #5646.
+- Contact: tel:+84392960003; Zalo https://zalo.me/0392960003
+- Motion: pointer tilt across all cards; image scale and parallax; prefers-reduced-motion and coarse pointer guard.
+- External stock photos from Unsplash; replace with owned production photos when supplied, and do not claim photos represent actual TigerIQ workshop.
+- Price cards are suggested reference figures, not binding price quotes.
+- SEO: canonical, og, description, LocalBusiness JSON-LD, sitemap and robots. Verify Google Search Console on live production domain.
+- Zalo deep link opens account/profile; only the user can confirm and initiate the friend action inside Zalo.
+- Deployment review must validate HTTPS on target domain, DNS, click links and mobile.
