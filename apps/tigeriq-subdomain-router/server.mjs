@@ -36,7 +36,8 @@ export function createRouterServer({ registryPath = DEFAULT_REGISTRY } = {}) {
   const server = createServer((incoming, outgoing) => {
     if (incoming.socket.remoteAddress === '127.0.0.1' &&
         incoming.url === '/__router/healthz' &&
-        (incoming.headers.host === '127.0.0.1' || incoming.headers.host === 'localhost')) {
+        (incoming.headers.host?.toLowerCase().split(':')[0] === '127.0.0.1' ||
+         incoming.headers.host?.toLowerCase().split(':')[0] === 'localhost')) {
       outgoing.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       outgoing.end('{"status":"ok","service":"tigeriq-subdomain-router"}');
       return;
