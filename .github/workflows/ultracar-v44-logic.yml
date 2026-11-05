@@ -1,0 +1,27 @@
+name: UltraCar V44 Java Logic
+on:
+  pull_request:
+    paths:
+      - "apps/ultracarhcm-v1-v44/**"
+      - ".github/workflows/ultracar-v44-logic.yml"
+  workflow_dispatch:
+jobs:
+  test_logic:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Compile Java 8 source
+        shell: bash
+        run: |
+          mkdir -p /tmp/v44-classes
+          javac --release 8 -encoding UTF-8 -d /tmp/v44-classes \
+            apps/ultracarhcm-v1-v44/src/com/tigeriq/v44/*.java \
+            apps/ultracarhcm-v1-v44/test/com/tigeriq/v44/*.java
+      - name: Run 49 model tests
+        run: java -cp /tmp/v44-classes com.tigeriq.v44.V44LogicTest
