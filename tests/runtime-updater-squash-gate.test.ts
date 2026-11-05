@@ -81,6 +81,7 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(src).toContain('git -C $runtimeRepo reset --hard $targetSha');
     expect(src).toContain('git -C $runtimeRepo reset --hard $previousRuntimeSha');
     expect(src).toContain("C:\\ProgramData\\TigerIQCoreRelease\\State\\core-runtime-source.json");
+    expect(src).toContain("else{'C:\\ProgramData\\TigerIQCoreRelease\\Launchers'}");
     expect(src).toContain('Sync-Launchers');
     expect(src).not.toContain('checkout -B core-runtime-sync origin/main');
     expect(src).not.toContain('merge --ff-only origin/main');
