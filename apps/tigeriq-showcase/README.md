@@ -30,3 +30,22 @@ Design: original Cuberto-style motion, red / near-black, thin Vietnamese-readabl
 ## Checks
 node --check apps/tigeriq-showcase/main.js
 node --test apps/tigeriq-showcase/test/site.test.mjs
+
+
+## PC01 Cloudflare Tunnel origin (05/11/2026)
+- Origin: PC01, loopback-only 127.0.0.1:8878; no inbound public firewall change.
+- Canonical source: apps/tigeriq-showcase in GitHub main; PC01 Git sync only by authorized fast-forward.
+- Node entrypoint: apps/tigeriq-showcase/server.mjs, zero dependencies.
+- Health: http://127.0.0.1:8878/healthz returns service=tigeriq-showcase and status=ok.
+- Cloudflare tunnel host tigeriq.io.vn (configured separately by Tunnel owner) must point to http://127.0.0.1:8878 only after local acceptance.
+- Do not touch driver, ai, city Tunnel routes or their PC01 services.
+- User-level task: TigerIQ Showcase PC01; startup/logon mode and privilege must be verified. No SYSTEM service claim without evidence.
+- Earlier Vercel project is not the public DNS origin anymore.
+- Public GitHub metadata refreshes in-browser; code edits on GitHub do not automatically deploy to PC01 without verified controlled sync.
+
+## PC01 acceptance
+- node --check apps/tigeriq-showcase/server.mjs
+- node --test apps/tigeriq-showcase/test/site.test.mjs apps/tigeriq-showcase/test/server.test.mjs
+- GET /healthz, /, /main.js, /style.css => HTTP 200 and correct content.
+- Listener must be 127.0.0.1:8878 and site task/proc readback must match.
+- HTTPS at tigeriq.io.vn must be verified after Tunnel routing is configured.
