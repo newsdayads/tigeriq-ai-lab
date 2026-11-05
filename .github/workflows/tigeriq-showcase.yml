@@ -24,6 +24,8 @@ jobs:
         with:
           persist-credentials: false
       - name: JavaScript syntax
-        run: node --check apps/tigeriq-showcase/main.js
+        run: |
+          node --check apps/tigeriq-showcase/main.js
+          node --check apps/tigeriq-showcase/server.mjs
       - name: Public site acceptance
-        run: node --test apps/tigeriq-showcase/test/site.test.mjs
+        run: node --test apps/tigeriq-showcase/test/site.test.mjs apps/tigeriq-showcase/test/server.test.mjs
