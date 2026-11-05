@@ -204,3 +204,5 @@ body.motion-off .glassy-ring,body.motion-off .floating-tig,body.motion-off .hero
 body.motion-off .tig-illustration{transform:none!important;transition:none!important}
 body.motion-off .reveal{opacity:1!important;transform:none!important;transition:none!important}
 @media (prefers-reduced-motion: reduce){.glassy-ring,.floating-tig,.motion-track,.hero-scroll span,.mini-dot{animation:none!important}.tig-illustration{transform:none!important;transition:none!important}}
+
+.zalo-header-glyph{display:grid;place-items:center;flex:none;width:20px;height:20px;border-radius:50%;background:#fff;color:var(--red);font-size:12px;font-weight:760}
