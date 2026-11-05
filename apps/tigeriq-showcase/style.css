@@ -143,3 +143,64 @@ h1,h2,h3,p{overflow-wrap:break-word}
 .news-banner h3{font-size:23px;font-weight:470;letter-spacing:-.7px;margin:0 0 5px}
 .news-banner p:not(.eyebrow){font-size:12px;color:#857b91;margin:0}
 .news-banner .button{font-size:12px;white-space:nowrap}
+
+
+.faq{padding-top:70px;padding-bottom:100px}.faq-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.faq-item{align-self:start;background:#fff;border:1px solid #f1e8ed;border-radius:18px;box-shadow:0 9px 20px #6351680a;overflow:hidden}
+.faq-item summary{display:flex;align-items:center;justify-content:space-between;gap:14px;cursor:pointer;list-style:none;padding:20px 22px;font-size:15px;font-weight:510;line-height:1.5}
+.faq-item summary::-webkit-details-marker{display:none}.faq-item summary span{display:grid;place-items:center;flex:none;width:27px;height:27px;border-radius:50%;color:var(--red);font-size:23px;line-height:1;border:1px solid #f3c9d2;transition:transform .22s}
+.faq-item[open] summary span{transform:rotate(45deg)}.faq-item>p{margin:0;padding:0 23px 22px;color:#77717b;line-height:1.8;font-size:13px}
+.brief-section{background:linear-gradient(145deg,#f8f3f7,#f1ecf6 58%,#fdf8fa);border-block:1px solid #f5e9f1}
+.brief-layout{display:grid;grid-template-columns:.96fr 1.04fr;gap:18px;margin-top:30px}
+.brief-form,.brief-preview{border-radius:29px;padding:29px 34px;background:#ffffffd9;border:1px solid #fff;box-shadow:0 14px 40px #62536d16}
+.form-row{display:grid;gap:10px;margin:0 0 20px}.form-row label{font-weight:530;font-size:13px;color:#4b414b}
+.form-row select,.form-row textarea{width:100%;font:inherit;font-size:14px;color:#514654;border:1px solid #e7dce5;border-radius:15px;background:#fbf9fc;padding:13px 16px;outline:none;transition:border-color .2s,box-shadow .2s}
+.form-row textarea{resize:vertical;min-height:118px;line-height:1.65}
+.form-row select:focus,.form-row textarea:focus{border-color:#dc213e;box-shadow:0 0 0 3px #e62f4933}
+.field-hint{font-size:11px;color:#988d9a}.brief-form>.button{border:0;cursor:pointer}
+.brief-preview{background:linear-gradient(145deg,#fff,#fff7fa)}
+.brief-preview h3{font-size:clamp(25px,2.5vw,37px);font-weight:450;line-height:1.18;letter-spacing:-1px;margin:13px 0 19px}
+.brief-output{min-height:170px;white-space:pre-wrap;overflow-wrap:anywhere;background:#f8f3f8;color:#514755;border:1px dashed #e7b9c6;border-radius:19px;padding:19px 20px;font-size:14px;line-height:1.8}
+.brief-tools{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.brief-tools .button{font-size:12px;min-height:47px;padding:12px 17px;gap:10px}
+.brief-tools button{cursor:pointer}.brief-feedback{margin:17px 0 0;color:#9a7f89;font-size:11px;line-height:1.6}
+.phone-secondary{font-size:12px;font-weight:500;color:var(--red);text-decoration:underline;text-underline-offset:4px}
+.zalo-float{position:fixed;z-index:160;right:20px;bottom:21px;display:flex;align-items:center;gap:10px;padding:9px 17px 9px 9px;border-radius:999px;background:linear-gradient(120deg,#0968ef,#1688ff);color:white;font-size:13px;font-weight:560;box-shadow:0 12px 35px #076fe956;border:2px solid #fff;transition:transform .25s,box-shadow .25s}
+.zalo-float:hover{transform:translateY(-4px);box-shadow:0 18px 45px #076fe967}
+.zalo-float span:first-child{display:grid;place-items:center;border-radius:50%;background:#fff;color:#0a74ef;font-size:18px;font-weight:750;width:35px;height:35px}
+.mini-dot{animation:dotPulse 2.1s ease-in-out infinite}
+@keyframes dotPulse{50%{box-shadow:0 0 0 7px #d7132a18}}
+@media (max-width:1100px){
+.site-nav{position:absolute;top:78px;left:29px;right:29px;display:none;flex-direction:column;align-items:stretch;gap:0;background:#fff;box-shadow:0 17px 38px #66556924;border-radius:22px;border:1px solid #f0e8ee;padding:10px 20px 15px;z-index:101}
+.site-nav.open{display:flex}.site-nav a{font-size:15px;padding:13px 0;border-bottom:1px solid #f1edf1}.site-nav .nav-current:after{display:none}
+.menu-toggle{display:flex}
+}
+@media (max-width:780px){
+.service-explorer{scroll-margin-top:80px}.service-detail-item{grid-template-columns:1fr;gap:26px}
+.service-detail{padding:27px 23px 15px}.detail-main h3{font-size:33px}.explorer-toolbar{padding:16px 21px}.explorer-toolbar span:last-child{display:none}
+.news-banner{grid-template-columns:68px 1fr;gap:17px;padding:24px}.news-banner .button{grid-column:1/-1;justify-self:start}
+.brief-layout{grid-template-columns:1fr}.faq-grid{grid-template-columns:1fr}.faq{padding-block:60px}
+.motion-control{width:38px;height:38px}.motion-marquee{padding:11px 0}
+}
+@media (max-width:520px){
+.topbar{gap:5px}.header-end{gap:5px}.phone-pill span{font-size:0}.phone-pill span:after{content:"Zalo";font-size:12px}
+.motion-control{width:35px;height:35px;min-width:35px;font-size:21px}
+.service-filters{justify-content:flex-start;gap:7px}.filter-chip{font-size:11px;padding:8px 11px;min-height:37px}
+.service-card{min-height:232px}.service-open{font-size:11px;min-height:38px}
+.service-detail{padding:24px 17px 10px}.detail-main h3{font-size:28px;letter-spacing:-.8px}.detail-main>p{font-size:13px}
+.detail-lists>div{padding:17px}.detail-lists ul{font-size:12px}
+.explorer-disclaimer{padding:10px 17px 21px}.news-banner{grid-template-columns:1fr}.news-banner-symbol{display:none}
+.news-banner h3{font-size:20px}.news-banner .button{white-space:normal}
+.faq-item summary{padding:17px;font-size:13px}.faq-item>p{padding-inline:17px}
+.brief-form,.brief-preview{padding:22px 18px;border-radius:22px}
+.brief-tools{flex-direction:column}.brief-tools .button{width:100%;justify-content:space-between}
+.zalo-float{right:10px;bottom:10px;padding:7px 10px 7px 7px;font-size:11px}.zalo-float span:first-child{height:31px;width:31px}
+}
+@media (max-width:350px){
+.brand strong{font-size:21px}.brand{font-size:11px}.phone-pill{padding:7px 8px}.phone-pill span:after{font-size:11px}
+.motion-control{width:32px;height:32px;min-width:32px}.menu-toggle{width:36px;min-width:36px}
+.filter-chip{font-size:10px;padding:7px 9px}.detail-cta{gap:13px}.detail-cta .button{white-space:normal}
+}
+body.motion-off .glassy-ring,body.motion-off .floating-tig,body.motion-off .hero-stage,body.motion-off .visual-label,body.motion-off .motion-track,body.motion-off .hero-scroll span,body.motion-off .mini-dot{animation:none!important}
+body.motion-off .tig-illustration{transform:none!important;transition:none!important}
+body.motion-off .reveal{opacity:1!important;transform:none!important;transition:none!important}
+@media (prefers-reduced-motion: reduce){.glassy-ring,.floating-tig,.motion-track,.hero-scroll span,.mini-dot{animation:none!important}.tig-illustration{transform:none!important;transition:none!important}}
