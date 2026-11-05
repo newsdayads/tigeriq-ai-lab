@@ -1,3 +1,5 @@
+> **SUPERSEDED FOR NEW APPS (Owner 2026-11-05).** Vercel is legacy-only pending controlled migration; **new apps must deploy to PC01 + Cloudflare Tunnel**. This policy file continues to govern **existing** Vercel projects without deleting, interrupting, or implicitly redeploying them. Canonical current contract: `docs/PC01_AUTO_SUBDOMAIN.md`; Issue #5648.
+
 # TigerIQ Vercel Web-Hosting-Only Policy
 
 Status: **AUTHORITATIVE / HARD BOUNDARY** — enforced by source guard + CI.
