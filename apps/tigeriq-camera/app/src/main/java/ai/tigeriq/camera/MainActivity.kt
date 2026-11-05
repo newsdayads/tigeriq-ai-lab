@@ -16,6 +16,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -90,7 +91,34 @@ class MainActivity : AppCompatActivity() {
         usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
 
         initViews()
+        initOnlineUi()
         registerUsbReceiver()
+    }
+
+    private fun initOnlineUi() {
+        val status = findViewById<TextView>(R.id.tvOnlineStatus)
+        val pairing = findViewById<EditText>(R.id.editOnlinePairCode)
+        status?.text = CameraOnlineBridge.status(this)
+        findViewById<Button>(R.id.btnPairOnline)?.setOnClickListener {
+            status?.text = "Đang ghép đôi..."
+            CameraOnlineBridge.pair(this, pairing.text.toString().trim()) { result ->
+                status?.text = result
+                if (CameraOnlineBridge.isPaired(this)) pairing.text?.clear()
+            }
+        }
+        findViewById<Button>(R.id.btnSyncOnline)?.setOnClickListener {
+            status?.text = "Đang gửi log..."
+            CameraOnlineBridge.syncNow(this) { result -> status?.text = result }
+        }
+        findViewById<Button>(R.id.btnCheckOnlineUpdate)?.setOnClickListener {
+            status?.text = "Đang kiểm tra và tải bản mới..."
+            CameraOnlineBridge.checkUpdate(this) { result -> status?.text = result }
+        }
+        findViewById<Button>(R.id.btnInstallOnlineUpdate)?.setOnClickListener {
+            val result = CameraOnlineBridge.installReady(this)
+            status?.text = result
+            Toast.makeText(this, result, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun registerUsbReceiver() {
@@ -117,8 +145,33 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         refreshAllPermissionStatuses()
         refreshUsbDeviceList()
+        findViewById<TextView>(R.id.tvOnlineStatus)?.text = CameraOnlineBridge.status(this)
+        CameraOnlineBridge.schedule(this)
         if (settings.isReverseAutoStart || settings.isFloatingEnabled) {
             FloatingCameraService.start(this)
+        }
+        CameraEventLog.record(this, "APP", "SETTINGS_OPENED", "log_view_ready")
+        val eventText = findViewById<TextView>(R.id.tvCameraEventLog)
+        eventText?.text = CameraEventLog.read(this, maxChars = 4000)
+        findViewById<Button>(R.id.btnRefreshCameraLog)?.setOnClickListener {
+            eventText?.text = CameraEventLog.read(this, maxChars = 5000)
+        }
+        findViewById<Button>(R.id.btnShareCameraLog)?.setOnClickListener {
+            CameraEventLog.record(this, "APP", "LOG_SHARED_BY_USER")
+            val payload = "TigerIQ Camera v" + BuildConfig.VERSION_NAME + "\n" +
+                settings.getReverseDiagnostics() + "\n--- Event log ---\n" +
+                CameraEventLog.read(this, maxChars = 32000)
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, "TigerIQ Camera diagnostic log")
+                putExtra(Intent.EXTRA_TEXT, payload)
+            }
+            try {
+                startActivity(Intent.createChooser(send, "Chia sẻ nhật ký Camera"))
+            } catch (error: Exception) {
+                Toast.makeText(this, "Không thể chia sẻ: " + error.javaClass.simpleName,
+                    Toast.LENGTH_LONG).show()
+            }
         }
     }
 

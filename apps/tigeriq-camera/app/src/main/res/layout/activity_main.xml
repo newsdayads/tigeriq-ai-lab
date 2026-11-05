@@ -729,10 +729,144 @@
                     android:id="@+id/tvBuildVersion"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="• Bản dựng: TigerIQ Camera v1.0.11"
+                    android:text="• Bản dựng: TigerIQ Camera v1.0.25"
                     android:textColor="#94A3B8"
                     android:textSize="12sp"
                     android:layout_marginBottom="10dp" />
+
+                <!-- KẾT NỐI PC01 / CẬP NHẬT TỰ ĐỘNG -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:text="KẾT NỐI PC01 / CẬP NHẬT TỰ ĐỘNG"
+                    android:textColor="#00E5FF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvOnlineStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Chưa kết nối với PC01"
+                    android:textColor="#CBD5E1"
+                    android:textSize="11sp"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="5dp" />
+
+                <EditText
+                    android:id="@+id/editOnlinePairCode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Mã ghép đôi PC01 (9 chữ số, dùng một lần)"
+                    android:textColor="#FFFFFF"
+                    android:textColorHint="#94A3B8"
+                    android:inputType="number"
+                    android:maxLength="9"
+                    android:singleLine="true"
+                    android:textSize="12sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:orientation="horizontal">
+                    <Button
+                        android:id="@+id/btnPairOnline"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginEnd="4dp"
+                        android:text="KẾT NỐI PC01"
+                        android:textSize="11sp" />
+                    <Button
+                        android:id="@+id/btnSyncOnline"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:text="GỬI LOG NGAY"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:orientation="horizontal">
+                    <Button
+                        android:id="@+id/btnCheckOnlineUpdate"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginEnd="4dp"
+                        android:text="KIỂM TRA BẢN MỚI"
+                        android:textSize="11sp" />
+                    <Button
+                        android:id="@+id/btnInstallOnlineUpdate"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:text="CÀI BẢN ĐÃ TẢI"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Sau khi ghép đôi: tự gửi log qua HTTPS và tự tải bản mới. Android yêu cầu xác nhận cài."
+                    android:textColor="#94A3B8"
+                    android:textSize="10sp"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="8dp" />
+
+                <!-- LỊCH SỬ LOG HOẠT ĐỘNG -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="LỊCH SỬ LOG HOẠT ĐỘNG (DIAGNOSTICS)"
+                    android:textColor="#00E5FF"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvCameraEventLog"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Nhật ký chưa tải. Nhấn XEM LOG."
+                    android:textSize="11sp"
+                    android:maxLines="18"
+                    android:textIsSelectable="true"
+                    android:textColor="#E2E8F0"
+                    android:background="#0F172A"
+                    android:padding="8dp"
+                    android:layout_marginTop="4dp"
+                    android:layout_marginBottom="6dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:orientation="horizontal">
+                    <Button
+                        android:id="@+id/btnRefreshCameraLog"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginEnd="4dp"
+                        android:text="XEM LOG"
+                        android:textSize="11sp" />
+                    <Button
+                        android:id="@+id/btnShareCameraLog"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:text="CHIA SẺ LOG"
+                        android:textSize="11sp" />
+                </LinearLayout>
 
                 <TextView
                     android:layout_width="wrap_content"
