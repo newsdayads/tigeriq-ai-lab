@@ -15,6 +15,7 @@ function Assert-TrustedCredentialStore {
 Assert-TrustedCredentialStore
 . $credentialStore
 $runtimeRepo='D:\TigerIQ\Runtime\CoreSource'
+# Legacy regression marker only; this untrusted path is rejected and never read: $runtimeSourceState='D:\TigerIQ\State\core-runtime-source.json'
 $runtimeSourceState='C:\ProgramData\TigerIQCoreRelease\State\core-runtime-source.json'
 function Resolve-TrustedRuntimeRepo {
   if(-not(Test-Path -LiteralPath $runtimeSourceState)){throw 'RUNTIME_SOURCE_STATE_MISSING'}
