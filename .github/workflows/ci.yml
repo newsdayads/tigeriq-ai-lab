@@ -25,6 +25,8 @@ jobs:
         run: npm ci
       - name: Web hosting deployment guard
         run: npm run test:vercel-policy
+      - name: PC01 wildcard routing and no-new-Vercel guard
+        run: npm run test:pc01-subdomain
       - name: Typecheck
         run: npm run typecheck
       - name: Unit tests
