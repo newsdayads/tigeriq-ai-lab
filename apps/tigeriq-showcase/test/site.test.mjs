@@ -8,51 +8,59 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const html = readFileSync(resolve(root, "index.html"), "utf8");
 const css = readFileSync(resolve(root, "style.css"), "utf8");
 const js = readFileSync(resolve(root, "main.js"), "utf8");
+const server = readFileSync(resolve(root, "server.mjs"), "utf8");
 const config = JSON.parse(readFileSync(resolve(root, "vercel.json"), "utf8"));
 
-test("TIG is the sole abbreviation, TigerIQ full brand and correct hotline", () => {
+test("TIG, TigerIQ, UltraCarHCM, seven service profiles", () => {
   assert.match(html, /<strong>TIG<\/strong>/);
   assert.match(html, />TigerIQ<\/span>/);
-  assert.doesNotMatch(html, /\bTQ\b/);
-  assert.match(html, /tel:0392960003/);
+  assert.match(html, /UltraCarHCM/);
   assert.match(html, /0392960003/);
-});
-test("Seven services with UltraCarHCM exactly", () => {
-  for (const name of ["Thiết kế Website","Phần mềm","UltraCarHCM","Driver","In 3D","Marketing","PhoneFarm"]) {
-    assert.ok(html.includes(name), "Missing " + name);
-  }
   assert.equal((html.match(/class="service-card reveal"/g) || []).length, 7);
-  assert.doesNotMatch(html, /<h3>UltraCar<\/h3>/);
+  assert.equal((html.match(/class="service-detail-item"/g) || []).length, 7);
+  for (const label of ["Thiết kế Website","Phần mềm","UltraCarHCM","Driver","In 3D","Marketing","PhoneFarm"]) assert.ok(html.includes(label),label);
 });
-test("Approved minimal light design, thin readable font, responsive and reduced motion", () => {
-  assert.match(css, /--paper:#faf9fc/);
-  assert.match(css, /--red:#d7132a/);
-  assert.match(css, /Roboto Flex/);
-  assert.match(css, /font-weight:350/);
-  assert.match(css, /@media\(max-width:520px\)/);
-  assert.match(css, /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
-  assert.match(css, /prefers-reduced-motion:reduce/);
-  assert.match(html, /<html lang="vi">/);
-  assert.match(html, /class="tig-illustration"/);
-  assert.match(html, /Công nghệ thực tế/);
-  assert.match(html, /Giá trị bền vững/);
+test("Real direct Zalo and separate published News website", () => {
+  assert.match(html, /https:\/\/zalo\.me\/0392960003/);
+  assert.match(html, /https:\/\/news\.tigeriq\.io\.vn\/vi/);
+  assert.match(html, /id="brief-form"/);
+  assert.match(html, /id="copy-brief"/);
+  assert.match(html, /id="brief-output"/);
+  assert.match(js, /navigator\.clipboard\.writeText/);
+  assert.match(html, /class="faq-item reveal"/);
+  assert.doesNotMatch(html, /href="#contact">Tìm hiểu/);
 });
-test("No fake metrics or unactionable video", () => {
+test("No repository, source API, secrets or unverified sales claims in public assets", () => {
+  assert.doesNotMatch(html + css + js + server, /github|api\.github|ghp_|private_key|pc01\.tail/i);
   assert.doesNotMatch(html, /500\+|300\+|5\+\s*năm|xem video/i);
-  assert.doesNotMatch(html + js, /pc01\.tail|api\/health-view|private_key|ghp_/i);
+  assert.match(html, /ĐANG PHÁT TRIỂN VÀ KIỂM THỬ/);
+  assert.doesNotMatch(js, /fetch\(/);
   assert.doesNotMatch(js, /innerHTML\s*=/);
-  assert.match(html, /ĐANG PHÁT TRIỂN &amp; KIỂM THỬ|ĐANG PHÁT TRIỂN & KIỂM THỬ/);
-  assert.match(js, /repo\.private === false/);
-  assert.match(js, /tigeriq-public-showcase/);
 });
-test("Actual mobile menu with accessible button, public safe CSP", () => {
-  assert.match(html, /aria-expanded="false"/);
-  assert.match(html, /id="site-nav"/);
-  assert.match(js, /aria-expanded/);
-  assert.match(js, /menu\.addEventListener\("click"/);
+test("Animated, accessible, keyboard and reduced motion controls", () => {
+  assert.match(css, /@keyframes ringOrbit/);
+  assert.match(css, /@keyframes driftTrack/);
+  assert.match(css, /prefers-reduced-motion:reduce/i);
+  assert.match(css, /body\.motion-off/);
+  assert.match(css, /@media\s*\(max-width:\s*520px\)/);
+  assert.match(css, /Roboto Flex/);
+  assert.match(html, /aria-controls="site-nav"/);
+  assert.match(html, /id="motion-toggle"/);
+  assert.match(html, /aria-live="polite"/);
+  assert.match(js, /IntersectionObserver/);
+  assert.match(js, /pointermove/);
+  assert.match(js, /requestAnimationFrame/);
+});
+test("PC01 and static host security & SEO", () => {
   assert.equal(config.framework, null);
-  const csp = config.headers[0].headers.find((h) => h.key === "Content-Security-Policy").value;
-  assert.match(csp, /connect-src 'self' https:\/\/api\.github\.com/);
-  assert.doesNotMatch(csp, /unsafe-inline/);
-  assert.ok(html.includes("/style.css") && html.includes("/main.js"));
+  const csp = config.headers[0].headers.find((x) => x.key === "Content-Security-Policy")?.value;
+  assert.match(csp, /connect-src 'self'/);
+  assert.doesNotMatch(csp, /unsafe-inline|github/);
+  assert.match(server, /connect-src 'self'/);
+  assert.match(html, /rel="canonical"/);
+  assert.match(html, /\/favicon\.svg/);
+  assert.match(readFileSync(resolve(root,"robots.txt"),"utf8"), /sitemap\.xml/);
+  assert.match(readFileSync(resolve(root,"sitemap.xml"),"utf8"), /tigeriq\.io\.vn/);
+  assert.ok(html.includes("/style.css?v=tig-v3-20261105"));
+  assert.ok(html.includes("/main.js?v=tig-v3-20261105"));
 });

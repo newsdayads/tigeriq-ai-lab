@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://tigeriq.io.vn/sitemap.xml
