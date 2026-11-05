@@ -2,15 +2,24 @@ import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
 
 describe('runtime source isolation',()=>{
-  it('launchers resolve runtime source state instead of hard-binding app sources to dev worktree',()=>{
+  it('launchers fail closed on a protected, fixed runtime source identity',()=>{
     for(const path of [
       'scripts/tigeriq-core/run-core.ps1',
       'scripts/tigeriq-core/run-coding-lane.ps1',
       'scripts/tigeriq-core/run-web-control-bundle.ps1',
     ]){
       const src=readFileSync(path,'utf8');
-      expect(src).toContain('core-runtime-source.json');
-      expect(src).toContain('$meta.sourcePath');
+      expect(src).toContain("$runtimeRepo='D:\\TigerIQ\\Runtime\\CoreSource'");
+      expect(src).toContain("$runtimeSourceState='C:\\ProgramData\\TigerIQCoreRelease\\State\\core-runtime-source.json'");
+      expect(src).toContain("throw 'RUNTIME_SOURCE_STATE_MISSING'");
+      expect(src).toContain("throw 'RUNTIME_SOURCE_SCHEMA_INVALID'");
+      expect(src).toContain("throw 'RUNTIME_SOURCE_PATH_UNTRUSTED'");
+      expect(src).toContain("throw 'RUNTIME_SOURCE_SHA_INVALID'");
+      expect(src).toContain("throw 'RUNTIME_SOURCE_HEAD_MISMATCH'");
+      expect(src).toContain("throw 'RUNTIME_SOURCE_DIRTY'");
+      expect(src).not.toContain("$defaultRepo='D:\\TigerIQ\\Workspace\\tigeriq-ai-lab'");
+      expect(src).not.toContain('$repo=$defaultRepo');
+      expect(src).not.toContain('$repo=[string]$meta.sourcePath');
     }
   });
 
@@ -45,7 +54,9 @@ describe('runtime source isolation',()=>{
     expect(src).toContain("Set-TaskAction $codingTask");
     expect(src).toContain("Set-TaskAction $updaterTask");
     expect(src).toContain("D:\\TigerIQ\\Runtime\\CoreLaunchers");
-    expect(src).toContain("D:\\TigerIQ\\Runtime\\CoreUpdater\\update-core-runtime.ps1");
+    expect(src).toContain("C:\\ProgramData\\TigerIQCoreRelease\\State\\core-runtime-source.json");
+    expect(src).toContain("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+    expect(src).toContain('-NonInteractive');
     expect(src).toContain('REMOTE_HEAD_MISMATCH');
     expect(src).toContain('RUNTIME_SOURCE_DIRTY');
   });
@@ -53,6 +64,7 @@ describe('runtime source isolation',()=>{
   it('persists current and previous SHA rollback metadata',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
     expect(src).toContain("schema='TIGERIQ_RUNTIME_SOURCE_V1'");
+    expect(src).toContain("C:\\ProgramData\\TigerIQCoreRelease\\State\\core-runtime-source.json");
     expect(src).toContain('currentSha=$currentSha');
     expect(src).toContain('previousSha=$previousSha');
     expect(src).toContain('gateSha=$gateSha');
@@ -84,7 +96,8 @@ describe('runtime source isolation',()=>{
     expect(launcher).toContain("Join-Path $repo 'scripts\\tigeriq-core\\install-core-updater.ps1'");
     expect(launcher).toContain("-File $installer -Repo $repo");
     expect(launcher).toContain("CORE_RUNTIME_UPDATER_TASK_RECREATE_FAILED");
-    expect(installer).toContain("param([string]$Repo=");
+    expect(installer).toContain("param([string]$Repo='D:\\TigerIQ\\Runtime\\CoreSource')");
+    expect(installer).toContain("throw 'CORE_RUNTIME_REPO_UNTRUSTED'");
     expect(installer).toContain("$sourceScript=Join-Path $Repo 'scripts\\tigeriq-core\\update-core-runtime.ps1'");
     expect(installer).toContain("Register-ScheduledTask -TaskName $taskName");
     expect(installer).toContain("Start-ScheduledTask -TaskName $taskName");
