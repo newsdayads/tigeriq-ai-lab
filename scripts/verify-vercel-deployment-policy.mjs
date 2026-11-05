@@ -1,9 +1,23 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+
+// Apply the no-new-Vercel auto-deploy contract to EVERY tracked vercel.json,
+// not only the repository root. Existing deployments are preserved.
+const trackedFiles = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' })
+  .split('\0').filter(Boolean);
+for (const name of trackedFiles) {
+  if (name.split('/').at(-1) !== 'vercel.json') continue;
+  const projectConfig = JSON.parse(readFileSync(resolve(root, name), 'utf8'));
+  if (projectConfig?.git?.deploymentEnabled !== false) {
+    throw new Error('NO_NEW_VERCEL_AUTO_DEPLOY: ' + name + ' must set git.deploymentEnabled=false');
+  }
+}
+
 const canonicalDeployScript = 'scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs';
 const policyGuardScript = 'scripts/verify-vercel-deployment-policy.mjs';
 

@@ -1,25 +1,27 @@
 # TigerIQ — Execution Boundary
 
-Date: 2026-09-11
-Status: OWNER-ENFORCED
-Authority: explicit Owner instruction
+Updated: 2026-11-05
+Status: OWNER-ENFORCED / PC01-ONLY NEW WEB SYSTEMS
+Authority: current explicit Owner instruction; Issue #5648.
 
-## Engineering path
-- Source-code implementation, refactor, fixes, repository edits, commits, branches, pull requests, and normal code review run through **GitHub**.
-- Normal repository validation runs through **GitHub CI**.
-- Hosted Web/UI preview or release runs through **Vercel** when a hosted deployment is required.
-- **PC01 is not a coding, repository-editing, or web-build machine.** PC01 may invoke the single bounded typed Vercel release transport for an already-reviewed exact GitHub `main` SHA; it must not build or edit the web artifact locally.
+## Engineering and deployment
+- Source-code implementation, refactoring, fixes, repo edits, branches/PRs, and review use **GitHub**. Validation uses **GitHub CI**.
+- **ALL NEW** website/application releases use **PC01 local origin** and `*.tigeriq.io.vn` over the existing Cloudflare Tunnel. No new Vercel projects or deployments, webhooks, Git integrations, or Vercel-dependent release templates.
+- Publish only after passing exact-head CI, appropriate release gates, local app health, subdomain collision checks, HTTPS smoke test, and rollback preparation.
+- Legacy Vercel deployments remain live until individually migrated and accepted. Never delete legacy Vercel projects or disrupt their public endpoints during policy transition.
 
-## PC01 scope
-PC01 is reserved for device-bound/local runtime responsibilities: TigerIQ Core 24/7, PostgreSQL, Ollama/local AI, Desktop Commander Remote, local integrations, runtime diagnostics, and hardware/device-specific verification that genuinely requires PC01.
+## PC01 operations scope
+- PC01 hosts device-bound/local runtime: TigerIQ Core, PostgreSQL, Ollama, hardware integrations, application origins, Cloudflare Tunnel, and the approved local wildcard HTTP router.
+- PC01 is NOT a normal development machine; never edit GitHub source, commit/push, create dev worktrees, or perform ordinary source builds on PC01.
+- Installing, supervising, rolling back and testing approved/reviewed application artifacts on PC01 is a runtime release operation, not source coding.
+- Existing Tunnel ingress routes have precedence; new wildcard router rule only after explicit hostname rules and before terminal 404. Coordinate with active resource writers before modifying `D:\TigerIQ\CloudflareRuntime\config.yml`.
+- Use locally managed DNS wildcard `*.tigeriq.io.vn` (already provisioned on 2026-11-05, per issue #5648), a fail-closed router registry, localhost-only upstreams, and no inbound Internet firewall exposure.
+- Public app registration is explicit opt-in, healthchecked, atomic, uniqueness-checked, and rolled back if public HTTPS fails. Never expose administrative/internal APIs by inference.
+- Existing Windows elevation/UAC, one-writer locks, secret-management, Cloudflare account permissions, production permissions, and no-cost restrictions remain mandatory.
 
-Desktop Commander on PC01 is **operations/diagnostics only**. It must not be used to edit repository source, create development worktrees, commit/push implementation, or run ordinary web/code build pipelines. A bounded release invocation may only trigger the canonical exact-SHA Vercel release path; repository source remains GitHub-authoritative and App Chrome remains excluded from this boundary.
+## Fail-closed
+- If an engineering task cannot proceed through GitHub/CI, do not silently implement source via PC01 shell or substitute Vercel.
+- If PC01 installation/restart needs elevated access or a protected writer lock, keep running production intact and report the exact blocked action and verified evidence.
+- Source changes and runtime releases have separate acceptance receipts.
 
-PowerShell/CMD processes that supervise Core, Ollama, Desktop Commander, or other local runtime components are runtime launchers only; their presence does not make PC01 an engineering execution lane.
-
-## Fail-closed rule
-If a coding/web implementation task would otherwise be executed through PC01 CMD/PowerShell, stop that path and perform the work through GitHub/CI/Vercel instead. The only web-release exception is the canonical typed one-shot release transport for an exact reviewed `main` SHA; it may not mutate source, build locally, or bypass release evidence.
-
-A PC01 exception is allowed only when the requested work is inherently device/hardware/local-runtime bound and cannot be performed on GitHub/CI/Vercel. The exception must remain scoped to that local requirement and must not silently become the normal coding path.
-
-STATE: `GITHUB_ONLY_ENGINEERING_PC01_RUNTIME_PLUS_BOUNDED_RELEASE_V2`
+STATE: `GITHUB_CI_TO_PC01_CLOUDFLARE_WILDCARD_V1`

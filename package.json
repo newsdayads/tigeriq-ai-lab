@@ -17,12 +17,13 @@
     "build": "tsc -p tsconfig.build.json && node scripts/package-bcct-runtime.mjs",
     "command-center": "node dist/apps/dashboard/src/standalone.js",
     "workforce-controller": "node dist/apps/workforce-controller/src/standalone.js",
-    "ci": "npm run test:vercel-policy && npm run typecheck && npm run test && npm run test:e2e && npm run build",
+    "ci": "npm run test:vercel-policy && npm run test:pc01-subdomain && npm run typecheck && npm run test && npm run test:e2e && npm run build",
     "test:chrome-mcp": "node scripts/chrome-devtools-mcp-smoke.mjs",
     "nv0304:owner-cycle": "node dist/apps/chrome-controller/src/nv03-nv04-owner-sidecar.js",
     "test:p0:postgres": "node --test tests/coding-postgres-integration.test.mjs",
     "test:p0:g6": "node --test tests/coding-p0-g6-isolated-workflow.test.mjs",
-    "test:p0:postgres:ci": "node tests/run-postgres-isolated-ci.mjs"
+    "test:p0:postgres:ci": "node tests/run-postgres-isolated-ci.mjs",
+    "test:pc01-subdomain": "node --test tests/subdomain-router.test.mjs tests/pc01-subdomain-policy.test.mjs"
   },
   "dependencies": {
     "@vercel/oidc": "3.8.5",

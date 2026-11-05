@@ -14,13 +14,14 @@ When sources conflict, follow this order:
 
 README reading order is navigational only; it does not override decision precedence.
 
-## GitHub-only engineering boundary
-- The canonical engineering path is **GitHub → CI**; hosted Web/UI goes to **Vercel** when deployment is required.
-- PC01 is runtime/local-integration infrastructure, not a normal coding machine.
-- Do not use PC01 CMD/PowerShell/Desktop Commander to edit repository source, create development worktrees, implement fixes, commit/push code, or run ordinary web/code build pipelines.
-- Desktop Commander on PC01 is limited to runtime operations, diagnostics, and genuinely device/hardware/local-runtime-bound verification.
-- If an implementation task would otherwise require PC01 shell access, fail closed on that path and use GitHub/CI/Vercel instead.
-- See `docs/EXECUTION_BOUNDARY.md` for the authoritative execution boundary.
+## GitHub-only engineering boundary; PC01-only new deployment (Owner 2026-11-05)
+- Canonical source and verification: **GitHub → CI**. Default production destination for **every NEW website/app**: **PC01 → Cloudflare Tunnel → `<app>.tigeriq.io.vn`**, never Vercel.
+- Cloudflare DNS wildcard `*.tigeriq.io.vn` is provisioned once for tunnel `6e1b0f48-cf73-420b-ba3e-9fbb0efc4e61`. New apps must explicitly opt in to public routing, have a healthy localhost origin, and be registered by `scripts/pc01/register-public-webapp.ps1` after the router is installed and accepted. Unknown hosts return 404.
+- No new Vercel project, deploy, Git integration or auto-deploy may be created. Existing legacy Vercel production must NOT be disrupted or deleted until each app is migrated, verified and accepted. Old Vercel CI checks are verification-only.
+- PC01 is runtime/local-integration infrastructure and approved runtime deployment destination, **not** a normal coding machine.
+- Do not use PC01 CMD/PowerShell/Desktop Commander to edit repository source, create development worktrees, implement fixes, commit/push source, or run ordinary coding/build pipelines. Reviewed artifacts may be installed/operated on PC01 with actual runtime rights and receipts.
+- Do not modify production Tunnel config while another writer owns that resource. A wildcard ingress rule comes after explicit host rules and before terminal 404; validate, restart with authorized rights, check public HTTPS and rollback on failure.
+- See `docs/EXECUTION_BOUNDARY.md` and `docs/PC01_AUTO_SUBDOMAIN.md`.
 
 ## Owner command semantics
 - `apdung` / `áp dụng` / `duyệt` = **thực hiện ngay yêu cầu hiện tại đến khi sửa xong và xuất bản luôn**. Với thay đổi code/web/app: tự audit/root-cause → fix → test/CI → merge MAIN → deploy Production khi áp dụng; không dừng ở phân tích, TEST, Preview hay báo tiến độ giữa chừng.
