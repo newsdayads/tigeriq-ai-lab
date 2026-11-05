@@ -36,4 +36,28 @@
     catch(_e){feedback.textContent="Vui lòng chọn và sao chép nội dung từ bản nháp.";output.focus();const range=document.createRange();range.selectNodeContents(output);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);}
   });
   preview();
+  const reduced=window.matchMedia("(prefers-reduced-motion: reduce)");
+  const motionButton=find("#motion-toggle");
+  const hero=find(".hero-stage"),visual=find(".hero-visual"),progress=find("#reading-progress");
+  let manuallyOff=false,frame=0;
+  const motionOff=()=>manuallyOff||reduced.matches;
+  const updateMotion=()=>{
+    document.body.classList.toggle("motion-off",motionOff());
+    if(motionButton){motionButton.setAttribute("aria-pressed",String(manuallyOff));motionButton.setAttribute("aria-label",manuallyOff?"Bật hiệu ứng chuyển động":"Tắt hiệu ứng chuyển động");motionButton.textContent=manuallyOff?"▶":"◌";}
+    if(motionOff())all(".reveal").forEach(el=>el.classList.add("visible"));
+  };
+  motionButton?.addEventListener("click",()=>{manuallyOff=!manuallyOff;updateMotion()});
+  reduced.addEventListener?.("change",updateMotion);
+  updateMotion();
+  if("IntersectionObserver" in window&&!motionOff()){
+    const observer=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add("visible");observer.unobserve(entry.target)}}),{threshold:.07,rootMargin:"0px 0px -20px 0px"});
+    all(".reveal").forEach(el=>observer.observe(el));
+  }else all(".reveal").forEach(el=>el.classList.add("visible"));
+  function drawScroll(){frame=0;const max=Math.max(1,document.documentElement.scrollHeight-innerHeight);if(progress)progress.style.transform="scaleX("+Math.min(1,Math.max(0,scrollY/max))+")";if(visual&&!motionOff()&&innerWidth>780)visual.style.setProperty("--scroll-shift",Math.max(-15,-scrollY*.025)+"px")}
+  addEventListener("scroll",()=>{if(!frame)frame=requestAnimationFrame(drawScroll)},{passive:true});addEventListener("resize",drawScroll,{passive:true});drawScroll();
+  if(visual&&hero&&matchMedia("(pointer:fine)").matches){
+    visual.addEventListener("pointermove",e=>{if(motionOff()||innerWidth<781)return;const r=visual.getBoundingClientRect();const x=((e.clientX-r.left)/r.width-.5)*12;const y=((e.clientY-r.top)/r.height-.5)*-11;hero.style.setProperty("--tilt-x",y.toFixed(2)+"deg");hero.style.setProperty("--tilt-y",x.toFixed(2)+"deg");visual.style.setProperty("--spot-x",((e.clientX-r.left)/r.width*100)+"%");visual.style.setProperty("--spot-y",((e.clientY-r.top)/r.height*100)+"%")},{passive:true});
+    visual.addEventListener("pointerleave",()=>{hero.style.setProperty("--tilt-x","0deg");hero.style.setProperty("--tilt-y","0deg")});
+  }
+
 })();
