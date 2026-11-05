@@ -5,7 +5,7 @@ Authority: GitHub newsdayads/tigeriq-ai-lab main; Work Order 5640.
 Design: original Cuberto-style motion, red / near-black, thin Vietnamese-readable Roboto Flex, hotline 0392960003.
 
 ## Deployment
-- Dedicated Vercel project: tigeriq-studio. Never overwrite tigeriq-ai-lab.
+- New releases: PC01 + Cloudflare Tunnel at tigeriq.io.vn. The preexisting Vercel project `tigeriq-studio` remains legacy/rollback-only until individually retired; do not create new Vercel deployments.
 - Root Directory: apps/tigeriq-showcase
 - Framework: Other / Static; no build dependencies; no paid services.
 - Git source: newsdayads/tigeriq-ai-lab main, PR gates and live readback before acceptance.
