@@ -11,7 +11,10 @@ const allowedFiles = new Map([
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/index.html", ["index.html", "text/html; charset=utf-8"]],
   ["/main.js", ["main.js", "text/javascript; charset=utf-8"]],
-  ["/style.css", ["style.css", "text/css; charset=utf-8"]]
+  ["/style.css", ["style.css", "text/css; charset=utf-8"]],
+  ["/favicon.svg", ["favicon.svg", "image/svg+xml; charset=utf-8"]],
+  ["/robots.txt", ["robots.txt", "text/plain; charset=utf-8"]],
+  ["/sitemap.xml", ["sitemap.xml", "application/xml; charset=utf-8"]]
 ]);
 
 const securityHeaders = {
@@ -19,7 +22,7 @@ const securityHeaders = {
   "X-Frame-Options": "DENY",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
-  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.github.com; img-src 'self' data:; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; base-uri 'none'; object-src 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
 };
 
 function send(response, status, body, contentType, method = "GET") {
