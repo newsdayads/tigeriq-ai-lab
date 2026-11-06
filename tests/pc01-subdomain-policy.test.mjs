@@ -13,6 +13,8 @@ test('new-web governance defaults to PC01 and never re-enables Vercel Git deploy
   assert.match(legacy, /SUPERSEDED FOR NEW APPS/);
   assert.match(deployment, /WILDCARD_DNS_PROVISIONED/);
   assert.match(deployment, /NEVER substitute Vercel/);
+  assert.match(read('bootstrap/00_TIGERIQ_LOADER.md'), /PC01_ONLY_NEW_WEB_OWNER_20261106/);
+  assert.match(read('bootstrap/00_TIGERIQ_LOADER.md'), /CẤM.*Vercel làm đích phát hành/);
   assert.match(read('bootstrap/02_TIGERIQ_WORKFLOW.md'), /Lệnh làm web\/app mới/);
   assert.doesNotMatch(read('bootstrap/02_TIGERIQ_WORKFLOW.md'), /Vercel\/read-only cloud view/);
   assert.match(legacy, /No NEW website\/app may create a Vercel project/);
