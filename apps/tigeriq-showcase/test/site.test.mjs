@@ -12,8 +12,8 @@ const server = readFileSync(resolve(root, "server.mjs"), "utf8");
 const config = JSON.parse(readFileSync(resolve(root, "vercel.json"), "utf8"));
 
 test("TIG, TigerIQ, UltraCarHCM, seven service profiles", () => {
-  assert.match(html, /<strong>TIG<\/strong>/);
-  assert.match(html, />TigerIQ<\/span>/);
+  assert.match(html, /class="brand-mark" src="\/favicon\.svg\?v=tig-brand-20261106"/);
+  assert.match(html, /class="brand-wordmark">Tiger<span class="brand-iq">IQ<\/span><\/span>/);
   assert.match(html, /UltraCarHCM/);
   assert.match(html, /0392960003/);
   assert.equal((html.match(/class="service-card reveal"/g) || []).length, 7);
@@ -63,4 +63,13 @@ test("PC01 and static host security & SEO", () => {
   assert.match(readFileSync(resolve(root,"sitemap.xml"),"utf8"), /tigeriq\.io\.vn/);
   assert.ok(html.includes("/style.css?v=tig-v3-20261105"));
   assert.ok(html.includes("/main.js?v=tig-v3-20261105"));
+});
+
+test("TIG vector icon and consistent website branding", () => {
+  const svg = readFileSync(resolve(root, "favicon.svg"), "utf8");
+  assert.match(svg, /aria-label="TIG — TigerIQ"/);
+  assert.match(svg, /<text[^>]+>TIG<\/text>/);
+  assert.match(svg, /M25 116 C56 84/);
+  assert.match(html, /đầu hổ trắng trong khối kính 3D/);
+  assert.match(css, /\.brand-mark\{/);
 });
