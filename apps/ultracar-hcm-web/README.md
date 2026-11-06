@@ -16,3 +16,9 @@ Chạy Node.js `node server.mjs` mặc định 127.0.0.1:8893 (biến `PORT`), H
 
 Liên hệ đại lý: 0392 960 003 / https://zalo.me/0392960003.
 - Danh mục được đối chiếu theo `window.UCBackendProducts` ngày 06/11/2026: 54 mã hãng và giá công khai (NC888 cập nhật 2.500.000đ). Mã ULTRAMOUNT không xuất hiện trong catalog hãng được bỏ; tồn kho theo hãng đang 0, vì vậy không khẳng định sẵn hàng tại HCM. Các mô tả bổ sung viết lại ngắn gọn, không sao chép nội dung dài.
+
+## Tự phục vụ toàn bộ liên kết nội dung tại UltraCarHCM (2026-11-06)
+- 172/172 URL tiếng Việt được xác minh HTTP 200 và thu thập metadata (title, description, headings, ảnh OG); bản dữ liệu canonical `source-details.json` do GitHub quản lý.
+- 128 ảnh đại diện, gallery và sản phẩm được lưu trực tiếp tại PC01 `assets/manufacturer`; `assets/manufacturer/manifest.json` ghi đường dẫn và SHA256 để kiểm tra. File binary được tái tạo theo `tools/source-snapshot.mjs` trên PC01, không hotlink website hãng.
+- Mọi thẻ trong thư viện mở `/chi-tiet.html?page=...` và sản phẩm dùng `?sku=...`, không điều hướng ra UltraCar.vn. Trang chi tiết là nội dung tóm lược biên tập riêng, **không phải bản chép toàn bộ nội dung bản quyền, video, 3D hoặc chính sách gốc**.
+- Tất cả outbound source hyperlinks trong HTML/app đã bỏ; Zalo vẫn mở vì là kênh liên hệ chủ đại lý.
