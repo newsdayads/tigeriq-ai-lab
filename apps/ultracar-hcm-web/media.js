@@ -1,0 +1,67 @@
+window.ULTRACAR_MEDIA = {
+  "source": "https://ultracar.vn/san-pham/",
+  "sourceDate": "2026-11-06",
+  "products": {
+    "13G8RCB": "/assets/models/ultracar-13-3-front.webp",
+    "13G8RKD": "/assets/models/ultracar-13-3-front.webp",
+    "13GRCB": "/assets/models/ultracar-13-3-front.webp",
+    "13GRKD": "/assets/models/ultracar-13-3-front.webp",
+    "13R": "/assets/models/ultracar-13-3-front.webp",
+    "13RCBKV": "/assets/models/ultracar-13-3-front.webp",
+    "16G8RCB": "/assets/screen-front.png",
+    "16G8RKD": "/assets/screen-front.png",
+    "16GRCB": "/assets/screen-front.png",
+    "16GRKD": "/assets/screen-front.png",
+    "16R": "/assets/screen-front.png",
+    "16RKKV": "/assets/screen-front.png",
+    "T13D": "/assets/models/ultracar-13-3-front.webp",
+    "T13DCB": "/assets/ultracar-13-3-inch.png",
+    "T13L": "/assets/models/ultracar-13-3-front.webp",
+    "T13LCB": "/assets/ultracar-13-3-inch.png",
+    "T13P": "/assets/models/ultracar-13-3-front.webp",
+    "T13PCB": "/api/media/3ce38de7-a01a-4ac9-b14b-1752b9b84329",
+    "T13U": "/assets/models/ultracar-13-3-front.webp",
+    "T13UCB": "/api/media/0c3fcb14-b8ff-4a83-bb50-0814311547e9",
+    "T16D": "/assets/screen-front.png",
+    "T16DCB": "/assets/ultracar-16-inch.png",
+    "T16L": "/assets/ultracar-16-inch.png",
+    "T16LCB": "/assets/ultracar-16-inch.png",
+    "T16P": "/assets/screen-front.png",
+    "T16PCB": "/api/media/5d27aeba-c009-412f-ae66-18d01647a02c",
+    "T16U": "/assets/screen-front.png",
+    "T16UCB": "/api/media/1560c93f-6df3-42e6-aa54-44c1995c2469",
+    "NC888": "/assets/previews/upgrade-integrated.webp",
+    "VXL865": "/assets/product-guides/minio-separate-720.webp",
+    "VXL888": "/assets/product-guides/minio-separate-720.webp",
+    "VXL8G1": "/assets/product-guides/minio-separate-720.webp",
+    "CAMLUI": "/assets/catalogue-026/camlui-1.png",
+    "PDP16": "/assets/catalogue-026/pdp16-1.png",
+    "GDGD": "/assets/headrest/five-sizes.webp"
+  },
+  "gallery": [
+    {
+      "title": "Khoang lái với UltraCar",
+      "desc": "Hình ảnh màn hình UltraCar bố trí trong khoang lái",
+      "src": "/assets/hero/ultracar-cockpit-1600.webp",
+      "link": "https://ultracar.vn/"
+    },
+    {
+      "title": "Bộ UltraCar trên VF5",
+      "desc": "Hình ảnh combo và cách bố trí trên dòng VinFast VF5",
+      "src": "/assets/product-guides/combo-vf5.webp",
+      "link": "https://ultracar.vn/san-pham/"
+    },
+    {
+      "title": "So sánh màn hình 13,3″ và 16″",
+      "desc": "Minh họa kích thước để lựa chọn theo khoang lái",
+      "src": "/assets/product-guides/screen-comparison.webp",
+      "link": "https://ultracar.vn/san-pham/"
+    },
+    {
+      "title": "Bộ UltraCar tích hợp",
+      "desc": "Hình ảnh cấu hình màn hình tích hợp theo xe",
+      "src": "/assets/product-guides/minio-integrated.webp",
+      "link": "https://ultracar.vn/san-pham/"
+    }
+  ]
+};
