@@ -13,7 +13,7 @@ test("TigerIQ 3D site origin serves only expected public routes", async () => {
     for (const [path, type] of [["/healthz", "application/json"], ["/", "text/html"], ["/robots.txt", "text/plain"], ["/sitemap.xml", "application/xml"], ["/tigeriq3d-icon.svg", "image/svg+xml"]]) {
       const response = await fetch(url + path);
       assert.equal(response.status, 200, path);
-      assert.match(response.headers.get("content-type") ?? "", new RegExp(type));
+      assert.ok((response.headers.get("content-type") ?? "").startsWith(type), path + " content-type");
       assert.equal(response.headers.get("x-content-type-options"), "nosniff");
       const body = await response.text();
       if (path === "/healthz") assert.deepEqual(JSON.parse(body), { status: "ok", service: "tigeriq-3d" });
