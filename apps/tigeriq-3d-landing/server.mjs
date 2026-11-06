@@ -11,7 +11,8 @@ const routes = new Map([
   ["/", ["index.html", "text/html; charset=utf-8"]],
   ["/index.html", ["index.html", "text/html; charset=utf-8"]],
   ["/robots.txt", ["robots.txt", "text/plain; charset=utf-8"]],
-  ["/sitemap.xml", ["sitemap.xml", "application/xml; charset=utf-8"]]
+  ["/sitemap.xml", ["sitemap.xml", "application/xml; charset=utf-8"]],
+  ["/tigeriq3d-icon.svg", ["tigeriq3d-icon.svg", "image/svg+xml; charset=utf-8"]]
 ]);
 const headers = {
   "X-Content-Type-Options": "nosniff",

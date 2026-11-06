@@ -10,15 +10,19 @@ test("TigerIQ 3D site origin serves only expected public routes", async () => {
   const port = server.address().port;
   const url = "http://" + host + ":" + port;
   try {
-    for (const [path, type] of [["/healthz", "application/json"], ["/", "text/html"], ["/robots.txt", "text/plain"], ["/sitemap.xml", "application/xml"]]) {
+    for (const [path, type] of [["/healthz", "application/json"], ["/", "text/html"], ["/robots.txt", "text/plain"], ["/sitemap.xml", "application/xml"], ["/tigeriq3d-icon.svg", "image/svg+xml"]]) {
       const response = await fetch(url + path);
       assert.equal(response.status, 200, path);
-      assert.match(response.headers.get("content-type") ?? "", new RegExp(type));
+      assert.ok((response.headers.get("content-type") ?? "").startsWith(type), path + " content-type");
       assert.equal(response.headers.get("x-content-type-options"), "nosniff");
       const body = await response.text();
       if (path === "/healthz") assert.deepEqual(JSON.parse(body), { status: "ok", service: "tigeriq-3d" });
+      if (path === "/tigeriq3d-icon.svg") assert.match(body, /<svg[\s\S]*<\/svg>/);
       if (path === "/") {
         assert.match(body, /TigerIQ 3D/);
+        assert.match(body, /rel="icon" type="image\/svg\+xml" href="\/tigeriq3d-icon\.svg"/);
+        assert.match(body, /class="brand-mark" src="\/tigeriq3d-icon\.svg"/);
+        assert.match(body, /text-wrap:balance/, "hero text clipping guard");
         assert.match(body, /0392 960 003/);
         assert.match(body, /zalo\.me\/0392960003/);
         assert.match(body, /data-tilt/);
