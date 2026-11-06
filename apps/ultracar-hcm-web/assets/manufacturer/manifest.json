@@ -1,0 +1,902 @@
+{
+  "origin": "https://ultracar.vn",
+  "createdOn": "2026-11-06T09:04:17.673Z",
+  "images": [
+    {
+      "path": "/assets/models/ultracar-13-3-front.webp",
+      "local": "/assets/manufacturer/assets/models/ultracar-13-3-front.webp",
+      "sha256": "c07e82f46f9876544f01a6d5ed56f6feca10b7940076ce0707704549c9b6bf46",
+      "bytes": 145478,
+      "existing": true
+    },
+    {
+      "path": "/assets/screen-front.png",
+      "local": "/assets/manufacturer/assets/screen-front.png",
+      "sha256": "9ea5772218a64448bfbf238397c9bd75bbffc584b170b536c55d40e318c947d4",
+      "bytes": 1800093,
+      "existing": true
+    },
+    {
+      "path": "/assets/ultracar-13-3-inch.png",
+      "local": "/assets/manufacturer/assets/ultracar-13-3-inch.png",
+      "sha256": "4863e97bd10b3eb0232919ba9800226882556f6a587f2003d22f0401b378c790",
+      "bytes": 1750483,
+      "existing": true
+    },
+    {
+      "path": "/api/media/3ce38de7-a01a-4ac9-b14b-1752b9b84329",
+      "local": "/assets/manufacturer/api/media/3ce38de7-a01a-4ac9-b14b-1752b9b84329.jpg",
+      "sha256": "729ed7203afdfc7d17d150fae4cb630d14070951885fd1718536fbcd9929ee50",
+      "bytes": 483536,
+      "existing": true
+    },
+    {
+      "path": "/api/media/0c3fcb14-b8ff-4a83-bb50-0814311547e9",
+      "local": "/assets/manufacturer/api/media/0c3fcb14-b8ff-4a83-bb50-0814311547e9.jpg",
+      "sha256": "465b1d76ca33b0955412eb3586e5e66667cba7645c8f58143f96c19a9a845038",
+      "bytes": 484931,
+      "existing": true
+    },
+    {
+      "path": "/assets/ultracar-16-inch.png",
+      "local": "/assets/manufacturer/assets/ultracar-16-inch.png",
+      "sha256": "230041e1bc332d615c88a3dd78b139fde7eb13c54da2d02e03d4a740848852be",
+      "bytes": 2162530,
+      "existing": true
+    },
+    {
+      "path": "/api/media/5d27aeba-c009-412f-ae66-18d01647a02c",
+      "local": "/assets/manufacturer/api/media/5d27aeba-c009-412f-ae66-18d01647a02c.jpg",
+      "sha256": "d70385874dc8039f749b26719263e52c687a8bdf4be5bf34a024b8b6fff1e27b",
+      "bytes": 502152,
+      "existing": true
+    },
+    {
+      "path": "/api/media/1560c93f-6df3-42e6-aa54-44c1995c2469",
+      "local": "/assets/manufacturer/api/media/1560c93f-6df3-42e6-aa54-44c1995c2469.jpg",
+      "sha256": "1e3044194ea36ff4977433caaa2600f5c7a127f5b62ca3bf56f54c668dbc80bc",
+      "bytes": 503548,
+      "existing": true
+    },
+    {
+      "path": "/assets/previews/upgrade-integrated.webp",
+      "local": "/assets/manufacturer/assets/previews/upgrade-integrated.webp",
+      "sha256": "cd18673ca3526ad9d422a0b14239d7d7af536f1000f7cfd355f0d9e270a7d217",
+      "bytes": 254644,
+      "existing": true
+    },
+    {
+      "path": "/assets/product-guides/minio-separate-720.webp",
+      "local": "/assets/manufacturer/assets/product-guides/minio-separate-720.webp",
+      "sha256": "dbe08313494b8c1ec3f91eca996d3d168aadf5ca07f835c0227c265b540e6a34",
+      "bytes": 126434,
+      "existing": true
+    },
+    {
+      "path": "/assets/catalogue-026/camlui-1.png",
+      "local": "/assets/manufacturer/assets/catalogue-026/camlui-1.png",
+      "sha256": "888b0f2e2ec5d6d654e6acb3dbcd9db3254adb52a3b4446f8e31770978f5bd1d",
+      "bytes": 1051848,
+      "existing": true
+    },
+    {
+      "path": "/assets/catalogue-026/pdp16-1.png",
+      "local": "/assets/manufacturer/assets/catalogue-026/pdp16-1.png",
+      "sha256": "679462429f41e9503609aa40e31cd11ccba6196d293ae73a0839b410c4981624",
+      "bytes": 888185,
+      "existing": true
+    },
+    {
+      "path": "/assets/headrest/five-sizes.webp",
+      "local": "/assets/manufacturer/assets/headrest/five-sizes.webp",
+      "sha256": "3fcc8f52a06a7e0a9c07b05bbae1ea03c92ef91dabb1e7775c273233dafef560",
+      "bytes": 101530,
+      "existing": true
+    },
+    {
+      "path": "/assets/catalogue-026/camluikv-1.png",
+      "local": "/assets/manufacturer/assets/catalogue-026/camluikv-1.png",
+      "sha256": "0210055a352e0e3229d7068690b14b9e5705942afa0e2dcc23852aa7a5d93086",
+      "bytes": 1170255,
+      "existing": true
+    },
+    {
+      "path": "/assets/catalogue-026/cbd2-1.png",
+      "local": "/assets/manufacturer/assets/catalogue-026/cbd2-1.png",
+      "sha256": "11eb6f6bc5d80dd61ee6debabd91692db8f22e9432e37a1a8e881c467a286543",
+      "bytes": 287647,
+      "existing": true
+    },
+    {
+      "path": "/assets/catalogue-026/cbd3-1.png",
+      "local": "/assets/manufacturer/assets/catalogue-026/cbd3-1.png",
+      "sha256": "4debc416a6a52399a0f7e3e8cdacabbcea017b8ce81128c4ffcf21618b0b8cab",
+      "bytes": 287782,
+      "existing": true
+    },
+    {
+      "path": "/assets/catalogue-026/dnc-1.png",
+      "local": "/assets/manufacturer/assets/catalogue-026/dnc-1.png",
+      "sha256": "abf4980c31ab7dd31fba1c06fb1d83f1e8c96be20f70bd8928f5888c6745c206",
+      "bytes": 604027,
+      "existing": true
+    },
+    {
+      "path": "/assets/catalogue-026/dtb-1.png",
+      "local": "/assets/manufacturer/assets/catalogue-026/dtb-1.png",
+      "sha256": "cb33ffa004250a481b13fd43d2ffe38cdc5656f3f325cf64bbd0ae78421a19ad",
+      "bytes": 826312,
+      "existing": true
+    },
+    {
+      "path": "/assets/models/ultracar-mount-original.jpg",
+      "local": "/assets/manufacturer/assets/models/ultracar-mount-original.jpg",
+      "sha256": "c563006bbf58d1eeb2ef228469c747e1566af6c65c1b165685285e8a205ba1f5",
+      "bytes": 1012731,
+      "existing": true
+    },
+    {
+      "path": "/assets/catalogue-026/k3-1.png",
+      "local": "/assets/manufacturer/assets/catalogue-026/k3-1.png",
+      "sha256": "ed806376bcf02b64c600655f2d76544b2ab2d485b141b249ceb47ac2bbc74fc8",
+      "bytes": 456433,
+      "existing": true
+    },
+    {
+      "path": "/assets/catalogue-026/mpt-1.png",
+      "local": "/assets/manufacturer/assets/catalogue-026/mpt-1.png",
+      "sha256": "c2f1303b18e056606c85c20e98ba7e56fbf084fdd0dee7ae7bd03c4e50b1b2be",
+      "bytes": 3115751,
+      "existing": true
+    },
+    {
+      "path": "/assets/catalogue-026/nxl-1.png",
+      "local": "/assets/manufacturer/assets/catalogue-026/nxl-1.png",
+      "sha256": "f3ff6086d16320bc35704f5bf636266383d97fedbfae85cb25eb77856a0881b8",
+      "bytes": 3263022,
+      "existing": true
+    },
+    {
+      "path": "/assets/catalogue-026/nxl1-1.png",
+      "local": "/assets/manufacturer/assets/catalogue-026/nxl1-1.png",
+      "sha256": "f3ff6086d16320bc35704f5bf636266383d97fedbfae85cb25eb77856a0881b8",
+      "bytes": 3263022,
+      "existing": true
+    },
+    {
+      "path": "/assets/catalogue-026/nxl2-1.png",
+      "local": "/assets/manufacturer/assets/catalogue-026/nxl2-1.png",
+      "sha256": "2af277d1c0e17f27511047cd1989681311f78528bb8e5f2c98bd55c4b2ff13e2",
+      "bytes": 2616231,
+      "existing": true
+    },
+    {
+      "path": "/assets/hero/ultracar-cockpit-1600.webp",
+      "local": "/assets/manufacturer/assets/hero/ultracar-cockpit-1600.webp",
+      "sha256": "14c1120a5a9f31a14406610478b567ff828127c79a34a2aa11b799ae6e424ed9",
+      "bytes": 311524,
+      "existing": true
+    },
+    {
+      "path": "/assets/product-guides/combo-vf5.webp",
+      "local": "/assets/manufacturer/assets/product-guides/combo-vf5.webp",
+      "sha256": "681ed1ac562c17fc6add2002edc7e7614793533825b9b01eda67a5beadb523ec",
+      "bytes": 395798,
+      "existing": true
+    },
+    {
+      "path": "/assets/product-guides/screen-comparison.webp",
+      "local": "/assets/manufacturer/assets/product-guides/screen-comparison.webp",
+      "sha256": "40829bcc65a14e1d2bba34d31c9fc66b0ac6343278a7d2be45f2d14ba6010bec",
+      "bytes": 195682,
+      "existing": true
+    },
+    {
+      "path": "/assets/product-guides/minio-integrated.webp",
+      "local": "/assets/manufacturer/assets/product-guides/minio-integrated.webp",
+      "sha256": "7a06f7fbeb4c950fa53102973aa5914c779ca7016093964216901c1644191e35",
+      "bytes": 339264,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/bestune-xiaoma.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/bestune-xiaoma.webp",
+      "sha256": "f58abb0ba5d5e61addd2d3122d00645178b3460c4da3312c7ff93ea635d1fc21",
+      "bytes": 55950,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/bmw-5-series-2018-g30.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/bmw-5-series-2018-g30.webp",
+      "sha256": "366198c013019b6bc0c367c443573973deda370bef39dd3aa7947459422d8313",
+      "bytes": 121306,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/bmw-x7-2020.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/bmw-x7-2020.webp",
+      "sha256": "d7549f324d830795271270d6e401136394a3a1a4c165350adb8dfd7c0be43805",
+      "bytes": 31640,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/chevrolet-trailblazer-2018.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/chevrolet-trailblazer-2018.webp",
+      "sha256": "48c2eebc10a5e38b6a611b92baa1af125d5f3357a7194bbaf8b650b57bc5dc11",
+      "bytes": 104152,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/citroen-berlingo-2026.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/citroen-berlingo-2026.webp",
+      "sha256": "0c86701fdc90887de440d80f0f90185e291a3bac892d775079ac1927121580a6",
+      "bytes": 64904,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/ford-everest.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/ford-everest.webp",
+      "sha256": "bd29aba7861505c82fb1f2d9162382d84ac36f72f134339cd2e0ee69ce91fc0e",
+      "bytes": 103552,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/ford-everest-2020.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/ford-everest-2020.webp",
+      "sha256": "5cbc8f883bb070a06b76ae778eed9fe5d15fd9baf12e9ade86cbdee61caaf797",
+      "bytes": 97790,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/ford-focus-2018.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/ford-focus-2018.webp",
+      "sha256": "963bb634b6173ca69648a91cc02af2199e2a1afff2ea1dfe70e8bdd30ddce159",
+      "bytes": 83458,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/ford-mondeo-hybrid-2015.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/ford-mondeo-hybrid-2015.webp",
+      "sha256": "ee805b48c35bee6e8626e479ca26e67d2f8661ea640d93c45dd312b8f553577f",
+      "bytes": 98988,
+      "existing": true
+    },
+    {
+      "path": "/assets/vehicle-gallery/photo-001.webp",
+      "local": "/assets/manufacturer/assets/vehicle-gallery/photo-001.webp",
+      "sha256": "5aeff1a05731062efc5ac3f3455e4c1c8c54cee45be72cd352e3bd428ae4e6c8",
+      "bytes": 185958,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/ford-ranger-2014.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/ford-ranger-2014.webp",
+      "sha256": "d3434c8dd47aa024af1aeb866e34e39920c7f11d4d78b597927ba5a47bee4d41",
+      "bytes": 39148,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/ford-ranger-raptor.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/ford-ranger-raptor.webp",
+      "sha256": "780dad98aebf0756aca292683d8000294ab525ba28ac1bdc56f571f0c7b44153",
+      "bytes": 105272,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/ford-territory.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/ford-territory.webp",
+      "sha256": "ccd4d8c6b611674ef5d09ff7ef2d779a87bab095e8ab3c8dd6849097b5d59e9c",
+      "bytes": 42566,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/geely-coolray.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/geely-coolray.webp",
+      "sha256": "bc788488c41a9916b01f8f685c583010ccd704b5780d095d23c78dee313abf8a",
+      "bytes": 49872,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/hino-300.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/hino-300.webp",
+      "sha256": "096341403dd88f42ad40febd8b965d5a327fdd05d268cd75fba94a184936f0ce",
+      "bytes": 47140,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/honda-br-v.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/honda-br-v.webp",
+      "sha256": "cfbf4455b0778f2ae5676337c0833b25e8b38ae7cf75360d112bbe47c4789ffc",
+      "bytes": 67906,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/honda-city-2021.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/honda-city-2021.webp",
+      "sha256": "7cbc0ea9e88cad44bff69ee09b6fb3649b8a51f6a1e1609315932ff397699fc6",
+      "bytes": 44994,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/honda-city-rs-2022.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/honda-city-rs-2022.webp",
+      "sha256": "d2ce83017d7d2587a2c6b849f10447c95bab67c9ff023f78ff0cef1ab08cebe7",
+      "bytes": 160244,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/honda-civic.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/honda-civic.webp",
+      "sha256": "c97f71c40494af91759d26c18a4e3a7b156c35d0dfc0bc43c542bf76e4bceb56",
+      "bytes": 103148,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/honda-cr-v.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/honda-cr-v.webp",
+      "sha256": "58bf6f8cc9a7e395ea96f27e9eb9b6fe5f43d0df2015b5ea4f3dd45e6a912cb6",
+      "bytes": 78444,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/honda-cr-v-2021.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/honda-cr-v-2021.webp",
+      "sha256": "84adb5f7bd747ee7657cb2633f6c414b464e5f11dae0e8f0a67ea25018f9bffe",
+      "bytes": 70518,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/honda-hr-v-2024.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/honda-hr-v-2024.webp",
+      "sha256": "30952f004b851b2bcdfcf7aa598f51dd7d96f6679b1077013cab4e147279332a",
+      "bytes": 56884,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/honda-odyssey-rc1.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/honda-odyssey-rc1.webp",
+      "sha256": "b9e555df54cfbb1d608f2ef41c84ea8b833a59debd1efc73d63165f971138273",
+      "bytes": 128428,
+      "existing": true
+    },
+    {
+      "path": "/assets/vehicle-gallery/photo-031.webp",
+      "local": "/assets/manufacturer/assets/vehicle-gallery/photo-031.webp",
+      "sha256": "1893444332b72a1df5659aec0cb55bbd10836f005b8dab6127c969f42f4319ce",
+      "bytes": 134400,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/hyundai-accent-2020.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/hyundai-accent-2020.webp",
+      "sha256": "870fb7ecb0f9835f6373c897ec0d42c5cb9ce70553a462e2d13fe3c6566be75e",
+      "bytes": 57550,
+      "existing": true
+    },
+    {
+      "path": "/assets/vehicle-gallery/photo-042.webp",
+      "local": "/assets/manufacturer/assets/vehicle-gallery/photo-042.webp",
+      "sha256": "938c9ac8fc3172dbc8e0c87afec2de70435af717c90b3321b09d175b328ebb13",
+      "bytes": 272430,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/hyundai-santa-fe.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/hyundai-santa-fe.webp",
+      "sha256": "023322b469752ef107b612d5222fcddb94b3601664f79e5284227d2721542052",
+      "bytes": 62134,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/hyundai-santa-fe-2020.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/hyundai-santa-fe-2020.webp",
+      "sha256": "c8260b51f9f22f1ee304e5c61fe8da256c6dd5c64adcbfeaca3c7a7bccb9990b",
+      "bytes": 76700,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/hyundai-santa-fe-2021.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/hyundai-santa-fe-2021.webp",
+      "sha256": "6fe260ef07a72a2fcc27889a5521b20f999c27b245bc1fa6372293b9977a3211",
+      "bytes": 108906,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/hyundai-santa-fe-2022.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/hyundai-santa-fe-2022.webp",
+      "sha256": "202bc8e4934a34cf89d88257cb74c27ff7632be3c0a4dc7a2f6658cbd3b49a8b",
+      "bytes": 66056,
+      "existing": true
+    },
+    {
+      "path": "/assets/vehicle-gallery/photo-046.webp",
+      "local": "/assets/manufacturer/assets/vehicle-gallery/photo-046.webp",
+      "sha256": "2fbaa5d2fb75a7b69b2694edf34084e0e2a8f8aaa6b89429ed7542fd706fa1dd",
+      "bytes": 105618,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/hyundai-tucson.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/hyundai-tucson.webp",
+      "sha256": "85a5c914a36a87c92444acc01c230570cf661b31dcb5943d0b95cb5348353aff",
+      "bytes": 94468,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/hyundai-tucson-2024.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/hyundai-tucson-2024.webp",
+      "sha256": "f32b8740eb4c8242e65ef90962a0fc068b6c47183325293c717c606c22c076cb",
+      "bytes": 68786,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/hyundai-venue.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/hyundai-venue.webp",
+      "sha256": "3b1efe3b5cdc47fd511d515994395089fb608520b6ba61d27596bad708dd1efc",
+      "bytes": 54474,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/isuzu-d-max-2016.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/isuzu-d-max-2016.webp",
+      "sha256": "97f30b1e4e54882db40aba33f77807f965195cd3ce3434ea89cba66c5bbf11e1",
+      "bytes": 21694,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/isuzu-mu-x.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/isuzu-mu-x.webp",
+      "sha256": "af989d3c6fe6eb4898cacdf89ec101b724e39240f2df58145658f94f7cb1295d",
+      "bytes": 82294,
+      "existing": true
+    },
+    {
+      "path": "/assets/vehicle-gallery/photo-049.webp",
+      "local": "/assets/manufacturer/assets/vehicle-gallery/photo-049.webp",
+      "sha256": "34b5d9722e315b7cbef107ac31ce21d7ff57c6dfd0057bbf13ab314204287e24",
+      "bytes": 191464,
+      "existing": true
+    },
+    {
+      "path": "/assets/vehicle-gallery/photo-074.webp",
+      "local": "/assets/manufacturer/assets/vehicle-gallery/photo-074.webp",
+      "sha256": "46ed87beb1ea4c8c8c0688fdd6a1503e6a20afc81639e44aa716216f6bb125a1",
+      "bytes": 225456,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/kia-carnival-2022.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/kia-carnival-2022.webp",
+      "sha256": "9fe8c0a31cdddb5ff18be1f97d99b0b7dc8464689a2e8e13f57dc68de9567d5b",
+      "bytes": 227436,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/kia-cerato-2021.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/kia-cerato-2021.webp",
+      "sha256": "e706319fab15bd44c9038e64d600644370b8804e52ab5c6df738ebb631c8833a",
+      "bytes": 99878,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/kia-forte-2011.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/kia-forte-2011.webp",
+      "sha256": "aaeaf1623df97f6b9bfa66ef362f050099899b46d249044304a1752f808b1ee5",
+      "bytes": 42468,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/kia-k5-2013.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/kia-k5-2013.webp",
+      "sha256": "d8cbc1fa78c8e75b1e88c028068ba00f4af5fb19b7dfa83ab5aff8fa980d3664",
+      "bytes": 62886,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/kia-sedona.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/kia-sedona.webp",
+      "sha256": "3f8f0bbd896e9f5320c79a235057dd2b9bc681e2fbab48c0a7943a460ffa21b0",
+      "bytes": 78046,
+      "existing": true
+    },
+    {
+      "path": "/assets/vehicle-gallery/photo-082.webp",
+      "local": "/assets/manufacturer/assets/vehicle-gallery/photo-082.webp",
+      "sha256": "c4484c10032aa5e0c5cdafef16f509be2be74ba675349b51905c0fc31324726d",
+      "bytes": 205918,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/kia-seltos-2020.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/kia-seltos-2020.webp",
+      "sha256": "2e603bd8ddca025c8f443f027a6af871179831ee9709a80bef3fa29cfb732cab",
+      "bytes": 41862,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/kia-seltos-2026.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/kia-seltos-2026.webp",
+      "sha256": "d979ac22850bbb7f29d5941703468725bf75f369f690243b2920284d0543d740",
+      "bytes": 92286,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/kia-soluto.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/kia-soluto.webp",
+      "sha256": "3a7dc997b42da6cf781c6e200c5d1f5f91b1d9d46f8ef1634f3dcdd992ba332b",
+      "bytes": 48648,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/kia-sonet.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/kia-sonet.webp",
+      "sha256": "5e2ada96f19cb8be08691eadd652c2f75bf6702d0972901db13a96d86d51ebf8",
+      "bytes": 72516,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/kia-sorento-2022.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/kia-sorento-2022.webp",
+      "sha256": "c73b47f3902ddcab6cd387b998b2ef94ad182ff83b2e6d0915e61cd65778cdb7",
+      "bytes": 78724,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/kia-sportage.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/kia-sportage.webp",
+      "sha256": "88d3148c5a9c0ad3257f1f1b27c6a55313bca75f6d70ab6b4fa600acb98e947f",
+      "bytes": 95028,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/lexus-gx460.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/lexus-gx460.webp",
+      "sha256": "f3acf3731bfa12b772773f8ece5937c12d7a1c28cb12dcf87095166d186a4037",
+      "bytes": 27504,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/lexus-rx400h.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/lexus-rx400h.webp",
+      "sha256": "3792eb16ac123cd55380c0878f65b883cc96ab97480e7cfb6d12f60ba6e1d467",
+      "bytes": 24678,
+      "existing": true
+    },
+    {
+      "path": "/assets/vehicle-gallery/photo-099.webp",
+      "local": "/assets/manufacturer/assets/vehicle-gallery/photo-099.webp",
+      "sha256": "935a6e413a46301449104f1a5e5a9d95ac16f06f537089bbce0c0778a0fbb6f8",
+      "bytes": 157710,
+      "existing": true
+    },
+    {
+      "path": "/assets/vehicle-gallery/photo-135.webp",
+      "local": "/assets/manufacturer/assets/vehicle-gallery/photo-135.webp",
+      "sha256": "482312148d0327a1618485731331b7bb3ce36ac0bbd6b1369174aaaae8aae3a0",
+      "bytes": 146698,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/mazda-mazda2-2018.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/mazda-mazda2-2018.webp",
+      "sha256": "3f4ea5bb3b4e1f53b004878fa38b4e56f237258cc105b117df1535eae1164d94",
+      "bytes": 34866,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/mazda-mazda-3.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/mazda-mazda-3.webp",
+      "sha256": "fe060dddf621f8621e1e1b8d30b0c26088266748b96d68d9e8c7c7037a8aa29a",
+      "bytes": 57306,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/mg-mg5.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/mg-mg5.webp",
+      "sha256": "c1acdb92e3779b667dbaa6b9627889af229a2c7e0f15ec42e8c1a46c155d4de1",
+      "bytes": 50546,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/mg-mg7.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/mg-mg7.webp",
+      "sha256": "d01eb9b436e3ba612c45a95d6319b466894a9a6e90e56d2659c89a501784b027",
+      "bytes": 73430,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/mitsubishi-attrage.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/mitsubishi-attrage.webp",
+      "sha256": "d65e5578c6d233a43b6b15cb7d67805f0bbb082fc35a6b743d25e9139af4ca64",
+      "bytes": 39300,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/mitsubishi-outlander-2019.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/mitsubishi-outlander-2019.webp",
+      "sha256": "d21d6c6475ceb3cd82e6d71b53d82fd446e5e23844e6446768779882b20f75b9",
+      "bytes": 36596,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/mitsubishi-triton-2019.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/mitsubishi-triton-2019.webp",
+      "sha256": "3be7e7c9977ef1354140edf5d3388c3bd68b26d24bfdaef7ad563e559331c8f1",
+      "bytes": 100788,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/mitsubishi-xpander.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/mitsubishi-xpander.webp",
+      "sha256": "7957afb7cc9084c7bb6ebf6ddbb9c561c5cc808f71aee3f17b5d0d1b1d53950d",
+      "bytes": 95384,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/mitsubishi-xpander-cross.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/mitsubishi-xpander-cross.webp",
+      "sha256": "8958db09328eca6d62a0c2a886e6f2320d290aba6f86104e41ae8907c40ef6f9",
+      "bytes": 57528,
+      "existing": true
+    },
+    {
+      "path": "/assets/vehicle-gallery/photo-146.webp",
+      "local": "/assets/manufacturer/assets/vehicle-gallery/photo-146.webp",
+      "sha256": "6d72651c97390910ee8672788d9c4ef0c7a302dbb4954e42770801f1ae6807fa",
+      "bytes": 228278,
+      "existing": true
+    },
+    {
+      "path": "/assets/vehicle-gallery/sm5-2011/renault-samsung-sm5-2011-05.webp",
+      "local": "/assets/manufacturer/assets/vehicle-gallery/sm5-2011/renault-samsung-sm5-2011-05.webp",
+      "sha256": "890cf0b576cc2524bd1fae4a3c9ead4d7147cffdcb1de25578d13382568da60f",
+      "bytes": 201092,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/skoda-kushaq.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/skoda-kushaq.webp",
+      "sha256": "a5c6490d9ed8538c9fe87a9a0a7aec9a15eee8909a4aecc5a0af916645ac3e48",
+      "bytes": 81072,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/suzuki-ertiga.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/suzuki-ertiga.webp",
+      "sha256": "e29964bec71eddc1190f209209993917d29c79055adf37cb7d62e02b5d09b2c2",
+      "bytes": 34478,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/suzuki-ertiga-2021.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/suzuki-ertiga-2021.webp",
+      "sha256": "9b8648f25f4365717adbe27b8838dbefc6ab410f0fa00b1e030e7f873e2e19fa",
+      "bytes": 71918,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/suzuki-xl7.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/suzuki-xl7.webp",
+      "sha256": "f02469b11f9b10d10e53b73205c6a4c7698d6df006f2923a7982e24a98177da8",
+      "bytes": 95088,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/toyota-camry-2015.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/toyota-camry-2015.webp",
+      "sha256": "604b9790c10b371f96d985391a422a8dfadb944a9ba117a792ef5fda64fcc81a",
+      "bytes": 69338,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/toyota-camry-2020.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/toyota-camry-2020.webp",
+      "sha256": "260f55d25c4a62eaa43076859fa5458871e136b5bf5595d1b4e7b2479b4ec929",
+      "bytes": 89366,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/toyota-camry-2-0-2018.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/toyota-camry-2-0-2018.webp",
+      "sha256": "37a5f59f1e92a8c986293b41ba8644a38aa5ca3195547d6388eaac22a3d92e71",
+      "bytes": 137092,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/toyota-corolla-altis.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/toyota-corolla-altis.webp",
+      "sha256": "674faaccaa7752a96ec0a02a2291cc52828ec5e795645c04ec3fa3e4a16296c2",
+      "bytes": 70314,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/toyota-corolla-altis-2018.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/toyota-corolla-altis-2018.webp",
+      "sha256": "5dc376e5dfaf066c41d11d5abc148974b58be7f7443654662977e39d333c6b92",
+      "bytes": 114288,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/toyota-corolla-cross.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/toyota-corolla-cross.webp",
+      "sha256": "2e08ab867f5f59604ddab6ba44bfc6cd6373452f27b6163143cf49107d96dfdc",
+      "bytes": 88108,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/toyota-highlander-2021.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/toyota-highlander-2021.webp",
+      "sha256": "c2cf17744bb7165abf10fd954c6739cfd30ccf7d2cf475935216a6c1c63de6ac",
+      "bytes": 103832,
+      "existing": true
+    },
+    {
+      "path": "/assets/vehicle-gallery/photo-168.webp",
+      "local": "/assets/manufacturer/assets/vehicle-gallery/photo-168.webp",
+      "sha256": "ea8cdc662e6dd3e02646b81d10205c92f6cad9ebf5ba29e7b4061d12fd16216d",
+      "bytes": 206020,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/toyota-innova-cross.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/toyota-innova-cross.webp",
+      "sha256": "3c270a4eae76441a647f279b17910891e220627a4dbed4dd1477763576f222f6",
+      "bytes": 108458,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/toyota-raize.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/toyota-raize.webp",
+      "sha256": "1bea54502e609a46d256d5ee6b0e7e8284951c195776c700b00a6b7e7378c11e",
+      "bytes": 87564,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/toyota-sienna-2022.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/toyota-sienna-2022.webp",
+      "sha256": "638d1414c30b1e6b34ed4c0fe81392788cbaa77943aee4f451eb4b33b20a93eb",
+      "bytes": 96704,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/toyota-veloz-cross.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/toyota-veloz-cross.webp",
+      "sha256": "0a6625347a509c443aaf61788269911a78603a375bf4ff1980109a1f4ad3feda",
+      "bytes": 82578,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/toyota-vios.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/toyota-vios.webp",
+      "sha256": "a70eeee962f0f4a9e895e03b16430ed752e9fe700818566c1c74ead26e0c06ba",
+      "bytes": 126828,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/toyota-yaris-cross.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/toyota-yaris-cross.webp",
+      "sha256": "9bd4657b7d43224f550dd3543f360fc78cf4dcaac5cbaf0c9e8c45cdc1740ec0",
+      "bytes": 78992,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/vinfast-fadil.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/vinfast-fadil.webp",
+      "sha256": "fc6aac0ba05052e9c4ab58842b5bccf1159935b7e94cc479a0d5b706a9956a7a",
+      "bytes": 37702,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/vinfast-herio-green.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/vinfast-herio-green.webp",
+      "sha256": "c24d32549f7c2dcf7626463a1568b852352c5a5111bd10a1956f03354a3aa779",
+      "bytes": 139432,
+      "existing": true
+    },
+    {
+      "path": "/assets/vehicle-gallery/photo-178.webp",
+      "local": "/assets/manufacturer/assets/vehicle-gallery/photo-178.webp",
+      "sha256": "68b4d384721b6d96d271ac5b2365ddd72817fa172a9d5111f9f8ecb7d0542d3b",
+      "bytes": 185986,
+      "existing": true
+    },
+    {
+      "path": "/assets/vehicle-gallery/photo-185.webp",
+      "local": "/assets/manufacturer/assets/vehicle-gallery/photo-185.webp",
+      "sha256": "8323640824740ee45460faebc17b04e77d903f5a980fb5831ca194a2f202e636",
+      "bytes": 158714,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/vinfast-lux-sa2-0.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/vinfast-lux-sa2-0.webp",
+      "sha256": "62f9a5ba32adc2231b2c8ec3bae669b4ef8ff802b6fb3ccbda3367d674c26b82",
+      "bytes": 51930,
+      "existing": true
+    },
+    {
+      "path": "/assets/vehicle-gallery/photo-201.webp",
+      "local": "/assets/manufacturer/assets/vehicle-gallery/photo-201.webp",
+      "sha256": "60eb16c3a84f58fee85ad8536c6ef307fc21d1f53cbd47af21bb69b02e0f1397",
+      "bytes": 119846,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/vinfast-mpv-7.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/vinfast-mpv-7.webp",
+      "sha256": "f396a1da1cba87c58da93a2ab276b18545b5a476cbce57e54833ac45189b555f",
+      "bytes": 89020,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/vinfast-vf-3.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/vinfast-vf-3.webp",
+      "sha256": "277604ea63f1dd70de68b83360da5f9409627ee93d2f3f5b50e13cd58c59a995",
+      "bytes": 183254,
+      "existing": true
+    },
+    {
+      "path": "/assets/vehicle-gallery/photo-223.webp",
+      "local": "/assets/manufacturer/assets/vehicle-gallery/photo-223.webp",
+      "sha256": "7603426282e83e4501345f4ccf6f2d6cfdde45bcde8871d263dd1b98fa737a78",
+      "bytes": 231878,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/vinfast-vf-6.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/vinfast-vf-6.webp",
+      "sha256": "78821eedd2ba010c0eb7a080324af4f8f85e5e200754b95f0d455c2c1af4bf41",
+      "bytes": 113052,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/vinfast-vf-7.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/vinfast-vf-7.webp",
+      "sha256": "e3faeecce8e9e7ff0b7df63df7f5ece85a069c67aea5284330915bc68d90c82e",
+      "bytes": 121526,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/vinfast-vf-8.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/vinfast-vf-8.webp",
+      "sha256": "525bef6caf841fc8058a5cc259d328fe9d7cd87e0d662851cc6e33d21af6f1b0",
+      "bytes": 119438,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/vinfast-vf-9.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/vinfast-vf-9.webp",
+      "sha256": "1be47b739516dd0f1d315d9660d823526520cd82f2e3cd364fffaedf28d2dc80",
+      "bytes": 89210,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/vinfast-vf-e34.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/vinfast-vf-e34.webp",
+      "sha256": "45a08416b92fe879aa50da99777b91eebd4fa3b7d203de3724eb7fd4b9f2c255",
+      "bytes": 41566,
+      "existing": true
+    },
+    {
+      "path": "/assets/stock-cockpits/vinfast-vf-wild.webp",
+      "local": "/assets/manufacturer/assets/stock-cockpits/vinfast-vf-wild.webp",
+      "sha256": "6c4f684827044532ad7f4fea9f79fd9cc0cca5cdd8f9e6141c58305ae9063e73",
+      "bytes": 105062,
+      "existing": true
+    },
+    {
+      "path": "/assets/vehicle-gallery/tiguan/volkswagen-tiguan-03.webp",
+      "local": "/assets/manufacturer/assets/vehicle-gallery/tiguan/volkswagen-tiguan-03.webp",
+      "sha256": "c512a413659a6e45dc9eff7a3e96e92025fb1d97ed23929766723935c57b7dd8",
+      "bytes": 256510,
+      "existing": true
+    },
+    {
+      "path": "/assets/product-image-pending.png",
+      "local": "/assets/manufacturer/assets/product-image-pending.png",
+      "sha256": "aadce680354e69c62b6ca268a68f26c44bd8085c3409f2702f0ae42085cb3e16",
+      "bytes": 8295,
+      "existing": true
+    }
+  ]
+}
