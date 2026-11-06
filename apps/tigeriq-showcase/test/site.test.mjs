@@ -12,8 +12,8 @@ const server = readFileSync(resolve(root, "server.mjs"), "utf8");
 const config = JSON.parse(readFileSync(resolve(root, "vercel.json"), "utf8"));
 
 test("TIG, TigerIQ, UltraCarHCM, seven service profiles", () => {
-  assert.match(html, /class="brand-mark" src="\/favicon\.svg\?v=tig-brand-20261106"/);
-  assert.match(html, /class="brand-wordmark">Tiger<span class="brand-iq">IQ<\/span><\/span>/);
+  assert.match(html, /class="brand-lockup" src="\/approved-tig-logo\.svg\?v=tig-approved-20261106"/);
+  assert.match(html, /aria-label="TigerIQ, trở về trang chủ"/);
   assert.match(html, /UltraCarHCM/);
   assert.match(html, /0392960003/);
   assert.equal((html.match(/class="service-card reveal"/g) || []).length, 7);
@@ -58,18 +58,24 @@ test("PC01 and static host security & SEO", () => {
   assert.doesNotMatch(csp, /unsafe-inline|github/);
   assert.match(server, /connect-src 'self'/);
   assert.match(html, /rel="canonical"/);
-  assert.match(html, /\/favicon\.svg/);
+  assert.match(html, /\/approved-tig-icon\.svg\?v=tig-approved-20261106/);
   assert.match(readFileSync(resolve(root,"robots.txt"),"utf8"), /sitemap\.xml/);
   assert.match(readFileSync(resolve(root,"sitemap.xml"),"utf8"), /tigeriq\.io\.vn/);
   assert.ok(html.includes("/style.css?v=tig-v3-20261105"));
   assert.ok(html.includes("/main.js?v=tig-v3-20261105"));
 });
 
-test("TIG vector icon and consistent website branding", () => {
-  const svg = readFileSync(resolve(root, "favicon.svg"), "utf8");
-  assert.match(svg, /aria-label="TIG — TigerIQ"/);
-  assert.match(svg, /<text[^>]+>TIG<\/text>/);
-  assert.match(svg, /M25 116 C56 84/);
-  assert.match(html, /đầu hổ trắng trong khối kính 3D/);
-  assert.match(css, /\.brand-mark\{/);
+test("Approved TigerIQ source artwork is used consistently", () => {
+  const icon = readFileSync(resolve(root,"approved-tig-icon.svg"),"utf8");
+  const logo = readFileSync(resolve(root,"approved-tig-logo.svg"),"utf8");
+  for (const asset of [icon,logo]) {
+    assert.match(asset, /data:image\/png;base64,iVBORw0KGgo/);
+    assert.ok(asset.length > 1000000);
+  }
+  assert.match(icon, /aria-label="TIG — TigerIQ/);
+  assert.match(logo, /aria-label="TigerIQ — logo TIG/);
+  assert.match(html, /<image x="-159" y="-159" width="318" height="318" href="\/approved-tig-icon\.svg/);
+  assert.doesNotMatch(html, /M25 116 C56 84/);
+  assert.match(css, /\.brand-lockup\{/);
+  assert.match(server, /\["\/approved-tig-logo\.svg"/);
 });
