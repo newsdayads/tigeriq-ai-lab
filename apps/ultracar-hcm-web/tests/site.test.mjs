@@ -94,3 +94,18 @@ test('self-hosted 8 videos have manifest and correct byte-range support',()=>{
  assert.match(server,/createReadStream/);assert.match(server,/status=206/);
  assert.match(server,/accept-ranges/);assert.match(server,/content-range/);
 });
+
+test('276 self-hosted gallery images and thumbnails, 15 car brand filters',()=>{
+ const data=JSON.parse(read('gallery.json'));
+ assert.equal(data.entries.length,276);
+ assert.equal(data.assets.length,552);
+ assert.equal(data.assets.filter(x=>x.error).length,0);
+ assert.ok(new Set(data.entries.map(x=>x.brand).filter(Boolean)).size>=14);
+ for(const a of data.assets)assert.match(a.sha256,/^[0-9a-f]{64}$/);
+ const html=read('index.html'),js=read('gallery.js'),css=read('gallery.css');
+ assert.match(html,/id="ucGalleryGrid"/);assert.match(html,/id="ucGalleryBrand"/);
+ assert.match(html,/id="ucPhotoDialog"/);assert.match(html,/gallery\.js\?v=20261106r6/);
+ assert.match(js,/\/assets\/gallery/);
+ assert.match(js,/showModal/);assert.match(js,/ucGalleryReview/);
+ assert.match(css,/uc-gallery-grid/);
+});
