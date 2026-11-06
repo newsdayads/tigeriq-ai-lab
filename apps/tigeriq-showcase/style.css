@@ -206,3 +206,11 @@ body.motion-off .reveal{opacity:1!important;transform:none!important;transition:
 @media (prefers-reduced-motion: reduce){.glassy-ring,.floating-tig,.motion-track,.hero-scroll span,.mini-dot{animation:none!important}.tig-illustration{transform:none!important;transition:none!important}}
 
 .zalo-header-glyph{display:grid;place-items:center;flex:none;width:20px;height:20px;border-radius:50%;background:#fff;color:var(--red);font-size:12px;font-weight:760}
+
+/* TigerIQ / TIG brand identity — 2026-11-06 */
+.brand{gap:11px}
+.brand-mark{display:block;flex:none;width:43px;height:43px;object-fit:contain;filter:drop-shadow(0 3px 5px #cb19332b)}
+.brand-wordmark{display:inline-flex;align-items:baseline;color:var(--ink);font-size:21px;font-weight:690;letter-spacing:-.85px;line-height:1}
+.brand-iq{color:var(--red)}
+@media(max-width:520px){.brand{gap:7px}.brand-mark{width:35px;height:35px}.brand-wordmark{font-size:16px;letter-spacing:-.6px}}
+@media(max-width:350px){.brand-mark{width:31px;height:31px}.brand-wordmark{font-size:14px}}
