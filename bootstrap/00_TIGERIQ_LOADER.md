@@ -4,6 +4,15 @@ Status: Bootstrap Entry Point
 Priority: P0
 Updated: 2026-10-05
 
+<!-- PC01_ONLY_NEW_WEB_OWNER_20261106 -->
+## P0 — WEBSITE/APP MỚI: PC01-ONLY, KHÔNG VERCEL — OWNER 06/11/2026
+OWNER_DIRECT=true | ISSUE=#5648 | NO_NEW_VERCEL=true | PC01_NEW_WEB_DEFAULT=true
+- Với **MỌI chat mới**, AI worker hoặc Work khi được giao làm website/app mới: trước khi chọn hosting phải đọc GitHub `main` `docs/PC01_AUTO_SUBDOMAIN.md`, `bootstrap/02_TIGERIQ_WORKFLOW.md` và Issue #5648. Đích mặc định bắt buộc: **GitHub → CI → PC01 local → Cloudflare Tunnel → subdomain `*.tigeriq.io.vn`**.
+- **CẤM** tạo, chọn, khuyến nghị hoặc dùng Vercel làm đích phát hành/Preview/fallback cho website/app mới. Mọi workflow và mẫu lệnh cũ ghi Vercel cho web mới đã bị thay thế. Vercel còn lại chỉ là **legacy production**, không xóa, ngắt hoặc thay đổi trước khi di dời nghiệm thu.
+- Nếu router/registrar/ingress wildcard PC01 chưa được kích hoạt hoặc thiếu quyền, phải báo `PC01_RUNTIME_PENDING` và tiếp tục đúng cổng/Issue, không tự chuyển lên Vercel.
+- GitHub main đã ghi quy tắc KHÔNG đồng nghĩa các chat ChatGPT/Gemini đang mở hoặc chat mới tự nạp GitHub. Chỉ xác nhận đã áp dụng trong chat sau khi có biên nhận tải nguồn thực và kiểm thử; không bịa host-wide enforcement.
+<!-- /PC01_ONLY_NEW_WEB_OWNER_20261106 -->
+
 <!-- ULTRACAR_PUBLISHED_APK_LANE_20261025 -->
 <!-- ULTRACAR_STANDING_TEST_AUTH_20261025 -->
 ## P0 — ULTRACAR TEST RELEASE: OWNER STANDING AUTHORIZATION — NO RE-APPROVAL
