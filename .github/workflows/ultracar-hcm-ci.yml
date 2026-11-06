@@ -23,6 +23,7 @@ jobs:
           node --check apps/ultracar-hcm-web/server.mjs
           node --check apps/ultracar-hcm-web/app.js
           node --check apps/ultracar-hcm-web/source-pages.js
+          node --check apps/ultracar-hcm-web/media.js
           node --test apps/ultracar-hcm-web/tests/site.test.mjs
       - name: Test local HTTP origin
         run: |
@@ -32,5 +33,6 @@ jobs:
           trap 'kill "$pid" 2>/dev/null || true' EXIT
           for attempt in $(seq 1 20); do curl -fsS http://127.0.0.1:8893/healthz >/dev/null && break || sleep 1; done
           curl --fail --silent --show-error http://127.0.0.1:8893/healthz | grep -q ultracar-hcm-web
-          curl --fail --silent --show-error http://127.0.0.1:8893/ | grep -q 'UltraCar HCM'
+          curl --fail --silent --show-error http://127.0.0.1:8893/ | grep -q 'UltraCarHCM'
           curl --fail --silent --show-error http://127.0.0.1:8893/products.json | grep -q 'T13PCB'
+          curl --fail --silent --show-error -I http://127.0.0.1:8893/assets/logo-ultracarhcm.svg | grep -qi 'content-type: image/svg+xml'
