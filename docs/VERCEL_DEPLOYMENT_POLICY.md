@@ -1,12 +1,12 @@
 > **SUPERSEDED FOR NEW APPS (Owner 2026-11-05).** Vercel is legacy-only pending controlled migration; **new apps must deploy to PC01 + Cloudflare Tunnel**. This policy file continues to govern **existing** Vercel projects without deleting, interrupting, or implicitly redeploying them. Canonical current contract: `docs/PC01_AUTO_SUBDOMAIN.md`; Issue #5648.
 
-# TigerIQ Vercel Web-Hosting-Only Policy
+# TigerIQ Vercel Legacy-Maintenance-Only Policy
 
-Status: **AUTHORITATIVE / HARD BOUNDARY** — enforced by source guard + CI.
+Status: **LEGACY ONLY / SUPERSEDED FOR ALL NEW WEB/APPS**. Existing projects remain online pending migration. This document cannot authorize a new Vercel release.
 
 ## Role
 
-Vercel has exactly one TigerIQ role: **host and publish the owner-facing web/LIVE surface**.
+Vercel has only a **legacy hosting/maintenance role for pre-existing deployed projects**. All NEW owner-facing web/LIVE surfaces must deploy on PC01 + Cloudflare Tunnel. Never use Vercel as a workaround for missing PC01 runtime or permissions.
 
 Vercel is **not** TigerIQ Core, scheduler, router, queue, lease authority, NV API executor, PC01 runtime, Source of Truth, or a general-purpose verification surface.
 
@@ -17,14 +17,14 @@ A Vercel-hosted endpoint such as `/api/live-status` may transport/present data w
 - `vercel.json -> git.deploymentEnabled` MUST remain `false`.
 - Normal commits and pull requests MUST NOT create Vercel Preview or Production deployments.
 - Core, NV API, Android, PC01, docs, governance, tests, queue audits, status checks, reviews, and non-web work MUST NOT invoke Vercel deployment.
-- Vercel deployment is permitted only when a **real owner-facing web/LIVE artifact changed and must be published**.
-- Every allowed Production deployment must be explicit, one-shot, exact-SHA, authorized, and use the single canonical web-release script. Authorization is either a one-shot Owner release or the canonical P1–P5 standing release authorization from `#4425 - [P0][CONTROL] P1–P5 outcome-to-LIVE tự hoàn tất + WAIT theo bước`. P0 never inherits that standing authorization.
+- **No NEW website/app may create a Vercel project, preview, deployment, webhook or Git integration.** Existing Vercel projects may be inspected/read-only. Scoped legacy maintenance requires an existing service, specific authorization and receipt; ordinary new-web instructions do NOT authorize Vercel.
+- Every exceptional **legacy-maintenance-only** Production deployment must be explicit, one-shot, exact-SHA, authorized, and use the single canonical web-release script. Authorization is either a one-shot Owner release or the canonical P1–P5 standing release authorization from `#4425 - [P0][CONTROL] P1–P5 outcome-to-LIVE tự hoàn tất + WAIT theo bước`. P0 never inherits that standing authorization.
 - A deployment MUST NOT be created merely to “verify Vercel”, inspect Core/NV API health, refresh LIVE data, or prove a non-web task.
 - Vercel-specific checks may validate configuration/routing without creating a deployment.
 
 ## Canonical release gate
 
-The only allowed deployment command is inside:
+Only legacy maintenance in an already-existing Vercel project may use this command, never as an automatic fallback or new-app path:
 
 `scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs`
 
