@@ -22,6 +22,7 @@ jobs:
         run: |
           node --check apps/ultracar-hcm-web/server.mjs
           node --check apps/ultracar-hcm-web/app.js
+          node --check apps/ultracar-hcm-web/source-pages.js
           node --test apps/ultracar-hcm-web/tests/site.test.mjs
       - name: Test local HTTP origin
         run: |
