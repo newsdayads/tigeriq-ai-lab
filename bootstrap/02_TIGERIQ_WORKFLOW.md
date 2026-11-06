@@ -247,8 +247,10 @@ Khi đó Vy phải tạo migration packet, cập nhật GitHub, kiểm thử NEW
 - Mọi policy cũ cho phép tự route Codex/Codex Local bị vô hiệu trong phần xung đột với guard này.
 
 ## 16.1. PC01 Tool Routing Guard — hard gate xuyên chat
+- **P1 OWNER 06/11/2026 — Lệnh làm web/app mới:** Trước khi chọn nền tảng, PHẢI nạp GitHub main `docs/PC01_AUTO_SUBDOMAIN.md` và Issue #5648; chọn `PC01_ONLY`, không tạo hoặc đề xuất Vercel kể cả khi router chưa sẵn sàng. Thiếu router, registrar hoặc quyền Tunnel => báo `PC01_RUNTIME_PENDING`, tự xử lý trong đúng cổng, tuyệt đối không đổi đích sang Vercel. Quy tắc này áp dụng cả prompt giao Work và tác vụ worker. GitHub/Issue không tự ép native chat khác tải mới; phải nạp thực sự trước khi tuyên bố đã áp dụng.
+
 - Áp dụng cho **mọi chat và NEW CHAT**: `CMD` trong TigerIQ nghĩa là **Remote Desktop Commander / Remote MCP**; `SHELL` nghĩa là **cmd.exe / PowerShell / terminal**. Không được dùng `CMD` để chỉ Windows Command Prompt.
-- Thứ tự công cụ mặc định bắt buộc: **GitHub connector → direct app/API/HTTPS bridge → Vercel/read-only cloud view → CMD (Remote Desktop Commander) → SHELL**.
+- Thứ tự cho nhiệm vụ website/app MỚI: **GitHub connector → CI → TigerIQ PC01 OAuth MCP (triển khai runtime) → Cloudflare Tunnel + *.tigeriq.io.vn → kiểm thử HTTPS**. **Vercel KHÔNG là đích deploy, fallback, Preview, kiểm thử xuất bản hoặc đề xuất mặc định.** RDC chỉ dự phòng trong phạm vi có quyền khi MCP không hỗ trợ; không lách lỗi từ chối quyền/an toàn. Với hệ thống Vercel cũ, chỉ đọc trạng thái và bảo trì ngoại lệ theo Work Order hiện hành.
 - GitHub source, Issue/Work Order, PR, CI/checks, review, CENTRAL, Registry và evidence repository phải đọc/ghi bằng GitHub connector trực tiếp; **không đi vòng qua PC01/CMD**.
 - Runtime/status phải ưu tiên direct app/API/HTTPS bridge. Nếu endpoint đã trả đủ dữ liệu thì **cấm dùng CMD đọc lại cùng trạng thái**.
 - CMD chỉ dùng khi việc thực sự **device-bound hoặc break-glass** và không có đường trực tiếp phù hợp: cửa sổ/UI vật lý, process/service local-only, file local-only, screenshot, install/restart/reboot/canary local.

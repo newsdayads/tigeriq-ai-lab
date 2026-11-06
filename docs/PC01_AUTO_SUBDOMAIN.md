@@ -1,11 +1,18 @@
 # PC01 — Wildcard DNS and automatic public website/app onboarding
 
 OWNER_DIRECT=2026-11-05 | ISSUE=5648
-STATUS=DNS_WILDCARD_PROVISIONED_ROUTER_SOURCE_PENDING_EXACT_HEAD_CI_AND_PC01_ACCEPTANCE
+STATUS=SOURCE_MERGED_DNS_WILDCARD_PROVISIONED_RUNTIME_ROUTER_NOT_ACCEPTED
 POLICY=PC01_ONLY_NEW_APPS_NO_NEW_VERCEL
 ONE_WRITER_CONFIG_GATE=REQUIRED
 WILDCARD_DNS_PROVISIONED=2026-11-05T09:27:37Z
 DNS_RECEIPT=JOB-MCP-55650549-fdff-4188-9cc8-dedc27c0f7d2
+
+## Mandatory no-fallback routing for NEW chat and NEW web/app
+
+- New chat/request MUST recover canonical GitHub main and Issue #5648 before choosing deployment infrastructure. Explicit Owner authority is PC01_ONLY, no Vercel suggestion/deployment for a new app.
+- If PC01 router/registrar/Tunnel mutation is unavailable, status is `PC01_RUNTIME_PENDING` or the precise real blocker. **NEVER substitute Vercel**, even as a temporary staging or test destination.
+- GitHub CI check named `Vercel Online Verify` is a **no-deploy verification check**, NOT permission to deploy to Vercel.
+- This GitHub policy does not auto-update an already open ChatGPT native conversation; the chat/agent must actually read current authority.
 
 ## Architecture
 
