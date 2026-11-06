@@ -13,6 +13,8 @@ const allowedFiles = new Map([
   ["/main.js", ["main.js", "text/javascript; charset=utf-8"]],
   ["/style.css", ["style.css", "text/css; charset=utf-8"]],
   ["/favicon.svg", ["favicon.svg", "image/svg+xml; charset=utf-8"]],
+  ["/approved-tig-icon.svg", ["approved-tig-icon.svg", "image/svg+xml; charset=utf-8"]],
+  ["/approved-tig-logo.svg", ["approved-tig-logo.svg", "image/svg+xml; charset=utf-8"]],
   ["/robots.txt", ["robots.txt", "text/plain; charset=utf-8"]],
   ["/sitemap.xml", ["sitemap.xml", "application/xml; charset=utf-8"]]
 ]);
