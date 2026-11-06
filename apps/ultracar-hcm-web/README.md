@@ -5,7 +5,8 @@ Tên miền đích: https://ultracar.tigeriq.io.vn/ · Hạ tầng: **PC01 + Clo
 ## Nguồn
 - Trang hãng: https://ultracar.vn/ (kiểm kê công khai ngày 2026-11-06).
 - 36 mã, thông số/giá biên tập dựa trên dữ kiện công khai; chênh lệch giá và NC888 được đánh dấu chờ xác minh.
-- Logo là tham chiếu cắt từ banner người dùng đã cung cấp, chưa phải master. Không đồng bộ ảnh/3D/video/văn bản nguyên bản khi chưa có tư liệu nguồn được quyền sử dụng.
+- Logo đại lý là ảnh tham chiếu từ banner Owner; server đã sửa MIME image/svg+xml để hiển thị đúng. Favicon SVG cũng được khai báo chuẩn.
+- Ảnh công khai của hãng được nhúng theo URL gốc trong media.js; 4 ảnh gallery và ảnh theo SKU lấy từ window.UCProductImages trên https://ultracar.vn/san-pham/. Không sao chép hàng loạt tệp ảnh hoặc nhận là ảnh tự chụp; mã thiếu ảnh có thông báo minh bạch. Cần xác minh quyền dùng lại lâu dài với UltraCar.
 
 ## Runtime PC01
 Chạy Node.js `node server.mjs` mặc định 127.0.0.1:8893 (biến `PORT`), Health GET `/healthz` trả HTTP 200. Giao diện tại `/`. Cần kích hoạt bộ định tuyến wildcard đã duyệt rồi chạy lệnh đăng ký chuẩn `register-public-webapp.ps1 -Name ultracar -Port 8893 -HealthPath /healthz -Public` (trong phạm vi quyền/lease hợp lệ).
