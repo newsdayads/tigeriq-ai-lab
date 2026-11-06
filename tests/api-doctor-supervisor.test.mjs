@@ -731,7 +731,7 @@ describe('#1255 routing/runtime integration',()=>{
   });
 
   it('accepts Inception visible text parts but never reasoning or object stringification',()=>{
-    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
     const start=core.indexOf('export function inceptionVisibleContent(');
     expect(start).toBeGreaterThanOrEqual(0);
     const end=core.indexOf('\n}\n',start);
@@ -750,7 +750,7 @@ describe('#1255 routing/runtime integration',()=>{
   });
 
   it('keeps Mercury 2.5 visible-output budget bounded only on native Inception',()=>{
-    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+    const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
     const start=core.indexOf('export function inceptionReasoningPolicy(');
     expect(start).toBeGreaterThanOrEqual(0);
     const end=core.indexOf('\n}\n',start);
