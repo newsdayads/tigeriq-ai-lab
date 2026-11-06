@@ -72,5 +72,9 @@ test("TIG vector icon and consistent website branding", () => {
   assert.match(svg, /M18 141C31 95/);
   assert.match(svg, /id="orbit"/);
   assert.match(html, /đầu hổ trắng trong khối kính 3D/);
+  assert.ok(html.includes('class="about-center"><img src="/favicon.svg'));
+  assert.ok(html.includes('<image href="/favicon.svg'));
+  assert.doesNotMatch(html, /class="about-center"><strong>TIG/);
+  assert.doesNotMatch(css, /@keyframes ringOrbit\\{to\\{transform:rotate\\(360deg\\)/);
   assert.match(css, /\.brand-mark\{/);
 });
