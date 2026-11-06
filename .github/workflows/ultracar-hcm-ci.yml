@@ -1,0 +1,36 @@
+name: UltraCar HCM Website Checks
+on:
+  pull_request:
+    paths:
+      - 'apps/ultracar-hcm-web/**'
+      - '.github/workflows/ultracar-hcm-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/ultracar-hcm-web/**'
+      - '.github/workflows/ultracar-hcm-ci.yml'
+permissions:
+  contents: read
+jobs:
+  website:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          persist-credentials: false
+      - name: Check syntax and source data
+        run: |
+          node --check apps/ultracar-hcm-web/server.mjs
+          node --check apps/ultracar-hcm-web/app.js
+          node --check apps/ultracar-hcm-web/source-pages.js
+          node --test apps/ultracar-hcm-web/tests/site.test.mjs
+      - name: Test local HTTP origin
+        run: |
+          cd apps/ultracar-hcm-web
+          PORT=8893 node server.mjs > /tmp/ultracar-hcm.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 20); do curl -fsS http://127.0.0.1:8893/healthz >/dev/null && break || sleep 1; done
+          curl --fail --silent --show-error http://127.0.0.1:8893/healthz | grep -q ultracar-hcm-web
+          curl --fail --silent --show-error http://127.0.0.1:8893/ | grep -q 'UltraCar HCM'
+          curl --fail --silent --show-error http://127.0.0.1:8893/products.json | grep -q 'T13PCB'
