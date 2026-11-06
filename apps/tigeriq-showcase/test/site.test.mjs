@@ -61,7 +61,7 @@ test("PC01 and static host security & SEO", () => {
   assert.match(html, /\/approved-tig-icon\.svg\?v=tig-approved-20261106/);
   assert.match(readFileSync(resolve(root,"robots.txt"),"utf8"), /sitemap\.xml/);
   assert.match(readFileSync(resolve(root,"sitemap.xml"),"utf8"), /tigeriq\.io\.vn/);
-  assert.ok(html.includes("/style.css?v=tig-v3-20261105"));
+  assert.ok(html.includes("/style.css?v=tig-approved-20261106"));
   assert.ok(html.includes("/main.js?v=tig-v3-20261105"));
 });
 
