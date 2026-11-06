@@ -94,7 +94,7 @@ h1,h2,h3,p{overflow-wrap:break-word}
 .tig-illustration{transform:perspective(900px) rotateX(var(--tilt-x,0deg)) rotateY(var(--tilt-y,0deg)) translateY(var(--scroll-shift,0px));transition:transform .22s ease-out;will-change:transform}
 .glassy-ring{transform-origin:50% 50%;animation:ringOrbit 26s linear infinite}
 .floating-tig{animation:glassBob 5.5s ease-in-out infinite;transform-origin:50% 50%}
-@keyframes ringOrbit{to{transform:rotate(360deg)}}
+@keyframes ringOrbit{to{opacity:.55}}
 @keyframes glassBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
 @keyframes driftTrack{to{transform:translateX(-50%)}}
 .hero-scroll{display:inline-flex;align-items:center;gap:10px;margin-top:22px;text-decoration:none;font-size:10px;letter-spacing:1.4px;color:#a55e69;font-weight:500}
@@ -214,3 +214,13 @@ body.motion-off .reveal{opacity:1!important;transform:none!important;transition:
 .brand-iq{color:var(--red)}
 @media(max-width:520px){.brand{gap:7px}.brand-mark{width:35px;height:35px}.brand-wordmark{font-size:16px;letter-spacing:-.6px}}
 @media(max-width:350px){.brand-mark{width:31px;height:31px}.brand-wordmark{font-size:14px}}
+
+/* Brand consistency — use the approved shared TIG SVG in every visible logo. */
+.about-center{width:190px;height:190px;border-radius:52px;background:none;transform:rotate(-10deg);box-shadow:0 24px 55px #e3194027;overflow:hidden}
+.about-center img{display:block;width:100%;height:100%;object-fit:contain;image-rendering:auto}
+.about-center strong,.about-center span{display:none}
+.glassy-ring{animation:none!important;pointer-events:none}
+.floating-tig image{image-rendering:auto}
+.site-footer .brand{display:inline-flex;align-items:center;gap:10px}
+.site-footer .brand .brand-mark{width:38px;height:38px}
+@media(max-width:520px){.about-center{width:160px;height:160px;border-radius:43px}}
