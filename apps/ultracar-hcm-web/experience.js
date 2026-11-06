@@ -53,19 +53,32 @@ if(stage){
  on(stage,'keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();if(auto)toggleAuto(false);showRotation(Number(range?.value||0)+(e.key==='ArrowRight'?4:-4))}});
 }
 const grid=$('ucVideoGrid'),dlg=$('ucVideoDialog'),player=$('ucVideoPlayer');
+const shortFrame=$('ucShortPlayer');
 if(grid){
  grid.innerHTML=clipList.map((v,i)=>'<button type="button" class="video-card" data-uc-video="'+escape(v.id)+'" aria-label="Phát video '+escape(v.name)+'"><div class="video-thumb"><img loading="lazy" decoding="async" src="'+escape(v.poster)+'" alt="Tư liệu '+escape(v.name)+'"/><span class="video-type">'+escape(v.group)+'</span><span class="video-play" aria-hidden="true">▶</span></div><strong>'+escape(v.name)+'</strong><small>Phát tại UltraCarHCM · '+String(i+1).padStart(2,'0')+'</small></button>').join('');
  on(grid,'click',e=>{const b=e.target.closest('[data-uc-video]');if(!b||!dlg||!player)return;const entry=clipList.find(x=>x.id===b.dataset.ucVideo);if(!entry)return;
  $('ucVideoTitle').textContent=entry.name;$('ucVideoDesc').textContent=entry.desc;
- player.src='/assets/motion/'+entry.id+'.mp4';player.poster=entry.poster;player.currentTime=0;
+ if(shortFrame){shortFrame.hidden=true;shortFrame.removeAttribute('src');}player.hidden=false;player.src='/assets/motion/'+entry.id+'.mp4';player.poster=entry.poster;player.currentTime=0;
  try{dlg.showModal()}catch{dlg.setAttribute('open','')}
  player.play().catch(()=>{});
  });
 }
-function closeVideo(){if(player){player.pause();player.removeAttribute('src');player.load()}if(dlg?.open)dlg.close()}
+function closeVideo(){if(player){player.pause();player.removeAttribute('src');player.load();player.hidden=false;}if(shortFrame){shortFrame.removeAttribute('src');shortFrame.hidden=true;}if(dlg?.open)dlg.close()}
 on($('ucVideoClose'),'click',closeVideo);
 on(dlg,'click',e=>{if(e.target===dlg)closeVideo()});
 on(dlg,'cancel',e=>{e.preventDefault();closeVideo()});
+
+const shortToggle=$('ucShortToggle'),shortPanel=$('ucShortsPanel'),shortGrid=$('ucShortGrid');
+if(shortToggle&&shortGrid&&shortPanel){
+ fetch('/shorts.json?v=20261106r5').then(r=>{if(!r.ok)throw Error('video-index '+r.status);return r.json()}).then(data=>{
+ const items=(data.items||[]).filter(x=>/^[a-zA-Z0-9_-]{11}$/.test(x.id)).slice(0,40);
+ shortToggle.textContent='Xem thêm '+items.length+' video hướng dẫn theo xe ↓';
+ shortGrid.innerHTML=items.map((x,i)=>'<button class="video-card" type="button" data-uc-short="'+escape(x.id)+'" aria-label="Xem video hướng dẫn '+escape(x.title)+'"><div class="video-thumb short-video-thumb"><span class="short-marker">VIDEO '+String(i+1).padStart(2,'0')+'</span><span class="video-play" aria-hidden="true">▶</span></div><strong>'+escape(x.title)+'</strong><small>Hướng dẫn · phát ngay tại đây</small></button>').join('');
+ on(shortToggle,'click',()=>{shortPanel.hidden=!shortPanel.hidden;shortToggle.setAttribute('aria-expanded',String(!shortPanel.hidden));shortToggle.textContent=shortPanel.hidden?'Xem thêm '+items.length+' video hướng dẫn theo xe ↓':'Thu gọn video hướng dẫn ↑'});
+ on(shortGrid,'click',e=>{const b=e.target.closest('[data-uc-short]');if(!b||!dlg||!shortFrame)return;const item=items.find(x=>x.id===b.dataset.ucShort);if(!item)return;$('ucVideoTitle').textContent=item.title;$('ucVideoDesc').textContent='Video hướng dẫn UltraCar. Liên hệ tư vấn UltraCarHCM: 0392 960 003.';player?.pause();player?.removeAttribute('src');if(player)player.hidden=true;shortFrame.hidden=false;shortFrame.src='https://www.youtube-nocookie.com/embed/'+item.id+'?autoplay=1&rel=0';try{dlg.showModal()}catch{dlg.setAttribute('open','')}});
+ }).catch(()=>{shortToggle.hidden=true});
+}
+
 const ownerPhoneEls=document.querySelectorAll('[data-owner-phone]');
 ownerPhoneEls.forEach(x=>{x.textContent='0392 960 003';x.href='tel:+84'+ownerPhone.slice(1)});
 })();
