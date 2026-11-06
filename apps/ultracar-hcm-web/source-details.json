@@ -34,7 +34,7 @@
       "path": "/cam-ket/",
       "group": "cam-ket",
       "title": "Trải nghiệm & hậu mãi",
-      "description": "Xem Trải nghiệm & hậu mãi tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "description": "Thông tin về trải nghiệm và hậu mãi cần xác nhận theo chứng từ mua hàng và chính sách đang áp dụng. Liên hệ UltraCarHCM để được đối chiếu.",
       "headings": [
         "An tâm từ lần đầu trải nghiệm đến suốt quá trình sử dụng.",
         "Trải nghiệm thực tế 7 ngày.",
@@ -78,13 +78,12 @@
       "path": "/chinh-sach/bao-hanh/",
       "group": "chinh-sach",
       "title": "Bảo hành UltraCar | Điều kiện & liên hệ hỗ trợ",
-      "description": "Xem thông tin bảo hành UltraCar, cách gửi yêu cầu và những thông tin cần chuẩn bị. Liên hệ bộ phận bảo hành 0327 001 088.",
+      "description": "Tra cứu quy trình tiếp nhận bảo hành: chuẩn bị chứng từ mua, mã sản phẩm và ảnh/video mô tả vấn đề. Liên hệ UltraCarHCM 0392 960 003 để được hướng dẫn.",
       "headings": [
-        "Thông tin bảo hành",
-        "Cách yêu cầu hỗ trợ",
-        "Hỗ trợ kỹ thuật",
-        "Bảo hành",
-        "Chọn bộ UltraCar phù hợp với xe."
+        "Thông tin bảo hành thiết bị",
+        "Chuẩn bị hóa đơn và mã sản phẩm",
+        "Gửi hình ảnh/video mô tả lỗi",
+        "Trao đổi điều kiện áp dụng qua UltraCarHCM"
       ],
       "image": "",
       "status": "verified"
@@ -123,7 +122,7 @@
       "path": "/chinh-sach/doi-tra/",
       "group": "chinh-sach",
       "title": "Chính sách đổi trả",
-      "description": "Xem Chính sách đổi trả tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "description": "Đổi trả, hoàn tiền và các điều kiện phát sinh phải được xác nhận theo chứng từ, sản phẩm và chính sách đang có hiệu lực. Liên hệ UltraCarHCM trước khi gửi hàng.",
       "headings": [
         "Trải nghiệm 7 ngày",
         "Gửi yêu cầu đổi trả",
@@ -137,14 +136,13 @@
     {
       "path": "/cong-ty/",
       "group": "cong-ty",
-      "title": "Công ty & liên hệ",
-      "description": "Xem Công ty & liên hệ tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "title": "Thông tin thương hiệu UltraCar & liên hệ UltraCarHCM",
+      "description": "Tìm hiểu thông tin về công nghệ và sản phẩm UltraCar; liên hệ mua hàng và hỗ trợ tại TP.HCM qua UltraCarHCM.",
       "headings": [
-        "Gặp UltraCar tại DC Auto",
-        "DC Auto · TP.HCM",
-        "Ghé thăm văn phòng UltraCar.",
-        "Tổng thể giải pháp UltraCar.",
-        "Kết nối với UltraCar."
+        "Giải pháp màn hình và giá đỡ UltraCar",
+        "Thiết kế phần cứng và ứng dụng",
+        "Dịch vụ tư vấn UltraCarHCM",
+        "Liên hệ 0392 960 003"
       ],
       "image": "",
       "status": "verified"
@@ -152,14 +150,13 @@
     {
       "path": "/dai-ly/",
       "group": "dai-ly",
-      "title": "Nhận báo giá & hợp tác đại lý.",
-      "description": "Xem Nhận báo giá & hợp tác đại lý. tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "title": "Hợp tác và tư vấn UltraCarHCM",
+      "description": "Liên hệ UltraCarHCM qua 0392 960 003 để hỏi hàng, báo giá, tư vấn cấu hình và lịch lắp phù hợp.",
       "headings": [
-        "Khám phá sản phẩm UltraCar",
-        "Gặp UltraCar tại DC Auto",
-        "DC Auto · TP.HCM",
-        "Tư vấn nhận báo giá đại lý",
-        "Kết nối từ nhu cầu thực tế."
+        "Chọn sản phẩm theo xe",
+        "Báo giá và xác nhận tồn kho",
+        "Hỗ trợ kỹ thuật ban đầu",
+        "Liên hệ UltraCarHCM"
       ],
       "image": "",
       "status": "verified"
@@ -1811,13 +1808,12 @@
       "path": "/lap-dat/",
       "group": "lap-dat",
       "title": "Lắp đặt màn hình UltraCar | Tại nhà & tại cửa hàng",
-      "description": "Xem cách lắp màn hình UltraCar, kiểm tra giá đỡ theo xe và đặt lịch. Có lắp tại trụ sở hoặc tận nơi trong nội thành Nha Trang.",
+      "description": "Tư vấn lựa chọn vị trí lắp đặt tại TP.HCM; cần xác nhận dòng xe, đời xe, bộ giá đỡ, chi phí và lịch hẹn với UltraCarHCM.",
       "headings": [
-        "Chọn nơi lắp đặt thuận tiện cho bạn.",
-        "Lắp đặt tận nơi.",
-        "Lắp đặt trực tiếp tại công ty.",
-        "Gặp UltraCar tại DC Auto",
-        "DC Auto · TP.HCM"
+        "Chọn vị trí và cấu hình",
+        "Đối chiếu ảnh táp-lô theo xe",
+        "Xác nhận bộ phụ kiện và chi phí",
+        "Hẹn lịch lắp đặt khi đủ điều kiện"
       ],
       "image": "",
       "status": "verified"
@@ -1839,14 +1835,13 @@
     {
       "path": "/lien-he/",
       "group": "lien-he",
-      "title": "Liên hệ UltraCar",
-      "description": "Xem Liên hệ UltraCar tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "title": "Liên hệ UltraCarHCM tại TP.HCM",
+      "description": "Hotline và Zalo UltraCarHCM: 0392 960 003. Gửi dòng xe, đời xe, ảnh táp-lô để tư vấn màn hình và bộ gá.",
       "headings": [
-        "Gặp UltraCar tại DC Auto",
-        "DC Auto · TP.HCM",
-        "Kết nối với UltraCar.",
-        "Tìm giải pháp phù hợp cho xe của bạn",
-        "Chọn bộ UltraCar phù hợp với xe."
+        "Hotline & Zalo 0392 960 003",
+        "Tư vấn cấu hình phù hợp",
+        "Kiểm tra lắp đặt theo xe",
+        "Hỗ trợ sau bán hàng"
       ],
       "image": "",
       "status": "verified"
