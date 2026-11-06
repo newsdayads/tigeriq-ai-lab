@@ -14,3 +14,9 @@
 .media-section{background:#f7f9fc}.media-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}.media-tile{display:block;overflow:hidden;border-radius:16px;border:1px solid #e0e6f0;background:white;transition:transform .18s,box-shadow .18s}.media-tile:hover{transform:translateY(-4px);box-shadow:0 14px 28px #0e29501b}.media-photo{height:185px;background:#eaf0f8}.media-photo img{height:100%;width:100%;object-fit:cover}.media-tile h3{font-size:15px;padding:0 16px;margin:17px 0 7px;line-height:1.4}.media-tile p{font-size:12px;padding:0 16px;margin:0 0 10px;color:#6e7c91;line-height:1.6}.media-tile>span{display:block;padding:0 16px 19px;color:#235bcb;font-size:11px;font-weight:800}
 @media(max-width:1050px){.media-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.brand{min-width:0}.brand img{width:65px;height:46px}.brand>span{font-size:17px}}
 @media(max-width:650px){.brand{gap:4px}.brand img{width:48px;height:42px}.brand>span{font-size:14px;letter-spacing:-.7px}.media-grid{gap:10px}.media-photo{height:135px}.media-tile h3{font-size:12px;margin:12px 0 4px;padding:0 10px}.media-tile p{font-size:10px;padding:0 10px}.media-tile>span{font-size:10px;padding:0 10px 12px}.product-photo{padding:12px}.modal-photo{height:180px}}
+
+/* Owner-supplied original UltraCarHCM PNG, exact aspect ratio 1024:341. Do not crop or add duplicate adjacent text. */
+.brand{min-width:0;flex:0 0 auto;gap:0}.brand img.brand-logo{display:block;width:204px;height:auto;max-height:68px;aspect-ratio:1024/341;object-fit:contain;object-position:center;border-radius:0;flex-shrink:0}
+.footer-logo{display:block;width:min(276px,100%);height:auto;aspect-ratio:1024/341;object-fit:contain;object-position:center;margin-bottom:17px}
+@media(max-width:1150px){.brand img.brand-logo{width:174px;max-height:58px}}
+@media(max-width:650px){.brand img.brand-logo{width:126px;max-height:43px}.footer-logo{width:min(220px,100%)}}
