@@ -15,7 +15,7 @@ jobs:
   website:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364cfa9297b # v4.2.2
+      - uses: actions/checkout@v4.2.2
         with:
           persist-credentials: false
       - name: Check syntax and source data
