@@ -1,0 +1,62 @@
+{
+  "source": "ultracar.vn public media URLs",
+  "date": "2026-11-06",
+  "items": [
+    {
+      "local": "/assets/motion/dex-five-apps.mp4",
+      "sha256": "5be11fd272475a04cea62636f9258c150ef664ec6141280ad875a6e73d7f0352",
+      "id": "dex-five-apps",
+      "origin": "/assets/videos/ultracar-five-apps-20260929.mp4",
+      "bytes": 2134421
+    },
+    {
+      "local": "/assets/motion/magnetic-mount.mp4",
+      "sha256": "2bfc6c07104e93ba7cf2c889984375ff012903749c5412ae34edcb0ad6ba1ea2",
+      "id": "magnetic-mount",
+      "origin": "/assets/videos/ultracar-magnetic-mount.mp4",
+      "bytes": 2172662
+    },
+    {
+      "local": "/assets/motion/reverse-camera.mp4",
+      "sha256": "9c43b54bb73186d731e275f12d469ba2a68af508e45200ac969bdd1fa2157fa3",
+      "id": "reverse-camera",
+      "origin": "/assets/videos/ultracar-reverse-camera.mp4",
+      "bytes": 864760
+    },
+    {
+      "local": "/assets/motion/sliding-screen.mp4",
+      "sha256": "6a692d213fc913ae845bfdf2c3aa47b0cb7bfc621c199d321fb5e9282d8215b0",
+      "id": "sliding-screen",
+      "origin": "/assets/videos/ultracar-slide-loop.mp4",
+      "bytes": 9158826
+    },
+    {
+      "local": "/assets/motion/installation-demo.mp4",
+      "sha256": "390ecd6a4d05f905d9508f3c8a5fd496d1bda6684cf1b3695f7bf7e28ddc5fac",
+      "id": "installation-demo",
+      "origin": "/assets/installations/installation-demo.mp4",
+      "bytes": 3426265
+    },
+    {
+      "local": "/assets/motion/screen-walkaround.mp4",
+      "sha256": "d91cb0be1693cb05c23dd4c51a13f0a0b6e4b11ac0b546729b4fe905fbcd89bf",
+      "id": "screen-walkaround",
+      "origin": "/assets/source-media/display-walkaround.mp4",
+      "bytes": 6612299
+    },
+    {
+      "local": "/assets/motion/touch-controls.mp4",
+      "sha256": "9d112b4542cf8d8c1418cd1bd00a9bde1c3864f3fb6294a625069a12adf2e655",
+      "id": "touch-controls",
+      "origin": "/assets/source-media/touch-controls.mp4",
+      "bytes": 4641923
+    },
+    {
+      "local": "/assets/motion/customer-review.mp4",
+      "sha256": "4b8abfb58cff8216ea52520456e1a9d997fb881ca31bcff2b00cbef29705052e",
+      "id": "customer-review",
+      "origin": "/assets/reviews/ultracar-customer-reviews-10s.mp4",
+      "bytes": 854038
+    }
+  ]
+}

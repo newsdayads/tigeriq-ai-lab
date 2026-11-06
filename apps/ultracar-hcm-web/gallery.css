@@ -1,0 +1,35 @@
+/* Self-hosted vehicle installation photo archive */
+.uc-gallery-section{background:linear-gradient(180deg,#08152c 0%,#0c2650 65%,#091b36);color:#f0f7ff;overflow:hidden}
+.uc-gallery-section .section-heading h2{color:white}.uc-gallery-section .section-heading p{color:#aec5e6}.uc-gallery-section .kicker{color:#79c2ff}
+.uc-gallery-toolbar{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(140px,.6fr) minmax(140px,.7fr);gap:12px;padding:16px;background:#ffffff0b;border:1px solid #7dabff34;border-radius:16px;margin-bottom:16px}
+.uc-gallery-toolbar label{font-size:11px;font-weight:800;letter-spacing:.02em;color:#b9d4f1;display:flex;flex-direction:column;gap:7px}
+.uc-gallery-toolbar select,.uc-gallery-toolbar input{width:100%;min-width:0;background:#0c2243;color:white;border:1px solid #6ba4ed70;border-radius:9px;outline:none;min-height:43px;padding:10px 12px;font-size:12px}
+.uc-gallery-toolbar select:focus,.uc-gallery-toolbar input:focus{border-color:#79ceff;box-shadow:0 0 0 3px #168dff32}
+.uc-gallery-toolbar select option{color:#0b1a32;background:white}
+.uc-gallery-summary{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:16px;color:#a8c6ea;font-size:12px;font-weight:700}
+.uc-gallery-count{color:#bce5ff}.uc-gallery-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.uc-gallery-card{text-align:left;border:1px solid #7ca9ea42;background:#153264;color:#fff;border-radius:14px;padding:0;overflow:hidden;transition:transform .3s,box-shadow .3s,border-color .3s;display:block;min-width:0}
+.uc-gallery-card:hover{transform:translateY(-6px);border-color:#88c8ff;box-shadow:0 20px 40px #020a1b88}
+.uc-gallery-card:focus-visible{outline:3px solid #72bcff;outline-offset:3px}
+.uc-gallery-photo{aspect-ratio:4/3;position:relative;overflow:hidden;background:linear-gradient(135deg,#163260,#091a38)}
+.uc-gallery-photo img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .48s;filter:saturate(.93)}
+.uc-gallery-card:hover .uc-gallery-photo img{transform:scale(1.06);filter:saturate(1.1)}
+.uc-gallery-zoom{position:absolute;bottom:13px;right:12px;background:#0675eedf;border:1px solid #b5e1ffb1;border-radius:9px;padding:4px 9px;font-size:18px;color:#fff}
+.uc-gallery-info{display:flex;flex-direction:column;gap:5px;padding:13px 14px 16px;min-height:83px}
+.uc-gallery-info small{color:#7bc7ff;font-size:10px;font-weight:800;letter-spacing:.08em}
+.uc-gallery-info strong{font-size:12px;line-height:1.45;font-weight:770}
+.uc-gallery-review{display:inline-block;align-self:start;border:1px solid #b8caed62;border-radius:5px;padding:2px 5px;font-size:9px;color:#c7d8ed}
+.uc-gallery-actions{text-align:center;padding-top:25px}
+.uc-gallery-actions button{background:#f3f8ff;border-color:#c4d9f8;color:#124a98}
+.uc-gallery-note{font-size:11px;color:#91afd4;max-width:800px;margin:19px 0 0;line-height:1.6}
+.uc-gallery-empty{grid-column:1/-1;color:#bdd3eb;font-size:13px;padding:30px;text-align:center}
+.uc-photo-dialog{border:1px solid #6bafff70;background:#071329;color:#fff;border-radius:18px;box-shadow:0 40px 130px #000c;width:min(1000px,94vw);max-height:92vh;padding:15px;overflow:auto}
+.uc-photo-dialog::backdrop{background:#020715ed;backdrop-filter:blur(6px)}
+.uc-photo-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:12px}
+.uc-photo-dialog-head strong{font-size:14px;line-height:1.4}
+.uc-photo-dialog-head button,.uc-photo-nav button{background:#133564;color:white;border:1px solid #5594e8;border-radius:9px;cursor:pointer;font-weight:900}
+.uc-photo-dialog-head button{font-size:23px;width:37px;height:37px}
+.uc-photo-dialog img{display:block;max-width:100%;width:100%;max-height:69vh;object-fit:contain;background:#030a14;border-radius:12px}
+.uc-photo-nav{display:flex;justify-content:space-between;align-items:center;gap:15px;margin-top:12px}.uc-photo-nav button{padding:9px 13px;font-size:12px}.uc-photo-review{font-size:11px;color:#afd2fd;text-align:center;line-height:1.6}
+@media(max-width:1040px){.uc-gallery-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:700px){.uc-gallery-toolbar{grid-template-columns:1fr 1fr}.uc-gallery-toolbar label:first-child{grid-column:1/-1}.uc-gallery-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.uc-gallery-card{border-radius:10px}.uc-gallery-info{padding:10px;min-height:86px}.uc-gallery-info strong{font-size:11px}.uc-gallery-photo{aspect-ratio:1/1}.uc-photo-dialog{width:96vw;padding:9px}.uc-photo-nav{gap:8px}.uc-photo-nav button{font-size:10px;padding:8px}}
+@media(prefers-reduced-motion:reduce){.uc-gallery-card,.uc-gallery-photo img{transition:none!important}.uc-gallery-card:hover,.uc-gallery-card:hover img{transform:none!important}}

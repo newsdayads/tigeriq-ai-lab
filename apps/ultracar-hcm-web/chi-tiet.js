@@ -33,7 +33,7 @@ function informativeDescription(row,ctx){
  if(!d||/^Xem .+ tại UltraCar\.vn/i.test(d))return ctx.lead;
  return d.replace(/UltraCar\.vn/g,'UltraCar');
 }
-function paint(row,products,all){
+function paint(row,products,all,guides){
  const p=lookup(row,products);const ctx=originalInfo[row.group]||originalInfo.other;
  const title=(p?.name||row.title||row.path.split('/').filter(Boolean).pop()?.replace(/-/g,' ')||'Thông tin UltraCar').trim();
  const image=p?productPhoto(p.sku):(row.image&&/^\/assets\//.test(row.image)?'/assets/manufacturer'+row.image:'');
@@ -50,6 +50,14 @@ function paint(row,products,all){
  if(row.group==='dong-xe'){
   html+='<h2>Chọn cấu hình phù hợp</h2><p>Tùy vị trí lắp, có thể cân nhắc màn hình 13,3″ hoặc 16″; cấu hình riêng cần xác minh nguồn cấp và bộ giá đỡ. Anh/chị vui lòng gửi ảnh khoang lái và đời xe để tư vấn.</p>';
  }
+ const guide=(guides?.guides||{})[row.path];
+ if(guide){
+  html+='<section class="dealer-guide"><span class="topic-tag">HƯỚNG DẪN ULTRACARHCM</span><h2>'+esc(guide.lead||'Hướng dẫn nhanh')+'</h2><ol class="dealer-guide-list">'+(guide.steps||[]).map(s=>'<li>'+esc(s)+'</li>').join('')+'</ol><p class="dealer-guide-hint">'+esc(guide.hint||'Kiểm tra cấu hình trước khi đặt.')+'</p></section>';
+ }
+ if(row.group==='video'||row.group==='trai-nghiem-3d'||row.group==='tvc'){
+  const target=row.group==='trai-nghiem-3d'?'/#trai-nghiem':'/#video';
+  html+='<p><a class="btn btn-primary" href="'+target+'">Mở trải nghiệm tại UltraCarHCM →</a></p>';
+ }
  const headings=(row.headings||[]).filter(x=>x&&x.length<120).slice(0,5);
  if(headings.length){
   html+='<h2>Những nội dung cần tìm hiểu</h2><div class="detail-topics">'+headings.map(t=>'<div>'+esc(t)+'</div>').join('')+'</div>';
@@ -59,7 +67,7 @@ function paint(row,products,all){
  }else if(row.group==='dong-xe'){
   html+='<h2>Thông tin cần gửi để báo giá chính xác</h2><p>Hãng, dòng và đời xe; phiên bản táp-lô; ảnh vị trí lắp; nhu cầu DeX, định vị, camera; cấu hình và ngân sách dự kiến.</p>';
  }else if(row.group==='video'||row.group==='trai-nghiem-3d'||row.group==='tvc'){
-  html+='<h2>Tư liệu trực quan</h2><p>Tư liệu video/3D chi tiết chưa được tích hợp vào mục này. Có thể xem ảnh minh họa sản phẩm trong danh mục UltraCarHCM hoặc liên hệ để được hướng dẫn.</p>';
+  html+='<h2>Tư liệu trực quan</h2><p>Khám phá các video và trải nghiệm góc nhìn tương tác tại UltraCarHCM. Một số đoạn phim và góc quay được minh họa từ tư liệu hãng; yêu cầu ảnh đúng mã sản phẩm khi cần.</p>';
  }
  html+='<div class="detail-alert">'+esc(ctx.info)+'</div>';
  html+='<div class="detail-cta"><a class="btn btn-primary" href="https://zalo.me/0392960003" target="_blank" rel="noopener noreferrer">Gửi yêu cầu tư vấn</a><a class="btn btn-outline" href="'+home+'">Xem thêm trong thư viện</a></div>';
@@ -75,11 +83,11 @@ function productBySku(sku,products){
  const p=products.find(x=>x.sku.toLowerCase()===sku.toLowerCase());if(!p)return null;
  return {path:'/san-pham/p/'+p.sku+'/',group:'san-pham',title:p.name,description:p.features,image:'',headings:['Thông số và cấu hình','Lựa chọn phụ kiện','Kiểm tra tương thích'],status:'verified'};
 }
-Promise.all([fetch('/source-details.json?v=20261106r4').then(x=>{if(!x.ok)throw Error('DATA_HTTP_'+x.status);return x.json()}),fetch('/products.json?v=20261106r4').then(x=>{if(!x.ok)throw Error('PRODUCT_HTTP_'+x.status);return x.json()})])
-.then(([db,products])=>{
+Promise.all([fetch('/source-details.json?v=20261106r4').then(x=>{if(!x.ok)throw Error('DATA_HTTP_'+x.status);return x.json()}),fetch('/products.json?v=20261106r4').then(x=>{if(!x.ok)throw Error('PRODUCT_HTTP_'+x.status);return x.json()}),fetch('/dealer-guides.json?v=20261106r5').then(x=>x.ok?x.json():{guides:{}})])
+.then(([db,products,guides])=>{
  const rows=db.pages||[];
  const row=sku?productBySku(sku,products):rows.find(x=>x.path===path);
  if(!row){el('internalArticle').innerHTML='<h1>Không tìm thấy nội dung</h1><p>Vui lòng quay lại thư viện để chọn mục cần xem.</p><a class="btn btn-outline" href="'+home+'">Về thư viện</a>';return}
- paint(row,products,rows);
+ paint(row,products,rows,guides);
 }).catch(e=>{el('internalArticle').innerHTML='<h1>Tạm thời chưa tải được nội dung</h1><p>Vui lòng thử lại hoặc liên hệ hotline 0392 960 003.</p><a class="btn btn-outline" href="'+home+'">Về thư viện</a>';console.error('internal-content',e.message)});
 })();

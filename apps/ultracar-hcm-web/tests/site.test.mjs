@@ -55,3 +55,57 @@ test('128 source images are self-hosted with validated hash manifest',()=>{
  const app=read('app.js');assert.match(app,/"\/assets\/manufacturer"\+path/);
  assert.doesNotMatch(app,/"https:\/\/ultracar\.vn"\+path/);
 });
+
+test('logo-aligned cinematic design keeps native contact and motion accessible',()=>{
+ const h=read('index.html'),css=read('experience.css'),js=read('experience.js');
+ assert.match(h,/id="holoStage"/);assert.match(h,/id="ucVideoGrid"/);assert.match(h,/id="ucShortGrid"/);
+ assert.match(h,/id="ucVideoPlayer"/);assert.match(h,/id="ucShortPlayer"/);
+ assert.match(h,/href="https:\/\/zalo\.me\/0392960003"/);
+ assert.match(h,/href="tel:\+84392960003"/);
+ assert.doesNotMatch(h,/href="https:\/\/ultracar\.vn/);
+ assert.doesNotMatch(h,/src="https:\/\/ultracar\.vn/);
+ assert.doesNotMatch(h,/(?:0327\s*001\s*088|0783\s*199\s*977|0818\s*918\s*981|DC Auto|Nha Trang)/i);
+ for(const v of ['--uc-cobalt:#065dff','--uc-silver:#dbe5f1','--uc-midnight:#070d19'])assert.ok(css.includes(v));
+ assert.match(css,/prefers-reduced-motion/);assert.match(js,/IntersectionObserver/);
+ assert.match(js,/data-holo-angle/);assert.match(js,/youtube-nocookie\.com\/embed/);
+});
+test('full source library has dealer contact only and 22 original short guides',()=>{
+ const db=JSON.parse(read('source-details.json'));
+ const guides=JSON.parse(read('dealer-guides.json'));
+ const shorts=JSON.parse(read('shorts.json'));
+ assert.equal(db.pages.length,172);
+ assert.ok(Object.keys(guides.guides).length>=20);
+ assert.equal(shorts.items.length,22);
+ assert.equal(new Set(shorts.items.map(x=>x.id)).size,22);
+ for(const x of shorts.items)assert.match(x.id,/^[a-zA-Z0-9_-]{11}$/);
+ for(const p of db.pages){
+   const body=[p.title,p.description,...p.headings].join(' ');
+   assert.doesNotMatch(body,/(?:0327\s*001\s*088|0783\s*199\s*977|0818\s*918\s*981|DC Auto|Nha Trang)/i);
+ }
+ const detail=read('chi-tiet.js');assert.match(detail,/dealer-guides\.json/);
+ assert.match(detail,/dealer-guide-list/);
+});
+test('self-hosted 8 videos have manifest and correct byte-range support',()=>{
+ const manifest=JSON.parse(read('assets/motion/manifest.json'));
+ assert.equal(manifest.items.length,8);
+ assert.ok(manifest.items.every(x=>x.local.startsWith('/assets/motion/')&&x.bytes>100000&&/^[0-9a-f]{64}$/.test(x.sha256)));
+ const server=read('server.mjs');
+ assert.match(server,/'\.mp4':'video\/mp4'/);
+ assert.match(server,/createReadStream/);assert.match(server,/status=206/);
+ assert.match(server,/accept-ranges/);assert.match(server,/content-range/);
+});
+
+test('276 self-hosted gallery images and thumbnails, 15 car brand filters',()=>{
+ const data=JSON.parse(read('gallery.json'));
+ assert.equal(data.entries.length,276);
+ assert.equal(data.assets.length,552);
+ assert.equal(data.assets.filter(x=>x.error).length,0);
+ assert.ok(new Set(data.entries.map(x=>x.brand).filter(Boolean)).size>=14);
+ for(const a of data.assets)assert.match(a.sha256,/^[0-9a-f]{64}$/);
+ const html=read('index.html'),js=read('gallery.js'),css=read('gallery.css');
+ assert.match(html,/id="ucGalleryGrid"/);assert.match(html,/id="ucGalleryBrand"/);
+ assert.match(html,/id="ucPhotoDialog"/);assert.match(html,/gallery\.js\?v=20261106r6/);
+ assert.match(js,/\/assets\/gallery/);
+ assert.match(js,/showModal/);assert.match(js,/ucGalleryReview/);
+ assert.match(css,/uc-gallery-grid/);
+});

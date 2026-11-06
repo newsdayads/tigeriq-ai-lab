@@ -1,0 +1,242 @@
+{
+  "edition": "UltraCarHCM independent dealer guide",
+  "updated": "2026-11-06",
+  "contact": "+84392960003",
+  "guides": {
+    "/bang-gia/": {
+      "lead": "Đối chiếu 54 SKU và xác định mức giá thực tế theo cấu hình.",
+      "steps": [
+        "Chọn màn 13,3″ hoặc 16″ sau khi đo vị trí lắp",
+        "Xác định giải pháp dùng điện thoại DeX hay bộ vi xử lý rời/tích hợp",
+        "Kiểm tra giá đỡ, dây nguồn, camera và pin có bao gồm trong bộ không",
+        "Liên hệ UltraCarHCM để xác nhận tồn kho, giá chốt, công lắp và vận chuyển"
+      ],
+      "hint": "Giá catalog là tham khảo; ưu đãi và phụ kiện đi kèm thay đổi theo thời điểm."
+    },
+    "/cam-lui/": {
+      "lead": "Camera lùi cần kiểm tra kết nối điện và vị trí lắp trước khi sử dụng.",
+      "steps": [
+        "Xác nhận bộ camera và đầu chuyển đổi tương thích với màn hình",
+        "Đánh giá vị trí đi dây và nguồn tại phía sau xe",
+        "Kiểm tra chuyển tín hiệu khi về số R trong điều kiện an toàn",
+        "Đối chiếu vạch hướng dẫn và góc quan sát tại chỗ"
+      ],
+      "hint": "Không tự ý nối dây hệ thống điện xe; công lắp được báo riêng khi xác nhận."
+    },
+    "/nguon-nam-cham/": {
+      "lead": "Thao tác nối nguồn và đặt màn hình vào đế từ cần đúng vị trí tiếp điểm.",
+      "steps": [
+        "Đọc hướng dẫn nguồn 12V áp dụng cho bộ phụ kiện đi kèm",
+        "Lắp cố định giá đỡ và khóa cơ khí đúng thiết kế",
+        "Đưa màn hình vào vị trí nam châm, đối chiếu chân tiếp điện Pogo PIN",
+        "Kiểm tra độ chắc chắn và nguồn cấp trước khi sử dụng"
+      ],
+      "hint": "Ngắt nguồn khi thao tác, không can thiệp vào mạch điện hoặc Pogo PIN."
+    },
+    "/huong-dan-tai-app/": {
+      "lead": "Tải ứng dụng UltraCar từ nguồn được nhà cung cấp xác nhận.",
+      "steps": [
+        "Kiểm tra điện thoại Samsung có hỗ trợ DeX và phiên bản One UI phù hợp",
+        "Đề nghị UltraCarHCM cung cấp đường dẫn hoặc tệp cài đặt đã xác minh",
+        "Cấp quyền cài đặt theo hướng dẫn hệ điều hành; kiểm tra tên ứng dụng",
+        "Mở ứng dụng để kiểm tra đăng nhập, bố cục và thời hạn sử dụng",
+        "Liên hệ UltraCarHCM để được hướng dẫn gia hạn hoặc xử lý lỗi"
+      ],
+      "hint": "Không tải APK từ quảng cáo, đường dẫn rút gọn hoặc bên thứ ba không xác minh."
+    },
+    "/huong-dan-kich-hoat-app/": {
+      "lead": "Kích hoạt ứng dụng sau mua hàng theo thông tin bộ sản phẩm.",
+      "steps": [
+        "Chuẩn bị hóa đơn hoặc thông tin đơn hàng và mã thiết bị",
+        "Mở ứng dụng UltracarVN trên thiết bị phù hợp",
+        "Làm theo quy trình kích hoạt hoặc xác thực sản phẩm",
+        "Thử bố cục sử dụng, lưu cấu hình và kiểm tra thời hạn ứng dụng",
+        "Khi gặp lỗi, gửi ảnh thông báo và mã thiết bị cho UltraCarHCM"
+      ],
+      "hint": "Thời hạn ứng dụng phụ thuộc mã sản phẩm và chính sách cấp quyền lúc mua."
+    },
+    "/lap-dat/": {
+      "lead": "Lắp đặt theo từng dòng xe; kiểm tra bộ gá và an toàn khoang lái.",
+      "steps": [
+        "Gửi ảnh táp-lô chính diện và vị trí định lắp",
+        "Gửi hãng xe, dòng xe, đời xe và phiên bản nội thất",
+        "Đối chiếu độ hở với túi khí, tầm nhìn, cửa gió và màn hình nguyên bản",
+        "Xác nhận bộ gá, nguồn cấp, phụ kiện và thời gian lắp",
+        "Kiểm tra độ chắc chắn và thao tác sau khi hoàn thiện"
+      ],
+      "hint": "Không tự khẳng định một bộ gá phù hợp cho mọi phiên bản xe."
+    },
+    "/gia-do/": {
+      "lead": "Giá đỡ là bộ phận cần đối chiếu kỹ nhất trước khi mua màn hình.",
+      "steps": [
+        "Xác định vị trí lắp và khoảng không gian quanh bảng điều khiển",
+        "Đối chiếu ảnh và mẫu giá đỡ ứng với dòng xe",
+        "Kiểm tra kết cấu khóa, vị trí cấp nguồn và tải trọng",
+        "Xác nhận phương án có giữ nguyên màn hình gốc hay không"
+      ],
+      "hint": "Tư liệu là tham khảo; từng mẫu có thể thay đổi theo thiết kế."
+    },
+    "/da-nhiem/": {
+      "lead": "Tổ chức bản đồ và các ứng dụng trong cùng không gian hiển thị.",
+      "steps": [
+        "Kiểm tra thiết bị có hỗ trợ Samsung DeX",
+        "Mở các ứng dụng cần dùng khi xe đang dừng đỗ",
+        "Căn vùng bản đồ lớn và các cửa sổ còn lại theo nhu cầu",
+        "Lưu bố cục được hỗ trợ và thử mở lại",
+        "Chỉ thao tác giải trí khi đã đỗ xe an toàn"
+      ],
+      "hint": "Số cửa sổ và hiệu năng phụ thuộc thiết bị, phần mềm và phiên bản hệ điều hành."
+    },
+    "/ung-dung/": {
+      "lead": "Ứng dụng UltraCar hỗ trợ bố cục cửa sổ trên Samsung DeX.",
+      "steps": [
+        "Xác minh phiên bản One UI và khả năng hỗ trợ DeX",
+        "Tra cứu phiên bản ứng dụng và thời hạn sử dụng theo cấu hình",
+        "Thử bố cục bản đồ, âm thanh và cửa sổ tiện ích",
+        "Căn chỉnh theo độ phân giải màn hình và lưu cấu hình",
+        "Yêu cầu hỗ trợ khi cài đặt hoặc gia hạn"
+      ],
+      "hint": "Không mặc định mọi điện thoại Android có Samsung DeX."
+    },
+    "/racing-mode/": {
+      "lead": "Bố cục hiển thị thông số cần dễ quan sát và hạn chế mất tập trung.",
+      "steps": [
+        "Kiểm tra hỗ trợ Racing Mode trên phiên bản ứng dụng đang dùng",
+        "Lựa chọn trường thông tin phù hợp với nhu cầu",
+        "Căn chỉnh kích cỡ chữ và mức sáng khi xe đỗ",
+        "Tránh thao tác điều khiển khi xe đang chạy"
+      ],
+      "hint": "Thông số hiển thị chỉ mang tính tham khảo; tuân thủ thông tin chính thức của xe."
+    },
+    "/khe-sim/": {
+      "lead": "SIM và kết nối dữ liệu cần đúng loại thiết bị và vị trí lắp.",
+      "steps": [
+        "Xác nhận bộ vi xử lý có khe SIM vật lý hoặc giải pháp mạng hỗ trợ",
+        "Tắt nguồn trước khi tháo lắp SIM nếu tài liệu thiết bị yêu cầu",
+        "Lắp SIM đúng chiều và kiểm tra gói dữ liệu",
+        "Thử kết nối mạng sau khi khởi động",
+        "Gửi ảnh lỗi hoặc màn hình trạng thái nếu không kết nối được"
+      ],
+      "hint": "Tính năng SIM/GPS không bảo đảm có ở mọi cấu hình."
+    },
+    "/man-hinh/": {
+      "lead": "So sánh 13,3″ và 16″ theo diện tích hiển thị và vị trí lắp.",
+      "steps": [
+        "Đo bề ngang và khoảng trống trước mắt người lái",
+        "Xác nhận 13,3″ khi ưu tiên gọn và tương thích khoang hẹp",
+        "Cân nhắc 16″ khi cần diện tích hiển thị lớn",
+        "Kiểm tra độ phân giải và làm mượt theo mã sản phẩm",
+        "Chốt lựa chọn sau khi xem ảnh lắp thực tế đúng đời xe"
+      ],
+      "hint": "Kích thước càng lớn càng cần chú ý tầm nhìn và độ che khuất."
+    },
+    "/nang-cap/": {
+      "lead": "Nâng cấp bộ đang dùng thường yêu cầu giữ lại một số phụ kiện tương thích.",
+      "steps": [
+        "Gửi mã màn hình và bộ xử lý đang sử dụng",
+        "Kiểm tra đầu nối, bộ gá, nguồn và khả năng nâng cấp",
+        "Đối chiếu RAM/ROM, chipset và tính năng cần bổ sung",
+        "Xác nhận chi phí đổi bộ và chính sách liên quan trước khi đặt"
+      ],
+      "hint": "Không mặc định có thể đổi riêng vi xử lý hoặc màn hình giữa các phiên bản."
+    },
+    "/chinh-sach/bao-hanh/": {
+      "lead": "UltraCarHCM là đầu mối tiếp nhận yêu cầu hỗ trợ của khách hàng.",
+      "steps": [
+        "Lưu lại hóa đơn hoặc thông tin mua hàng",
+        "Cung cấp mã SKU, ngày mua và số liên hệ",
+        "Ghi hình/ảnh lỗi, thông báo hoặc điều kiện phát sinh",
+        "Liên hệ 0392 960 003 để được đối chiếu thủ tục",
+        "Chỉ gửi thiết bị sau khi có hướng dẫn xác nhận"
+      ],
+      "hint": "Thời hạn và phạm vi bảo hành thực tế theo chứng từ và chính sách chính thức có hiệu lực."
+    },
+    "/chinh-sach/doi-tra/": {
+      "lead": "Điều kiện đổi trả, hoàn tiền cần được xác nhận trước khi trả hàng.",
+      "steps": [
+        "Mô tả lý do đổi trả và tình trạng thiết bị",
+        "Chuẩn bị mã đơn và hình ảnh phụ kiện, bao bì",
+        "Liên hệ UltraCarHCM để được xác nhận trường hợp cụ thể",
+        "Thống nhất nơi gửi, thời hạn và phương án xử lý trước khi vận chuyển"
+      ],
+      "hint": "Không tự động áp dụng cam kết dùng thử hay hoàn tiền của bên khác khi chưa xác minh."
+    },
+    "/tin-tuc/chon-man-hinh-13-3-hay-16/": {
+      "lead": "Quyết định giữa màn hình 13,3″ và 16″ nên bắt đầu bằng không gian lắp.",
+      "steps": [
+        "Đo diện tích táp-lô và khoảng quan sát của lái xe",
+        "Xem 13,3″ nếu cần bố cục gọn gàng",
+        "Cân nhắc 16″ khi cần thêm diện tích hiển thị",
+        "Đối chiếu tần số quét, độ phân giải và ngân sách",
+        "Gửi ảnh táp-lô để xác nhận bộ gá và phiên bản"
+      ],
+      "hint": "Hãy ưu tiên không che tầm nhìn và túi khí."
+    },
+    "/tin-tuc/bo-cuc-samsung-dex/": {
+      "lead": "Đa nhiệm hiệu quả cần bố cục phù hợp với việc điều hướng và giải trí.",
+      "steps": [
+        "Kiểm tra điện thoại Samsung có DeX tương thích",
+        "Mở các ứng dụng cần dùng khi xe đỗ",
+        "Căn bản đồ và các cửa sổ hiển thị",
+        "Lưu bố cục và mở lại để kiểm tra",
+        "Hạn chế tương tác ngoài tác vụ điều khiển xe"
+      ],
+      "hint": "Ứng dụng bên thứ ba có thể thay đổi hành vi theo phiên bản."
+    },
+    "/tin-tuc/kiem-tra-truoc-khi-lap-dat/": {
+      "lead": "Chuẩn bị thông tin đầy đủ để giảm sai bộ gá và rủi ro lắp đặt.",
+      "steps": [
+        "Cung cấp ảnh táp-lô, vị trí ngồi lái và màn hình nguyên bản",
+        "Gửi thông tin xe, đời xe và phiên bản",
+        "Xác nhận khe trống, nguồn, vị trí thao tác và phụ kiện",
+        "Nhận xác nhận cấu hình, phí lắp và kế hoạch bảo hành",
+        "Kiểm tra độ chắc chắn sau khi lắp"
+      ],
+      "hint": "Nếu có nghi ngại về an toàn xe, chọn đơn vị lắp đặt đủ chuyên môn."
+    },
+    "/tin-tuc/huong-dan-lap-dat-man-hinh-va-gia-do/": {
+      "lead": "Hướng dẫn chọn và kiểm tra bộ gá cho các nhóm xe phổ biến.",
+      "steps": [
+        "Xác định kiểu giá đỡ theo mã xe",
+        "Xem video tư liệu lắp trên VF3/Limo, VF5/Herio Green hoặc mẫu tương tự",
+        "Kiểm tra vị trí khóa, phụ kiện và nguồn điện",
+        "Không tự thay thế phương án khi khác đời xe hoặc nội thất",
+        "Gửi ảnh thực tế để được kỹ thuật xác minh"
+      ],
+      "hint": "Video chỉ dùng để tham khảo, không thay thế tài liệu kỹ thuật áp dụng cho từng xe."
+    },
+    "/tinh-nang/": {
+      "lead": "Những nhóm chức năng cần xác nhận trước khi mua.",
+      "steps": [
+        "Lựa chọn màn hình và chip xử lý theo nhu cầu",
+        "Xác nhận khả năng kết nối mạng, SIM và GPS",
+        "Kiểm tra DeX, đa nhiệm và chức năng camera",
+        "Xác định loại bộ gá và nguồn phù hợp",
+        "Yêu cầu báo giá cấu hình cuối cùng"
+      ],
+      "hint": "Không phải mọi tính năng có trong mọi mã sản phẩm."
+    },
+    "/trai-nghiem-3d/": {
+      "lead": "Xem hình sản phẩm tương tác ngay trên UltraCarHCM.",
+      "steps": [
+        "Về trang chủ mở mục Trải nghiệm",
+        "Chọn kích thước 13,3″ hoặc 16″",
+        "Kéo chuột, chạm hoặc dùng thanh trượt để đổi góc nhìn minh họa",
+        "Xem video chi tiết mặt trước, thao tác và giá đỡ",
+        "Liên hệ để yêu cầu ảnh cấu tạo đúng mã sản phẩm"
+      ],
+      "hint": "Mô phỏng phối cảnh ảnh không phải 3D CAD hoặc file kỹ thuật chính thức."
+    },
+    "/video/": {
+      "lead": "Thư viện video kỹ thuật, lắp đặt và hình ảnh ứng dụng.",
+      "steps": [
+        "Mở mục Video thực tế trên trang chủ",
+        "Chọn nhóm thiết bị hoặc thao tác muốn xem",
+        "Phát clip trong cửa sổ video mà không rời UltraCarHCM",
+        "Xem thêm video ngắn theo dòng xe",
+        "Liên hệ UltraCarHCM nếu có câu hỏi về mẫu xe của bạn"
+      ],
+      "hint": "Một số video được phát qua trình nhúng của nền tảng cung cấp nội dung."
+    }
+  }
+}
