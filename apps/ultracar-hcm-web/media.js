@@ -36,7 +36,20 @@ window.ULTRACAR_MEDIA = {
     "VXL8G1": "/assets/product-guides/minio-separate-720.webp",
     "CAMLUI": "/assets/catalogue-026/camlui-1.png",
     "PDP16": "/assets/catalogue-026/pdp16-1.png",
-    "GDGD": "/assets/headrest/five-sizes.webp"
+    "GDGD": "/assets/headrest/five-sizes.webp",
+    "NCOTG": "/assets/previews/upgrade-integrated.webp",
+    "CAMLUIKV": "/assets/catalogue-026/camluikv-1.png",
+    "CBD2": "/assets/catalogue-026/cbd2-1.png",
+    "CBD3": "/assets/catalogue-026/cbd3-1.png",
+    "DNC": "/assets/catalogue-026/dnc-1.png",
+    "DTB": "/assets/catalogue-026/dtb-1.png",
+    "GDR": "/assets/models/ultracar-mount-original.jpg",
+    "K3": "/assets/catalogue-026/k3-1.png",
+    "MPT": "/assets/catalogue-026/mpt-1.png",
+    "NXL": "/assets/catalogue-026/nxl-1.png",
+    "NXL1": "/assets/catalogue-026/nxl1-1.png",
+    "NXL2": "/assets/catalogue-026/nxl2-1.png",
+    "VXL855": "/assets/product-guides/minio-separate-720.webp"
   },
   "gallery": [
     {
