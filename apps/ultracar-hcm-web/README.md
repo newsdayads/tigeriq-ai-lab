@@ -22,3 +22,11 @@ Liên hệ đại lý: 0392 960 003 / https://zalo.me/0392960003.
 - 128 ảnh đại diện, gallery và sản phẩm được lưu trực tiếp tại PC01 `assets/manufacturer`; `assets/manufacturer/manifest.json` ghi đường dẫn và SHA256 để kiểm tra. File binary được tái tạo theo `tools/source-snapshot.mjs` trên PC01, không hotlink website hãng.
 - Mọi thẻ trong thư viện mở `/chi-tiet.html?page=...` và sản phẩm dùng `?sku=...`, không điều hướng ra UltraCar.vn. Trang chi tiết là nội dung tóm lược biên tập riêng, **không phải bản chép toàn bộ nội dung bản quyền, video, 3D hoặc chính sách gốc**.
 - Tất cả outbound source hyperlinks trong HTML/app đã bỏ; Zalo vẫn mở vì là kênh liên hệ chủ đại lý.
+
+## BLUEPRINT DESIGN V3 — UltraCarHCM, ngày 06/11/2026
+- Thương hiệu: giữ PNG logo gốc 1024x341 do Owner cung cấp; bảng màu midnight #070d19, electric cobalt #065dff, titanium silver #dbe5f1. Không thêm tiêu đề chữ bên phải logo.
+- Liên hệ duy nhất: 0392 960 003 / tel:+84392960003 / https://zalo.me/0392960003. Loại số điện thoại và địa chỉ đại lý khác khỏi nội dung public. Không tự công bố địa chỉ lắp đặt chưa xác minh.
+- Hiệu ứng: showroom góc nhìn sản phẩm từ ảnh, kéo/slider/chọn góc, tự xoay, hero tilt, scroll progress và reveal; hỗ trợ prefers-reduced-motion, focus và mobile. Đây là phối cảnh tương tác minh họa, không phải 3D CAD chính thức của hãng.
+- Video: 8 clip mp4 công khai được tải về PC01 vào assets/motion và xác minh theo SHA-256 manifest. Trang có trình phát tại chỗ, server hỗ trợ video/mp4 và HTTP Range 206. Thêm 22 Shorts hướng dẫn nhúng theo cơ chế YouTube Privacy Enhanced, vẫn ở trong UltraCarHCM.
+- Nội dung: 172 chủ đề từ nguồn metadata, 54 mã sản phẩm, 128 ảnh nội bộ, 22 hướng dẫn biên tập độc lập trong dealer-guides.json. Nội dung không phải bản sao 1:1 của bài viết có bản quyền, CAD, mã nguồn 3D hoặc tài liệu pháp lý hãng. Quyền thương mại đối với media cần được xác nhận.
+- CI -> main -> PC01 localhost -> Cloudflare Tunnel, kiểm tra HTTPS và rollback. Không dùng Vercel.
