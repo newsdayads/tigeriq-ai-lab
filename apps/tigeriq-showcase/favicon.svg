@@ -1,9 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="TIG — TigerIQ">
- <defs><linearGradient id="red" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ff3c58"/><stop offset=".42" stop-color="#ea0029"/><stop offset=".82" stop-color="#c70028"/><stop offset="1" stop-color="#fd254b"/></linearGradient><linearGradient id="sheen" x1="0" y1="0" x2=".6" y2="1"><stop stop-color="#fff" stop-opacity=".39"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
- <rect x="4" y="4" width="248" height="248" rx="55" fill="url(#red)"/><rect x="10" y="10" width="236" height="236" rx="49" fill="none" stroke="#ffb1c2" stroke-opacity=".42" stroke-width="3"/>
- <path d="M27 88 Q49 11 137 17 L203 18 Q240 24 239 68 Q197 38 152 43 Q68 35 27 88Z" fill="url(#sheen)"/>
- <path d="M25 116 C56 84 86 69 129 65 L142 36 Q148 28 156 37 L171 55 L194 60 L216 76 L229 85 L217 93 L211 105 Q199 117 183 108 L171 97 L158 90 L138 89 Q120 96 105 113 L91 117 Q100 99 113 84 C77 91 47 105 25 116Z" fill="#fff"/><path d="M146 45 L157 56 L148 59 Q143 54 146 45Z" fill="#d5052f"/><path d="M181 76 L195 80 L204 88 L189 85 Z" fill="#d5052f"/><path d="M204 100 Q213 97 219 90 Q217 105 209 109Z" fill="#d5052f"/>
- <path d="M44 98 Q78 65 121 69 Q95 74 72 89Z" fill="#fff" opacity=".98"/><path d="M94 115 Q115 90 139 85 L129 110 L115 120Z" fill="#fff"/>
- <text x="126" y="187" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="91" font-weight="900" letter-spacing="-8" fill="#fff">TIG</text>
- <path d="M30 198 Q92 236 174 214 Q206 207 228 187" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" opacity=".93"/><path d="M31 198 Q94 229 172 210" fill="none" stroke="#ffbbcd" stroke-width="3" stroke-linecap="round" opacity=".83"/>
+ <title>TigerIQ — TIG</title>
+ <defs>
+  <linearGradient id="red" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ff4862"/><stop offset=".27" stop-color="#f20a2c"/><stop offset=".73" stop-color="#c60020"/><stop offset="1" stop-color="#f51236"/></linearGradient>
+  <linearGradient id="glass" x1="0" y1="0" x2=".8" y2="1"><stop stop-color="#fff" stop-opacity=".68"/><stop offset=".42" stop-color="#fff" stop-opacity=".1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+  <linearGradient id="orbit" x1="0" y1="0" x2="1" y2=".3"><stop stop-color="#ff9bad"/><stop offset=".4" stop-color="#fff"/><stop offset=".78" stop-color="#fff"/><stop offset="1" stop-color="#ffd1da"/></linearGradient>
+ </defs>
+ <rect x="3" y="3" width="250" height="250" rx="57" fill="url(#red)"/>
+ <rect x="8" y="8" width="240" height="240" rx="51" fill="none" stroke="#ffb5c2" stroke-width="3" opacity=".65"/>
+ <path d="M14 89C27 30 72 9 139 9h42C105 14 42 43 14 89Z" fill="url(#glass)"/>
+ <!-- Sweeping tiger mane -->
+ <path d="M18 141C31 95 69 70 127 63L139 30Q144 23 154 29L175 49Q201 52 221 69L239 83 233 95Q225 111 208 107L192 98Q177 91 164 97Q149 104 139 119Q138 98 148 88Q129 91 111 116L113 92Q91 103 82 119Q90 91 109 77C67 87 36 111 18 141Z" fill="#fff"/>
+ <path d="M141 36Q151 46 158 49L149 52Q142 49 141 36Z" fill="#d4082a"/>
+ <path d="M189 74 208 78 220 88 198 83Z" fill="#d4082a"/>
+ <path d="M221 95Q230 91 233 88Q229 101 221 105Z" fill="#d4082a"/>
+ <path d="M26 100Q63 67 115 65Q82 76 55 91Z" fill="#fff"/>
+ <path d="M92 117Q114 88 141 85L126 113 110 121Z" fill="#fff"/>
+ <!-- TIG uses a heavy compact wordmark readable at app-icon size -->
+ <text x="126" y="188" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="94" font-style="italic" font-weight="900" letter-spacing="-8" fill="#fff">TIG</text>
+ <!-- The original signature orbital underline -->
+ <path d="M40 187Q13 210 49 219Q91 233 156 216Q216 200 234 162Q238 185 216 203Q178 239 98 239Q30 239 26 217Q25 202 40 187Z" fill="url(#orbit)"/>
+ <path d="M31 217Q54 241 129 228" fill="none" stroke="#ff8fa5" stroke-width="3" opacity=".75"/>
 </svg>
