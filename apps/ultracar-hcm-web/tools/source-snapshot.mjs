@@ -57,7 +57,7 @@ else if(mode==='assets'){
   if(existsSync(dest)){const b=readFileSync(dest);return {path:p,local,sha256:createHash('sha256').update(b).digest('hex'),bytes:b.length,existing:true}}
   const result=await get(external,'image');if(result.error)return {path:p,error:result.error};
   mkdirSync(dirname(dest),{recursive:true});writeFileSync(dest,result.bytes);
-  return {path:p,local,sha256:result.sha256,bytes:result.bytes};
+  return {path:p,local,sha256:result.sha256,bytes:result.bytes.length};
  });
  writeFileSync(join(ROOT,'assets','manufacturer','manifest.json'),JSON.stringify({origin:SOURCE,createdOn:new Date().toISOString(),images:records},null,2)+'\n');
  console.log(JSON.stringify({stage:'assets',unique:unique.length,downloaded:records.filter(x=>!x.error).length,failed:records.filter(x=>x.error),bytes:records.filter(x=>!x.error).reduce((sum,x)=>sum+x.bytes,0),output:'assets/manufacturer/manifest.json'}));
