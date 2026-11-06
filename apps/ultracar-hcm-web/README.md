@@ -5,7 +5,7 @@ Tên miền đích: https://ultracar.tigeriq.io.vn/ · Hạ tầng: **PC01 + Clo
 ## Nguồn
 - Trang hãng: https://ultracar.vn/ (kiểm kê công khai ngày 2026-11-06).
 - 54 mã, thông số/giá biên tập dựa trên dữ kiện công khai; chênh lệch giá và NC888 được đánh dấu chờ xác minh.
-- Logo đại lý là ảnh tham chiếu từ banner Owner; server đã sửa MIME image/svg+xml để hiển thị đúng. Favicon SVG cũng được khai báo chuẩn.
+- Logo chủ sở hữu cung cấp trực tiếp: `assets/ultracarhcm-logo-original.png` (PNG 1024×341 RGBA), SHA-256 `93411ebb0ed5197254819f908413fc54b213926435d3e3cea2f55002860baaf5`. Header/footer dùng nguyên ảnh này, không đặt tên thương hiệu lặp bên phải. Favicon SVG giữ nguyên vì phù hợp kích thước tab trình duyệt.
 - Ảnh công khai của hãng được nhúng theo URL gốc trong media.js; 4 ảnh gallery và ảnh theo SKU lấy từ window.UCProductImages trên https://ultracar.vn/san-pham/. Không sao chép hàng loạt tệp ảnh hoặc nhận là ảnh tự chụp; mã thiếu ảnh có thông báo minh bạch. Cần xác minh quyền dùng lại lâu dài với UltraCar.
 
 ## Runtime PC01

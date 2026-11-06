@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 const root=new URL('..',import.meta.url);
@@ -16,9 +17,19 @@ test('public sitemap has 172 indexed Vietnamese pages with 101 car guides',()=>{
 test('website references public-source navigation and code has no secret',()=>{const h=read('index.html');assert.match(h,/id="thu-vien"/);assert.match(h,/src="source-pages.js"/);});
 
 test('UltraCarHCM brand, genuine manufacturer media and browser-safe SVG response',()=>{
- const h=read('index.html');assert.match(h,/ULTRACAR<b>HCM<\/b>/);assert.doesNotMatch(h,/Đại lý tư vấn tại (?:TP\.)?HCM/i);assert.match(h,/src="media\.js\?v=20261106r2"/);assert.match(h,/id="hinh-anh"/);assert.match(h,/ultracar\.vn\/assets\/hero\/ultracar-cockpit-1600\.webp/);
+ const h=read('index.html');assert.match(h,/class="brand-logo" src="assets\/ultracarhcm-logo-original\.png\?v=20261106r3"/);assert.doesNotMatch(h,/Đại lý tư vấn tại (?:TP\.)?HCM/i);assert.match(h,/src="media\.js\?v=20261106r2"/);assert.match(h,/id="hinh-anh"/);assert.match(h,/ultracar\.vn\/assets\/hero\/ultracar-cockpit-1600\.webp/);
  const raw=read('media.js');const m=raw.match(/^window\.ULTRACAR_MEDIA\s*=\s*(\{.*\});\s*$/s);assert.ok(m);const media=JSON.parse(m[1]);assert.ok(Object.keys(media.products).length>=40);for(const p of Object.values(media.products)){assert.match(p,/^\/(?:assets|api\/media)\//);assert.doesNotMatch(p,/product-image-pending/)}
  assert.match(read('server.mjs'),/'\.svg':'image\/svg\+xml'/);assert.match(read('app.js'),/productPhoto\(p\)/);
 });
 
 test('catalogue reconciled against manufacturer, without synthetic ULTRAMOUNT SKU',()=>{const p=JSON.parse(read('products.json'));assert.equal(p.length,54);assert.ok(p.find(x=>x.sku==='NC888'&&x.price===2500000));assert.ok(p.some(x=>x.sku==='CBKVXL13'));assert.ok(p.some(x=>x.sku==='VXL855'));assert.ok(!p.some(x=>x.sku==='ULTRAMOUNT'));});
+
+test('Owner original UltraCarHCM PNG is pixel-identical, no duplicated adjacent brand title',()=>{
+ const logo=readFileSync(new URL('assets/ultracarhcm-logo-original.png',root));
+ assert.equal(createHash('sha256').update(logo).digest('hex'),'93411ebb0ed5197254819f908413fc54b213926435d3e3cea2f55002860baaf5');
+ assert.equal(logo.readUInt32BE(16),1024);assert.equal(logo.readUInt32BE(20),341);
+ const h=read('index.html');const header=h.match(/<header class="header"[\s\S]*?<\/header>/)?.[0];assert.ok(header);
+ assert.match(header,/class="brand-logo"/);assert.doesNotMatch(header,/<span>ULTRACAR<b>HCM<\/b><\/span>/);
+ assert.match(h,/class="footer-logo" src="assets\/ultracarhcm-logo-original\.png\?v=20261106r3"/);
+ const css=read('styles.css');assert.match(css,/\.brand img\.brand-logo\{[^}]*object-fit:contain/);
+});
