@@ -69,7 +69,7 @@ test("TIG vector icon and consistent website branding", () => {
   const svg = readFileSync(resolve(root, "favicon.svg"), "utf8");
   assert.match(svg, /aria-label="TIG — TigerIQ"/);
   assert.match(svg, /<text[^>]+>TIG<\/text>/);
-  assert.match(svg, /M25 116 C56 84/);
+  assert.match(svg, /M18 141C31 95/);\n  assert.match(svg, /id="orbit"/);
   assert.match(html, /đầu hổ trắng trong khối kính 3D/);
   assert.match(css, /\.brand-mark\{/);
 });
