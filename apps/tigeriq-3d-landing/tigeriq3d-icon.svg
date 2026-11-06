@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+<title id="title">TigerIQ 3D — biểu tượng hổ và đầu in 3D</title>
+<defs><linearGradient id="orange" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#ffb326"/><stop offset=".6" stop-color="#ff8616"/><stop offset="1" stop-color="#ef4f16"/></linearGradient><linearGradient id="shell" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#dce5fa"/></linearGradient></defs>
+<path d="M64 4 117 35v58l-53 31L11 93V35Z" fill="#0c1847"/>
+<path d="M64 12 110 39v50L64 115 18 89V39Z" fill="url(#shell)"/>
+<path d="M78 18h29a5 5 0 0 1 5 5v20a5 5 0 0 1-5 5h-7l-5 10-5-10H78a5 5 0 0 1-5-5V23a5 5 0 0 1 5-5Z" fill="#0c1847"/>
+<path d="M83 31h19" stroke="#edf3ff" stroke-width="4" stroke-linecap="round"/>
+<path d="m95 53 2 39" fill="none" stroke="#ff801c" stroke-width="4" stroke-linecap="round"/>
+<path d="m32 95 56-22 26 19-52 27Z" fill="#f46b12"/>
+<path d="m31 85 55-20 29 23-53 22Z" fill="url(#orange)" stroke="#0c1847" stroke-width="3"/>
+<path d="m55 91 38-12 10 8-34 12-14-5 12-4" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M15 76c2-19 12-35 27-43l1-15 13 11c20-3 37 8 49 26l-18 9c-3 12-11 20-25 24l-16-2-17 5-8-12Z" fill="url(#orange)" stroke="#0c1847" stroke-width="4" stroke-linejoin="round"/>
+<path d="M21 73c8-6 17-9 28-12l-13 19-12 6Zm30 8c10-12 23-17 35-19-3 12-13 21-24 25Z" fill="#f9faff"/>
+<path d="M28 53c12-7 23-9 34-9L39 61Z M42 33c12 3 20 8 25 15l-15-6Zm25 9c10 2 19 7 24 12l-16-4Z" fill="#0c1847"/>
+<path d="m68 53 17-1-8 7Z" fill="#fff"/>
+<path d="m92 56 11-1-9 7-9 1" fill="#0c1847"/>
+</svg>
