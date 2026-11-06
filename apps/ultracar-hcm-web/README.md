@@ -30,3 +30,5 @@ Liên hệ đại lý: 0392 960 003 / https://zalo.me/0392960003.
 - Video: 8 clip mp4 công khai được tải về PC01 vào assets/motion và xác minh theo SHA-256 manifest. Trang có trình phát tại chỗ, server hỗ trợ video/mp4 và HTTP Range 206. Thêm 22 Shorts hướng dẫn nhúng theo cơ chế YouTube Privacy Enhanced, vẫn ở trong UltraCarHCM.
 - Nội dung: 172 chủ đề từ nguồn metadata, 54 mã sản phẩm, 128 ảnh nội bộ, 22 hướng dẫn biên tập độc lập trong dealer-guides.json. Nội dung không phải bản sao 1:1 của bài viết có bản quyền, CAD, mã nguồn 3D hoặc tài liệu pháp lý hãng. Quyền thương mại đối với media cần được xác nhận.
 - CI -> main -> PC01 localhost -> Cloudflare Tunnel, kiểm tra HTTPS và rollback. Không dùng Vercel.
+
+- Thư viện thực tế theo xe: 276 ảnh, 552 file thumbnail/full (60.6MB), 15 hãng xe, lưu PC01 assets/gallery, bản kê gallery.json chứa cảnh báo review, nhãn dòng xe và SHA256. Bộ lọc hãng/từ khóa/ảnh cần xác minh, dialog phóng to nội bộ; không dẫn sang ultracar.vn.
