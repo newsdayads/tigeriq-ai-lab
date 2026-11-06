@@ -17,7 +17,7 @@ test('public sitemap has 172 indexed Vietnamese pages with 101 car guides',()=>{
 test('website references public-source navigation and code has no secret',()=>{const h=read('index.html');assert.match(h,/id="thu-vien"/);assert.match(h,/src="source-pages.js"/);});
 
 test('UltraCarHCM brand, genuine manufacturer media and browser-safe SVG response',()=>{
- const h=read('index.html');assert.match(h,/class="brand-logo" src="assets\/ultracarhcm-logo-original\.png\?v=20261106r3"/);assert.doesNotMatch(h,/Đại lý tư vấn tại (?:TP\.)?HCM/i);assert.match(h,/src="media\.js\?v=20261106r2"/);assert.match(h,/id="hinh-anh"/);assert.match(h,/ultracar\.vn\/assets\/hero\/ultracar-cockpit-1600\.webp/);
+ const h=read('index.html');assert.match(h,/class="brand-logo" src="assets\/ultracarhcm-logo-original\.png\?v=20261106r3"/);assert.doesNotMatch(h,/Đại lý tư vấn tại (?:TP\.)?HCM/i);assert.match(h,/src="media\.js\?v=20261106r2"/);assert.match(h,/id="hinh-anh"/);assert.match(h,/\/assets\/manufacturer\/assets\/hero\/ultracar-cockpit-1600\.webp/);
  const raw=read('media.js');const m=raw.match(/^window\.ULTRACAR_MEDIA\s*=\s*(\{.*\});\s*$/s);assert.ok(m);const media=JSON.parse(m[1]);assert.ok(Object.keys(media.products).length>=40);for(const p of Object.values(media.products)){assert.match(p,/^\/(?:assets|api\/media)\//);assert.doesNotMatch(p,/product-image-pending/)}
  assert.match(read('server.mjs'),/'\.svg':'image\/svg\+xml'/);assert.match(read('app.js'),/productPhoto\(p\)/);
 });
@@ -32,4 +32,26 @@ test('Owner original UltraCarHCM PNG is pixel-identical, no duplicated adjacent 
  assert.match(header,/class="brand-logo"/);assert.doesNotMatch(header,/<span>ULTRACAR<b>HCM<\/b><\/span>/);
  assert.match(h,/class="footer-logo" src="assets\/ultracarhcm-logo-original\.png\?v=20261106r3"/);
  const css=read('styles.css');assert.match(css,/\.brand img\.brand-logo\{[^}]*object-fit:contain/);
+});
+
+test('172 source-verified topics have local internal detail pages, never manufacturer outbound clicks',()=>{
+ const db=JSON.parse(read('source-details.json'));assert.equal(db.pages.length,172);
+ assert.equal(db.pages.filter(p=>p.status==='verified').length,172);
+ assert.equal(new Set(db.pages.map(p=>p.path)).size,172);
+ const h=read('index.html'),app=read('app.js');
+ assert.match(h,/\/chi-tiet\.html\?page=/);
+ assert.match(app,/encodeURIComponent\(p\.path\)/);
+ assert.doesNotMatch(h,/href="https:\/\/ultracar\.vn/i);
+ assert.doesNotMatch(app,/https:\/\/ultracar\.vn/i);
+ assert.doesNotMatch(h,/src="https:\/\/ultracar\.vn/i);
+ assert.match(read('chi-tiet.html'),/chi-tiet\.js/);
+ assert.match(read('chi-tiet.js'),/\/source-details\.json/);
+ assert.match(read('chi-tiet.js'),/productBySku/);
+});
+test('128 source images are self-hosted with validated hash manifest',()=>{
+ const obj=JSON.parse(read('assets/manufacturer/manifest.json'));
+ assert.equal(obj.images.length,128);
+ assert.ok(obj.images.every(x=>!x.error&&x.sha256&&x.local.startsWith('/assets/manufacturer/')));
+ const app=read('app.js');assert.match(app,/"\/assets\/manufacturer"\+path/);
+ assert.doesNotMatch(app,/"https:\/\/ultracar\.vn"\+path/);
 });
