@@ -1,0 +1,2397 @@
+{
+  "source": "https://ultracar.vn",
+  "capturedOn": "2026-11-06T09:02:17.960Z",
+  "pages": [
+    {
+      "path": "/",
+      "group": "trang-chu",
+      "title": "UltraCar.vn — Giải pháp màn hình ô tô",
+      "description": "Biến khoang lái thành không gian đa nhiệm với UltraCar.vn. Sử dụng song song màn hình nguyên bản, giá đỡ theo xe, dùng thử 7 ngày và hỗ trợ kỹ thuật trọn đời.",
+      "headings": [
+        "Khách hàng nâng cấp xe",
+        "Dòng xe có giải pháp giá đỡ",
+        "Khách sử dụng app UltraCar",
+        "Điểm đánh giá trên Shopee",
+        "Khám phá từng góc nhìn."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/bang-gia/",
+      "group": "bang-gia",
+      "title": "Bảng giá màn hình ô tô UltraCar | Combo & phụ kiện",
+      "description": "So sánh giá màn hình UltraCar 13.3 và 16 inch, cấu hình Snapdragon 865 và 888. Xem giá đỡ, camera, pin và các gói nâng cấp.",
+      "headings": [
+        "Bảng giá theo cấu hình",
+        "Mua kèm, giảm 200.000₫",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/cam-ket/",
+      "group": "cam-ket",
+      "title": "Trải nghiệm & hậu mãi",
+      "description": "Xem Trải nghiệm & hậu mãi tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "An tâm từ lần đầu trải nghiệm đến suốt quá trình sử dụng.",
+        "Trải nghiệm thực tế 7 ngày.",
+        "Cam kết hậu mãi trọn đời.",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/cam-lui/",
+      "group": "cam-lui",
+      "title": "Camera lùi UltraCar",
+      "description": "Xem Camera lùi UltraCar tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Muốn mua UltraCar, nhưng ngại lắp cam lùi?",
+        "Vào số lùi. Camera lên ngay.",
+        "Sơ đồ nguyên lý lắp camera lùi",
+        "Bộ chuyển đổi camera lùi: cấu tạo & chức năng",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/cau-chuyen-thuong-hieu/",
+      "group": "cau-chuyen-thuong-hieu",
+      "title": "Câu chuyện thương hiệu UltraCar.vn | Một điều muốn làm đến cùng",
+      "description": "Câu chuyện UltraCar từ nhu cầu trên chiếc VinFast VF5 đến phát triển giá đỡ, phần cứng và phần mềm Samsung DeX cho ô tô.",
+      "headings": [
+        "Một quyết định rất đời thường",
+        "Tìm một cách làm phù hợp",
+        "Những thử nghiệm đầu tiên",
+        "Từ cách làm đến một bộ sản phẩm",
+        "Phát triển phần mềm riêng"
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/chinh-sach/bao-hanh/",
+      "group": "chinh-sach",
+      "title": "Bảo hành UltraCar | Điều kiện & liên hệ hỗ trợ",
+      "description": "Xem thông tin bảo hành UltraCar, cách gửi yêu cầu và những thông tin cần chuẩn bị. Liên hệ bộ phận bảo hành 0327 001 088.",
+      "headings": [
+        "Thông tin bảo hành",
+        "Cách yêu cầu hỗ trợ",
+        "Hỗ trợ kỹ thuật",
+        "Bảo hành",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/chinh-sach/bao-mat/",
+      "group": "chinh-sach",
+      "title": "Chính sách bảo mật",
+      "description": "Xem Chính sách bảo mật tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Trong trang này",
+        "1. Đơn vị phụ trách và phạm vi",
+        "2. Những thông tin có thể được tiếp nhận",
+        "3. Đăng nhập bằng Google",
+        "4. Cách gửi biểu mẫu và tin nhắn Zalo"
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/chinh-sach/dieu-khoan/",
+      "group": "chinh-sach",
+      "title": "Điều khoản sử dụng",
+      "description": "Xem Điều khoản sử dụng tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Trong trang này",
+        "1. Đơn vị cung cấp và phạm vi áp dụng",
+        "2. Sử dụng website và thông tin cung cấp",
+        "3. Sản phẩm và khả năng tương thích",
+        "4. Quy trình đặt hàng và xác nhận"
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/chinh-sach/doi-tra/",
+      "group": "chinh-sach",
+      "title": "Chính sách đổi trả",
+      "description": "Xem Chính sách đổi trả tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Trải nghiệm 7 ngày",
+        "Gửi yêu cầu đổi trả",
+        "Xác nhận trước khi gửi hàng",
+        "Liên hệ",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/cong-ty/",
+      "group": "cong-ty",
+      "title": "Công ty & liên hệ",
+      "description": "Xem Công ty & liên hệ tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Gặp UltraCar tại DC Auto",
+        "DC Auto · TP.HCM",
+        "Ghé thăm văn phòng UltraCar.",
+        "Tổng thể giải pháp UltraCar.",
+        "Kết nối với UltraCar."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/dai-ly/",
+      "group": "dai-ly",
+      "title": "Nhận báo giá & hợp tác đại lý.",
+      "description": "Xem Nhận báo giá & hợp tác đại lý. tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Khám phá sản phẩm UltraCar",
+        "Gặp UltraCar tại DC Auto",
+        "DC Auto · TP.HCM",
+        "Tư vấn nhận báo giá đại lý",
+        "Kết nối từ nhu cầu thực tế."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/dan-duong/",
+      "group": "dan-duong",
+      "title": "Bản đồ & giải trí",
+      "description": "Xem Bản đồ & giải trí tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Bản đồ và giải trí trên cùng một màn hình.",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/danh-gia/",
+      "group": "danh-gia",
+      "title": "Đánh giá khách hàng",
+      "description": "Xem Đánh giá khách hàng tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Khách hàng chia sẻ trải nghiệm trên VF5",
+        "Hơn 8.962 khách hàng đã nâng cấp xe, còn bạn thì sao?",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/da-nhiem/",
+      "group": "da-nhiem",
+      "title": "5 ứng dụng song song",
+      "description": "Xem 5 ứng dụng song song tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Sử dụng 5 app song song cùng lúc.",
+        "5 app trên cùng màn hình",
+        "Bố cục theo nhu cầu",
+        "Mở lại bộ app quen thuộc",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/",
+      "group": "dong-xe",
+      "title": "Màn hình UltraCar lắp được xe nào? | Tra cứu dòng xe",
+      "description": "Tra cứu dòng xe và mẫu giá đỡ UltraCar. Chọn hãng, mẫu xe và gửi đời xe, ảnh táp-lô để xác nhận phương án lắp đặt.",
+      "headings": [
+        "Danh mục dòng xe.",
+        "Tham khảo cách bố trí trên xe.",
+        "Giá đỡ đa nhiệm loại mới",
+        "VinFast",
+        "Bestune"
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/bestune-xiaoma/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Bestune Xiaoma 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Bestune Xiaoma: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/bestune-xiaoma.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/bmw-5-series-2018-g30/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo BMW 5 Series 2018 G30 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho BMW 5 Series 2018 G30: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/bmw-5-series-2018-g30.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/bmw-x7-2020/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo BMW X7 2020 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho BMW X7 2020: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/bmw-x7-2020.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/chevrolet-trailblazer-2018/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Chevrolet Trailblazer 2018 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Chevrolet Trailblazer 2018: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/chevrolet-trailblazer-2018.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/citroen-berlingo-2026/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Citroën Berlingo 2026 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Citroën Berlingo 2026: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/citroen-berlingo-2026.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/ford-everest/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Ford Everest 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Ford Everest: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/ford-everest.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/ford-everest-2020/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Ford Everest 2020 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Ford Everest 2020: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/ford-everest-2020.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/ford-focus-2018/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Ford Focus 2018 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Ford Focus 2018: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/ford-focus-2018.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/ford-mondeo-hybrid-2015/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Ford Mondeo Hybrid 2015 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Ford Mondeo Hybrid 2015: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/ford-mondeo-hybrid-2015.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/ford-ranger/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Ford Ranger 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Ford Ranger: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/vehicle-gallery/photo-001.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/ford-ranger-2014/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Ford Ranger 2014 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Ford Ranger 2014: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/ford-ranger-2014.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/ford-ranger-raptor/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Ford Ranger Raptor 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Ford Ranger Raptor: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/ford-ranger-raptor.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/ford-territory/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Ford Territory 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Ford Territory: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/ford-territory.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/geely-coolray/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Geely Coolray 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Geely Coolray: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/geely-coolray.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/hino-300/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Hino 300 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Hino 300: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/hino-300.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/honda-br-v/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Honda BR-V 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Honda BR-V: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/honda-br-v.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/honda-city-2021/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Honda City 2021 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Honda City 2021: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/honda-city-2021.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/honda-city-rs-2022/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Honda City RS 2022 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Honda City RS 2022: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/honda-city-rs-2022.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/honda-civic/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Honda Civic 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Honda Civic: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/honda-civic.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/honda-cr-v/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Honda CR-V 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Honda CR-V: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/honda-cr-v.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/honda-cr-v-2021/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Honda CR-V 2021 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Honda CR-V 2021: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/honda-cr-v-2021.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/honda-hr-v-2024/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Honda HR-V 2024 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Honda HR-V 2024: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/honda-hr-v-2024.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/honda-odyssey-rc1/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Honda Odyssey RC1 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Honda Odyssey RC1: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/honda-odyssey-rc1.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/hyundai-accent/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Hyundai Accent 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Hyundai Accent: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/vehicle-gallery/photo-031.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/hyundai-accent-2020/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Hyundai Accent 2020 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Hyundai Accent 2020: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/hyundai-accent-2020.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/hyundai-custin/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Hyundai Custin 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Hyundai Custin: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/vehicle-gallery/photo-042.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/hyundai-santa-fe/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Hyundai Santa Fe 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Hyundai Santa Fe: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/hyundai-santa-fe.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/hyundai-santa-fe-2020/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Hyundai Santa Fe 2020 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Hyundai Santa Fe 2020: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/hyundai-santa-fe-2020.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/hyundai-santa-fe-2021/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Hyundai Santa Fe 2021 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Hyundai Santa Fe 2021: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/hyundai-santa-fe-2021.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/hyundai-santa-fe-2022/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Hyundai Santa Fe 2022 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Hyundai Santa Fe 2022: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/hyundai-santa-fe-2022.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/hyundai-stargazer/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Hyundai Stargazer 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Hyundai Stargazer: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/vehicle-gallery/photo-046.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/hyundai-tucson/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Hyundai Tucson 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Hyundai Tucson: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/hyundai-tucson.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/hyundai-tucson-2024/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Hyundai Tucson 2024 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Hyundai Tucson 2024: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/hyundai-tucson-2024.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/hyundai-venue/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Hyundai Venue 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Hyundai Venue: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/hyundai-venue.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/isuzu-d-max-2016/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Isuzu D-Max 2016 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Isuzu D-Max 2016: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/isuzu-d-max-2016.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/isuzu-mu-x/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Isuzu MU-X 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Isuzu MU-X: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/isuzu-mu-x.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/kia-carens/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Kia Carens 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Kia Carens: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/vehicle-gallery/photo-049.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/kia-carnival/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Kia Carnival 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Kia Carnival: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/vehicle-gallery/photo-074.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/kia-carnival-2022/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Kia Carnival 2022 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Kia Carnival 2022: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/kia-carnival-2022.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/kia-cerato-2021/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Kia Cerato 2021 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Kia Cerato 2021: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/kia-cerato-2021.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/kia-forte-2011/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Kia Forte 2011 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Kia Forte 2011: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/kia-forte-2011.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/kia-k5-2013/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Kia K5 2013 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Kia K5 2013: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/kia-k5-2013.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/kia-sedona/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Kia Sedona 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Kia Sedona: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/kia-sedona.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/kia-seltos/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Kia Seltos 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Kia Seltos: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/vehicle-gallery/photo-082.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/kia-seltos-2020/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Kia Seltos 2020 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Kia Seltos 2020: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/kia-seltos-2020.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/kia-seltos-2026/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Kia Seltos 2026 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Kia Seltos 2026: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/kia-seltos-2026.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/kia-soluto/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Kia Soluto 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Kia Soluto: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/kia-soluto.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/kia-sonet/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Kia Sonet 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Kia Sonet: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/kia-sonet.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/kia-sorento-2022/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Kia Sorento 2022 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Kia Sorento 2022: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/kia-sorento-2022.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/kia-sportage/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Kia Sportage 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Kia Sportage: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/kia-sportage.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/lexus-gx460/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Lexus GX460 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Lexus GX460: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/lexus-gx460.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/lexus-rx400h/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Lexus RX400h 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Lexus RX400h: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/lexus-rx400h.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/mazda-cx-5/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Mazda CX-5 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Mazda CX-5: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/vehicle-gallery/photo-099.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/mazda-mazda-2/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Mazda 2 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Mazda 2: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/vehicle-gallery/photo-135.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/mazda-mazda2-2018/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Mazda2 2018 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Mazda2 2018: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/mazda-mazda2-2018.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/mazda-mazda-3/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Mazda 3 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Mazda 3: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/mazda-mazda-3.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/mg-mg5/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo MG5 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho MG5: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/mg-mg5.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/mg-mg7/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo MG7 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho MG7: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/mg-mg7.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/mitsubishi-attrage/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Mitsubishi Attrage 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Mitsubishi Attrage: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/mitsubishi-attrage.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/mitsubishi-outlander-2019/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Mitsubishi Outlander 2019 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Mitsubishi Outlander 2019: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/mitsubishi-outlander-2019.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/mitsubishi-triton-2019/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Mitsubishi Triton 2019 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Mitsubishi Triton 2019: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/mitsubishi-triton-2019.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/mitsubishi-xpander/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Mitsubishi Xpander 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Mitsubishi Xpander: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/mitsubishi-xpander.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/mitsubishi-xpander-cross/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Mitsubishi Xpander Cross 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Mitsubishi Xpander Cross: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/mitsubishi-xpander-cross.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/peugeot-3008/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Peugeot 3008 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Peugeot 3008: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/vehicle-gallery/photo-146.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/renault-samsung-sm5-2011/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Renault Samsung SM5 2011 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Renault Samsung SM5 2011: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/vehicle-gallery/sm5-2011/renault-samsung-sm5-2011-05.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/skoda-kushaq/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Škoda Kushaq 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Škoda Kushaq: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/skoda-kushaq.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/suzuki-ertiga/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Suzuki Ertiga 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Suzuki Ertiga: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/suzuki-ertiga.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/suzuki-ertiga-2021/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Suzuki Ertiga 2021 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Suzuki Ertiga 2021: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/suzuki-ertiga-2021.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/suzuki-xl7/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Suzuki XL7 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Suzuki XL7: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/suzuki-xl7.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/toyota-camry-2015/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Toyota Camry 2015 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Toyota Camry 2015: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/toyota-camry-2015.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/toyota-camry-2020/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Toyota Camry 2020 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Toyota Camry 2020: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/toyota-camry-2020.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/toyota-camry-2-0-2018/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Toyota Camry 2.0 2018 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Toyota Camry 2.0 2018: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/toyota-camry-2-0-2018.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/toyota-corolla-altis/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Toyota Corolla Altis 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Toyota Corolla Altis: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/toyota-corolla-altis.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/toyota-corolla-altis-2018/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Toyota Corolla Altis 2018 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Toyota Corolla Altis 2018: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/toyota-corolla-altis-2018.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/toyota-corolla-cross/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Toyota Corolla Cross 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Toyota Corolla Cross: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/toyota-corolla-cross.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/toyota-highlander-2021/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Toyota Highlander 2021 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Toyota Highlander 2021: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/toyota-highlander-2021.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/toyota-innova/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Toyota Innova 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Toyota Innova: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/vehicle-gallery/photo-168.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/toyota-innova-cross/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Toyota Innova Cross 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Toyota Innova Cross: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/toyota-innova-cross.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/toyota-raize/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Toyota Raize 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Toyota Raize: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/toyota-raize.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/toyota-sienna-2022/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Toyota Sienna 2022 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Toyota Sienna 2022: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/toyota-sienna-2022.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/toyota-veloz-cross/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Toyota Veloz Cross 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Toyota Veloz Cross: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/toyota-veloz-cross.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/toyota-vios/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Toyota Vios 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Toyota Vios: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/toyota-vios.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/toyota-yaris-cross/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Toyota Yaris Cross 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Toyota Yaris Cross: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/toyota-yaris-cross.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/vinfast-fadil/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo VinFast Fadil 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho VinFast Fadil: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/vinfast-fadil.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/vinfast-herio-green/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo VinFast Herio Green 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho VinFast Herio Green: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/vinfast-herio-green.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/vinfast-limo-green/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo VinFast Limo Green 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho VinFast Limo Green: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/vehicle-gallery/photo-178.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/vinfast-lux-a/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo VinFast Lux A 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho VinFast Lux A: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/vehicle-gallery/photo-185.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/vinfast-lux-sa2-0/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo VinFast Lux SA2.0 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho VinFast Lux SA2.0: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/vinfast-lux-sa2-0.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/vinfast-minio-green/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo VinFast Minio Green 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho VinFast Minio Green: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/vehicle-gallery/photo-201.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/vinfast-mpv-7/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo VinFast MPV 7 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho VinFast MPV 7: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/vinfast-mpv-7.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/vinfast-vf-2/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo VinFast VF2 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho VinFast VF2: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/ultracar-13-3-inch.png",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/vinfast-vf-3/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo VinFast VF 3 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho VinFast VF 3: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/vinfast-vf-3.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/vinfast-vf-5/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo VinFast VF 5 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho VinFast VF 5: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/vehicle-gallery/photo-223.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/vinfast-vf-6/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo VinFast VF 6 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho VinFast VF 6: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/vinfast-vf-6.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/vinfast-vf-7/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo VinFast VF 7 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho VinFast VF 7: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/vinfast-vf-7.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/vinfast-vf-8/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo VinFast VF 8 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho VinFast VF 8: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/vinfast-vf-8.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/vinfast-vf-9/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo VinFast VF 9 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho VinFast VF 9: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/vinfast-vf-9.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/vinfast-vf-e34/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo VinFast VF e34 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho VinFast VF e34: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/vinfast-vf-e34.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/vinfast-vf-wild/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo VinFast VF Wild 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho VinFast VF Wild: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/stock-cockpits/vinfast-vf-wild.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/dong-xe/volkswagen-tiguan/",
+      "group": "dong-xe",
+      "title": "Màn hình taplo Volkswagen Tiguan 13.3 & 16 inch, cắm tẩu giữ zin",
+      "description": "Màn hình rời cho Volkswagen Tiguan: 4 cấu hình 13.3 và 16 inch, Snapdragon 865/888, giá từ 8.199.000đ. Chọn bộ và tư vấn giá đỡ theo đời xe.",
+      "headings": [
+        "Chọn kích cỡ và cấu hình phù hợp",
+        "13.3″ · Snapdragon 865",
+        "13.3″ · Snapdragon 888",
+        "16″ · Snapdragon 865",
+        "16″ · Snapdragon 888"
+      ],
+      "image": "/assets/vehicle-gallery/tiguan/volkswagen-tiguan-03.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/gia-do/",
+      "group": "gia-do",
+      "title": "Giá đỡ theo dòng xe | Ảnh thực tế UltraCar",
+      "description": "Xem ảnh bộ giá đỡ UltraCar hiện tại theo hãng và dòng xe. Lọc ảnh mẫu thực tế, đối chiếu đời xe và tư vấn vị trí lắp phù hợp.",
+      "headings": [
+        "Bộ giá đỡ mới",
+        "Giá đỡ theo dòng xe",
+        "Ảnh giá đỡ theo hãng & dòng xe",
+        "Kia Seltos · Chi tiết giá đỡ 01",
+        "MG MG5 - Số sàn · Chi tiết giá đỡ 01"
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/gioi-thieu/",
+      "group": "gioi-thieu",
+      "title": "Giới thiệu UltraCar",
+      "description": "Tìm hiểu UltraCar.vn: câu chuyện thương hiệu, sứ mệnh, tầm nhìn đến 2030, 8 giá trị cốt lõi và trách nhiệm với sản phẩm, khách hàng.",
+      "headings": [
+        "Câu chuyện UltraCar.vn",
+        "Sứ mệnh, tầm nhìn & văn hóa UltraCar",
+        "Công nghệ ô tô thực sự hữu ích",
+        "Làm chủ năng lực phát triển sản phẩm",
+        "8 giá trị cốt lõi"
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/ho-tro/",
+      "group": "ho-tro",
+      "title": "Hỗ trợ UltraCar | Hướng dẫn sử dụng, tải app & bảo hành",
+      "description": "Tìm hướng dẫn lắp đặt, cài ứng dụng UltraCar, sử dụng màn hình và xử lý vấn đề thường gặp. Liên hệ hỗ trợ theo nhu cầu.",
+      "headings": [
+        "Ứng dụng UltraCar.vn",
+        "Bảo hành",
+        "Câu hỏi thường gặp.",
+        "Lắp đặt & giá đỡ",
+        "Sử dụng màn hình"
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/huong-dan-kich-hoat-app/",
+      "group": "huong-dan-kich-hoat-app",
+      "title": "Hướng dẫn kích hoạt app sau khi mua hàng",
+      "description": "Xem Hướng dẫn kích hoạt app sau khi mua hàng tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Tìm và mở app UltracarVN",
+        "Kích hoạt sản phẩm chính hãng",
+        "Vào app sau khi kích hoạt",
+        "Vào mục Góp ý và Bảo hành",
+        "Gửi góp ý / yêu cầu bảo hành"
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/huong-dan-tai-app/",
+      "group": "huong-dan-tai-app",
+      "title": "Hướng dẫn tải app & thanh toán gia hạn",
+      "description": "Xem Hướng dẫn tải app & thanh toán gia hạn tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Video hướng dẫn tải và cài app UltraCar",
+        "Tải file APK về thiết bị",
+        "Cài đặt UltracarVN",
+        "Tìm và mở app",
+        "Cấp quyền Camera và Vị trí"
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/khe-sim/",
+      "group": "khe-sim",
+      "title": "SIM & kết nối mạng",
+      "description": "Xem SIM & kết nối mạng tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Khe SIM vật lý. Kết nối ngay trên màn hình.",
+        "Tháo lắp SIM. Xem rõ từng thao tác.",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/lap-dat/",
+      "group": "lap-dat",
+      "title": "Lắp đặt màn hình UltraCar | Tại nhà & tại cửa hàng",
+      "description": "Xem cách lắp màn hình UltraCar, kiểm tra giá đỡ theo xe và đặt lịch. Có lắp tại trụ sở hoặc tận nơi trong nội thành Nha Trang.",
+      "headings": [
+        "Chọn nơi lắp đặt thuận tiện cho bạn.",
+        "Lắp đặt tận nơi.",
+        "Lắp đặt trực tiếp tại công ty.",
+        "Gặp UltraCar tại DC Auto",
+        "DC Auto · TP.HCM"
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/lap-dat-thuc-te/",
+      "group": "lap-dat-thuc-te",
+      "title": "Hình ảnh lắp đặt",
+      "description": "Xem Hình ảnh lắp đặt tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "UltraCar trên VinFast VF5",
+        "UltraCar trên xe của khách.",
+        "243 ảnh theo dòng xe vừa cập nhật",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/lien-he/",
+      "group": "lien-he",
+      "title": "Liên hệ UltraCar",
+      "description": "Xem Liên hệ UltraCar tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Gặp UltraCar tại DC Auto",
+        "DC Auto · TP.HCM",
+        "Kết nối với UltraCar.",
+        "Tìm giải pháp phù hợp cho xe của bạn",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/man-hinh/",
+      "group": "man-hinh",
+      "title": "Màn hình UltraCar",
+      "description": "Xem Màn hình UltraCar tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Hai kích thước. Chọn theo khoang lái.",
+        "13.3 inch",
+        "16 inch",
+        "Nâng cấp từ điện thoại sẵn có",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/nang-cap/",
+      "group": "nang-cap",
+      "title": "Nâng cấp màn hình",
+      "description": "Xem Nâng cấp màn hình tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Nâng cấp màn hình UltraCar đang sử dụng",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/nguon-nam-cham/",
+      "group": "nguon-nam-cham",
+      "title": "Nguồn nam châm Pogo PIN",
+      "description": "Xem Nguồn nam châm Pogo PIN tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Cận cảnh Pogo PIN",
+        "Tẩu nguồn 12V",
+        "Hít nam châm. Nối nguồn Pogo PIN.",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/phu-kien/",
+      "group": "phu-kien",
+      "title": "Sử dụng ngoài xe",
+      "description": "Xem Sử dụng ngoài xe tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Sử dụng màn hình cả khi rời xe.",
+        "Chơi game trên màn hình lớn.",
+        "Thêm một màn hình cho công việc.",
+        "Giải trí ở nơi bạn muốn.",
+        "Một bộ pin. Thêm nhiều cách dùng."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/racing-mode/",
+      "group": "racing-mode",
+      "title": "Racing Mode UltraCar | Giao diện thông tin lái xe",
+      "description": "Xem Racing Mode tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Tập trung hơn. Trọn vẹn hành trình.",
+        "Tốc độ dễ quan sát.",
+        "Giảm chi tiết gây xao nhãng.",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/",
+      "group": "san-pham",
+      "title": "Mua m&agrave;n h&igrave;nh &ocirc; t&ocirc; UltraCar | Combo 13.3 & 16 inch",
+      "description": "Chọn combo UltraCar theo d&ograve;ng xe, k&iacute;ch thước v&agrave; cấu h&igrave;nh Snapdragon. Xem th&agrave;nh phần bộ, gi&aacute;, phụ kiện v&agrave; gửi y&ecirc;u cầu mua h&agrave;ng.",
+      "headings": [
+        "M&agrave;n 13 GO 888 – Combo bộ rời Snapdragon 888",
+        "M&agrave;n 13 GO 888 – Bộ rời Snapdragon 888, kh&ocirc;ng gi&aacute; đỡ",
+        "M&agrave;n 13 GO – Combo bộ rời Snapdragon 855 / Snapdragon 865",
+        "M&agrave;n 13 GO – Bộ rời Snapdragon 855 / Snapdragon 865, kh&ocirc;ng gi&aacute; đỡ",
+        "M&agrave;n 13 – M&agrave;n rời FHD 60Hz"
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/cam-lui/",
+      "group": "san-pham",
+      "title": "UltraCam – Bộ camera lùi theo giải pháp UltraCar · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/catalogue-026/camlui-1.png",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/combo-13-3-snapdragon-865/",
+      "group": "san-pham",
+      "title": "TAB 13 PRO All-in-One – Combo kèm giá đỡ · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/api/media/3ce38de7-a01a-4ac9-b14b-1752b9b84329",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/combo-13-3-snapdragon-888/",
+      "group": "san-pham",
+      "title": "TAB 13 ULTRA All-in-One – Combo kèm giá đỡ · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/api/media/0c3fcb14-b8ff-4a83-bb50-0814311547e9",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/combo-16-snapdragon-865/",
+      "group": "san-pham",
+      "title": "TAB 16 PRO All-in-One – Combo kèm giá đỡ · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/api/media/5d27aeba-c009-412f-ae66-18d01647a02c",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/combo-16-snapdragon-888/",
+      "group": "san-pham",
+      "title": "TAB 16 ULTRA All-in-One – Combo kèm giá đỡ · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/api/media/1560c93f-6df3-42e6-aa54-44c1995c2469",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/gia-do-goi-dau/",
+      "group": "san-pham",
+      "title": "Bộ giá đỡ gối đầu/MagSafe linh hoạt · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/headrest/five-sizes.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/gia-do-moi/",
+      "group": "san-pham",
+      "title": "UltraMount – Giá đỡ màn hình · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/models/ultracar-mount-original.jpg",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/13G8RCB/",
+      "group": "san-pham",
+      "title": "Màn 13 GO 888 – Combo bộ rời Snapdragon 888 · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/models/ultracar-13-3-front.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/13G8RKD/",
+      "group": "san-pham",
+      "title": "Màn 13 GO 888 – Bộ rời Snapdragon 888, không giá đỡ · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/models/ultracar-13-3-front.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/16G8RCB/",
+      "group": "san-pham",
+      "title": "Màn 16 GO 888 – Combo bộ rời Snapdragon 888 · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/screen-front.png",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/16G8RKD/",
+      "group": "san-pham",
+      "title": "Màn 16 GO 888 – Bộ rời Snapdragon 888, không giá đỡ · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/screen-front.png",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/CAMLUIKV/",
+      "group": "san-pham",
+      "title": "Bộ chuyển đổi cam lùi + phụ kiện – Không camera · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/catalogue-026/camluikv-1.png",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/CBD2/",
+      "group": "san-pham",
+      "title": "UltraLink – Combo 2 dây kết nối · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/catalogue-026/cbd2-1.png",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/DNC/",
+      "group": "san-pham",
+      "title": "Dây nguồn Type-C sạc siêu nhanh 2 m · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/catalogue-026/dnc-1.png",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/DTB/",
+      "group": "san-pham",
+      "title": "Dây Thunderbolt Type-C 2 m · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/catalogue-026/dtb-1.png",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/K1/",
+      "group": "san-pham",
+      "title": "Khóa trượt dọc V1 · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/product-image-pending.png",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/K2/",
+      "group": "san-pham",
+      "title": "Khóa trượt dọc V2 – Bản ngắn · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/product-image-pending.png",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/K3/",
+      "group": "san-pham",
+      "title": "Khóa V3 · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/catalogue-026/k3-1.png",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/K4/",
+      "group": "san-pham",
+      "title": "Khóa V4 · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/product-image-pending.png",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/MPT/",
+      "group": "san-pham",
+      "title": "Mạch pin kèm tẩu · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/catalogue-026/mpt-1.png",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/NXL/",
+      "group": "san-pham",
+      "title": "Bộ ngàm xoay linh hoạt thay thế · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/catalogue-026/nxl-1.png",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/NXL1/",
+      "group": "san-pham",
+      "title": "Ngàm xoay linh hoạt - Mặt gân chữ X · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/catalogue-026/nxl1-1.png",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/NXL2/",
+      "group": "san-pham",
+      "title": "Ngàm xoay linh hoạt - Khung vuông · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/catalogue-026/nxl2-1.png",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/T16L/",
+      "group": "san-pham",
+      "title": "TAB 16 LITE All-in-One – Màn lẻ · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/ultracar-16-inch.png",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/T16LCB/",
+      "group": "san-pham",
+      "title": "TAB 16 LITE All-in-One – Combo kèm giá đỡ · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/ultracar-16-inch.png",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/VXL865/",
+      "group": "san-pham",
+      "title": "Snapdragon 865 – Bộ xử lý 8GB/128GB · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/product-guides/minio-separate-720.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/p/VXL8G1/",
+      "group": "san-pham",
+      "title": "Snapdragon 8 Gen 1 – Bộ xử lý 12GB/256GB · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/product-guides/minio-separate-720.webp",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/pin-ultracar/",
+      "group": "san-pham",
+      "title": "Pin dự phòng phiên bản Siêu Chiến Binh – Tiêu chuẩn CCC · UltraCar",
+      "description": "Chọn combo UltraCar theo dòng xe, kích thước và cấu hình Snapdragon. Xem thành phần bộ, giá, phụ kiện và gửi yêu cầu mua hàng.",
+      "headings": [],
+      "image": "/assets/catalogue-026/pdp16-1.png",
+      "status": "verified"
+    },
+    {
+      "path": "/san-pham/ung-dung-ultracar/",
+      "group": "san-pham",
+      "title": "Ứng dụng UltraCar.vn",
+      "description": "Xem Ứng dụng UltraCar.vn tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Bắt đầu với UltraCar.",
+        "Mua màn hình. Được tặng app.",
+        "Thanh toán QR ngay trong app.",
+        "Tặng 3 tháng Gofa Pro",
+        "Thông số & thông tin"
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/tai-lieu/",
+      "group": "tai-lieu",
+      "title": "Hình ảnh & tài liệu",
+      "description": "Xem Hình ảnh & tài liệu tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Hướng dẫn, hình ảnh và chính sách bảo hành.",
+        "Combo màn hình & giá đỡ ↗",
+        "Khung giá đỡ V2 ↗",
+        "Chính sách bảo hành ↗",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/thiet-ke/",
+      "group": "thiet-ke",
+      "title": "Thiết kế & kết nối",
+      "description": "Xem Thiết kế & kết nối tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Thiết kế của màn hình UltraCar",
+        "Camera tích hợp",
+        "Tản nhiệt và lắp phụ kiện",
+        "Chi tiết màn hình và cách lắp trên VF5",
+        "Khe SIM vật lý. Kết nối ngay trên màn hình."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/thu-vien/",
+      "group": "thu-vien",
+      "title": "Ảnh & video lắp màn hình UltraCar thực tế theo dòng xe",
+      "description": "Xem hình ảnh, video màn hình và giá đỡ UltraCar đã lắp thực tế. Lọc tư liệu theo hãng và dòng xe trước khi chọn bộ phù hợp.",
+      "headings": [
+        "Ford Ranger 2024 · Ảnh lắp đặt 01",
+        "Honda CR-V 2024 · Ảnh lắp đặt 01",
+        "Hyundai Accent 2021 · Ảnh lắp đặt 01",
+        "Hyundai Custin · Ảnh lắp đặt 01",
+        "Hyundai Stargazer - Màn 16 inch · Ảnh lắp đặt 01"
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/tinh-nang/",
+      "group": "tinh-nang",
+      "title": "Tính năng UltraCar",
+      "description": "Xem Tính năng UltraCar tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Từ ứng dụng đến phần cứng",
+        "Tính năng app",
+        "Thiết kế & kết nối",
+        "Dòng xe & lắp đặt",
+        "Hình ảnh & video thực tế"
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/tin-tuc/",
+      "group": "tin-tuc",
+      "title": "Kinh nghiệm cho khoang lái của bạn.",
+      "description": "Xem Kinh nghiệm cho khoang lái của bạn. tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Lắp đặt màn hình và giá đỡ UltraCar: 7 câu hỏi thường gặp",
+        "Chọn màn hình 13.3 hay 16 inch cho khoang lái?",
+        "Chuẩn bị gì trước khi lắp màn hình UltraCar?",
+        "Thiết lập bố cục Samsung DeX với UltraCar",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/tin-tuc/bo-cuc-samsung-dex/",
+      "group": "tin-tuc",
+      "title": "Thiết lập bố cục Samsung DeX với UltraCar",
+      "description": "Xem Thiết lập bố cục Samsung DeX với UltraCar tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Kiểm tra thiết bị hỗ trợ",
+        "Tải ứng dụng từ link chính thức",
+        "Lưu bố cục sau khi căn chỉnh",
+        "Thiết lập khi xe dừng đỗ",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/tin-tuc/chon-man-hinh-13-3-hay-16/",
+      "group": "tin-tuc",
+      "title": "Chọn màn hình 13.3 hay 16 inch cho khoang lái?",
+      "description": "Xem Chọn màn hình 13.3 hay 16 inch cho khoang lái? tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Đo vị trí lắp trước",
+        "13.3 inch: ưu tiên gọn",
+        "16 inch: thêm diện tích hiển thị",
+        "Chốt cấu hình theo nhu cầu",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/tin-tuc/huong-dan-lap-dat-man-hinh-va-gia-do/",
+      "group": "tin-tuc",
+      "title": "Lắp đặt màn hình và giá đỡ UltraCar: 7 câu hỏi thường gặp",
+      "description": "Hướng dẫn chuẩn bị, lắp đặt và kiểm tra giá đỡ Limo / VF3, VF5 / Herio Green, giá đỡ đa năng và màn hình ghế sau, kèm 7 video thực tế.",
+      "headings": [
+        "Chọn câu hỏi bạn cần",
+        "Lắp đặt màn hình trên Limo / VF3 như thế nào?",
+        "Các bước thực hiện và đối chiếu",
+        "Lắp giá đỡ màn hình ghế sau như thế nào?",
+        "Các bước thực hiện và đối chiếu"
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/tin-tuc/kiem-tra-truoc-khi-lap-dat/",
+      "group": "tin-tuc",
+      "title": "Chuẩn bị gì trước khi lắp màn hình UltraCar?",
+      "description": "Xem Chuẩn bị gì trước khi lắp màn hình UltraCar? tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Gửi đúng thông tin xe",
+        "Kiểm tra vùng thao tác",
+        "Xác nhận bộ nguồn và phụ kiện",
+        "Thử trước khi sử dụng",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/trai-nghiem-3d/",
+      "group": "trai-nghiem-3d",
+      "title": "Khám phá màn hình 3D",
+      "description": "Xem Khám phá màn hình 3D tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Khám phá từng góc nhìn.",
+        "Camera trước",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/tvc/",
+      "group": "tvc",
+      "title": "TVC UltraCar",
+      "description": "Xem TVC UltraCar tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Tổng thể giải pháp UltraCar.",
+        "Chọn bộ UltraCar phù hợp với xe."
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/ung-dung/",
+      "group": "ung-dung",
+      "title": "Ứng dụng độc quyền UltraCar",
+      "description": "Xem Ứng dụng độc quyền UltraCar tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "Một bố cục của bạn. Sẵn sàng mỗi hành trình.",
+        "Khám phá ứng dụng qua hình ảnh thực tế.",
+        "Khởi động & chia bố cục",
+        "Cá nhân hóa khoang lái",
+        "Giao diện & ngôn ngữ"
+      ],
+      "image": "",
+      "status": "verified"
+    },
+    {
+      "path": "/video/",
+      "group": "video",
+      "title": "Hình ảnh & video thực tế",
+      "description": "Xem Hình ảnh & video thực tế tại UltraCar.vn. Tìm hiểu thông tin sản phẩm, tư liệu thực tế và liên hệ tư vấn theo dòng xe.",
+      "headings": [
+        "UltraCar trên xe của khách.",
+        "243 ảnh theo dòng xe vừa cập nhật",
+        "Thư viện video UltraCar thực tế.",
+        "Bộ giá đỡ màn hình ghế sau",
+        "Sử dụng camera trên màn hình"
+      ],
+      "image": "",
+      "status": "verified"
+    }
+  ]
+}
