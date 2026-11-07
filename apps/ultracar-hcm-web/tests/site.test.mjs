@@ -90,7 +90,7 @@ test('42 editorial topics and 101 vehicle guides are available without copying a
  assert.ok(cars.filter(p=>p.image).length>=100,'100 source-backed vehicle images');
  const detail=read('chi-tiet.js');
  assert.match(detail,/uc-car-checklist/);
- assert.match(detail,/Ảnh.*táp-lô/);
+ assert.match(detail,/ảnh.*táp-lô/);
  assert.match(detail,/ucViewAngle/);
  assert.match(detail,/không phải mô hình 3D gốc/);
  assert.match(read('chi-tiet.html'),/vehicle-gallery\.css\?v=20261107r2/);
