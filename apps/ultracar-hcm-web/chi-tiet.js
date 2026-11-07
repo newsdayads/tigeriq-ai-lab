@@ -63,15 +63,17 @@ function paint(row,products,all){
   html+='<h2>Chuẩn bị khi cần hỗ trợ</h2><p>Giữ lại hóa đơn, mã sản phẩm, ngày mua, ảnh hoặc video mô tả vấn đề. UltraCarHCM tiếp nhận thông tin ban đầu, hỗ trợ đối chiếu và xác minh điều kiện áp dụng.</p>';
  }else if(row.group==='dong-xe'){
   html+='<h2>Thông tin cần gửi để báo giá chính xác</h2><p>Hãng, dòng và đời xe; phiên bản táp-lô; ảnh vị trí lắp; nhu cầu DeX, định vị, camera; cấu hình và ngân sách dự kiến.</p>';
- }else if(row.group==='video'||row.group==='trai-nghiem-3d'||row.group==='tvc'){
-  html+='<h2>Tư liệu trực quan</h2><p>Tư liệu video/3D chi tiết chưa được tích hợp vào mục này. Có thể xem ảnh minh họa sản phẩm trong danh mục UltraCarHCM hoặc liên hệ để được hướng dẫn.</p>';
+ }else if(row.group==='video'||row.group==='tvc'){
+  html+='<h2>Thư viện video nguồn</h2><p>Chọn video bên dưới để mở trình phát YouTube ngay trong trang UltraCarHCM. Tư liệu được nhúng qua trình phát chính thức, không lưu bản sao MP4 của hãng trên máy chủ.</p>';
+ }else if(row.group==='trai-nghiem-3d'){
+  html+='<h2>Trải nghiệm mô hình minh họa</h2><p>Xem phối cảnh 2D từ ảnh và mô hình 3D hình khối được UltraCarHCM dựng riêng; không phải tệp 3D/CAD chính hãng.</p>';
  }
  if(row.path==='/trai-nghiem-3d/'){
   html+='<section class="uc-sim"><h2>Mô phỏng góc nhìn màn hình</h2><div class="uc-sim-view"><img id="ucSimPhoto" src="/assets/manufacturer/assets/models/ultracar-13-3-front.webp" alt="Ảnh mặt trước màn hình UltraCar, mô phỏng thay đổi góc nhìn" loading="lazy" /></div><label for="ucViewAngle">Xoay góc minh họa <span id="ucSimAngle">0°</span></label><input type="range" id="ucViewAngle" min="-30" max="30" value="0" step="1" /><p>Đây là hiệu ứng phối cảnh 2D từ ảnh sản phẩm, không phải mô hình 3D gốc của nhà sản xuất, không thể kiểm tra kích thước hoặc cổng kết nối bằng mô phỏng này.</p></section>';
  }
   html+='<div class="detail-alert">'+esc(ctx.info)+'</div>';
  html+='<div class="detail-cta"><a class="btn btn-primary" href="https://zalo.me/0392960003" target="_blank" rel="noopener noreferrer">Gửi yêu cầu tư vấn</a><a class="btn btn-outline" href="'+home+'">Xem thêm trong thư viện</a></div>';
- html+='<p class="data-origin">Thông tin biên tập từ dữ liệu công khai được đối chiếu ngày 06/11/2026. Trang này thuộc UltraCarHCM; không phải bản sao đầy đủ nội dung nhà sản xuất.</p>';
+ html+='<p class="data-origin">Thông tin biên tập từ dữ liệu công khai được đối chiếu ngày 07/11/2026. Trang này thuộc UltraCarHCM; không phải bản sao đầy đủ nội dung nhà sản xuất.</p>';
  el('internalArticle').innerHTML=html;
  const angle=el('ucViewAngle');
  if(angle){angle.addEventListener('input',()=>{const v=Math.max(-30,Math.min(30,Number(angle.value)||0));const img=el('ucSimPhoto');if(img)img.style.setProperty('--uc-rotation',v+'deg');const value=el('ucSimAngle');if(value)value.textContent=v+'°';});}
