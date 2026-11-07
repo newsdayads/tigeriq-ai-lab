@@ -4,9 +4,9 @@ Set-StrictMode -Version Latest
 
 $controlRepo='D:\TigerIQ\Workspace\tigeriq-ai-lab'
 $runtimeRepo='D:\TigerIQ\Runtime\CoreSource'
-$runtimeState='D:\TigerIQ\State\core-runtime-source.json'
-$launcherRuntime='D:\TigerIQ\Runtime\CoreLaunchers'
-$updaterRuntime='D:\TigerIQ\Runtime\CoreUpdater\update-core-runtime.ps1'
+$runtimeState='C:\ProgramData\TigerIQCoreRelease\State\core-runtime-source.json'
+$launcherRuntime='C:\ProgramData\TigerIQCoreRelease\Launchers'
+$updaterRuntime='C:\ProgramData\TigerIQCoreRelease\Updater\update-core-runtime.ps1'
 $coreTask='TigerIQ Core 24x7'
 $codingTask='TigerIQ Coding Lane 24x7'
 $updaterTask='TigerIQ Core Runtime Updater'
@@ -56,13 +56,15 @@ $manifest=[ordered]@{
   isolationMode='dedicated-clean-source-checkout'
   e2eCloseoutVerified=$true
 }
+New-Item -ItemType Directory -Path (Split-Path -Parent $runtimeState) -Force|Out-Null
 $tmpState=$runtimeState+'.tmp'
 [IO.File]::WriteAllText($tmpState,($manifest|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)))
 Move-Item -Force $tmpState $runtimeState
 
 function Set-TaskAction([string]$taskName,[string]$scriptPath){
   $task=Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
-  $action=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "'+$scriptPath+'"')
+  $ps='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+  $action=New-ScheduledTaskAction -Execute $ps -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "'+$scriptPath+'"')
   Set-ScheduledTask -TaskName $taskName -Action $action | Out-Null
 }
 Set-TaskAction $coreTask (Join-Path $launcherRuntime 'run-core.ps1')
