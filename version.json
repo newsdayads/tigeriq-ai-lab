@@ -1,8 +1,8 @@
 {
-  "latestVersionCode": 331,
+  "latestVersionCode": 332,
   "latestVersionName": "TigerIQ_HCM_v1.0.88",
-  "apkUrl": "https://github.com/newsdayads/tigeriq-ai-lab/releases/download/v1.0.88/UltraCar_v1.0.88_331_signed.apk",
-  "sha256": "057D99D149BF94CF4A3F672AB568257FC72D09092BFCD26606BAA8D6DB66B777",
-  "releaseNotes": "v1.0.88 (BUILD 331): Hoàn thiện bật/tắt thanh Racing mode (P RACING), kích hoạt nút Cập nhật tải về và cài đặt trực tiếp.",
+  "apkUrl": "https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/apk-dist/UltraCar_latest.apk",
+  "sha256": "B097A38B09DB9C96390BF37968EE2818AD118528212F95D145B38B4C4179DB12",
+  "releaseNotes": "v1.0.88 (BUILD 332): Hoàn thiện ẩn hiện hoàn toàn thanh đen Racing mode, kích hoạt cập nhật trực tiếp HTTP 200.",
   "mandatory": false
 }
