@@ -61,3 +61,11 @@
 @media(max-width:1000px){.uc-benefits{grid-template-columns:repeat(2,minmax(0,1fr))}.uc-showcase{grid-template-columns:1fr}.uc-showcase-media{min-height:380px}.uc-showcase-copy{padding:31px}.uc-journey-grid{gap:9px}}
 @media(max-width:650px){.uc-experience{padding:54px 0 60px}.uc-head{display:block}.uc-head-link{display:inline-flex;margin-top:14px}.uc-benefits{gap:9px;margin:22px 0 31px}.uc-benefit{padding:18px 13px;min-height:255px;border-radius:13px}.uc-benefit-index{font-size:9px}.uc-benefit strong{font-size:14px}.uc-benefit p,.uc-benefit>span:last-child{font-size:11px}.uc-showcase{border-radius:17px;margin-bottom:30px}.uc-showcase-media{min-height:230px}.uc-showcase-copy{padding:26px}.uc-compare{padding:19px 15px;border-radius:17px}.uc-compare-header{display:block}.uc-compare-tag{display:inline-block;margin:5px 0 10px}.uc-compare-select{grid-template-columns:1fr;gap:4px}.uc-compare-vs{display:none}.uc-compare-titles{margin-left:0}.uc-compare-titles strong{font-size:11px;padding:10px}.uc-comparison-table th,.uc-comparison-table td{font-size:11px;padding:10px}.uc-journey{padding-top:55px}.uc-journey-grid{grid-template-columns:1fr}.uc-journey-grid>div{padding:17px}}
 @media(prefers-reduced-motion:reduce){.uc-image-shine,.uc-showcase-media img{animation:none!important}.uc-experience .uc-reveal,.uc-benefit,.uc-showcase-media img{transition:none!important;opacity:1!important;transform:none!important}}
+
+/* Topic-specific original guidance: readable on narrow phones. */
+.uc-guide-details{margin:32px 0;padding:20px 24px;border:1px solid #dbe6f5;border-radius:18px;background:linear-gradient(135deg,#f4f8ff,#fff)}
+.uc-guide-details h2{font-size:clamp(20px,2.5vw,29px);color:#20385f;margin:8px 0 20px}
+.uc-guide-block{padding:14px 0;border-top:1px solid #dce7f7}
+.uc-guide-block h3{font-size:17px;color:#214c92;margin:0 0 8px}
+.uc-guide-block p{font-size:14px;color:#465b7c;line-height:1.8;margin:0}
+@media(max-width:650px){.uc-guide-details{padding:15px}.uc-guide-block h3{font-size:15px}.uc-guide-block p{font-size:13px}}
