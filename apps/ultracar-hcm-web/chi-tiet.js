@@ -8,7 +8,7 @@ const path=ref.get('page')||'';
 const sku=ref.get('sku')||'';
 const home='/#thu-vien';
 const internal=p=>'/chi-tiet.html?page='+encodeURIComponent(p);
-const GROUPS={'dong-xe':'Tư vấn theo xe','san-pham':'Sản phẩm','chinh-sach':'Thông tin chính sách','tin-tuc':'Kiến thức công nghệ','ho-tro':'Hỗ trợ','video':'Video hướng dẫn','trai-nghiem-3d':'Trải nghiệm sản phẩm'};
+const GROUPS={'dong-xe':'Tư vấn theo xe','san-pham':'Sản phẩm','chinh-sach':'Thông tin chính sách','tin-tuc':'Kiến thức công nghệ','ho-tro':'Hỗ trợ','video':'Video hướng dẫn','trai-nghiem-3d':'Mô phỏng phối cảnh','bang-gia':'Bảng giá','cam-lui':'Camera lùi','gia-do':'Giá đỡ','man-hinh':'Màn hình','phu-kien':'Phụ kiện','lap-dat':'Lắp đặt','lap-dat-thuc-te':'Ảnh theo xe','thu-vien':'Thư viện ảnh','tvc':'Giới thiệu giải pháp','da-nhiem':'Đa nhiệm DeX','ung-dung':'Ứng dụng','huong-dan-kich-hoat-app':'Kích hoạt','huong-dan-tai-app':'Tải và cài ứng dụng','tai-lieu':'Tài liệu','racing-mode':'Racing Mode','khe-sim':'Kết nối mạng','nang-cap':'Nâng cấp','nguon-nam-cham':'Pogo PIN','thiet-ke':'Thiết kế','dai-ly':'Đại lý','cam-ket':'Hậu mãi','dan-duong':'Bản đồ','lien-he':'Liên hệ','trang-chu':'Giới thiệu','cong-ty':'Nhà sản xuất','cau-chuyen-thuong-hieu':'Câu chuyện hãng','gioi-thieu':'Giới thiệu','tinh-nang':'Tính năng','danh-gia':'Trải nghiệm khách hàng'};
 const productPhoto=sku=>{
  const path=window.ULTRACAR_MEDIA?.products?.[sku];
  return path&&/^(?:\/assets\/|\/api\/media\/)/.test(path)?'/assets/manufacturer'+path+(path.startsWith('/api/media/')?'.jpg':''):'';
@@ -50,6 +50,9 @@ function paint(row,products,all){
  if(row.group==='dong-xe'){
   html+='<h2>Chọn cấu hình phù hợp</h2><p>Tùy vị trí lắp, có thể cân nhắc màn hình 13,3″ hoặc 16″; cấu hình riêng cần xác minh nguồn cấp và bộ giá đỡ. Anh/chị vui lòng gửi ảnh khoang lái và đời xe để tư vấn.</p>';
  }
+ if(row.group==='dong-xe'){
+  html+='<section class="uc-car-checklist"><h2>Kiểm tra lắp đặt dành cho mẫu xe này</h2><ol><li>Xác nhận chính xác hãng, dòng, đời xe và phiên bản nội thất; một tên xe có thể có nhiều mẫu táp-lô.</li><li>Đối chiếu ảnh màn hình/giá đỡ với ảnh táp-lô của chính xe khách; không suy ra tương thích chỉ từ tên xe.</li><li>Đo vùng đặt màn, khoảng trượt, vị trí cửa gió, túi khí và các nút điều khiển.</li><li>Chốt kích thước 13,3″ hoặc 16″, cấu hình bộ xử lý, nguồn, camera và tổng chi phí lắp trước khi đặt hàng.</li></ol><p>Hình tham khảo từ danh mục của hãng; UltraCarHCM cần kiểm tra kỹ thuật và báo giá riêng cho xe thực tế.</p><a href="/#so-sanh" class="btn btn-outline">So sánh 54 mã sản phẩm</a></section>';
+ }
  const headings=(row.headings||[]).filter(x=>x&&x.length<120).slice(0,5);
  if(headings.length){
   html+='<h2>Những nội dung cần tìm hiểu</h2><div class="detail-topics">'+headings.map(t=>'<div>'+esc(t)+'</div>').join('')+'</div>';
@@ -63,10 +66,16 @@ function paint(row,products,all){
  }else if(row.group==='video'||row.group==='trai-nghiem-3d'||row.group==='tvc'){
   html+='<h2>Tư liệu trực quan</h2><p>Tư liệu video/3D chi tiết chưa được tích hợp vào mục này. Có thể xem ảnh minh họa sản phẩm trong danh mục UltraCarHCM hoặc liên hệ để được hướng dẫn.</p>';
  }
- html+='<div class="detail-alert">'+esc(ctx.info)+'</div>';
+ if(row.path==='/trai-nghiem-3d/'){
+  html+='<section class="uc-sim"><h2>Mô phỏng góc nhìn màn hình</h2><div class="uc-sim-view"><img id="ucSimPhoto" src="/assets/manufacturer/assets/models/ultracar-13-3-front.webp" alt="Ảnh mặt trước màn hình UltraCar, mô phỏng thay đổi góc nhìn" loading="lazy" /></div><label for="ucViewAngle">Xoay góc minh họa <span id="ucSimAngle">0°</span></label><input type="range" id="ucViewAngle" min="-30" max="30" value="0" step="1" /><p>Đây là hiệu ứng phối cảnh 2D từ ảnh sản phẩm, không phải mô hình 3D gốc của nhà sản xuất, không thể kiểm tra kích thước hoặc cổng kết nối bằng mô phỏng này.</p></section>';
+ }
+  html+='<div class="detail-alert">'+esc(ctx.info)+'</div>';
  html+='<div class="detail-cta"><a class="btn btn-primary" href="https://zalo.me/0392960003" target="_blank" rel="noopener noreferrer">Gửi yêu cầu tư vấn</a><a class="btn btn-outline" href="'+home+'">Xem thêm trong thư viện</a></div>';
  html+='<p class="data-origin">Thông tin biên tập từ dữ liệu công khai được đối chiếu ngày 06/11/2026. Trang này thuộc UltraCarHCM; không phải bản sao đầy đủ nội dung nhà sản xuất.</p>';
  el('internalArticle').innerHTML=html;
+ const angle=el('ucViewAngle');
+ if(angle){angle.addEventListener('input',()=>{const v=Math.max(-30,Math.min(30,Number(angle.value)||0));const img=el('ucSimPhoto');if(img)img.style.setProperty('--uc-rotation',v+'deg');const value=el('ucSimAngle');if(value)value.textContent=v+'°';});}
+
  const related=all.filter(x=>x.group===row.group&&x.path!==row.path).slice(0,6);
  if(related.length){
   el('relatedSection').hidden=false;
