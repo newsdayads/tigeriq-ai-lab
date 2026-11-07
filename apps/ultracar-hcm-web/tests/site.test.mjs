@@ -73,3 +73,38 @@ test('showroom motion, comparisons and source-grounded guides are available',()=
  assert.equal(p.memory,'12GB / 256GB');
  assert.ok(!p.conflict);
 });
+
+
+test('42 editorial topics and 101 vehicle guides are available without copying articles',()=>{
+ const raw=read('guides.js');
+ const match=raw.match(/^window\.ULTRACAR_GUIDES\s*=\s*(\{.*\});\s*$/s);
+ assert.ok(match,'editorial data JS structure');
+ const db=JSON.parse(match[1]);
+ assert.ok(Object.keys(db.guides).length>=42,'at least 42 source-aware editorial topics');
+ for(const key of ['/cam-ket/','/chinh-sach/dieu-khoan/','/huong-dan-kich-hoat-app/','/lap-dat/','/gia-do/','/tin-tuc/bo-cuc-samsung-dex/','/video/','/trai-nghiem-3d/']){
+  assert.ok(Array.isArray(db.guides[key])&&db.guides[key].length>=2,key);
+ }
+ const src=JSON.parse(read('source-details.json'));
+ const cars=src.pages.filter(p=>p.group==='dong-xe');
+ assert.equal(cars.length,101);
+ assert.ok(cars.filter(p=>p.image).length>=100,'100 source-backed vehicle images');
+ const detail=read('chi-tiet.js');
+ assert.match(detail,/uc-car-checklist/);
+ assert.match(detail,/Ảnh.*táp-lô/);
+ assert.match(detail,/ucViewAngle/);
+ assert.match(detail,/không phải mô hình 3D gốc/);
+ assert.match(read('chi-tiet.html'),/vehicle-gallery\.css\?v=20261107r2/);
+});
+test('local image gallery supports 101 vehicle entries, search and load more',()=>{
+ const home=read('index.html'),js=read('vehicle-gallery.js'),css=read('vehicle-gallery.css');
+ assert.match(home,/vehicle-gallery\.css\?v=20261107r2/);
+ assert.match(home,/vehicle-gallery\.js\?v=20261107r2/);
+ assert.match(js,/source-details\.json/);
+ assert.match(js,/ucVehicleFind/);
+ assert.match(js,/ucVehicleBrand/);
+ assert.match(js,/visible\+=12/);
+ assert.match(js,/assets\/manufacturer/);
+ assert.doesNotMatch(js,/window\.open\(/);
+ assert.match(css,/@media\(max-width:650px\)/);
+ assert.match(css,/prefers-reduced-motion/);
+});
