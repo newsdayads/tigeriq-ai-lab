@@ -60,7 +60,7 @@ test('showroom motion, comparisons and source-grounded guides are available',()=
  const home=read('index.html'),detail=read('chi-tiet.html');
  assert.match(home,/experience\.css\?v=20261107r1/);
  assert.match(home,/experience\.js\?v=20261107r1/);
- assert.match(detail,/guides\.js\?v=20261107r1/);
+ assert.match(detail,/guides\.js\?v=20261107r2/);
  const js=read('experience.js'),guides=read('guides.js');
  assert.match(js,/ucCompareResult/);
  assert.match(js,/prefers-reduced-motion/);
