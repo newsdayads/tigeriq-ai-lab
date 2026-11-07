@@ -108,3 +108,34 @@ test('local image gallery supports 101 vehicle entries, search and load more',()
  assert.match(css,/@media\(max-width:650px\)/);
  assert.match(css,/prefers-reduced-motion/);
 });
+
+
+test('official videos play through their YouTube host without video downloads',()=>{
+ const home=read('index.html'),detail=read('chi-tiet.html'),js=read('official-media.js'),css=read('official-media.css');
+ assert.match(home,/official-media\.js\?v=20261107r3/);
+ assert.match(home,/official-media\.css\?v=20261107r3/);
+ assert.match(detail,/official-media\.js\?v=20261107r3/);
+ assert.match(js,/www\.youtube-nocookie\.com\/embed/);
+ assert.match(js,/FTiAXfHQvU0/);
+ assert.match(js,/FSJdq_Yi_G8/);
+ assert.match(js,/PWhSrOk5CYw/);
+ assert.match(js,/uc-video-play/);
+ assert.match(js,/frame\.innerHTML/);
+ assert.doesNotMatch(js,/fetch\(.+ultracar\.vn/);
+ assert.doesNotMatch(js,/\.mp4["']/);
+ assert.match(css,/@media\(max-width:650px\)/);
+});
+test('original CSS3D model and manufacturer policy links are attributed correctly',()=>{
+ const js=read('official-media.js'),css=read('official-media.css'),detail=read('chi-tiet.js');
+ assert.match(js,/uc3d-device/);
+ assert.match(js,/pointermove/);
+ assert.match(js,/ArrowLeft/);
+ assert.match(js,/không phải tệp CAD\/3D gốc/);
+ assert.match(css,/transform-style:preserve-3d/);
+ assert.match(js,/ultracar\.vn\/chinh-sach\/bao-hanh/);
+ assert.match(js,/ultracar\.vn\/chinh-sach\/doi-tra/);
+ assert.match(js,/ultracar\.vn\/chinh-sach\/dieu-khoan/);
+ assert.match(js,/ultracar\.vn\/chinh-sach\/bao-mat/);
+ assert.match(detail,/Trình phát YouTube|trình phát YouTube/);
+ assert.doesNotMatch(detail,/Tư liệu video\/3D chi tiết chưa được tích hợp/);
+});
