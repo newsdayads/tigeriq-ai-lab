@@ -54,6 +54,8 @@ function paint(row,products,all){
  if(headings.length){
   html+='<h2>Những nội dung cần tìm hiểu</h2><div class="detail-topics">'+headings.map(t=>'<div>'+esc(t)+'</div>').join('')+'</div>';
  }
+ const guideItems=window.ULTRACAR_GUIDES?.guides?.[row.path]||[];
+ if(guideItems.length){html+='<section class="uc-guide-details" aria-label="Kiến thức chọn và sử dụng"><h2>Hướng dẫn và thông tin cần biết</h2>'+guideItems.map(([title,body])=>'<div class="uc-guide-block"><h3>'+esc(title)+'</h3><p>'+esc(body)+'</p></div>').join('')+'</section>';}
  if(row.group==='chinh-sach'){
   html+='<h2>Chuẩn bị khi cần hỗ trợ</h2><p>Giữ lại hóa đơn, mã sản phẩm, ngày mua, ảnh hoặc video mô tả vấn đề. UltraCarHCM tiếp nhận thông tin ban đầu, hỗ trợ đối chiếu và xác minh điều kiện áp dụng.</p>';
  }else if(row.group==='dong-xe'){
