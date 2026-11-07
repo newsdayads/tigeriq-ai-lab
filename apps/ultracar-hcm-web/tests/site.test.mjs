@@ -55,3 +55,21 @@ test('128 source images are self-hosted with validated hash manifest',()=>{
  const app=read('app.js');assert.match(app,/"\/assets\/manufacturer"\+path/);
  assert.doesNotMatch(app,/"https:\/\/ultracar\.vn"\+path/);
 });
+
+test('showroom motion, comparisons and source-grounded guides are available',()=>{
+ const home=read('index.html'),detail=read('chi-tiet.html');
+ assert.match(home,/experience\.css\?v=20261107r1/);
+ assert.match(home,/experience\.js\?v=20261107r1/);
+ assert.match(detail,/guides\.js\?v=20261107r1/);
+ const js=read('experience.js'),guides=read('guides.js');
+ assert.match(js,/ucCompareResult/);
+ assert.match(js,/prefers-reduced-motion/);
+ assert.match(js,/assets\/manufacturer/);
+ assert.doesNotMatch(js,/href="https:\/\/ultracar\.vn/);
+ assert.match(guides,/200\.000/);
+ assert.match(guides,/One UI 8/);
+ const p=JSON.parse(read('products.json')).find(x=>x.sku==='NC888');
+ assert.equal(p.chip,'Snapdragon 888');
+ assert.equal(p.memory,'12GB / 256GB');
+ assert.ok(!p.conflict);
+});

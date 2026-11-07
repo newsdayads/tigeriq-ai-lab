@@ -337,16 +337,15 @@
   },
   {
     "sku": "NC888",
-    "name": "Bộ xử lý rời NC888 · Chờ xác minh tên chip",
+    "name": "TAB ULTRA · Nâng cấp Snapdragon 888",
     "category": "chip",
-    "type": "Bộ xử lý",
+    "type": "Nâng cấp màn hình",
     "price": 2500000,
-    "chip": "Thông tin nguồn mâu thuẫn",
-    "memory": "8GB / 128GB (nguồn)",
-    "screen": "Không kèm màn hình",
-    "features": "Mã NC888 nhưng mô tả gốc ghi Snapdragon 855; cần nhà cung cấp xác nhận.",
-    "mount": false,
-    "conflict": true
+    "chip": "Snapdragon 888",
+    "memory": "12GB / 256GB",
+    "screen": "Dành cho màn UltraCar 13,3″ / 16″ hiện có",
+    "features": "Nâng cấp lên bộ xử lý tích hợp Snapdragon 888, 12GB/256GB, có USB OTG; cần xác minh phiên bản màn đang dùng trước khi nhận nâng cấp.",
+    "mount": false
   },
   {
     "sku": "VXL865",
