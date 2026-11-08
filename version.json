@@ -1,7 +1,7 @@
 {
-  "versionCode": 333,
+  "versionCode": 334,
   "versionName": "TigerIQ_HCM_v1.0.88",
   "apkUrl": "https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/apk-dist/UltraCar_latest.apk",
-  "sha256": "A08E1CD6946007F3E40796CE331F33A30CD9C912132E23732AFBEAD45003CA40",
-  "releaseNotes": "TigerIQ HCM v1.0.88 (BUILD 333) - 2-Column Pair Layout, Fixed Racing Mode Container, Direct APK Distribution"
+  "sha256": "D9B54E8B9A3034E3BF0F6C8CF8C9186B6153036557470566B9B620BBF7452E33",
+  "releaseNotes": "TigerIQ HCM v1.0.88 (BUILD 334) - Fixed Compose tree composition and runtime verifier error"
 }
