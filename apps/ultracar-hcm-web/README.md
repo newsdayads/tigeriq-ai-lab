@@ -44,3 +44,12 @@ Liên hệ đại lý: 0392 960 003 / https://zalo.me/0392960003.
 - Critical namespace isolation: ucx3d- is distinct from existing uc3d- in official-media.js. Previous selector conflict caused unintended 2px stage height; corrected and verified. No other commerce state changes.
 - Accessibility/performance: pointer/touch only active on device, keyboard arrows, focus outline, correct button states, IntersectionObserver viewport idle-pausing, document visibility, prefers-reduced-motion.
 - Checks: node --check immersive-3d.js, node --test tests/*.test.mjs and PC01 Chrome CDP mobile/tablet/desktop with real touch drag + reduced-motion tests.
+
+## Native local GLB 3D viewer — owner correction, 2026-11-09
+- Replaces prior cross-origin ultracar.vn iframe. Homepage #ultracar-3d-goc renders locally stored binary assets/models/ultracar-13-3.glb (511344 bytes; SHA-256 0F6C6F1837E1BCF86546FCC714823C340EE188C8A7D94E7CF4FB45278A631657). GLB copied unchanged from public URL https://ultracar.vn/assets/models/ultracar-13-3.glb?v=20260930-ultracar by Owner instruction; no claim of manufacturer endorsement.
+- GLB 2.0 includes 1 scene, 1 mesh, 6 materials, embedded texture. No iframe or runtime 3D asset requests to original domain.
+- model-viewer-source.js uses Three.js 0.180.0 GLTFLoader and OrbitControls. model-viewer.bundle.js is compiled by esbuild 0.25.12. The Three.js MIT license is included in THIRD_PARTY_NOTICES.txt. No CDN dependency.
+- Reproduce build: install npm packages three@0.180.0 and esbuild@0.25.12 in an isolated working directory, then run esbuild src.js --bundle --format=esm --platform=browser --minify --target=es2020 --legal-comments=inline --outfile=model-viewer.bundle.js.
+- Responsive WebGL: orbit by pointer and touch, pinch zoom, front/back/reset/optional auto rotation, fullscreen when supported. Lazy viewport loading, pause offscreen and on tab background, prefers-reduced-motion respected, fallback error status.
+- The superseded CSS-3D prototype #mo-phong-3d is retained but hidden to avoid duplicate/misleading renders. Store 54 SKUs, checkout, bank QR and PC01 Cloudflare deployment are unchanged.
+- Gates: GLB SHA and MIME test, exact-head CI, Chrome CDP native WebGL ready + local resource + real device emulation and touch drag, production hash backup, live HTTPS and commerce regression.
