@@ -1,0 +1,51 @@
+/* UltraCarHCM independent GLB showroom — local asset, no iframe, responsive touch canvas. */
+.ucself3d{position:relative;isolation:isolate;overflow:hidden;background:radial-gradient(ellipse at 10% 18%,#183d76 0%,transparent 47%),radial-gradient(ellipse at 91% 76%,#114677 0%,transparent 45%),#050d1e;color:#eff7ff;padding:68px 0 75px;scroll-margin-top:78px}
+.ucself3d::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(120deg,transparent 10%,#3d92fa09 48%,transparent 78%);background-size:220% 100%;animation:ucself3d-shine 13s linear infinite}
+@keyframes ucself3d-shine{to{background-position:-220% 0}}
+.ucself3d .container{position:relative;z-index:1}
+.ucself3d-intro{display:flex;justify-content:space-between;align-items:end;gap:22px;margin:0 0 23px}
+.ucself3d-kicker{font-size:10px;color:#90caff;font-weight:900;letter-spacing:.15em}
+.ucself3d-intro h2{font-size:clamp(30px,4.2vw,55px);line-height:1.07;letter-spacing:-.05em;margin:13px 0 13px;color:#f3f8ff}
+.ucself3d-intro h2 em{font-style:normal;color:#67b5ff}
+.ucself3d-intro p{max-width:710px;font-size:14px;line-height:1.65;color:#b0c7e6;margin:0}
+.ucself3d-number{display:flex;flex-direction:column;align-items:flex-end;flex:none}
+.ucself3d-number strong{font-size:clamp(43px,5.6vw,70px);line-height:.9;letter-spacing:-.09em;color:#def4ff}
+.ucself3d-number span{font-size:10px;font-weight:800;letter-spacing:.13em;color:#87b8ed;margin-top:7px}
+.ucself3d-layout{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(280px,.65fr);gap:18px;align-items:stretch}
+.ucself3d-view{position:relative;min-width:0;min-height:415px;height:min(58vw,525px);max-height:600px;border:1px solid #4a7eb65e;border-radius:23px;overflow:hidden;background:radial-gradient(ellipse at 51% 49%,#264c82 0%,#102545 45%,#08142b 90%);box-shadow:inset 0 0 75px #18477b4b,0 24px 65px #050b17a3}
+.ucself3d-view:after{content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;box-shadow:inset 0 1px 1px #cfe6ff32}
+.ucself3d-view canvas{display:block;position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:grab;outline-offset:-5px}
+.ucself3d-view canvas:active{cursor:grabbing}
+.ucself3d-view canvas:focus-visible{outline:3px solid #8acaff}
+.ucself3d-viewgrid{position:absolute;left:-28%;right:-28%;bottom:-16%;height:55%;pointer-events:none;transform:perspective(500px) rotateX(69deg);background-image:linear-gradient(#4c96dc2a 1px,transparent 1px),linear-gradient(90deg,#4c96dc2a 1px,transparent 1px);background-size:41px 41px;mask-image:linear-gradient(to top,black,transparent 87%);animation:ucself3d-grid 15s linear infinite}
+@keyframes ucself3d-grid{to{background-position:0 82px,82px 0}}
+.ucself3d-hud{position:absolute;left:18px;right:18px;top:17px;display:flex;justify-content:space-between;gap:9px;align-items:center;color:#c8e1fa;pointer-events:none;z-index:3;font-size:10px;letter-spacing:.095em;font-weight:850}
+.ucself3d-dot{display:inline-block;vertical-align:middle;margin-right:8px;width:8px;height:8px;border-radius:50%;background:#27d8c0;box-shadow:0 0 11px #39dafa}
+.ucself3d-hud span:last-child{font-size:9px;color:#99b6d4}
+.ucself3d-loader{position:absolute;z-index:4;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;flex-direction:column;gap:15px;text-align:center;max-width:88%;padding:15px;pointer-events:none}
+.ucself3d-loader-ring{display:block;width:49px;height:49px;border:3px solid #8ed3ff3c;border-top-color:#5bc0ff;border-radius:50%;animation:ucself3d-spin .9s linear infinite}
+@keyframes ucself3d-spin{to{transform:rotate(360deg)}}
+.ucself3d-loader strong{font-size:14px;font-weight:900;letter-spacing:.02em}
+.ucself3d-loader span{font-size:11px;color:#b7c9e7;line-height:1.55}
+.ucself3d[data-model-status="ready"] .ucself3d-loader{display:none}
+.ucself3d[data-model-status="error"] .ucself3d-loader-ring{display:none}
+.ucself3d-status{position:absolute;z-index:3;bottom:17px;left:15px;right:15px;text-align:center;font-size:10px;font-weight:760;letter-spacing:.04em;color:#bcdbf8;pointer-events:none}
+.ucself3d-panel{display:flex;flex-direction:column;gap:15px;padding:20px;border:1px solid #365a8e8c;border-radius:21px;background:linear-gradient(155deg,#142c50,#101e39);box-shadow:inset 0 1px #e9f4ff18}
+.ucself3d-panel>span{font-size:10px;letter-spacing:.16em;font-weight:850;color:#84c2ff}
+.ucself3d-panel h3{font-size:clamp(23px,2.4vw,31px);line-height:1.17;letter-spacing:-.045em;margin:0}
+.ucself3d-panel>p{font-size:12px;color:#b2c9e4;line-height:1.7;margin:0}
+.ucself3d-control-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.ucself3d-control-grid button{min-height:45px;padding:9px 7px;border-radius:11px;border:1px solid #5478a8;background:#1d3861;color:#e7f2ff;font-size:12px;font-weight:830;transition:background .2s,border-color .2s,transform .14s}
+.ucself3d-control-grid button:hover,.ucself3d-control-grid button:focus-visible{background:#2b5797;border-color:#78beff}
+.ucself3d-control-grid button:active{transform:scale(.97)}
+.ucself3d-control-grid button[aria-pressed="true"]{background:#2561ad;border-color:#70b3ff}
+.ucself3d-hint{display:flex;align-items:start;gap:9px;padding:12px;border-radius:12px;border:1px solid #4e79b26b;background:#173b6685;font-size:11px;line-height:1.7;color:#d5eaff}
+.ucself3d-hint span{font-size:20px;color:#7bd1ff;line-height:1.15}
+.ucself3d-shop{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:auto;min-height:48px;padding:13px 15px;background:linear-gradient(125deg,#337eff,#1959c4);border-radius:12px;color:#fff;text-decoration:none;font-size:13px;font-weight:850}
+.ucself3d-shop:hover{filter:brightness(1.1);color:#fff}
+.ucself3d-provenance{margin:14px 0 0;color:#90aacb;font-size:10px;line-height:1.6}
+.ucself3d-view:fullscreen{width:100vw;height:100dvh;max-height:none;border:0;border-radius:0}
+@media(max-width:990px){.ucself3d-layout{grid-template-columns:1fr}.ucself3d-view{height:min(62vw,480px);min-height:390px}.ucself3d-panel{padding:19px}.ucself3d-control-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:650px){.ucself3d{padding:55px 0 61px}.ucself3d-intro{margin-bottom:16px}.ucself3d-intro h2{font-size:clamp(31px,8.3vw,40px)}.ucself3d-intro p{font-size:12px}.ucself3d-number{display:none}.ucself3d-layout{gap:12px}.ucself3d-view{height:clamp(305px,87vw,420px);min-height:0;border-radius:17px}.ucself3d-hud{left:12px;right:12px;top:12px;font-size:9px}.ucself3d-hud span:last-child{font-size:8px}.ucself3d-status{bottom:11px;font-size:9px}.ucself3d-panel{border-radius:17px;padding:16px;gap:12px}.ucself3d-panel h3{font-size:24px}.ucself3d-control-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ucself3d-control-grid button{font-size:12px;min-height:44px}.ucself3d-provenance{margin-top:11px}}
+@media(max-width:350px){.ucself3d-hud span:last-child{display:none}.ucself3d-view{height:310px}.ucself3d-intro h2{font-size:29px}}
+@media(prefers-reduced-motion:reduce){.ucself3d::before,.ucself3d-viewgrid,.ucself3d-loader-ring{animation:none!important}.ucself3d-control-grid button{transition:none!important}}

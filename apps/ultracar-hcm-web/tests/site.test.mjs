@@ -41,11 +41,10 @@ test('172 source-verified topics have local internal detail pages, never manufac
  const h=read('index.html'),app=read('app.js');
  assert.match(h,/\/chi-tiet\.html\?page=/);
  assert.match(app,/encodeURIComponent\(p\.path\)/);
- const htmlWithout3d=h.replace(/<section id="ultracar-3d-goc"[\s\S]*?<\/section>/,'');
- assert.doesNotMatch(htmlWithout3d,/href="https:\/\/ultracar\.vn/i);
- assert.match(h,/<iframe[^>]+src="https:\/\/ultracar\.vn\/trai-nghiem-3d\/#trai-nghiem-3d"/);
+ assert.doesNotMatch(h,/href="https:\/\/ultracar\.vn/i);
  assert.doesNotMatch(app,/https:\/\/ultracar\.vn/i);
- assert.doesNotMatch(htmlWithout3d,/src="https:\/\/ultracar\.vn/i);
+ assert.doesNotMatch(h,/<iframe/i);
+ assert.doesNotMatch(h,/src="https:\/\/ultracar\.vn/i);
  assert.match(read('chi-tiet.html'),/chi-tiet\.js/);
  assert.match(read('chi-tiet.js'),/\/source-details\.json/);
  assert.match(read('chi-tiet.js'),/productBySku/);
@@ -282,19 +281,38 @@ test('Immersive 3D showroom is original, touch interactive, accessible and hones
  assert.match(css,/rotateY\(180deg\)/);
  assert.match(css,/@media\(max-width:650px\)/);
  assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);
- assert.doesNotMatch(html,/model-viewer|spline|sketchfab|three\.js/i);
+ assert.doesNotMatch(html,/<model-viewer|spline|sketchfab/i);
  assert.doesNotMatch(js,/\.glb|\.gltf|ultracar\.vn\/assets/i);
 });
 
 
-test('live 3D embed is source-attributed and offers external fullscreen fallback',()=>{
- const html=read('index.html');
- assert.match(html,/id="ultracar-3d-goc"/);
- assert.match(html,/<iframe[^>]*src="https:\/\/ultracar\.vn\/trai-nghiem-3d\/#trai-nghiem-3d"/);
- assert.match(html,/referrerpolicy="strict-origin-when-cross-origin"/);
- assert.match(html,/loading="lazy"/);
- assert.match(html,/href="https:\/\/ultracar\.vn\/trai-nghiem-3d\/"/);
- assert.match(html,/href="#ultracar-3d-goc"/);
- assert.match(html,/Trong khung bên dưới, bấm/);
- assert.match(html,/<section id="mo-phong-3d"[^>]*hidden/);
+test('GLB 2.0 is real original self-hosted binary, pinned and served on UltraCarHCM only',()=>{
+ const h=read('index.html'),src=read('model-viewer-source.js'),css=read('model-viewer.css');
+ const bundle=read('model-viewer.bundle.js'),server=read('server.mjs');
+ const binary=readFileSync(new URL('assets/models/ultracar-13-3.glb',root));
+ assert.equal(binary.subarray(0,4).toString('ascii'),'glTF');
+ assert.equal(binary.readUInt32LE(4),2);
+ assert.equal(binary.readUInt32LE(8),binary.length);
+ assert.equal(binary.length,511344);
+ assert.equal(createHash('sha256').update(binary).digest('hex').toUpperCase(),'0F6C6F1837E1BCF86546FCC714823C340EE188C8A7D94E7CF4FB45278A631657');
+ const json=JSON.parse(binary.subarray(20,20+binary.readUInt32LE(12)).toString('utf8'));
+ assert.ok(json.meshes.length>0&&json.nodes.length>0&&json.materials.length>0);
+ assert.match(h,/id="ultracar-3d-goc"/);
+ assert.match(h,/id="ucSelf3dCanvas"/);
+ assert.match(h,/src="model-viewer\.bundle\.js\?v=20261109r1"/);
+ assert.match(h,/href="model-viewer\.css\?v=20261109r1"/);
+ assert.match(h,/href="#ultracar-3d-goc"/);
+ assert.match(h,/<section id="mo-phong-3d"[^>]*hidden/);
+ assert.doesNotMatch(h,/<iframe\b/i);
+ assert.match(src,/new GLTFLoader\(\)\.loadAsync\(modelUrl\)/);
+ assert.match(src,/\/assets\/models\/ultracar-13-3\.glb/);
+ assert.match(src,/OrbitControls/);
+ assert.match(src,/IntersectionObserver/);
+ assert.match(src,/prefers-reduced-motion/);
+ assert.match(src,/requestFullscreen/);
+ assert.match(bundle,/ultracar-13-3\.glb/);
+ assert.match(css,/touch-action:none/);
+ assert.match(css,/@media\(max-width:650px\)/);
+ assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);
+ assert.match(server,/\.glb':'model\/gltf-binary/);
 });
