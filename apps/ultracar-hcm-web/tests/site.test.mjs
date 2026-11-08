@@ -237,18 +237,40 @@ test('iPhone cart has readable review and a separate checkout step, with real ad
 });
 
 
-test('mobile catalog limits first paint to 12 of 54 products, with load more and filter reset',()=>{
- const h=read('index.html'),js=read('app.js'),css=read('commerce-ux.css');
- assert.match(h,/id="ucCatalogMore"/);
- assert.match(js,/visibleLimit=12/);
- assert.match(js,/items\.slice\(0,visibleLimit\)/);
- assert.match(js,/visibleLimit\+=12/);
- assert.match(js,/Math\.min\(12,items\.length-shown\.length\)/);
- assert.match(js,/visibleLimit=12;renderCatalog\(\)/);
- assert.match(css,/uc-loadmore-wrap/);
- assert.match(css,/uc-catalog-more/);
+test('all 54 SKUs render without hidden catalog pagination and cart labels are correct',()=>{
+ const h=read('index.html'),js=read('app.js'),products=JSON.parse(read('products.json'));
+ assert.equal(products.length,54);
+ assert.match(h,/id="productGrid"/);
+ assert.match(js,/const items=catalogItems\(\),shown=items,more=/);
+ assert.match(js,/more\.hidden=true/);
+ assert.doesNotMatch(js,/visibleLimit|items\.slice\(0,visibleLimit\)/);
  assert.match(js,/Thêm giỏ hàng/);
  assert.doesNotMatch(js,/>[+] Tư vấn<\/button>/);
+});
+test('iPhone product detail uses an independently scrollable body and persistent close/footer',()=>{
+ const h=read('index.html'),app=read('app.js'),css=read('product-detail-fix.css');
+ const detail=read('chi-tiet.html'),detailCss=read('chi-tiet.css');
+ assert.match(h,/href="product-detail-fix\.css\?v=20261109r2"/);
+ assert.match(h,/class="modal-titlebar"/);
+ assert.match(h,/id="modalClose"[^>]*Đóng chi tiết sản phẩm/);
+ assert.match(h,/id="modalBody" tabindex="-1"/);
+ assert.match(h,/id="modalFooter"/);
+ assert.match(css,/#modalBody\{[\s\S]*?overflow-x:hidden;overflow-y:auto/);
+ assert.match(css,/#modalFooter\{/);
+ assert.match(css,/@media\(max-width:650px\)/);
+ assert.match(css,/safe-area-inset-bottom/);
+ assert.match(app,/\$\('#modalBody'\)\.scrollTop=0/);
+ assert.match(app,/\$\('#modalFooter'\)\.innerHTML=/);
+ assert.match(app,/\$\('#modalClose'\)\.focus\(\)/);
+ assert.match(detail,/id="internalBack"/);
+ assert.match(detailCss,/\.internal-back-catalog/);
+});
+test('3D gallery correctly states that original GLB is available only for 13.3-inch sample',()=>{
+ const h=read('index.html'),app=read('app.js');
+ assert.match(h,/hiện có 1 mẫu màn hình 13,3 inch/);
+ assert.match(h,/chưa có file GLB riêng/);
+ assert.match(app,/Xem 3D mẫu màn hình 13,3 inch \(không đại diện mọi SKU\)/);
+ assert.doesNotMatch(h,/<iframe\b/i);
 });
 
 
