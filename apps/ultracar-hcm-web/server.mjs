@@ -75,8 +75,8 @@ async function orderEndpoint(req,res){
  if(!origin){return reply(res,403,{error:'Yêu cầu phải được gửi từ website chính thức.'});}
  let u;
  try{u=new URL(origin)}catch{return reply(res,403,{error:'Nguồn yêu cầu không hợp lệ'})}
- const host=req.headers.host||'';
- if(u.host!==host||!['http:','https:'].includes(u.protocol))return reply(res,403,{error:'Không chấp nhận đơn gửi từ tên miền khác'});
+ const allowedOrigins=new Set(['https://ultracar.tigeriq.io.vn','http://127.0.0.1:'+PORT]);
+ if(!allowedOrigins.has(u.origin))return reply(res,403,{error:'Không chấp nhận đơn gửi từ tên miền khác'});
  try{
   const payload=await bodyJson(req);
   const products=JSON.parse(await readFile(join(ROOT,'products.json'),'utf8'));
