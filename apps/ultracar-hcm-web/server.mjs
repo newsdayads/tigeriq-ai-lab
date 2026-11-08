@@ -11,7 +11,7 @@ const ROOT=fileURLToPath(new URL('.',import.meta.url));
 const PORT=Number(process.env.PORT||8893);
 const ORDERS_DIR=process.env.ULTRACAR_ORDERS_DIR||join(ROOT,'..','..','Data','UltraCarHCM');
 const ORDERS_FILE=join(ORDERS_DIR,'orders.jsonl');
-const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.svg':'image/svg+xml','.webp':'image/webp','.xml':'application/xml','.txt':'text/plain; charset=utf-8'};
+const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.svg':'image/svg+xml','.webp':'image/webp','.xml':'application/xml','.glb':'model/gltf-binary','.txt':'text/plain; charset=utf-8'};
 const JSON_HEADERS={'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff','x-frame-options':'DENY'};
 const rate=new Map();
 let writeQueue=Promise.resolve();
