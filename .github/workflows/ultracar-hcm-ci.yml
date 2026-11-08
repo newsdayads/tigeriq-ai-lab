@@ -24,7 +24,8 @@ jobs:
           node --check apps/ultracar-hcm-web/app.js
           node --check apps/ultracar-hcm-web/source-pages.js
           node --check apps/ultracar-hcm-web/media.js
-          node --test apps/ultracar-hcm-web/tests/site.test.mjs
+          node --check apps/ultracar-hcm-web/checkout.js
+          node --test apps/ultracar-hcm-web/tests/*.test.mjs
       - name: Test local HTTP origin
         run: |
           cd apps/ultracar-hcm-web
