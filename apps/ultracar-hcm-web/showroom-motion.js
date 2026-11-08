@@ -78,7 +78,7 @@ const icon=(kind)=>({
  cart:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4A2 2 0 0 0 9.7 16H20a2 2 0 0 0 2-1.7l1-7H6"/></svg>',
  chat:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8A8.5 8.5 0 0 1 8.7 3.9 8.38 8.38 0 0 1 12.5 3H13a8.5 8.5 0 0 1 8 8v.5Z"/></svg>'
 })[kind];
-dock.innerHTML='<a href="#danh-muc" class="uc-dock-item">'+icon('catalog')+'<span>Sản phẩm</span></a><button type="button" class="uc-dock-item" id="ucDockCart">'+icon('cart')+'<span>Giỏ tư vấn</span><b id="ucDockCartCount" hidden></b></button><a href="https://zalo.me/0392960003" class="uc-dock-item uc-dock-primary" target="_blank" rel="noopener noreferrer">'+icon('chat')+'<span>Nhắn Zalo</span></a>';
+dock.innerHTML='<a href="#danh-muc" class="uc-dock-item">'+icon('catalog')+'<span>Sản phẩm</span></a><button type="button" class="uc-dock-item" id="ucDockCart">'+icon('cart')+'<span>Giỏ hàng</span><b id="ucDockCartCount" hidden></b></button><a href="https://zalo.me/0392960003" class="uc-dock-item uc-dock-primary" target="_blank" rel="noopener noreferrer">'+icon('chat')+'<span>Nhắn Zalo</span></a>';
 document.body.appendChild(dock);
 const cart=document.querySelector('#cartToggle'),cartCount=document.querySelector('#cartCount'),cartBadge=dock.querySelector('#ucDockCartCount');
 dock.querySelector('#ucDockCart').addEventListener('click',()=>cart?.click());
