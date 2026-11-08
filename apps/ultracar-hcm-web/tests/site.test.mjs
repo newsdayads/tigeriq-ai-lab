@@ -139,3 +139,41 @@ test('original CSS3D model and manufacturer policy links are attributed correctl
  assert.match(detail,/Trình phát YouTube|trình phát YouTube/);
  assert.doesNotMatch(detail,/Tư liệu video\/3D chi tiết chưa được tích hợp/);
 });
+
+
+test('premium cinematic hero retains original real photo and respects motion preferences',()=>{
+ const h=read('index.html'),js=read('showroom-motion.js'),css=read('showroom-motion.css');
+ assert.match(h,/showroom-motion\.css\?v=20261108r1/);
+ assert.match(h,/showroom-motion\.js\?v=20261108r1/);
+ assert.match(h,/ultracar-cockpit-1600\.webp/);
+ assert.match(js,/uc-cinema-shot/);
+ assert.match(js,/uc-cinematic/);
+ assert.match(js,/pointermove/);
+ assert.match(js,/prefers-reduced-motion/);
+ assert.match(css,/@keyframes uc-ambient-sweep/);
+ assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);
+ assert.doesNotMatch(js,/fetch\(['"]https?:/);
+});
+test('hotspots explain 4 actual capabilities without invented universal fit',()=>{
+ const js=read('showroom-motion.js');
+ assert.equal((js.match(/key:'(?:screen|dex|camera|mount)'/g)||[]).length,4);
+ assert.match(js,/aria-pressed/);
+ assert.match(js,/aria-controls/);
+ assert.match(js,/ArrowRight/);
+ assert.match(js,/Đa nhiệm với Samsung DeX/);
+ assert.match(js,/phụ thuộc mã sản phẩm/);
+ assert.match(js,/Không mặc định mọi xe/);
+ for(const url of ['man-hinh','ung-dung','cam-lui','gia-do'])assert.ok(js.includes('%2F'+url+'%2F'));
+});
+test('mobile dock has real catalog, cart and Zalo actions and hides on dialog',()=>{
+ const js=read('showroom-motion.js'),css=read('showroom-motion.css');
+ assert.match(js,/id='ucMobileDock'/);
+ assert.match(js,/href="#danh-muc"/);
+ assert.match(js,/https:\/\/zalo\.me\/0392960003/);
+ assert.match(js,/cart\?\.click\(\)/);
+ assert.match(js,/MutationObserver/);
+ assert.match(js,/document\.body\.classList\.contains\('lock'\)/);
+ assert.match(css,/body\.lock \.uc-mobile-dock/);
+ assert.match(css,/body\.uc-dock-visible \.floating-zalo/);
+ assert.match(css,/safe-area-inset-bottom/);
+});
