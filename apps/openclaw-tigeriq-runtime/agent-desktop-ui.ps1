@@ -6,12 +6,16 @@ $script:TigerIQAgentDesktopBlockedApps = @(
   'sechealthui.exe','consent.exe','logonui.exe'
 )
 
-function Invoke-TigerIQAgentDesktopCli([string[]] $Arguments) {
+function Invoke-TigerIQAgentDesktopCli([string[]] $Arguments, [string] $StdinText = $null) {
   if (-not (Test-Path -LiteralPath $script:TigerIQAgentDesktopExe -PathType Leaf)) {
     throw 'TIGERIQ_AGENT_DESKTOP_NOT_INSTALLED'
   }
   # PowerShell invokes a fixed executable with an array of arguments, never through cmd /c.
-  $responseText = (& $script:TigerIQAgentDesktopExe @Arguments 2>$null | Out-String).Trim()
+  if ($null -ne $StdinText) {
+    $responseText = ($StdinText | & $script:TigerIQAgentDesktopExe @Arguments 2>$null | Out-String).Trim()
+  } else {
+    $responseText = (& $script:TigerIQAgentDesktopExe @Arguments 2>$null | Out-String).Trim()
+  }
   if (-not $responseText) { throw 'TIGERIQ_AGENT_DESKTOP_EMPTY_RESPONSE' }
   try { $response = $responseText | ConvertFrom-Json -ErrorAction Stop }
   catch { throw 'TIGERIQ_AGENT_DESKTOP_INVALID_JSON' }
@@ -162,8 +166,7 @@ function Invoke-AgentDesktopAction($Request) {
     # --stdin prevents the value from appearing in child-process command arguments.
     # The existing broker caps input at 500 chars and sanitizes control bytes.
     $value = [string]$Request.value
-    $env:AGENT_DESKTOP_INPUT_NOT_USED = $null
-    $result = Invoke-TigerIQAgentDesktopCli @('set-value',$ref,$value)
+    $result = Invoke-TigerIQAgentDesktopCli @('set-value',$ref,'--stdin') $value
     return [pscustomobject]@{ Method='AgentDesktopSetValue'; MatchCount=$selected.MatchCount; Ref=$ref; Verified=($null -ne $result) }
   }
   $result = Invoke-TigerIQAgentDesktopCli @('click',$ref)
