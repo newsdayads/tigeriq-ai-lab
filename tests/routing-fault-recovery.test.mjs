@@ -34,6 +34,9 @@ describe('GitHub auto-work resource wait consistency',()=>{
     expect(local).toBe('LOCAL');
     expect(effectiveCoreJobRoutingProfile({kind:'github_api_autowork'})).toBe('AUTO');
     expect(effectiveCoreJobRoutingProfile({kind:'github_api_autowork',routing_profile:'AUTO'})).toBe('AUTO');
+    expect(effectiveCoreJobRoutingProfile({kind:'github_api_autowork',routing_profile:' LOCAL '})).toBe('LOCAL');
+    expect(effectiveCoreJobRoutingProfile({kind:'github_api_autowork',routing_profile:' local '})).toBe('LOCAL');
+    expect(effectiveCoreJobRoutingProfile({kind:'github_api_autowork',routing_profile:' AUTO '})).toBe('AUTO');
     expect(effectiveCoreJobRoutingProfile({kind:'github_review',routing_profile:'AUTO'})).toBe('AUTO');
     expect(effectiveCoreJobRoutingProfile({kind:'compiled_general',routing_profile:'QUALITY'})).toBe('QUALITY');
     expect(mayWaitAfterLocalFailure({profile:local,message:'NO_AI_RESOURCE_AVAILABLE',failures:[{kind:'timeout'}],configuredLocalCount:1})).toBe(true);
