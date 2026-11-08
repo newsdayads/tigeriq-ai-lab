@@ -2638,7 +2638,7 @@ export async function executePcAction(input, options = {}) {
       productionMutationBlocked: action !== 'tigeriq_live_3150_production_deploy',
       productionMutationScope: action === 'tigeriq_live_3150_production_deploy' ? 'TigerIQ LIVE exact-SHA one-shot under validated release authority' : 'none',
       interactiveUiBroker: PAD_UI_ACTIONS.includes(action),
-      interactiveUiScope: PAD_UI_ACTIONS.includes(action) ? 'Power Automate Desktop only' : 'none',
+      interactiveUiScope: PAD_UI_ACTIONS.includes(action) ? 'Agent Desktop via existing Windows interactive broker' : 'none',
       paperclipLabCapability: PAPERCLIP_LAB_ACTIONS.includes(action),
       paperclipLabScope: PAPERCLIP_LAB_ACTIONS.includes(action) ? 'D:\\TigerIQ-Paperclip-Lab + 127.0.0.1:3210 only' : 'none',
       ...(capabilityEvidence ? { paperclipLab: capabilityEvidence } : {}),

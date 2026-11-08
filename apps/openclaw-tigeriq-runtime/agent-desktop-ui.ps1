@@ -10,9 +10,49 @@ function Invoke-TigerIQAgentDesktopCli([string[]] $Arguments, [string] $StdinTex
   if (-not (Test-Path -LiteralPath $script:TigerIQAgentDesktopExe -PathType Leaf)) {
     throw 'TIGERIQ_AGENT_DESKTOP_NOT_INSTALLED'
   }
+  # Windows PowerShell 5.1 must decode native JSON as UTF-8 to preserve UI labels.
+  [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+  $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
   # PowerShell invokes a fixed executable with an array of arguments, never through cmd /c.
-  if ($null -ne $StdinText) {
-    $responseText = ($StdinText | & $script:TigerIQAgentDesktopExe @Arguments 2>$null | Out-String).Trim()
+  if ($PSBoundParameters.ContainsKey('StdinText')) {
+    # PowerShell 5.1's native pipeline can replace Unicode with '?'.
+    # Deliver the exact UTF-8 bytes to the pinned native executable instead.
+    if ($Arguments.Count -ne 3 -or $Arguments[0] -ne 'set-value' -or
+        $Arguments[1] -notmatch '^@s[a-zA-Z0-9]+:e[0-9]+$' -or $Arguments[2] -ne '--stdin') {
+      throw 'TIGERIQ_AGENT_DESKTOP_STDIN_ARGUMENTS_INVALID'
+    }
+    $native = 'D:\TigerIQ\Tools\agent-desktop\node_modules\agent-desktop\bin\agent-desktop-win32-x64.exe'
+    if (-not (Test-Path -LiteralPath $native -PathType Leaf)) {
+      throw 'TIGERIQ_AGENT_DESKTOP_NATIVE_MISSING'
+    }
+    $info = [System.Diagnostics.ProcessStartInfo]::new()
+    $info.FileName = $native
+    $info.Arguments = "set-value $($Arguments[1]) --stdin"
+    $info.UseShellExecute = $false
+    $info.CreateNoWindow = $true
+    $info.RedirectStandardInput = $true
+    $info.RedirectStandardOutput = $true
+    $info.RedirectStandardError = $true
+    $info.StandardOutputEncoding = New-Object System.Text.UTF8Encoding($false)
+    $info.StandardErrorEncoding = New-Object System.Text.UTF8Encoding($false)
+    $proc = [System.Diagnostics.Process]::new()
+    $proc.StartInfo = $info
+    try {
+      if (-not $proc.Start()) { throw 'TIGERIQ_AGENT_DESKTOP_START_FAILED' }
+      $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
+      $stderrTask = $proc.StandardError.ReadToEndAsync()
+      $bytes = [System.Text.Encoding]::UTF8.GetBytes($StdinText)
+      $proc.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
+      $proc.StandardInput.Close()
+      if (-not $proc.WaitForExit(15000)) {
+        try { $proc.Kill() } catch {}
+        throw 'TIGERIQ_AGENT_DESKTOP_PROCESS_TIMEOUT'
+      }
+      $responseText = ($stdoutTask.GetAwaiter().GetResult()).Trim()
+      [void]$stderrTask.GetAwaiter().GetResult()
+    } finally {
+      $proc.Dispose()
+    }
   } else {
     $responseText = (& $script:TigerIQAgentDesktopExe @Arguments 2>$null | Out-String).Trim()
   }
@@ -38,7 +78,7 @@ function Test-TigerIQAgentDesktopAllowedWindow($Window) {
 }
 
 function Get-TigerIQAgentDesktopWindows {
-  $raw = @(Invoke-TigerIQAgentDesktopCli @('list-windows'))
+  $raw = @(Invoke-TigerIQAgentDesktopCli -Arguments @('list-windows'))
   return @($raw | Where-Object { $_ -and (Test-TigerIQAgentDesktopAllowedWindow $_) })
 }
 
@@ -91,7 +131,7 @@ function Get-TigerIQAgentDesktopNodes($Node) {
 }
 
 function Get-TigerIQAgentDesktopSnapshot($Window) {
-  $snapshot = Invoke-TigerIQAgentDesktopCli @('snapshot','--window-id',[string]$Window.id,'-i','--compact')
+  $snapshot = Invoke-TigerIQAgentDesktopCli -Arguments @('snapshot','--window-id',[string]$Window.id,'-i','--compact')
   if (-not $snapshot.complete -or -not $snapshot.tree) { throw 'TIGERIQ_AGENT_DESKTOP_SNAPSHOT_INCOMPLETE' }
   return $snapshot
 }
@@ -141,7 +181,7 @@ function Invoke-AgentDesktopAction($Request) {
     if ($app -notin @('notepad.exe','calc.exe','mspaint.exe')) {
       throw 'TIGERIQ_AGENT_DESKTOP_LAUNCH_NOT_ALLOWED'
     }
-    return Invoke-TigerIQAgentDesktopCli @('launch',$app)
+    return Invoke-TigerIQAgentDesktopCli -Arguments @('launch',$app)
   }
   $window = Get-TigerIQAgentDesktopWindow $Request
   if ($action -eq 'pad_tree') {
@@ -156,7 +196,7 @@ function Invoke-AgentDesktopAction($Request) {
     }
     $combo = $map[[string]$Request.key]
     if (-not $combo) { throw 'TIGERIQ_AGENT_DESKTOP_KEY_NOT_ALLOWED' }
-    $response = Invoke-TigerIQAgentDesktopCli @('press','--window-id',[string]$window.id,$combo)
+    $response = Invoke-TigerIQAgentDesktopCli -Arguments @('press','--window-id',[string]$window.id,$combo)
     return [pscustomobject]@{ Key=[string]$Request.key; Method='AgentDesktopPress'; Verified=($null -ne $response) }
   }
   if ($action -notin @('pad_click','pad_invoke','pad_set_value')) { throw 'TIGERIQ_AGENT_DESKTOP_ACTION_NOT_ALLOWED' }
@@ -166,9 +206,9 @@ function Invoke-AgentDesktopAction($Request) {
     # --stdin prevents the value from appearing in child-process command arguments.
     # The existing broker caps input at 500 chars and sanitizes control bytes.
     $value = [string]$Request.value
-    $result = Invoke-TigerIQAgentDesktopCli @('set-value',$ref,'--stdin') $value
+    $result = Invoke-TigerIQAgentDesktopCli -Arguments @('set-value',$ref,'--stdin') -StdinText $value
     return [pscustomobject]@{ Method='AgentDesktopSetValue'; MatchCount=$selected.MatchCount; Ref=$ref; Verified=($null -ne $result) }
   }
-  $result = Invoke-TigerIQAgentDesktopCli @('click',$ref)
+  $result = Invoke-TigerIQAgentDesktopCli -Arguments @('click',$ref)
   return [pscustomobject]@{ Method='AgentDesktopClick'; MatchCount=$selected.MatchCount; Ref=$ref; Delivered=($null -ne $result) }
 }

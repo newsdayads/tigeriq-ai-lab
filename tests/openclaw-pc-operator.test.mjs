@@ -1679,9 +1679,9 @@ describe('Agent Desktop bridge in existing TigerIQ MCP lane', () => {
   it('pins a local launcher and does not create a second MCP listener or use arbitrary coordinates', async () => {
     const src = await readFile(new URL('../apps/openclaw-tigeriq-runtime/agent-desktop-ui.ps1', import.meta.url), 'utf8');
     expect(src).toContain("'D:\\TigerIQ\\Tools\\agent-desktop\\node_modules\\.bin\\agent-desktop.cmd'");
-    expect(src).toContain("Invoke-TigerIQAgentDesktopCli @('snapshot','--window-id'");
-    expect(src).toContain("Invoke-TigerIQAgentDesktopCli @('click',$ref)");
-    expect(src).toContain("Invoke-TigerIQAgentDesktopCli @('set-value',$ref,'--stdin') $value");
+    expect(src).toContain("Invoke-TigerIQAgentDesktopCli -Arguments @('snapshot','--window-id'");
+    expect(src).toContain("Invoke-TigerIQAgentDesktopCli -Arguments @('click',$ref)");
+    expect(src).toContain("Invoke-TigerIQAgentDesktopCli -Arguments @('set-value',$ref,'--stdin') -StdinText $value");
     expect(src).toContain('TIGERIQ_AGENT_DESKTOP_WINDOW_AMBIGUOUS');
     expect(src).toContain('TIGERIQ_AGENT_DESKTOP_ELEMENT_AMBIGUOUS');
     expect(src).toContain('TIGERIQ_AGENT_DESKTOP_CLASS_SELECTOR_UNSUPPORTED');

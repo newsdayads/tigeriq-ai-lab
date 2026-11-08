@@ -969,7 +969,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
   wrapTool(
     authorizedTools,
     'ui_window_list',
-    'Liệt kê các cửa sổ ứng dụng đang mở trên màn hình PC01 qua PAD UI Broker.',
+    'Liệt kê cửa sổ Windows trên PC01 qua Agent Desktop và bộ điều khiển MCP hiện hữu.',
     {},
     async () => {
       try {
@@ -1035,7 +1035,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
   wrapTool(
     authorizedTools,
     'ui_action',
-    'Thực hiện thao tác điều khiển giao diện PC01 qua PAD UI Broker (click, nhập text, phím tắt, cây phần tử).',
+    'Thực hiện thao tác giao diện PC01 qua Agent Desktop (giữ tên lệnh pad_* tương thích hệ thống cũ).',
     {
       action: z.enum([
         'pad_health',
