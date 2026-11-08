@@ -1663,3 +1663,36 @@ describe('#4532 isolated Cline benchmark preflight',()=>{
     expect(result.installedLocalModels).toEqual([]);
   });
 });
+
+
+describe('Agent Desktop bridge in existing TigerIQ MCP lane', () => {
+  it('routes the bounded public UI actions through agent-desktop while keeping internal signatures isolated', async () => {
+    const broker = await readFile(new URL('../apps/openclaw-tigeriq-runtime/pad-ui-broker.ps1', import.meta.url), 'utf8');
+    expect(broker).toContain(". (Join-Path $PSScriptRoot 'agent-desktop-ui.ps1')");
+    for (const action of PAD_UI_ACTIONS.filter((name) => name !== 'pad_health')) {
+      expect(broker).toContain("'" + action + "' { return Invoke-AgentDesktopAction $Request }");
+    }
+    expect(broker).toContain("'pad_android_sign_v020' { return Invoke-V020Signer }");
+    expect(broker).toContain("'nv07_native_session_ping' {");
+  });
+
+  it('pins a local launcher and does not create a second MCP listener or use arbitrary coordinates', async () => {
+    const src = await readFile(new URL('../apps/openclaw-tigeriq-runtime/agent-desktop-ui.ps1', import.meta.url), 'utf8');
+    expect(src).toContain("'D:\\TigerIQ\\Tools\\agent-desktop\\node_modules\\.bin\\agent-desktop.cmd'");
+    expect(src).toContain("Invoke-TigerIQAgentDesktopCli @('snapshot','--window-id'");
+    expect(src).toContain("Invoke-TigerIQAgentDesktopCli @('click',$ref)");
+    expect(src).toContain("Invoke-TigerIQAgentDesktopCli @('set-value',$ref,'--stdin') $value");
+    expect(src).toContain('TIGERIQ_AGENT_DESKTOP_WINDOW_AMBIGUOUS');
+    expect(src).toContain('TIGERIQ_AGENT_DESKTOP_ELEMENT_AMBIGUOUS');
+    expect(src).toContain('TIGERIQ_AGENT_DESKTOP_CLASS_SELECTOR_UNSUPPORTED');
+    expect(src).toContain("'notepad.exe','calc.exe','mspaint.exe'");
+    expect(src).not.toMatch(/SetCursorPos|mouse_event|mouse-click|127\.0\.0\.1:\d+|mcpServers/);
+  });
+
+  it('preserves the strict pre-existing bounded selectors and disallowed key combinations', () => {
+    expect(() => assertPadUiRequest({ action: 'pad_click', name: 'Launch', x: 100, y: 200 })).not.toThrow();
+    expect(assertPadUiRequest({ action: 'pad_click', name: 'Launch', x: 100, y: 200 })).toEqual({ action: 'pad_click', name: 'Launch' });
+    expect(() => assertPadUiRequest({ action: 'pad_keys', key: 'ALT+TAB' })).toThrow('TIGERIQ_PAD_KEY_NOT_ALLOWED');
+    expect(() => assertPadUiRequest({ action: 'pad_set_value', name: 'Input', value: 'ok' })).not.toThrow();
+  });
+});
