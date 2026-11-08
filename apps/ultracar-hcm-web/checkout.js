@@ -23,7 +23,7 @@ root.innerHTML=[
 '<button id="ucOrderSubmit" class="btn btn-primary full" type="submit">Gửi yêu cầu đặt hàng</button>',
 '<p class="uc-order-privacy">Tên, điện thoại và địa chỉ chỉ dùng để xử lý đơn. Không cung cấp mật khẩu ngân hàng, PIN hoặc OTP.</p></form>',
 '<section id="ucOrderSuccess" class="uc-order-success" hidden aria-live="polite">',
-'<span class="uc-order-status">ĐÃ GHI NHẬN YÊU CẦU</span><h3>Đặt hàng thành công — chờ xác nhận</h3>',
+'<span class="uc-order-status">ĐÃ GHI NHẬN YÊU CẦU</span><h3>Đã nhận yêu cầu — chờ xác nhận</h3>',
 '<p>Mã đơn: <strong id="ucServerOrderId"></strong></p>',
 '<p>Trạng thái: <strong>Chờ cửa hàng xác nhận</strong> · <strong>Chưa thanh toán</strong></p>',
 '<p id="ucServerOrderAmount"></p>',
@@ -36,7 +36,7 @@ root.innerHTML=[
 '<p class="uc-bank-hint">QR gốc không có sẵn số tiền hoặc nội dung đơn. Kiểm tra đúng NGUYEN TRUONG SON trong ứng dụng ngân hàng.</p></div>',
 '<button id="ucCopyOrder" class="btn btn-primary full" type="button">Sao chép thông tin đơn</button>',
 '<a class="btn btn-outline full" href="https://zalo.me/0392960003" target="_blank" rel="noopener noreferrer">Nhắn Zalo để xác nhận nhanh ↗</a>',
-'<p class="uc-order-privacy">Đơn đã được lưu trên website. Gửi mã đơn qua Zalo nếu muốn được hỗ trợ nhanh.</p></section>'
+'<p class="uc-order-privacy">Đơn đã được lưu trên website. Gửi mã đơn qua Zalo nếu muốn được hỗ trợ nhanh.</p><button type="button" class="btn btn-outline full" id="ucShopAgain">Tiếp tục mua sắm</button></section>'
 ].join('');
 const form=$('#ucOrderForm'),error=$('#ucOrderError'),submit=$('#ucOrderSubmit'),success=$('#ucOrderSuccess');
 let requestId='',fingerprint='',orderText='',bankText='';
@@ -68,4 +68,15 @@ form.addEventListener('submit',async e=>{
 $('#ucCopyOrder').addEventListener('click',e=>copy(orderText,e.currentTarget));
 $('#ucCopyAccount').addEventListener('click',e=>copy(account,e.currentTarget));
 $('#ucCopyTransfer').addEventListener('click',e=>copy(bankText,e.currentTarget));
+
+$('#ucShopAgain').addEventListener('click',()=>{
+ requestId='';fingerprint='';orderText='';bankText='';
+ success.hidden=true;form.hidden=false;form.reset();
+ submit.textContent='Gửi yêu cầu đặt hàng';error.hidden=true;
+ $('#ucBankPanel').hidden=true;
+ $('#ucOrderSuccess').scrollTop=0;
+ window.dispatchEvent(new CustomEvent('ultracar:shop-again'));
+ $('#cartClose')?.click();
+});
+
 })();
