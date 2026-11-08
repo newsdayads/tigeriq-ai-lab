@@ -53,3 +53,11 @@ Liên hệ đại lý: 0392 960 003 / https://zalo.me/0392960003.
 - Responsive WebGL: orbit by pointer and touch, pinch zoom, front/back/reset/optional auto rotation, fullscreen when supported. Lazy viewport loading, pause offscreen and on tab background, prefers-reduced-motion respected, fallback error status.
 - The superseded CSS-3D prototype #mo-phong-3d is retained but hidden to avoid duplicate/misleading renders. Store 54 SKUs, checkout, bank QR and PC01 Cloudflare deployment are unchanged.
 - Gates: GLB SHA and MIME test, exact-head CI, Chrome CDP native WebGL ready + local resource + real device emulation and touch drag, production hash backup, live HTTPS and commerce regression.
+
+
+## Mobile detail/catalog QA correction — 2026-11-09
+- Restored full 54-item catalog immediately after filter/search/sort. Removed the artificial initial 12-card slice; the legacy load-more button stays hidden. Product images remain lazy-loaded.
+- Fixed screenshot-reported iPhone detail modal: standalone fixed-height dialog with a persistent 44px 'Đóng' button in a non-scrolling header and 'Thêm giỏ hàng' / 'Xem hồ sơ đầy đủ' in a non-scrolling CTA footer; only the specifications scroll. Mobile values stack beneath their labels; safe-area padding, 320px and landscape supported. Opening a new SKU scrolls spec body to top; Add to cart opens the actual cart review.
+- Added an explicit return link for standalone /chi-tiet.html product pages, switching to the library when page= topic is viewed.
+- Honest 3D coverage: only one source GLB for UltraCar 13.3-inch model is verified in repo; 16-inch and accessories do not have verified distinct GLB files. Never market existing 13.3 model as matching 16-inch/other SKU geometry. Explicitly disclose coverage on homepage and only offer illustrative 13.3 viewer links for 13-inch products.
+- QA: local Node tests, real Chrome DevTools for 320x640, 390x844, 428x926, 844x390 and 1024x768: 54 product cards rendered, no horizontal overflow, fixed close/footer positions unchanged after specification scroll, close unlocks, cart add transitions to review, no uncaught JS errors. Public PC01 release requires four CI gates and post-deploy readback.
