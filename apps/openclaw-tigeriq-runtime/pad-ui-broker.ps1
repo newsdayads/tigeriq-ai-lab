@@ -437,6 +437,8 @@ function Invoke-V020Signer {
   if (-not $receipt) { throw 'TIGERIQ_V020_SIGNER_RECEIPT_MISSING' }
   return $receipt
 }
+. (Join-Path $PSScriptRoot 'agent-desktop-ui.ps1')
+
 function Invoke-Request($Request) {
   switch ([string]$Request.action) {
     'nv07_native_session_ping' {
@@ -455,28 +457,16 @@ function Invoke-Request($Request) {
       }
     }
     'pad_android_sign_v020' { return Invoke-V020Signer }
-    'pad_launch' {
-      Start-Process 'ms-powerautomate:' | Out-Null
-      return [pscustomobject]@{ Launched=$true }
-    }
-    'pad_windows' { return @(Get-PadWindows) }
-    'pad_tree' {
-      $window = Get-TopWindowElement $Request
-      $all = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
-      $limit = if ($Request.maxResults) { [math]::Min(400,[int]$Request.maxResults) } else { 200 }
-      $out = @()
-      foreach ($e in $all) {
-        if ($out.Count -ge $limit) { break }
-        try {
-          if ([string]$e.Current.Name -or [string]$e.Current.AutomationId) { $out += (Element-ToObject $e) }
-        } catch {}
-      }
-      return @($out)
-    }
-    'pad_invoke' { return Invoke-PadElement $Request $false }
-    'pad_click' { return Invoke-PadElement $Request $true }
-    'pad_set_value' { return Set-PadValue $Request }
-    'pad_keys' { return Send-PadKey $Request }
+    # Existing typed MCP/PAD aliases now route to agent-desktop in the same
+    # interactive Windows user session. Internal signer and NV07 attestation
+    # remain isolated in this broker until their separate acceptance gates.
+    'pad_launch' { return Invoke-AgentDesktopAction $Request }
+    'pad_windows' { return Invoke-AgentDesktopAction $Request }
+    'pad_tree' { return Invoke-AgentDesktopAction $Request }
+    'pad_invoke' { return Invoke-AgentDesktopAction $Request }
+    'pad_click' { return Invoke-AgentDesktopAction $Request }
+    'pad_set_value' { return Invoke-AgentDesktopAction $Request }
+    'pad_keys' { return Invoke-AgentDesktopAction $Request }
     default { throw 'TIGERIQ_PAD_UI_ACTION_NOT_ALLOWED' }
   }
 }
