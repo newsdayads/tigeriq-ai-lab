@@ -29,7 +29,7 @@ root.innerHTML=[
 '<p id="ucServerOrderAmount"></p>',
 '<div id="ucBankPanel" class="uc-bank-panel" hidden><h4>Chuyển khoản ngân hàng MB</h4>',
 '<p class="uc-bank-caution">CHƯA CHUYỂN TIỀN. Đợi UltraCarHCM xác nhận số tiền cuối và phí giao/lắp.</p>',
-'<img src="/assets/mb-vietqr-owner.svg" alt="Mã VietQR gốc chủ tài khoản cung cấp" loading="lazy" width="240" height="240">',
+'<img src="/assets/mb-vietqr-owner.svg" alt="Mã VietQR gốc chủ tài khoản cung cấp" loading="eager" width="240" height="240">',
 '<dl><dt>Ngân hàng</dt><dd>MB Bank</dd><dt>Chủ tài khoản</dt><dd>NGUYEN TRUONG SON</dd><dt>Số tài khoản</dt><dd>0967360003</dd><dt>Nội dung</dt><dd id="ucBankTransferInfo"></dd></dl>',
 '<div class="uc-bank-buttons"><button type="button" class="btn btn-outline" id="ucCopyAccount">Sao chép số TK</button>',
 '<button type="button" class="btn btn-outline" id="ucCopyTransfer">Sao chép nội dung CK</button></div>',
