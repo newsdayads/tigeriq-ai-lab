@@ -41,9 +41,11 @@ test('172 source-verified topics have local internal detail pages, never manufac
  const h=read('index.html'),app=read('app.js');
  assert.match(h,/\/chi-tiet\.html\?page=/);
  assert.match(app,/encodeURIComponent\(p\.path\)/);
- assert.doesNotMatch(h,/href="https:\/\/ultracar\.vn/i);
+ const htmlWithout3d=h.replace(/<section id="ultracar-3d-goc"[\s\S]*?<\/section>/,'');
+ assert.doesNotMatch(htmlWithout3d,/href="https:\/\/ultracar\.vn/i);
+ assert.match(h,/<iframe[^>]+src="https:\/\/ultracar\.vn\/trai-nghiem-3d\/#trai-nghiem-3d"/);
  assert.doesNotMatch(app,/https:\/\/ultracar\.vn/i);
- assert.doesNotMatch(h,/src="https:\/\/ultracar\.vn/i);
+ assert.doesNotMatch(htmlWithout3d,/src="https:\/\/ultracar\.vn/i);
  assert.match(read('chi-tiet.html'),/chi-tiet\.js/);
  assert.match(read('chi-tiet.js'),/\/source-details\.json/);
  assert.match(read('chi-tiet.js'),/productBySku/);
@@ -254,7 +256,8 @@ test('mobile catalog limits first paint to 12 of 54 products, with load more and
 test('Immersive 3D showroom is original, touch interactive, accessible and honest about provenance',()=>{
  const html=read('index.html'),js=read('immersive-3d.js'),css=read('immersive-3d.css');
  assert.match(html,/id="mo-phong-3d"/);
- assert.match(html,/href="#mo-phong-3d"/);
+ assert.match(html,/href="#ultracar-3d-goc"/);
+ assert.match(html,/id="mo-phong-3d"/);
  assert.match(html,/src="immersive-3d\.js\?v=20261108r1"/);
  assert.match(html,/href="immersive-3d\.css\?v=20261108r1"/);
  assert.match(html,/id="ucx3dModel"/);
@@ -281,4 +284,17 @@ test('Immersive 3D showroom is original, touch interactive, accessible and hones
  assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);
  assert.doesNotMatch(html,/model-viewer|spline|sketchfab|three\.js/i);
  assert.doesNotMatch(js,/\.glb|\.gltf|ultracar\.vn\/assets/i);
+});
+
+
+test('live 3D embed is source-attributed and offers external fullscreen fallback',()=>{
+ const html=read('index.html');
+ assert.match(html,/id="ultracar-3d-goc"/);
+ assert.match(html,/<iframe[^>]*src="https:\/\/ultracar\.vn\/trai-nghiem-3d\/#trai-nghiem-3d"/);
+ assert.match(html,/referrerpolicy="strict-origin-when-cross-origin"/);
+ assert.match(html,/loading="lazy"/);
+ assert.match(html,/href="https:\/\/ultracar\.vn\/trai-nghiem-3d\/"/);
+ assert.match(html,/href="#ultracar-3d-goc"/);
+ assert.match(html,/Trong khung bên dưới, bấm/);
+ assert.match(html,/<section id="mo-phong-3d"[^>]*hidden/);
 });
