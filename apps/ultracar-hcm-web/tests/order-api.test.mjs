@@ -34,12 +34,14 @@ test('private pending order API with same-origin, idempotency and server-side to
  const again=await duplicate.json();assert.equal(again.orderId,receipt.orderId);assert.equal(again.duplicate,true);
  const bad=await post({...data,requestId:'17c49cc4-882f-4e79-8f92-2e52c82157af',items:[{sku:'NO_SUCH_SKU',qty:1}]});assert.equal(bad.status,422);
  const cross=await fetch(base+'/api/orders',{method:'POST',headers:{'content-type':'application/json',origin:'https://example.org'},body:JSON.stringify({...data,requestId:'17c49cc4-882f-4e79-8f92-2e52c82157ad'})});assert.equal(cross.status,403);
+ const forwarded=await fetch(base+'/api/orders',{method:'POST',headers:{'content-type':'application/json',origin:'https://ultracar.tigeriq.io.vn'},body:JSON.stringify({...data,requestId:'17c49cc4-882f-4e79-8f92-2e52c82157ab',method:'cod'})});assert.equal(forwarded.status,201,'canonical public Origin must work even if reverse proxy Host is loopback');
+ const forwardedResult=await forwarded.json();assert.equal(forwardedResult.paymentStatus,'unpaid');
  const listing=await fetch(base+'/api/orders');assert.equal(listing.status,405);
  const publicFile=await fetch(base+'/Data/UltraCarHCM/orders.jsonl');assert.equal(publicFile.status,404);
  const qr=await fetch(base+'/assets/mb-vietqr-owner.svg');assert.equal(qr.status,200);
  const log=await readFile(join(dir,'orders.jsonl'),'utf8');
  const lines=log.trim().split('\n').map(x=>JSON.parse(x));
- assert.equal(lines.length,1,'idempotency must avoid double order');
+ assert.equal(lines.length,2,'idempotency must avoid double order; canonical Host must succeed');
  assert.equal(lines[0].customer.name,'Khach Kiem Thu');
  assert.equal(lines[0].paymentStatus,'unpaid');
 });
