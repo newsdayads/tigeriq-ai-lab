@@ -3,16 +3,16 @@
 'use strict';
 const root=document.querySelector('#mo-phong-3d');if(!root)return;
 const $=s=>root.querySelector(s);
-const model=$('#uc3dModel'),stage=$('#uc3dStage'),angle=$('#uc3dAngle'),display=$('#uc3dAngleValue'),status=$('#uc3dAngleStatus');
+const model=$('#ucx3dModel'),stage=$('#ucx3dStage'),angle=$('#ucx3dAngle'),display=$('#ucx3dAngleValue'),status=$('#ucx3dAngleStatus');
 if(!model||!stage||!angle)return;
 const reduced=!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 let rx=-9,ry=-20,spinning=!reduced,visible=false,dragging=false,raf=0,lastTime=0,slide=false,step=0,assemblyVisible=false,stepTimer=0,manualStep=false;
 const clamp=(v,min,max)=>Math.min(max,Math.max(min,v));
 const wrap=v=>((v+180)%360+360)%360-180;
-const btnAuto=$('#uc3dAuto');
+const btnAuto=$('#ucx3dAuto');
 function render(){
- model.style.setProperty('--uc3d-rx',rx.toFixed(1)+'deg');
- model.style.setProperty('--uc3d-ry',ry.toFixed(1)+'deg');
+ model.style.setProperty('--ucx3d-rx',rx.toFixed(1)+'deg');
+ model.style.setProperty('--ucx3d-ry',ry.toFixed(1)+'deg');
  const value=Math.round(wrap(ry));
  angle.value=String(value);
  display.textContent=(value>0?'+':'')+value+'°';
@@ -32,30 +32,30 @@ function startAnimation(){
 }
 function updateAuto(){btnAuto.setAttribute('aria-pressed',String(spinning));btnAuto.textContent=spinning?'⟳ Đang tự xoay':'▶ Bật tự xoay'}
 function stopAuto(){spinning=false;updateAuto();startAnimation()}
-$('#uc3dFront').addEventListener('click',()=>{stopAuto();setAngles(-15,-9)});
-$('#uc3dBack').addEventListener('click',()=>{stopAuto();setAngles(165,-8)});
-$('#uc3dReset').addEventListener('click',()=>{
+$('#ucx3dFront').addEventListener('click',()=>{stopAuto();setAngles(-15,-9)});
+$('#ucx3dBack').addEventListener('click',()=>{stopAuto();setAngles(165,-8)});
+$('#ucx3dReset').addEventListener('click',()=>{
  slide=false;stage.classList.remove('is-slid');
- $('#uc3dSlide').setAttribute('aria-pressed','false');
- $('#uc3dSlide').textContent='Thử trượt màn hình ↔';
+ $('#ucx3dSlide').setAttribute('aria-pressed','false');
+ $('#ucx3dSlide').textContent='Thử trượt màn hình ↔';
  setAngles(-20,-9);
  spinning=!reduced;updateAuto();startAnimation();
 });
 btnAuto.addEventListener('click',()=>{
  spinning=!spinning&&!reduced;updateAuto();startAnimation();
 });
-$('#uc3dSlide').addEventListener('click',()=>{
+$('#ucx3dSlide').addEventListener('click',()=>{
  slide=!slide;stage.classList.toggle('is-slid',slide);
- const button=$('#uc3dSlide');button.setAttribute('aria-pressed',String(slide));
+ const button=$('#ucx3dSlide');button.setAttribute('aria-pressed',String(slide));
  button.textContent=slide?'Đưa màn hình về giữa ←':'Thử trượt màn hình ↔';
  stopAuto();if(Math.abs(wrap(ry))>70)setAngles(-18,-9);
 });
 angle.addEventListener('input',()=>{stopAuto();setAngles(Number(angle.value))});
-for(const button of root.querySelectorAll('[data-uc3d-mode]')){
+for(const button of root.querySelectorAll('[data-ucx3d-mode]')){
  button.addEventListener('click',()=>{
-  const mode=button.dataset.uc3dMode;
-  for(const b of root.querySelectorAll('[data-uc3d-mode]')){const current=b.dataset.uc3dMode===mode;b.classList.toggle('is-active',current);b.setAttribute('aria-pressed',String(current))}
-  for(const app of root.querySelectorAll('[data-uc3d-app]'))app.hidden=app.dataset.uc3dApp!==mode;
+  const mode=button.dataset.ucx3dMode;
+  for(const b of root.querySelectorAll('[data-ucx3d-mode]')){const current=b.dataset.ucx3dMode===mode;b.classList.toggle('is-active',current);b.setAttribute('aria-pressed',String(current))}
+  for(const app of root.querySelectorAll('[data-ucx3d-app]'))app.hidden=app.dataset.ucx3dApp!==mode;
   stopAuto();setAngles(-16,-9);
  });
 }
@@ -90,9 +90,9 @@ const descriptions=[
  'Minh họa trạng thái màn hình sau khi nhận nguồn; thời gian bật thực tế tùy cấu hình.'
 ];
 function setStep(next){
- step=clamp(next,0,3);$('#uc3dAssembly').dataset.step=String(step);
- $('#uc3dStepText').textContent=descriptions[step];
- for(const b of root.querySelectorAll('[data-uc3d-step]')){const on=Number(b.dataset.uc3dStep)===step;b.classList.toggle('is-active',on);b.setAttribute('aria-pressed',String(on))}
+ step=clamp(next,0,3);$('#ucx3dAssembly').dataset.step=String(step);
+ $('#ucx3dStepText').textContent=descriptions[step];
+ for(const b of root.querySelectorAll('[data-ucx3d-step]')){const on=Number(b.dataset.ucx3dStep)===step;b.classList.toggle('is-active',on);b.setAttribute('aria-pressed',String(on))}
 }
 function stopSteps(){if(stepTimer)clearInterval(stepTimer);stepTimer=0}
 function startSteps(){
@@ -100,12 +100,12 @@ function startSteps(){
  if(reduced||manualStep||!assemblyVisible||document.hidden)return;
  stepTimer=window.setInterval(()=>setStep((step+1)%4),3000);
 }
-for(const b of root.querySelectorAll('[data-uc3d-step]'))b.addEventListener('click',()=>{
- manualStep=true;stopSteps();setStep(Number(b.dataset.uc3dStep));
+for(const b of root.querySelectorAll('[data-ucx3d-step]'))b.addEventListener('click',()=>{
+ manualStep=true;stopSteps();setStep(Number(b.dataset.ucx3dStep));
 });
 if('IntersectionObserver'in window){
  const show=new IntersectionObserver(entries=>{visible=entries[0]?.isIntersecting??false;startAnimation()},{threshold:.13});show.observe(stage);
- const assembly=new IntersectionObserver(entries=>{assemblyVisible=entries[0]?.isIntersecting??false;if(assemblyVisible)startSteps();else stopSteps()},{threshold:.15});assembly.observe($('#uc3dAssembly'));
+ const assembly=new IntersectionObserver(entries=>{assemblyVisible=entries[0]?.isIntersecting??false;if(assemblyVisible)startSteps();else stopSteps()},{threshold:.15});assembly.observe($('#ucx3dAssembly'));
 }else{visible=true;assemblyVisible=true;startAnimation();startSteps()}
 document.addEventListener('visibilitychange',()=>{startAnimation();if(document.hidden)stopSteps();else startSteps()});
 render();updateAuto();setStep(0);
