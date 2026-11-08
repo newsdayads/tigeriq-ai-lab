@@ -7,6 +7,8 @@ const ref=new URLSearchParams(location.search);
 const path=ref.get('page')||'';
 const sku=ref.get('sku')||'';
 const home='/#thu-vien';
+const internalBack=el('internalBack');
+if(internalBack&&path){internalBack.href=home;internalBack.textContent='← Quay lại thư viện';}
 const internal=p=>'/chi-tiet.html?page='+encodeURIComponent(p);
 const GROUPS={'dong-xe':'Tư vấn theo xe','san-pham':'Sản phẩm','chinh-sach':'Thông tin chính sách','tin-tuc':'Kiến thức công nghệ','ho-tro':'Hỗ trợ','video':'Video hướng dẫn','trai-nghiem-3d':'Mô phỏng phối cảnh','bang-gia':'Bảng giá','cam-lui':'Camera lùi','gia-do':'Giá đỡ','man-hinh':'Màn hình','phu-kien':'Phụ kiện','lap-dat':'Lắp đặt','lap-dat-thuc-te':'Ảnh theo xe','thu-vien':'Thư viện ảnh','tvc':'Giới thiệu giải pháp','da-nhiem':'Đa nhiệm DeX','ung-dung':'Ứng dụng','huong-dan-kich-hoat-app':'Kích hoạt','huong-dan-tai-app':'Tải và cài ứng dụng','tai-lieu':'Tài liệu','racing-mode':'Racing Mode','khe-sim':'Kết nối mạng','nang-cap':'Nâng cấp','nguon-nam-cham':'Pogo PIN','thiet-ke':'Thiết kế','dai-ly':'Đại lý','cam-ket':'Hậu mãi','dan-duong':'Bản đồ','lien-he':'Liên hệ','trang-chu':'Giới thiệu','cong-ty':'Nhà sản xuất','cau-chuyen-thuong-hieu':'Câu chuyện hãng','gioi-thieu':'Giới thiệu','tinh-nang':'Tính năng','danh-gia':'Trải nghiệm khách hàng'};
 const productPhoto=sku=>{
