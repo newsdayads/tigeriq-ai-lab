@@ -144,7 +144,7 @@ test('original CSS3D model and manufacturer policy links are attributed correctl
 test('premium cinematic hero retains original real photo and respects motion preferences',()=>{
  const h=read('index.html'),js=read('showroom-motion.js'),css=read('showroom-motion.css');
  assert.match(h,/showroom-motion\.css\?v=20261108r1/);
- assert.match(h,/showroom-motion\.js\?v=20261108r1/);
+ assert.match(h,/showroom-motion\.js\?v=20261108r3/);
  assert.match(h,/ultracar-cockpit-1600\.webp/);
  assert.match(js,/uc-cinema-shot/);
  assert.match(js,/uc-cinematic/);
