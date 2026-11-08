@@ -32,6 +32,10 @@ describe('GitHub auto-work resource wait consistency',()=>{
   it('retains explicit LOCAL while defaulting safe coordination to AUTO',()=>{
     const local=effectiveCoreJobRoutingProfile({kind:'github_api_autowork',routing_profile:'LOCAL'});
     expect(local).toBe('LOCAL');
+    expect(effectiveCoreJobRoutingProfile({kind:'github_api_autowork',routing_profile:' LOCAL '})).toBe('LOCAL');
+    expect(effectiveCoreJobRoutingProfile({kind:'github_api_autowork',routing_profile:' local '})).toBe('LOCAL');
+    expect(effectiveCoreJobRoutingProfile({kind:'github_api_autowork',routing_profile:'\tLOCAL\t'})).toBe('LOCAL');
+    expect(effectiveCoreJobRoutingProfile({kind:'compiled_general',routing_profile:' QUALITY '})).toBe(' QUALITY ');
     expect(effectiveCoreJobRoutingProfile({kind:'github_api_autowork'})).toBe('AUTO');
     expect(effectiveCoreJobRoutingProfile({kind:'github_api_autowork',routing_profile:'AUTO'})).toBe('AUTO');
     expect(effectiveCoreJobRoutingProfile({kind:'github_review',routing_profile:'AUTO'})).toBe('AUTO');
