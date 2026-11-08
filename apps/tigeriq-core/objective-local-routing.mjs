@@ -28,7 +28,7 @@ export function mayWaitAfterLocalFailure({profile='AUTO',message='',failures=[],
 // Execution, retry and queue visibility must call this same resolver.
 export function effectiveCoreJobRoutingProfile(job={}) {
   return job?.kind==='github_api_autowork'
-    ? (String(job?.routing_profile||'AUTO').toUpperCase()==='LOCAL'?'LOCAL':'AUTO')
+    ? (String(job?.routing_profile||'AUTO').trim().toUpperCase()==='LOCAL'?'LOCAL':'AUTO')
     : String(job?.routing_profile||'AUTO');
 }
 
