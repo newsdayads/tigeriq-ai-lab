@@ -23,20 +23,20 @@ root.innerHTML=[
 '<button id="ucOrderSubmit" class="btn btn-primary full" type="submit">Gửi yêu cầu đặt hàng</button>',
 '<p class="uc-order-privacy">Tên, điện thoại và địa chỉ chỉ dùng để xử lý đơn. Không cung cấp mật khẩu ngân hàng, PIN hoặc OTP.</p></form>',
 '<section id="ucOrderSuccess" class="uc-order-success" hidden aria-live="polite">',
-'<span class="uc-order-status">ĐÃ GHI NHẬN YÊU CẦU</span><h3>Đặt hàng thành công — chờ xác nhận</h3>',
+'<span class="uc-order-status">ĐÃ GHI NHẬN YÊU CẦU</span><h3>Đã nhận yêu cầu — chờ xác nhận</h3>',
 '<p>Mã đơn: <strong id="ucServerOrderId"></strong></p>',
 '<p>Trạng thái: <strong>Chờ cửa hàng xác nhận</strong> · <strong>Chưa thanh toán</strong></p>',
 '<p id="ucServerOrderAmount"></p>',
 '<div id="ucBankPanel" class="uc-bank-panel" hidden><h4>Chuyển khoản ngân hàng MB</h4>',
 '<p class="uc-bank-caution">CHƯA CHUYỂN TIỀN. Đợi UltraCarHCM xác nhận số tiền cuối và phí giao/lắp.</p>',
-'<img src="/assets/mb-vietqr-owner.svg" alt="Mã VietQR gốc chủ tài khoản cung cấp" loading="lazy" width="240" height="240">',
+'<img src="/assets/mb-vietqr-owner.svg" alt="Mã VietQR gốc chủ tài khoản cung cấp" loading="eager" width="240" height="240">',
 '<dl><dt>Ngân hàng</dt><dd>MB Bank</dd><dt>Chủ tài khoản</dt><dd>NGUYEN TRUONG SON</dd><dt>Số tài khoản</dt><dd>0967360003</dd><dt>Nội dung</dt><dd id="ucBankTransferInfo"></dd></dl>',
 '<div class="uc-bank-buttons"><button type="button" class="btn btn-outline" id="ucCopyAccount">Sao chép số TK</button>',
 '<button type="button" class="btn btn-outline" id="ucCopyTransfer">Sao chép nội dung CK</button></div>',
 '<p class="uc-bank-hint">QR gốc không có sẵn số tiền hoặc nội dung đơn. Kiểm tra đúng NGUYEN TRUONG SON trong ứng dụng ngân hàng.</p></div>',
 '<button id="ucCopyOrder" class="btn btn-primary full" type="button">Sao chép thông tin đơn</button>',
 '<a class="btn btn-outline full" href="https://zalo.me/0392960003" target="_blank" rel="noopener noreferrer">Nhắn Zalo để xác nhận nhanh ↗</a>',
-'<p class="uc-order-privacy">Đơn đã được lưu trên website. Gửi mã đơn qua Zalo nếu muốn được hỗ trợ nhanh.</p></section>'
+'<p class="uc-order-privacy">Đơn đã được lưu trên website. Gửi mã đơn qua Zalo nếu muốn được hỗ trợ nhanh.</p><button type="button" class="btn btn-outline full" id="ucShopAgain">Tiếp tục mua sắm</button></section>'
 ].join('');
 const form=$('#ucOrderForm'),error=$('#ucOrderError'),submit=$('#ucOrderSubmit'),success=$('#ucOrderSuccess');
 let requestId='',fingerprint='',orderText='',bankText='';
@@ -63,9 +63,20 @@ form.addEventListener('submit',async e=>{
  const id=receipt.orderId,total=receipt.subtotal||0;bankText='THANH TOAN '+id;
  orderText=['ULTRACARHCM — ĐƠN CHỜ XÁC NHẬN','Mã đơn: '+id,'Khách: '+name,'Số điện thoại: '+phone,'Địa chỉ: '+address,'Dòng xe: '+(car||'Chưa cung cấp'),'SẢN PHẨM:',...cart.map(x=>'- '+x.p.sku+' / '+x.p.name+' x '+x.qty+': '+money(x.p.price*x.qty)),'Tạm tính: '+money(total),'Phí giao/lắp: Chờ báo giá','Hình thức: '+(method==='bank'?'Chuyển khoản MB sau xác nhận':'COD khi được hỗ trợ'),'Ghi chú: '+(note||'Không'),'Trạng thái: CHỜ XÁC NHẬN — CHƯA THANH TOÁN'].join('\n');
  $('#ucServerOrderId').textContent=id;$('#ucServerOrderAmount').textContent='Tiền hàng tạm tính: '+money(total)+' · Phí giao/lắp: Chờ báo giá';$('#ucBankTransferInfo').textContent=bankText;$('#ucBankPanel').hidden=method!=='bank';
- form.hidden=true;success.hidden=false;success.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});
+ form.hidden=true;success.hidden=false;window.dispatchEvent(new CustomEvent('ultracar:order-saved',{detail:{orderId:id}}));success.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});
 });
 $('#ucCopyOrder').addEventListener('click',e=>copy(orderText,e.currentTarget));
 $('#ucCopyAccount').addEventListener('click',e=>copy(account,e.currentTarget));
 $('#ucCopyTransfer').addEventListener('click',e=>copy(bankText,e.currentTarget));
+
+$('#ucShopAgain').addEventListener('click',()=>{
+ requestId='';fingerprint='';orderText='';bankText='';
+ success.hidden=true;form.hidden=false;form.reset();
+ submit.textContent='Gửi yêu cầu đặt hàng';error.hidden=true;
+ $('#ucBankPanel').hidden=true;
+ $('#ucOrderSuccess').scrollTop=0;
+ window.dispatchEvent(new CustomEvent('ultracar:shop-again'));
+ $('#cartClose')?.click();
+});
+
 })();

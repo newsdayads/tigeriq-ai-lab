@@ -9,7 +9,7 @@ test('54 unique stockkeeping units, safe catalog data',()=>{
  const x=JSON.parse(read('products.json'));assert.equal(x.length,54);assert.equal(new Set(x.map(z=>z.sku)).size,54);for(const p of x){assert.ok(p.name&&p.sku&&p.category);assert.ok(Number.isFinite(p.price));}
 });
 test('contact and target canonical',()=>{const h=read('index.html');assert.match(h,/ultracar\.tigeriq\.io\.vn/);assert.match(h,/0392960003/);assert.doesNotMatch(h,/ultracarhcm\.tigeriq\.io\.vn|vercel\.app/);});
-test('browser scripts present',()=>{const h=read('index.html');assert.match(h,/src="data.js\?v=20261106r2"/);assert.match(h,/src="app.js\?v=20261106r4"/);assert.ok(read('styles.css').length>10000);});
+test('browser scripts present',()=>{const h=read('index.html');assert.match(h,/src="data.js\?v=20261106r2"/);assert.match(h,/src="app.js\?v=20261108r3"/);assert.ok(read('styles.css').length>10000);});
 test('sitemap and robots use correct origin',()=>{assert.match(read('sitemap.xml'),/ultracar\.tigeriq\.io\.vn/);assert.match(read('robots.txt'),/ultracar\.tigeriq\.io\.vn/)});
 test('public sitemap has 172 indexed Vietnamese pages with 101 car guides',()=>{
  const raw=read('source-pages.js');const match=raw.match(/^window\.ULTRACAR_SOURCE_PAGES\s*=\s*(\[.*\]);\s*$/s);assert.ok(match,'source index JS array');const pages=JSON.parse(match[1]);assert.equal(pages.length,172);assert.equal(pages.filter(x=>x.group==='dong-xe').length,101);assert.equal(new Set(pages.map(x=>x.path)).size,172);for(const p of pages){assert.match(p.url,/^https:\/\/ultracar\.vn\//)}
@@ -144,7 +144,7 @@ test('original CSS3D model and manufacturer policy links are attributed correctl
 test('premium cinematic hero retains original real photo and respects motion preferences',()=>{
  const h=read('index.html'),js=read('showroom-motion.js'),css=read('showroom-motion.css');
  assert.match(h,/showroom-motion\.css\?v=20261108r1/);
- assert.match(h,/showroom-motion\.js\?v=20261108r1/);
+ assert.match(h,/showroom-motion\.js\?v=20261108r3/);
  assert.match(h,/ultracar-cockpit-1600\.webp/);
  assert.match(js,/uc-cinema-shot/);
  assert.match(js,/uc-cinematic/);
@@ -181,7 +181,7 @@ test('mobile dock has real catalog, cart and Zalo actions and hides on dialog',(
 test('full order checkout records on PC01 and preserves unpaid bank state',()=>{
  const h=read('index.html'),js=read('checkout.js'),css=read('checkout.css'),server=read('server.mjs'),qr=read('assets/mb-vietqr-owner.svg');
  assert.match(h,/GIỎ HÀNG/);
- assert.match(h,/checkout\.js\?v=20261108r2/);
+ assert.match(h,/checkout\.js\?v=20261108r3/);
  assert.match(h,/checkout\.css\?v=20261108r2/);
  assert.match(h,/Họ tên người nhận \*/);
  assert.match(js,/\/api\/orders/);
@@ -206,4 +206,46 @@ test('full order checkout records on PC01 and preserves unpaid bank state',()=>{
  assert.match(qr,/<path fill=/);
  assert.match(css,/uc-bank-panel/);
  assert.doesNotMatch(js,/paymentSuccess|paid:true|localStorage\.setItem/);
+});
+
+test('iPhone cart has readable review and a separate checkout step, with real add-to-cart labels',()=>{
+ const h=read('index.html'),app=read('app.js'),ux=read('commerce-ux.js'),css=read('commerce-ux.css'),checkout=read('checkout.js');
+ assert.match(h,/id="ucCartReview"/);
+ assert.match(h,/id="ucCheckoutStep"/);
+ assert.match(h,/id="ucProceedCheckout"/);
+ assert.match(h,/id="ucContinueShopping"/);
+ assert.match(h,/id="ucBackToCart"/);
+ assert.match(h,/commerce-ux\.js\?v=20261108r3/);
+ assert.match(h,/commerce-ux\.css\?v=20261108r3/);
+ assert.match(h,/styles\.css\?v=20261108r3/);
+ assert.match(app,/Thêm giỏ hàng/);
+ assert.match(app,/setDialog\(true,'cart'\)/);
+ assert.match(app,/uc-cart-item-image/);
+ assert.match(app,/ultracar:order-saved/);
+ assert.match(ux,/go\('checkout'\)/);
+ assert.match(ux,/go\('review'\)/);
+ assert.match(ux,/uc-scroll-progress/);
+ assert.match(ux,/IntersectionObserver/);
+ assert.match(ux,/prefers-reduced-motion/);
+ assert.match(css,/min-height:0/);
+ assert.match(css,/uc-cart-review-actions/);
+ assert.match(css,/@media\(max-width:359px\)/);
+ assert.match(css,/@media\(min-width:651px\) and \(max-width:1023px\)/);
+ assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);
+ assert.match(checkout,/ultracar:order-saved/);
+});
+
+
+test('mobile catalog limits first paint to 12 of 54 products, with load more and filter reset',()=>{
+ const h=read('index.html'),js=read('app.js'),css=read('commerce-ux.css');
+ assert.match(h,/id="ucCatalogMore"/);
+ assert.match(js,/visibleLimit=12/);
+ assert.match(js,/items\.slice\(0,visibleLimit\)/);
+ assert.match(js,/visibleLimit\+=12/);
+ assert.match(js,/Math\.min\(12,items\.length-shown\.length\)/);
+ assert.match(js,/visibleLimit=12;renderCatalog\(\)/);
+ assert.match(css,/uc-loadmore-wrap/);
+ assert.match(css,/uc-catalog-more/);
+ assert.match(js,/Thêm giỏ hàng/);
+ assert.doesNotMatch(js,/>[+] Tư vấn<\/button>/);
 });
