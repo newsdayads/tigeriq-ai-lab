@@ -121,3 +121,7 @@
  .uc-reveal-ready{opacity:1!important;transform:none!important;transition:none!important}
  .uc-scroll-progress{transition:none!important}
 }
+
+/* Progressive product discovery; avoid a 54-card infinite phone scroll. */
+.uc-loadmore-wrap{display:flex;justify-content:center;padding:24px 0 8px}.uc-catalog-more{min-width:min(320px,100%);min-height:48px;border-radius:13px;background:#fff;border:1px solid #b9cdf0;color:#2154b4;font-size:13px;font-weight:850;box-shadow:0 9px 25px #1b396019}.uc-catalog-more:hover{background:#edf4ff;color:#153f95}.uc-catalog-more[hidden]{display:none!important}
+@media(max-width:650px){.uc-loadmore-wrap{padding:16px 0 5px}.uc-catalog-more{width:100%;font-size:13px}}
