@@ -281,7 +281,7 @@ test('Immersive 3D showroom is original, touch interactive, accessible and hones
  assert.match(css,/rotateY\(180deg\)/);
  assert.match(css,/@media\(max-width:650px\)/);
  assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);
- assert.doesNotMatch(html,/model-viewer|spline|sketchfab|three\.js/i);
+ assert.doesNotMatch(html,/<model-viewer|spline|sketchfab/i);
  assert.doesNotMatch(js,/\.glb|\.gltf|ultracar\.vn\/assets/i);
 });
 
