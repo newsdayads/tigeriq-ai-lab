@@ -1,7 +1,7 @@
 {
-  "versionCode": 334,
-  "versionName": "TigerIQ_HCM_v1.0.88",
+  "versionCode": 335,
+  "versionName": "1.0.89",
   "apkUrl": "https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/apk-dist/UltraCar_latest.apk",
-  "sha256": "D9B54E8B9A3034E3BF0F6C8CF8C9186B6153036557470566B9B620BBF7452E33",
-  "releaseNotes": "TigerIQ HCM v1.0.88 (BUILD 334) - Fixed Compose tree composition and runtime verifier error"
+  "sha256": "7CC9AF1694BE8573A0376F7F0CEDDCBB13A7E05750C5D0E8BCFFE745A685CC06",
+  "releaseNotes": "TigerIQ UltraCar v1.0.89 (BUILD 335)"
 }
