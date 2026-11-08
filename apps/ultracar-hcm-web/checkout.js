@@ -63,7 +63,7 @@ form.addEventListener('submit',async e=>{
  const id=receipt.orderId,total=receipt.subtotal||0;bankText='THANH TOAN '+id;
  orderText=['ULTRACARHCM — ĐƠN CHỜ XÁC NHẬN','Mã đơn: '+id,'Khách: '+name,'Số điện thoại: '+phone,'Địa chỉ: '+address,'Dòng xe: '+(car||'Chưa cung cấp'),'SẢN PHẨM:',...cart.map(x=>'- '+x.p.sku+' / '+x.p.name+' x '+x.qty+': '+money(x.p.price*x.qty)),'Tạm tính: '+money(total),'Phí giao/lắp: Chờ báo giá','Hình thức: '+(method==='bank'?'Chuyển khoản MB sau xác nhận':'COD khi được hỗ trợ'),'Ghi chú: '+(note||'Không'),'Trạng thái: CHỜ XÁC NHẬN — CHƯA THANH TOÁN'].join('\n');
  $('#ucServerOrderId').textContent=id;$('#ucServerOrderAmount').textContent='Tiền hàng tạm tính: '+money(total)+' · Phí giao/lắp: Chờ báo giá';$('#ucBankTransferInfo').textContent=bankText;$('#ucBankPanel').hidden=method!=='bank';
- form.hidden=true;success.hidden=false;success.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});
+ form.hidden=true;success.hidden=false;window.dispatchEvent(new CustomEvent('ultracar:order-saved',{detail:{orderId:id}}));success.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});
 });
 $('#ucCopyOrder').addEventListener('click',e=>copy(orderText,e.currentTarget));
 $('#ucCopyAccount').addEventListener('click',e=>copy(account,e.currentTarget));
