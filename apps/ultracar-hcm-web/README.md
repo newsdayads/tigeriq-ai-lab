@@ -36,3 +36,11 @@ Liên hệ đại lý: 0392 960 003 / https://zalo.me/0392960003.
 - Tài khoản nhận: MB Bank, chủ `NGUYEN TRUONG SON`, số `0967360003` theo ảnh Chủ sở hữu gửi 08/11/2026. QR tĩnh `assets/mb-vietqr-owner.svg` dựng nguyên mẫu QR đã giải mã, giữ nguyên dữ liệu EMV, không tự nhúng số tiền hoặc mã đơn. **Chưa xác thực nhận tiền từ ngân hàng**: owner/người thanh toán kiểm tra tên, số TK trong app ngân hàng trước giao dịch. Chỉ chuyển khi UltraCarHCM đã xác nhận tổng giá cuối qua kênh liên hệ.
 - Sau ghi nhận khách nhận mã `UC...`, trạng thái chờ xác nhận/chưa thanh toán, nút copy đơn, nút Zalo và thông tin ngân hàng nếu chọn chuyển khoản. Website **không tự đánh dấu đã thanh toán**; cần đối chiếu ngân hàng thủ công hoặc tích hợp API ngân hàng/Webhook được phê duyệt sau này.
 - Test: `node --test tests/*.test.mjs`, gồm kiểm thử HTTP POST, giá server-side, bảo mật cross-Origin, idempotency và dữ liệu riêng tư. Có thể chạy CI độc lập và staging PC01 bằng thư mục dữ liệu test `ULTRACAR_ORDERS_DIR` khác Production.
+
+
+## Immersive 3D showroom — V5 (08/11/2026)
+- Home section #mo-phong-3d after hero, direct hero CTA. Original screen shell built using CSS-3D/HTML/SVG, no OEM CAD or MP4 copied: six 3D faces, drag/touch 360-degree orbit, face front/back, autoplay when in viewport, slider and keyboard. Functional UI modes: map/music, five-app multitasking, reverse-camera illustration. Touch slide-screen reveal and four-step 12V/Pogo PIN illustration.
+- Source comparison only: https://ultracar.vn/, https://ultracar.vn/nguon-nam-cham/, https://ultracar.vn/video/ as of 2026-11-08. Manufacturer proprietary CAD/GLB and MP4 redistribution not authorized; do not download/embed those assets or claim exact fidelity.
+- Critical namespace isolation: ucx3d- is distinct from existing uc3d- in official-media.js. Previous selector conflict caused unintended 2px stage height; corrected and verified. No other commerce state changes.
+- Accessibility/performance: pointer/touch only active on device, keyboard arrows, focus outline, correct button states, IntersectionObserver viewport idle-pausing, document visibility, prefers-reduced-motion.
+- Checks: node --check immersive-3d.js, node --test tests/*.test.mjs and PC01 Chrome CDP mobile/tablet/desktop with real touch drag + reduced-motion tests.

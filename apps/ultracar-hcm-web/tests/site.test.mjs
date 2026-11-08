@@ -249,3 +249,36 @@ test('mobile catalog limits first paint to 12 of 54 products, with load more and
  assert.match(js,/Thêm giỏ hàng/);
  assert.doesNotMatch(js,/>[+] Tư vấn<\/button>/);
 });
+
+
+test('Immersive 3D showroom is original, touch interactive, accessible and honest about provenance',()=>{
+ const html=read('index.html'),js=read('immersive-3d.js'),css=read('immersive-3d.css');
+ assert.match(html,/id="mo-phong-3d"/);
+ assert.match(html,/href="#mo-phong-3d"/);
+ assert.match(html,/src="immersive-3d\.js\?v=20261108r1"/);
+ assert.match(html,/href="immersive-3d\.css\?v=20261108r1"/);
+ assert.match(html,/id="ucx3dModel"/);
+ assert.match(html,/id="ucx3dFront"/);
+ assert.match(html,/id="ucx3dBack"/);
+ assert.match(html,/id="ucx3dAngle"/);
+ assert.match(html,/id="ucx3dAuto"/);
+ assert.match(html,/id="ucx3dSlide"/);
+ assert.match(html,/data-ucx3d-mode="map"/);
+ assert.match(html,/data-ucx3d-mode="dex"/);
+ assert.match(html,/data-ucx3d-mode="camera"/);
+ assert.match(html,/data-ucx3d-step="3"/);
+ assert.match(html,/không phải mô hình CAD/i);
+ assert.match(js,/setPointerCapture/);
+ assert.match(js,/pointermove/);
+ assert.match(js,/ArrowRight/);
+ assert.match(js,/IntersectionObserver/);
+ assert.match(js,/prefers-reduced-motion/);
+ assert.match(js,/requestAnimationFrame/);
+ assert.match(js,/ucx3d-rx/);
+ assert.match(css,/preserve-3d/);
+ assert.match(css,/rotateY\(180deg\)/);
+ assert.match(css,/@media\(max-width:650px\)/);
+ assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);
+ assert.doesNotMatch(html,/model-viewer|spline|sketchfab|three\.js/i);
+ assert.doesNotMatch(js,/\.glb|\.gltf|ultracar\.vn\/assets/i);
+});
