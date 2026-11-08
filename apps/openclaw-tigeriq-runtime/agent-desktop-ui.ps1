@@ -78,7 +78,7 @@ function Test-TigerIQAgentDesktopAllowedWindow($Window) {
 }
 
 function Get-TigerIQAgentDesktopWindows {
-  $raw = @(Invoke-TigerIQAgentDesktopCli @('list-windows'))
+  $raw = @(Invoke-TigerIQAgentDesktopCli -Arguments @('list-windows'))
   return @($raw | Where-Object { $_ -and (Test-TigerIQAgentDesktopAllowedWindow $_) })
 }
 
@@ -131,7 +131,7 @@ function Get-TigerIQAgentDesktopNodes($Node) {
 }
 
 function Get-TigerIQAgentDesktopSnapshot($Window) {
-  $snapshot = Invoke-TigerIQAgentDesktopCli @('snapshot','--window-id',[string]$Window.id,'-i','--compact')
+  $snapshot = Invoke-TigerIQAgentDesktopCli -Arguments @('snapshot','--window-id',[string]$Window.id,'-i','--compact')
   if (-not $snapshot.complete -or -not $snapshot.tree) { throw 'TIGERIQ_AGENT_DESKTOP_SNAPSHOT_INCOMPLETE' }
   return $snapshot
 }
@@ -181,7 +181,7 @@ function Invoke-AgentDesktopAction($Request) {
     if ($app -notin @('notepad.exe','calc.exe','mspaint.exe')) {
       throw 'TIGERIQ_AGENT_DESKTOP_LAUNCH_NOT_ALLOWED'
     }
-    return Invoke-TigerIQAgentDesktopCli @('launch',$app)
+    return Invoke-TigerIQAgentDesktopCli -Arguments @('launch',$app)
   }
   $window = Get-TigerIQAgentDesktopWindow $Request
   if ($action -eq 'pad_tree') {
@@ -196,7 +196,7 @@ function Invoke-AgentDesktopAction($Request) {
     }
     $combo = $map[[string]$Request.key]
     if (-not $combo) { throw 'TIGERIQ_AGENT_DESKTOP_KEY_NOT_ALLOWED' }
-    $response = Invoke-TigerIQAgentDesktopCli @('press','--window-id',[string]$window.id,$combo)
+    $response = Invoke-TigerIQAgentDesktopCli -Arguments @('press','--window-id',[string]$window.id,$combo)
     return [pscustomobject]@{ Key=[string]$Request.key; Method='AgentDesktopPress'; Verified=($null -ne $response) }
   }
   if ($action -notin @('pad_click','pad_invoke','pad_set_value')) { throw 'TIGERIQ_AGENT_DESKTOP_ACTION_NOT_ALLOWED' }
@@ -206,9 +206,9 @@ function Invoke-AgentDesktopAction($Request) {
     # --stdin prevents the value from appearing in child-process command arguments.
     # The existing broker caps input at 500 chars and sanitizes control bytes.
     $value = [string]$Request.value
-    $result = Invoke-TigerIQAgentDesktopCli @('set-value',$ref,'--stdin') $value
+    $result = Invoke-TigerIQAgentDesktopCli -Arguments @('set-value',$ref,'--stdin') -StdinText $value
     return [pscustomobject]@{ Method='AgentDesktopSetValue'; MatchCount=$selected.MatchCount; Ref=$ref; Verified=($null -ne $result) }
   }
-  $result = Invoke-TigerIQAgentDesktopCli @('click',$ref)
+  $result = Invoke-TigerIQAgentDesktopCli -Arguments @('click',$ref)
   return [pscustomobject]@{ Method='AgentDesktopClick'; MatchCount=$selected.MatchCount; Ref=$ref; Delivered=($null -ne $result) }
 }
