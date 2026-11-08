@@ -178,4 +178,32 @@ test('mobile dock has real catalog, cart and Zalo actions and hides on dialog',(
  assert.match(css,/safe-area-inset-bottom/);
 });
 
-test('order checkout is honest, requires phone/address and never fakes payment',()=>{const h=read('index.html'),js=read('checkout.js'),css=read('checkout.css');assert.match(h,/GIỎ HÀNG/);assert.match(h,/checkout\.js\?v=20261108r1/);assert.match(h,/checkout\.css\?v=20261108r1/);assert.match(js,/ucOrderForm/);assert.match(js,/ucPhone/);assert.match(js,/ucAddress/);assert.match(js,/COD nếu cửa hàng xác nhận/);assert.match(js,/Chuyển khoản sau xác nhận/);assert.match(js,/CHƯA GỬI — CHƯA THANH TOÁN/);assert.match(js,/https:\/\/zalo\.me\/0392960003/);assert.match(js,/localStorage\.getItem/);assert.doesNotMatch(js,/fetch\(|localStorage\.setItem|paid:true|paymentSuccess/);assert.match(css,/uc-order-form/)});
+test('full order checkout records on PC01 and preserves unpaid bank state',()=>{
+ const h=read('index.html'),js=read('checkout.js'),css=read('checkout.css'),server=read('server.mjs'),qr=read('assets/mb-vietqr-owner.svg');
+ assert.match(h,/GIỎ HÀNG/);
+ assert.match(h,/checkout\.js\?v=20261108r2/);
+ assert.match(h,/checkout\.css\?v=20261108r2/);
+ assert.match(h,/Họ tên người nhận \*/);
+ assert.match(js,/\/api\/orders/);
+ assert.match(js,/id="ucPhone"/);
+ assert.match(js,/id="ucAddress"/);
+ assert.match(js,/value="cod"/);
+ assert.match(js,/value="bank"/);
+ assert.match(js,/CHƯA THANH TOÁN/);
+ assert.match(js,/mb-vietqr-owner\.svg/);
+ assert.match(js,/0967360003/);
+ assert.match(js,/NGUYEN TRUONG SON/);
+ assert.match(js,/https:\/\/zalo\.me\/0392960003/);
+ assert.match(js,/crypto\.randomUUID/);
+ assert.match(server,/ORDERS_FILE/);
+ assert.match(server,/pending_confirmation/);
+ assert.match(server,/paymentStatus:'unpaid'/);
+ assert.match(server,/writeQueue/);
+ assert.match(server,/req\.headers\.origin/);
+ assert.match(server,/appendFile/);
+ assert.match(server,/findPrevious/);
+ assert.match(qr,/df4cb87fc1f6e20cc258e158e86a84de4b5f3365cca1938b60bd6aa086b5963c/);
+ assert.match(qr,/<path fill=/);
+ assert.match(css,/uc-bank-panel/);
+ assert.doesNotMatch(js,/paymentSuccess|paid:true|localStorage\.setItem/);
+});
