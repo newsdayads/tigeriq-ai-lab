@@ -14,13 +14,14 @@
 <meta property="og:description" content="Chọn cấu hình phù hợp xe, tra cứu 54 mã sản phẩm và tư vấn qua Zalo 0392 960 003." />
 <meta property="og:url" content="https://ultracar.tigeriq.io.vn/" />
 <link rel="icon" href="assets/icon-ultracarhcm.svg?v=20261106r2" type="image/svg+xml" />
-<link rel="stylesheet" href="styles.css?v=20261106r4" />
+<link rel="stylesheet" href="styles.css?v=20261108r3" />
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Store","name":"UltraCarHCM","url":"https://ultracar.tigeriq.io.vn","telephone":"+84392960003","areaServed":{"@type":"City","name":"Thành phố Hồ Chí Minh"},"description":"Tư vấn sản phẩm UltraCar, lắp đặt và hỗ trợ lựa chọn cấu hình tại TP.HCM. Địa chỉ lắp đặt cần xác nhận khi liên hệ.","priceRange":"₫₫"}</script>
 <link rel="stylesheet" href="experience.css?v=20261107r1" />
 <link rel="stylesheet" href="vehicle-gallery.css?v=20261107r2" />
 <link rel="stylesheet" href="official-media.css?v=20261107r3" />
 <link rel="stylesheet" href="showroom-motion.css?v=20261108r1" />
 <link rel="stylesheet" href="checkout.css?v=20261108r2" />
+<link rel="stylesheet" href="commerce-ux.css?v=20261108r3" />
 </head>
 <body>
 <div class="announcement"><span class="pulse"></span> ULTRACARHCM · THIẾT BỊ CÔNG NGHỆ Ô TÔ <span class="notice-sep">·</span> <a href="tel:+84392960003">0392 960 003</a><span class="announcement-note"> · Bảng giá tham khảo, xác nhận trước khi chốt đơn</span></div>
@@ -57,13 +58,43 @@
 <footer class="footer"><div class="container footer-grid"><div><img class="footer-logo" src="assets/ultracarhcm-logo-original.png?v=20261106r3" alt="Logo gốc UltraCarHCM" width="276" height="92" loading="lazy" decoding="async"/><p>Tư vấn màn hình, giá đỡ, phụ kiện ô tô và giải pháp Samsung DeX tại Thành phố Hồ Chí Minh.</p><p class="muted">UltraCarHCM hỗ trợ chọn cấu hình và tiếp nhận yêu cầu mua hàng tại TP.HCM; báo giá, tồn kho và bảo hành được xác nhận trước giao dịch.</p></div><div><strong>Danh mục</strong><a href="#danh-muc">Sản phẩm UltraCar</a><a href="#tuong-thich">Kiểm tra theo xe</a><a href="#ung-dung">Ứng dụng UltraCar</a></div><div><strong>Thông tin</strong><a href="#ho-tro">Câu hỏi thường gặp</a><a href="/chi-tiet.html?page=%2Fho-tro%2F">Thông tin bảo hành →</a><a href="/chi-tiet.html?page=%2F">Thư viện UltraCarHCM →</a></div><div><strong>Liên hệ UltraCarHCM</strong><a class="footer-phone" href="tel:+84392960003">0392 960 003</a><a href="https://zalo.me/0392960003" target="_blank" rel="noopener noreferrer">Nhắn qua Zalo ↗</a><span>TP. Hồ Chí Minh, Việt Nam</span></div></div><div class="container footer-bottom"><span>© 2026 UltraCarHCM · Sản phẩm và phụ kiện UltraCar.</span><span>Thông tin đối chiếu 07/11/2026 · Giải trí khi xe đã dừng đỗ.</span></div></footer>
 <button class="floating-zalo" id="floatingZalo" title="Tư vấn Zalo UltraCarHCM" aria-label="Tư vấn qua Zalo"><span>Z</span><small>TƯ VẤN</small></button>
 <div class="overlay" id="overlay" hidden></div>
-<aside class="cart-drawer" id="cartDrawer" aria-labelledby="cartTitle" role="dialog" aria-modal="true" hidden><div class="drawer-header"><div><small>GIỎ HÀNG</small><h2 id="cartTitle">Giỏ hàng</h2></div><button class="icon-btn" id="cartClose" aria-label="Đóng giỏ">×</button></div><div class="drawer-content" id="cartItems"></div><div class="drawer-footer"><div class="cart-total"><span>Tạm tính (chưa gồm phí phát sinh)</span><strong id="cartTotal">0đ</strong></div><div class="field"><label for="buyerName">Họ tên người nhận *</label><input id="buyerName" autocomplete="name" maxlength="80" required placeholder="Tên của anh/chị" /></div><div class="field"><label for="buyerCar">Dòng xe / đời xe</label><input id="buyerCar" maxlength="120" placeholder="VD: VinFast VF5 2026" /></div><button id="copyQuote" class="btn btn-primary full" hidden>Sao chép nội dung yêu cầu</button><a id="zaloQuote" class="btn btn-outline full" href="https://zalo.me/0392960003" target="_blank" rel="noopener noreferrer" hidden>Mở Zalo để gửi tư vấn ↗</a><div id="ucCheckout"></div><p class="drawer-note" id="ucCheckoutNote">Đơn đặt hàng cần UltraCarHCM xác nhận tồn kho, tổng tiền và phí vận chuyển. Website chưa thu tiền trực tuyến.</p></div></aside>
+<aside class="cart-drawer uc-cart-drawer" id="cartDrawer" role="dialog" aria-modal="true" aria-labelledby="cartTitle" hidden>
+  <div class="drawer-header">
+    <div><small id="ucCartEyebrow">BƯỚC 1 / 2 · GIỎ HÀNG</small><h2 id="cartTitle">Giỏ hàng của bạn</h2><p class="uc-cart-subtitle" id="ucCartSubtitle">Kiểm tra sản phẩm trước khi đặt.</p></div>
+    <button class="icon-btn" id="cartClose" aria-label="Đóng giỏ hàng">×</button>
+  </div>
+  <div class="uc-cart-flow">
+    <section id="ucCartReview" class="uc-cart-step" aria-label="Giỏ hàng">
+      <div class="uc-cart-review-heading"><span class="uc-step-chip"><span aria-hidden="true">✓</span> Đã thêm vào giỏ</span><p>Kiểm tra sản phẩm, chỉnh số lượng rồi tiếp tục.</p></div>
+      <div class="drawer-content" id="cartItems"></div>
+      <div class="uc-cart-review-actions">
+        <div class="cart-total"><span>Tạm tính tiền hàng</span><strong id="cartTotal">0 đ</strong></div>
+        <p class="uc-cart-subnote">Giá tham khảo · Chưa gồm giao hàng và công lắp.</p>
+        <button id="ucProceedCheckout" class="btn btn-primary full" type="button">Tiến hành đặt hàng <span aria-hidden="true">→</span></button>
+        <button id="ucContinueShopping" class="uc-text-action" type="button">← Tiếp tục chọn sản phẩm</button>
+      </div>
+    </section>
+    <section id="ucCheckoutStep" class="uc-cart-step uc-checkout-step" aria-label="Nhập thông tin đặt hàng" hidden>
+      <button id="ucBackToCart" class="uc-back-cart" type="button">← Quay lại giỏ hàng</button>
+      <div id="ucCheckoutSummary" class="uc-checkout-summary" aria-live="polite"></div>
+      <div class="uc-cart-checkout-form">
+        <div class="field"><label for="buyerName">Họ tên người nhận *</label><input id="buyerName" autocomplete="name" maxlength="80" required placeholder="Họ và tên" /></div>
+        <div class="field"><label for="buyerCar">Dòng xe / đời xe (không bắt buộc)</label><input id="buyerCar" maxlength="120" placeholder="Ví dụ: VinFast VF5 2026" /></div>
+        <div id="ucCheckout"></div>
+      </div>
+      <p class="drawer-note" id="ucCheckoutNote">Giá, tồn kho và phí giao/lắp sẽ được UltraCarHCM xác nhận. Không cần thanh toán ngay.</p>
+    </section>
+  </div>
+  <button id="copyQuote" hidden type="button">Sao chép yêu cầu</button>
+  <a id="zaloQuote" hidden href="https://zalo.me/0392960003" target="_blank" rel="noopener noreferrer">Zalo</a>
+</aside>
 <div class="product-modal" id="productModal" role="dialog" aria-modal="true" aria-labelledby="productTitle" hidden><div class="modal-content"><button id="modalClose" class="icon-btn modal-close" aria-label="Đóng chi tiết">×</button><div id="modalBody"></div></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script src="data.js?v=20261106r2"></script><script src="source-pages.js"></script><script src="media.js?v=20261106r4"></script><script src="app.js?v=20261106r4"></script>
+<script src="data.js?v=20261106r2"></script><script src="source-pages.js"></script><script src="media.js?v=20261106r4"></script><script src="app.js?v=20261108r3"></script>
 <script src="experience.js?v=20261107r1"></script>
 <script src="vehicle-gallery.js?v=20261107r2"></script>
 <script src="official-media.js?v=20261107r3"></script>
-<script src="showroom-motion.js?v=20261108r1"></script>
-<script src="checkout.js?v=20261108r2"></script>
+<script src="showroom-motion.js?v=20261108r3"></script>
+<script src="checkout.js?v=20261108r3"></script>
+<script src="commerce-ux.js?v=20261108r3"></script>
 </body></html>
