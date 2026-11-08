@@ -293,7 +293,7 @@ test('live 3D embed is source-attributed and offers external fullscreen fallback
  assert.match(html,/<iframe[^>]*src="https:\/\/ultracar\.vn\/trai-nghiem-3d\/#trai-nghiem-3d"/);
  assert.match(html,/referrerpolicy="strict-origin-when-cross-origin"/);
  assert.match(html,/loading="lazy"/);
- assert.match(html,/href="https:\/\/ultracar\.vn\/trai-nghiem-3d\/#trai-nghiem-3d"/);
+ assert.match(html,/href="https:\/\/ultracar\.vn\/trai-nghiem-3d\/"/);
  assert.match(html,/href="#ultracar-3d-goc"/);
  assert.match(html,/Trong khung bên dưới, bấm/);
  assert.match(html,/<section id="mo-phong-3d"[^>]*hidden/);
