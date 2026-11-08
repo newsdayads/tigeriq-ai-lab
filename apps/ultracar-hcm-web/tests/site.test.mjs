@@ -127,7 +127,7 @@ test('official videos play through their YouTube host without video downloads',(
 });
 test('original CSS3D model and manufacturer policy links are attributed correctly',()=>{
  const js=read('official-media.js'),css=read('official-media.css'),detail=read('chi-tiet.js');
- assert.match(js,/ucx3d-device/);
+ assert.match(js,/uc3d-device/);
  assert.match(js,/pointermove/);
  assert.match(js,/ArrowLeft/);
  assert.match(js,/không phải tệp CAD\/3D gốc/);
