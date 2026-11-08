@@ -1,1 +1,37 @@
 .uc-order-form{display:grid;gap:10px;margin-top:14px;padding-top:15px;border-top:1px solid #d8e0ee}.uc-order-form h3{font-size:17px;margin:0;color:#112c5e}.uc-order-form>label{font-size:12px;font-weight:800;color:#213d68}.uc-order-form>input,.uc-order-form>textarea{box-sizing:border-box;width:100%;min-height:43px;padding:11px;border:1px solid #b7c6e0;border-radius:10px;font:inherit;font-size:14px;background:#fff;color:#172a46}.uc-order-form>input:focus-visible,.uc-order-form>textarea:focus-visible{outline:3px solid #93c5fd;outline-offset:1px}.uc-order-form fieldset{display:grid;gap:11px;padding:12px;border:1px solid #bdcce6;border-radius:12px}.uc-order-form legend{font-size:12px;font-weight:800;padding:0 5px;color:#213d68}.uc-order-form fieldset label{display:flex;gap:9px;align-items:flex-start;font-size:12px;line-height:1.5;color:#243c60;cursor:pointer}.uc-order-form fieldset input{accent-color:#2469dd;margin-top:3px;flex:none}.uc-order-form #ucOrderError{padding:10px;border-radius:8px;background:#fff0ee;color:#a51d1d;font-size:12px}.uc-order-form #ucOrderResult{display:grid;gap:10px;margin-top:6px;padding:14px;border-radius:12px;border:1px solid #8db2ef;background:#f0f6ff;color:#163461}.uc-order-form #ucOrderResult[hidden]{display:none}.uc-order-form #ucOrderResult p{margin:0;font-size:12px;line-height:1.6}.uc-order-form .drawer-note{font-size:11px;line-height:1.5;margin:0}
+/* Real checkout: compact, accessible and phone-friendly. */
+.uc-order-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:2px 0 12px}
+.uc-order-steps span{display:flex;flex-direction:column;align-items:center;gap:5px;background:#eef4ff;border-radius:9px;padding:10px 3px;font-size:10px;color:#27476e;font-weight:800;text-align:center}
+.uc-order-steps b{display:flex;align-items:center;justify-content:center;height:25px;width:25px;border-radius:50%;background:#2364d9;color:#fff;font-size:12px}
+.uc-order-hint,.uc-order-warning,.uc-order-privacy{font-size:11px;line-height:1.7;margin:2px 0;color:#687b91}
+.uc-order-warning{background:#fff6e5;border:1px solid #f0d89a;border-radius:11px;padding:10px;color:#79500f}
+.uc-pay-option{display:flex;gap:10px;align-items:flex-start;line-height:1.4}
+.uc-pay-option input{flex:none;margin-top:4px;accent-color:#2469df}
+.uc-pay-option span{display:flex;flex-direction:column;gap:3px}
+.uc-pay-option strong{font-size:12px;color:#162b4d}
+.uc-pay-option small{font-size:10px;color:#63788f}
+.uc-order-breakdown{display:grid;gap:8px;padding:13px;border:1px solid #e0e9fa;border-radius:12px;background:#f7faff}
+.uc-order-breakdown>div{display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:12px;line-height:1.45;color:#536783}
+.uc-order-breakdown>div:last-child{border-top:1px dashed #cbdaf0;padding-top:9px;font-weight:800;color:#19375f}
+.uc-order-breakdown strong{font-weight:850;color:#193d83}
+.uc-order-success{display:grid;gap:13px;padding:15px 0}
+.uc-order-success[hidden]{display:none}
+.uc-order-success h3{margin:0;font-size:19px;color:#142b55}
+.uc-order-success>p{margin:0;font-size:12px;line-height:1.65;color:#536a88}
+.uc-order-success>p strong{color:#123b7d}
+.uc-order-status{display:inline-flex;justify-self:start;padding:7px 11px;border-radius:30px;border:1px solid #a0c9e8;background:#eef9ff;color:#165f90;font-size:10px;font-weight:850;letter-spacing:.06em}
+.uc-bank-panel{display:grid;gap:12px;padding:15px;border:1px solid #bbcaeb;background:#f8fbff;border-radius:16px}
+.uc-bank-panel[hidden]{display:none}
+.uc-bank-panel h4{font-size:16px;margin:0;color:#133b7b}
+.uc-bank-caution{font-size:12px;font-weight:800;line-height:1.65;color:#8a411c;margin:0;background:#fff1e5;border:1px solid #e9caac;border-radius:9px;padding:9px}
+.uc-bank-panel img{width:100%;height:auto;max-width:254px;aspect-ratio:1;object-fit:contain;justify-self:center;background:#fff;border-radius:13px;padding:9px;border:1px solid #d9e3f5}
+.uc-bank-panel dl{display:grid;grid-template-columns:minmax(0,42%) minmax(0,58%);gap:9px 6px;margin:0;font-size:12px;line-height:1.5;border-bottom:1px solid #dbe5f4;padding-bottom:10px}
+.uc-bank-panel dt{color:#697e9c}
+.uc-bank-panel dd{font-weight:850;color:#152f5a;overflow-wrap:anywhere;margin:0}
+.uc-bank-buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.uc-bank-buttons button{white-space:normal;font-size:11px;padding:9px 6px}
+.uc-bank-hint{font-size:10px;color:#617897;line-height:1.7;margin:0}
+.uc-order-form[hidden]{display:none}
+.uc-order-form #ucOrderError[hidden]{display:none}
+.uc-order-form #ucOrderSubmit:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:400px){.uc-bank-buttons{grid-template-columns:1fr}.uc-order-steps span{font-size:9px}}
