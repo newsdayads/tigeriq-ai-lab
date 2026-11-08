@@ -27,8 +27,12 @@ export function mayWaitAfterLocalFailure({profile='AUTO',message='',failures=[],
 // FREE API roster assist GitHub coordination without adding any paid fallback.
 // Execution, retry and queue visibility must call this same resolver.
 export function effectiveCoreJobRoutingProfile(job={}) {
+  // Normalize only the auto-work routing boundary. Keep non-autowork profiles unchanged.
+  if(job?.kind==='github_api_autowork') {
+    job={...job,routing_profile:String(job?.routing_profile||'AUTO').trim()};
+  }
   return job?.kind==='github_api_autowork'
-    ? (String(job?.routing_profile||'AUTO').trim().toUpperCase()==='LOCAL'?'LOCAL':'AUTO')
+    ? (String(job?.routing_profile||'AUTO').toUpperCase()==='LOCAL'?'LOCAL':'AUTO')
     : String(job?.routing_profile||'AUTO');
 }
 
