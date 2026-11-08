@@ -234,3 +234,18 @@ test('iPhone cart has readable review and a separate checkout step, with real ad
  assert.match(css,/@media\(prefers-reduced-motion:reduce\)/);
  assert.match(checkout,/ultracar:order-saved/);
 });
+
+
+test('mobile catalog limits first paint to 12 of 54 products, with load more and filter reset',()=>{
+ const h=read('index.html'),js=read('app.js'),css=read('commerce-ux.css');
+ assert.match(h,/id="ucCatalogMore"/);
+ assert.match(js,/visibleLimit=12/);
+ assert.match(js,/items\.slice\(0,visibleLimit\)/);
+ assert.match(js,/visibleLimit\+=12/);
+ assert.match(js,/Math\.min\(12,items\.length-shown\.length\)/);
+ assert.match(js,/visibleLimit=12;renderCatalog\(\)/);
+ assert.match(css,/uc-loadmore-wrap/);
+ assert.match(css,/uc-catalog-more/);
+ assert.match(js,/Thêm giỏ hàng/);
+ assert.doesNotMatch(js,/>[+] Tư vấn<\/button>/);
+});
