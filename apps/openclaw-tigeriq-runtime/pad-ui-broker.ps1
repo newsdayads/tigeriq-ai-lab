@@ -482,7 +482,7 @@ try {
     foreach ($item in $items) {
       $req = $null
       try {
-        $req = Get-Content -LiteralPath $item.FullName -Raw | ConvertFrom-Json
+        $req = Get-Content -LiteralPath $item.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
         if ([string]$req.schema -ne 'TIGERIQ_PAD_UI_REQUEST_V1' -or [string]$req.id -notmatch '^[0-9a-f-]{36}$') { throw 'TIGERIQ_PAD_UI_REQUEST_INVALID' }
         $data = Invoke-Request $req
         $resp = [pscustomobject]@{ schema='TIGERIQ_PAD_UI_RESPONSE_V1'; id=[string]$req.id; ok=$true; data=$data; completedAt=(Get-Date).ToUniversalTime().ToString('o') }
