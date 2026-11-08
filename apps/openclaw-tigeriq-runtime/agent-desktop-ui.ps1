@@ -14,7 +14,7 @@ function Invoke-TigerIQAgentDesktopCli([string[]] $Arguments, [string] $StdinTex
   [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
   $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
   # PowerShell invokes a fixed executable with an array of arguments, never through cmd /c.
-  if ($null -ne $StdinText) {
+  if ($PSBoundParameters.ContainsKey('StdinText')) {
     # PowerShell 5.1's native pipeline can replace Unicode with '?'.
     # Deliver the exact UTF-8 bytes to the pinned native executable instead.
     if ($Arguments.Count -ne 3 -or $Arguments[0] -ne 'set-value' -or
