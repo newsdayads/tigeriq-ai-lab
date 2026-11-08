@@ -125,3 +125,6 @@
 /* Progressive product discovery; avoid a 54-card infinite phone scroll. */
 .uc-loadmore-wrap{display:flex;justify-content:center;padding:24px 0 8px}.uc-catalog-more{min-width:min(320px,100%);min-height:48px;border-radius:13px;background:#fff;border:1px solid #b9cdf0;color:#2154b4;font-size:13px;font-weight:850;box-shadow:0 9px 25px #1b396019}.uc-catalog-more:hover{background:#edf4ff;color:#153f95}.uc-catalog-more[hidden]{display:none!important}
 @media(max-width:650px){.uc-loadmore-wrap{padding:16px 0 5px}.uc-catalog-more{width:100%;font-size:13px}}
+
+/* Compact landscape: keep product list and checkout CTA simultaneously usable. */
+@media(max-height:500px){.uc-cart-drawer>.drawer-header{min-height:56px;padding:7px 13px}.uc-cart-drawer .drawer-header h2{font-size:16px;margin:1px 0}.uc-cart-drawer .uc-cart-subtitle{display:none}.uc-cart-review-heading{display:none}.uc-cart-review-actions{padding:6px 12px;gap:3px}.uc-cart-review-actions .cart-total strong{font-size:17px}.uc-cart-subnote{display:none}.uc-cart-review-actions #ucProceedCheckout{min-height:38px}.uc-cart-review-actions .uc-text-action{padding:4px}.uc-cart-drawer .drawer-content{padding:3px 10px}.uc-cart-drawer .uc-checkout-step{padding:7px 11px}}
