@@ -10,6 +10,9 @@ function Invoke-TigerIQAgentDesktopCli([string[]] $Arguments, [string] $StdinTex
   if (-not (Test-Path -LiteralPath $script:TigerIQAgentDesktopExe -PathType Leaf)) {
     throw 'TIGERIQ_AGENT_DESKTOP_NOT_INSTALLED'
   }
+  # Windows PowerShell 5.1 otherwise decodes UTF-8 native JSON with the OEM codepage.
+  [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+  $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
   # PowerShell invokes a fixed executable with an array of arguments, never through cmd /c.
   if ($null -ne $StdinText) {
     $responseText = ($StdinText | & $script:TigerIQAgentDesktopExe @Arguments 2>$null | Out-String).Trim()
