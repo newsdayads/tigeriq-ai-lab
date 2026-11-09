@@ -21,6 +21,7 @@ import {
 const execFileAsync = promisify(execFile);
 const ANDROID_GRADLE_TIMEOUT_MS = 600_000;
 const NATIVE_GATE_TEST_TIMEOUT_MS = 720_000;
+const ANDROID_GRADLE_NETWORK_RETRY_MAX = 3;
 const run = (cmd: string, args: string[], cwd: string, timeout: number, env = process.env) =>
   spawnSync(cmd, args, { cwd, timeout, env, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
 
@@ -28,6 +29,9 @@ const requireSuccess = (result: {status: number | null; stdout: string | null; s
   expect(result.status, what + '\n' + (result.stdout || '').slice(-4500) + '\n' +
     (result.stderr || '').slice(-4500)).toBe(0);
 };
+const isTransientGradleDistributionFailure = (text: string) =>
+  /Downloading https:\/\/services\.gradle\.org\/distributions\//.test(text) &&
+  /(timeout \(\d+ms\)|SocketTimeoutException|ConnectException|HTTP response code: (?:429|5\d\d))/.test(text);
 
 describe('GH-5135 native Android clean-clone compile gate (not a release)',()=>{
   const eventName = process.env.GITHUB_EVENT_NAME;
@@ -59,16 +63,25 @@ describe('GH-5135 native Android clean-clone compile gate (not a release)',()=>{
       const app=join(worktree,'apps/ultracarhcm-v2');
       // Gradle can run for minutes. A synchronous spawn blocks the Vitest RPC
       // heartbeat and falsely fails CI even when Android compilation passed.
-      let built: {status: number; stdout: string; stderr: string};
-      try {
-        const output = await execFileAsync('bash',[
-          './gradlew','--no-daemon',':app:assembleDebug',':app:assembleRelease',':app:lintDebug',':app:testDebugUnitTest'
-        ], {cwd:app,timeout:ANDROID_GRADLE_TIMEOUT_MS,env,encoding:'utf8',maxBuffer:8*1024*1024});
-        built={status:0,stdout:output.stdout,stderr:output.stderr};
-      } catch (error) {
-        const failure=error as Error & {stdout?:string;stderr?:string;code?:number};
-        built={status:typeof failure.code==='number'?failure.code:1,
-          stdout:failure.stdout||'',stderr:failure.stderr||failure.message};
+      let built: {status: number; stdout: string; stderr: string}={status:1,stdout:'',stderr:'Gradle did not run'};
+      for (let attempt = 1; attempt <= ANDROID_GRADLE_NETWORK_RETRY_MAX; attempt += 1) {
+        try {
+          const output = await execFileAsync('bash',[
+            './gradlew','--no-daemon',':app:assembleDebug',':app:assembleRelease',':app:lintDebug',':app:testDebugUnitTest'
+          ], {cwd:app,timeout:ANDROID_GRADLE_TIMEOUT_MS,env,encoding:'utf8',maxBuffer:8*1024*1024});
+          built={status:0,stdout:output.stdout,stderr:output.stderr};
+          break;
+        } catch (error) {
+          const failure=error as Error & {stdout?:string;stderr?:string;code?:number};
+          built={status:typeof failure.code==='number'?failure.code:1,
+            stdout:failure.stdout||'',stderr:failure.stderr||failure.message};
+          const combined=built.stdout+'\n'+built.stderr;
+          if (attempt < ANDROID_GRADLE_NETWORK_RETRY_MAX && isTransientGradleDistributionFailure(combined)) {
+            console.warn('ANDROID_GRADLE_TRANSIENT_DISTRIBUTION_RETRY='+attempt);
+            continue;
+          }
+          break;
+        }
       }
       if (built.status !== 0) {
         const lint = join(app,'app/build/intermediates/lint_intermediate_text_report/debug/lint-results-debug.txt');
