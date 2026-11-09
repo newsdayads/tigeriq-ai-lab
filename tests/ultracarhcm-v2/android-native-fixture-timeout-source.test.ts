@@ -31,5 +31,9 @@ describe('GH-5135 native fixture timeout contract', () => {
     const wrapperNetworkTimeout = wrapperProperties.match(/^networkTimeout=(\d+)$/m);
     expect(wrapperNetworkTimeout).not.toBeNull();
     expect(Number(wrapperNetworkTimeout![1])).toBeGreaterThanOrEqual(120_000);
+    expect(source).toContain('ANDROID_GRADLE_NETWORK_RETRY_MAX = 3');
+    expect(source).toContain('isTransientGradleDistributionFailure');
+    expect(source).toContain('attempt < ANDROID_GRADLE_NETWORK_RETRY_MAX');
+    expect(source).toContain('ANDROID_GRADLE_TRANSIENT_DISTRIBUTION_RETRY=');
   });
 });
