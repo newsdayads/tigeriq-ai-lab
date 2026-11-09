@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, open, opendir, readFile, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,14 +16,85 @@ async function readManifest() {
   return JSON.parse(await readFile(manifestPath, 'utf8'));
 }
 
-async function walkFiles(root, rel = '') {
+const MAX_FIXTURE_FILE_BYTES = 1024 * 1024;
+
+// Validate every existing path component, not just the final root/lane.
+// OS/process sandboxing is still required against concurrent directory swaps.
+async function assertNoSymlinkAncestors(target) {
+  let current = path.resolve(target);
+  while (true) {
+    try {
+      if ((await lstat(current)).isSymbolicLink())
+        throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:' + current);
+    } catch (error) {
+      if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+}
+
+// The executor can rewrite fixture files. Do not read unbounded input or
+// follow symlinks; open nonblocking so a replaced FIFO cannot hang the scorer.
+async function readBoundedFixtureFile(filePath) {
+  let handle;
+  try {
+    const flags = constants.O_RDONLY | (constants.O_NOFOLLOW || 0) | (constants.O_NONBLOCK || 0);
+    handle = await open(filePath, flags);
+    const stat = await handle.stat();
+    if (!stat.isFile()) throw new Error('BENCHMARK_NON_REGULAR_FILE_FORBIDDEN:' + filePath);
+    // A regular-file hardlink can alias an inode outside the fixture tree.
+    // Treat multi-link inodes as untrusted; this is defense-in-depth, not a race-free sandbox.
+    if (stat.nlink > 1) throw new Error('BENCHMARK_HARDLINK_FORBIDDEN:' + filePath);
+    if (stat.size > MAX_FIXTURE_FILE_BYTES) throw new Error('BENCHMARK_FIXTURE_TOO_LARGE:' + filePath);
+    const parts = [];
+    const chunk = Buffer.allocUnsafe(65536);
+    let total = 0;
+    while (true) {
+      // The +1 detects growth during reading without buffering an unbounded file.
+      const wanted = Math.min(chunk.length, MAX_FIXTURE_FILE_BYTES + 1 - total);
+      if (wanted <= 0) throw new Error('BENCHMARK_FIXTURE_TOO_LARGE:' + filePath);
+      const { bytesRead } = await handle.read(chunk, 0, wanted, total);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      if (total > MAX_FIXTURE_FILE_BYTES)
+        throw new Error('BENCHMARK_FIXTURE_TOO_LARGE:' + filePath);
+      parts.push(Buffer.from(chunk.subarray(0, bytesRead)));
+    }
+    return Buffer.concat(parts, total).toString('utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return '';
+    if (error.code === 'ELOOP') throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:' + filePath);
+    throw error;
+  } finally {
+    await handle?.close();
+  }
+}
+
+// The untrusted executor can add arbitrarily many entries or nested folders.
+// Stream directory entries to avoid readdir() allocating the whole listing.
+const MAX_FIXTURE_TREE_ENTRIES = 256;
+const MAX_FIXTURE_TREE_DEPTH = 24;
+async function walkFiles(root, rel = '', budget = { entries: 0 }, depth = 0) {
+  if (depth > MAX_FIXTURE_TREE_DEPTH) throw new Error('BENCHMARK_TREE_DEPTH_LIMIT:' + rel);
   const dir = path.join(root, rel);
+  await assertNoSymlinkAncestors(dir);
   if ((await lstat(dir)).isSymbolicLink()) throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:' + rel);
   const out = [];
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
+  const handle = await opendir(dir);
+  for await (const entry of handle) {
+    budget.entries += 1;
+    if (budget.entries > MAX_FIXTURE_TREE_ENTRIES)
+      throw new Error('BENCHMARK_TREE_ENTRY_LIMIT:' + rel);
     const child = path.join(rel, entry.name);
     if (entry.isSymbolicLink()) throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:' + child);
-    if (entry.isDirectory()) out.push(...await walkFiles(root, child));
+    if (entry.isDirectory()) {
+      // Include directory entries (even when empty) in manifest integrity checks.
+      // The slash suffix distinguishes a directory from a file of the same name.
+      out.push(child.split(path.sep).join('/') + '/');
+      out.push(...await walkFiles(root, child, budget, depth + 1));
+    } else if (!entry.isFile()) throw new Error('BENCHMARK_NON_REGULAR_FILE_FORBIDDEN:' + child);
     else out.push(child.split(path.sep).join('/'));
   }
   return out;
@@ -35,10 +107,13 @@ export async function seedLane({ root, lane, force = false } = {}) {
   const manifest = await readManifest();
   const benchmarkRoot = path.resolve(root);
   const laneRoot = path.join(benchmarkRoot, lane);
+  await assertNoSymlinkAncestors(benchmarkRoot);
   await mkdir(benchmarkRoot, { recursive: true });
+  await assertNoSymlinkAncestors(benchmarkRoot);
   if ((await lstat(benchmarkRoot)).isSymbolicLink()) throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:root');
   // Atomic create: never erase or overwrite a previous benchmark lane.
   await mkdir(laneRoot);
+  await assertNoSymlinkAncestors(laneRoot);
 
   const seeded = [];
   for (const fixture of manifest.fixtures) {
@@ -84,11 +159,21 @@ export function changedLineCount(before, after) {
 
 // Fixture tests must never inherit the coordinator's GitHub/Ollama/API secrets
 // or NODE_TEST_CONTEXT (which silently skips nested tests).
-export function fixtureChildEnvironment(source=process.env){
-  const allowed=['SystemRoot','WINDIR','PATH','PATHEXT','TEMP','TMP','TMPDIR','HOME','USERPROFILE','APPDATA','LOCALAPPDATA'];
-  return Object.fromEntries(allowed
+export function fixtureChildEnvironment(source=process.env, fixtureRoot=null){
+  const inherited=['SystemRoot','WINDIR','PATH','PATHEXT'];
+  const env=Object.fromEntries(inherited
     .filter((key)=>typeof source[key]==='string')
     .map((key)=>[key,source[key]]));
+  if(fixtureRoot!==null){
+    if(typeof fixtureRoot!=='string'||!path.isAbsolute(fixtureRoot))
+      throw new Error('BENCHMARK_FIXTURE_PRIVATE_ROOT_INVALID');
+    const privateRoot=path.resolve(fixtureRoot);
+    if(path.parse(privateRoot).root===privateRoot)
+      throw new Error('BENCHMARK_FIXTURE_PRIVATE_ROOT_INVALID');
+    for(const key of ['HOME','USERPROFILE','APPDATA','LOCALAPPDATA','TEMP','TMP','TMPDIR'])
+      env[key]=privateRoot;
+  }
+  return env;
 }
 
 /** TAP must show every discovered acceptance test genuinely passed. */
@@ -114,10 +199,20 @@ export async function scoreFixture(fixtureRoot) {
   const fixtureId = path.basename(path.resolve(fixtureRoot));
   const fixture = manifest.fixtures.find((item) => item.id === fixtureId);
   if (!fixture) throw new Error('unknown_fixture:' + fixtureId);
+  await assertNoSymlinkAncestors(fixtureRoot);
 
   const expectedFiles = fixture.files;
   const expectedPaths = new Set(Object.keys(expectedFiles));
   const allowedPaths = new Set([...expectedPaths, 'TASK.md']);
+  // Only directories required as parents of trusted manifest files are allowed.
+  // Reject new empty directories just as we reject unexpected regular files.
+  for (const rel of expectedPaths) {
+    let dir = path.posix.dirname(rel);
+    while (dir !== '.') {
+      allowedPaths.add(dir + '/');
+      dir = path.posix.dirname(dir);
+    }
+  }
   const allFiles = await walkFiles(fixtureRoot);
   const unexpectedFiles = allFiles.filter((rel) => !allowedPaths.has(rel));
   let filesChanged = 0;
@@ -125,8 +220,7 @@ export async function scoreFixture(fixtureRoot) {
   let testsMutated = false;
 
   for (const [rel, originalContent] of Object.entries(expectedFiles)) {
-    let current = '';
-    try { current = await readFile(path.join(fixtureRoot, rel), 'utf8'); } catch {}
+    const current = await readBoundedFixtureFile(path.join(fixtureRoot, rel));
     if (sha256(current) !== sha256(originalContent)) {
       filesChanged += 1;
       linesChanged += changedLineCount(originalContent, current);
@@ -135,8 +229,7 @@ export async function scoreFixture(fixtureRoot) {
   }
 
   const expectedTask = fixture.prompt + '\n';
-  let currentTask = '';
-  try { currentTask = await readFile(path.join(fixtureRoot, 'TASK.md'), 'utf8'); } catch {}
+  const currentTask = await readBoundedFixtureFile(path.join(fixtureRoot, 'TASK.md'));
   const taskMutated = sha256(currentTask) !== sha256(expectedTask);
 
   // Explicit files are mandatory: `node --test tests` can succeed with
@@ -148,7 +241,7 @@ export async function scoreFixture(fixtureRoot) {
   // This scorer is also run inside node --test. Never inherit the parent
   // test-runner context: child --test processes otherwise skip fixture tests
   // and can exit 0 without evaluating a single assertion.
-  const fixtureEnv = fixtureChildEnvironment();
+  const fixtureEnv = fixtureChildEnvironment(process.env, fixtureRoot);
   // Reject tampered acceptance tests/tasks before executing any attacker-edited test.
   // A permitted outer runner must additionally sandbox untrusted solution code.
   if (testsMutated || taskMutated || unexpectedFiles.length > 0) {
@@ -184,9 +277,23 @@ export async function scoreLane({ root, lane } = {}) {
   if (!/^[a-z][a-z0-9-]{0,63}$/.test(String(lane))) throw new Error('BENCHMARK_LANE_INVALID');
   const manifest = await readManifest();
   const benchmarkRoot = path.resolve(root);
+  await assertNoSymlinkAncestors(benchmarkRoot);
   if ((await lstat(benchmarkRoot)).isSymbolicLink()) throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:root');
   const laneRoot = path.join(benchmarkRoot, lane);
+  await assertNoSymlinkAncestors(laneRoot);
   if ((await lstat(laneRoot)).isSymbolicLink()) throw new Error('BENCHMARK_SYMLINK_FORBIDDEN:lane');
+  // The lane root is executor-writable. Unlisted siblings of known fixture
+  // directories must not be silently ignored by completion/quality scoring.
+  const requiredIds = new Set(manifest.fixtures.map(item => item.id));
+  const foundIds = new Set();
+  for await (const entry of await opendir(laneRoot)) {
+    if (!requiredIds.has(entry.name) || !entry.isDirectory())
+      throw new Error('BENCHMARK_LANE_UNEXPECTED_ENTRY:' + entry.name);
+    foundIds.add(entry.name);
+  }
+  for (const id of requiredIds) {
+    if (!foundIds.has(id)) throw new Error('BENCHMARK_LANE_FIXTURE_MISSING:' + id);
+  }
   const fixtures = [];
   for (const fixture of manifest.fixtures) {
     fixtures.push(await scoreFixture(path.join(laneRoot, fixture.id)));
