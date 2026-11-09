@@ -29,12 +29,16 @@ foreach($required in @($RepoRoot,$module,$gradlew,$gradleFile,$zipalign,$aapt2,$
   if(-not (Test-Path -LiteralPath $required)){throw ('REQUIRED_PATH_MISSING:'+ $required)}
 }
 
-$head=(git -C $RepoRoot rev-parse HEAD 2>&1 | Select-Object -First 1).ToString().Trim()
-if($LASTEXITCODE -ne 0 -or $head -notmatch '^[0-9a-fA-F]{40}$'){throw 'GIT_HEAD_READ_FAILED'}
+$headLines=@(git -C $RepoRoot rev-parse HEAD 2>&1)
+$headExit=$LASTEXITCODE
+$head=($headLines | Select-Object -First 1).ToString().Trim()
+if($headExit -ne 0 -or $head -notmatch '^[0-9a-fA-F]{40}$'){throw 'GIT_HEAD_READ_FAILED'}
 if($head -cne $ExpectedMainSha){throw ('EXACT_MAIN_SHA_REQUIRED:EXPECTED='+$ExpectedMainSha+'|ACTUAL='+$head)}
 
-$trackedStatus=(git -C $RepoRoot status --porcelain --untracked-files=no 2>&1) -join [Environment]::NewLine
-if($LASTEXITCODE -ne 0){throw 'GIT_STATUS_FAILED'}
+$statusLines=@(git -C $RepoRoot status --porcelain --untracked-files=no 2>&1)
+$statusExit=$LASTEXITCODE
+$trackedStatus=$statusLines -join [Environment]::NewLine
+if($statusExit -ne 0){throw 'GIT_STATUS_FAILED'}
 if(-not [string]::IsNullOrWhiteSpace($trackedStatus)){throw 'TRACKED_WORKTREE_MUST_BE_CLEAN'}
 
 $gradleText=Get-Content -LiteralPath $gradleFile -Raw
