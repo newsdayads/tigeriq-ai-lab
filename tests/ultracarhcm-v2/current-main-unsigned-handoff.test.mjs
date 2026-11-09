@@ -14,6 +14,13 @@ test('F10 handoff preparer requires an explicit exact main SHA and clean tracked
   assert.match(source,/EXACT_MAIN_SHA_REQUIRED/);
   assert.match(source,/status --porcelain --untracked-files=no/);
   assert.match(source,/TRACKED_WORKTREE_MUST_BE_CLEAN/);
+  assert.match(source,/\$headLines=@\(git -C \$RepoRoot rev-parse HEAD 2>&1\)/);
+  assert.match(source,/\$headExit=\$LASTEXITCODE/);
+  assert.match(source,/if\(\$headExit -ne 0 -or \$head -notmatch/);
+  assert.match(source,/\$statusLines=@\(git -C \$RepoRoot status --porcelain --untracked-files=no 2>&1\)/);
+  assert.match(source,/\$statusExit=\$LASTEXITCODE/);
+  assert.match(source,/if\(\$statusExit -ne 0\)/);
+  assert.doesNotMatch(source,/rev-parse HEAD 2>&1 \| Select-Object -First 1/);
 });
 
 test('F10 handoff preparer builds release without changing source identity',()=>{
