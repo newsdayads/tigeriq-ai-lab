@@ -32,9 +32,14 @@ export function shouldExportGh5135ArtifactViaCiLog(
     return typeof headRef === 'string' && headRef.startsWith(GH5135_BRANCH_PREFIX);
   }
   if (eventName !== 'push' || event.ref !== 'refs/heads/main') return false;
-  return changedPaths(event).some(path =>
+  const scopedPathChanged = changedPaths(event).some(path =>
     ULTRACAR_PATH_PREFIXES.some(prefix => path.startsWith(prefix)),
   );
+  if (scopedPathChanged) return true;
+  const headCommit = event.head_commit;
+  if (!headCommit || typeof headCommit !== 'object') return false;
+  const message = (headCommit as Record<string, unknown>).message;
+  return typeof message === 'string' && /(?:GH-5135|#5135)/.test(message);
 }
 
 export type ArtifactLogReceipt = {

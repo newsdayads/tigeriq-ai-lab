@@ -28,6 +28,16 @@ describe('GH-5135 CI log artifact transport', () => {
       ref:'refs/heads/main',
       commits:[{modified:['README.md']}],
     },undefined)).toBe(false);
+    expect(shouldExportGh5135ArtifactViaCiLog('CI','push',{
+      ref:'refs/heads/main',
+      commits:[],
+      head_commit:{message:'[P1][GH-5135] merge V2 release transport'},
+    },undefined)).toBe(true);
+    expect(shouldExportGh5135ArtifactViaCiLog('CI','push',{
+      ref:'refs/heads/main',
+      commits:[],
+      head_commit:{message:'docs: unrelated main merge'},
+    },undefined)).toBe(false);
   });
 
   it('emits ordered bounded base64 chunks that reconstruct exact bytes and hash', () => {
