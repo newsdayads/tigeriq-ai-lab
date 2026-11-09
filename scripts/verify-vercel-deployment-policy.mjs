@@ -21,6 +21,20 @@ for (const name of trackedFiles) {
 const canonicalDeployScript = 'scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs';
 const policyGuardScript = 'scripts/verify-vercel-deployment-policy.mjs';
 
+const deployIntentPatterns = [
+  /\bvercel(?:\.cmd)?\s+deploy\b/i,
+  /\bvercel(?:\.cmd)?\s+(?:--prod|-p)(?:\s|$)/i,
+  /\bvercel(?:\.cmd)?\s+api\b[^\r\n]*\/v\d+\/deployments\b[^\r\n]*(?:-X|--method)\s*(?:POST|PUT)\b/i,
+  /(?:-X|--method)\s*(?:POST|PUT)\b[^\r\n]*\/v\d+\/deployments\b/i,
+  /https:\/\/api\.vercel\.com\/v\d+\/deployments\b[^\r\n]*(?:method\s*:\s*['"]?(?:POST|PUT)|\b(?:POST|PUT)\b)/i,
+  /\b(?:createDeployment|deployToVercel)\s*\(/i,
+  /^\s*uses:\s*[^\r\n]*vercel[^\r\n]*action[^\r\n]*@/im,
+];
+
+export function hasVercelDeployIntent(text = '') {
+  return deployIntentPatterns.some((pattern) => pattern.test(String(text)));
+}
+
 if (config?.git?.deploymentEnabled !== false) {
   throw new Error(
     'TigerIQ web-hosting boundary violation: vercel.json must keep git.deploymentEnabled=false.'
@@ -71,11 +85,10 @@ function walk(dir) {
   return out;
 }
 
-const deployCommand = /\bvercel(?:\.cmd)?\s+deploy\b/i;
 const workflowDir = resolve(root, '.github', 'workflows');
 for (const file of walk(workflowDir)) {
   const text = readFileSync(file, 'utf8');
-  if (deployCommand.test(text)) {
+  if (hasVercelDeployIntent(text)) {
     throw new Error(`TigerIQ web-hosting boundary violation: workflow must not deploy Vercel (${file}).`);
   }
 }
@@ -86,7 +99,7 @@ for (const file of walk(scriptsDir)) {
   const relative = file.slice(root.length + 1).replaceAll('\\', '/');
   if (relative === policyGuardScript) continue;
   const text = readFileSync(file, 'utf8');
-  if (deployCommand.test(text) && relative !== canonicalDeployScript) {
+  if (hasVercelDeployIntent(text) && relative !== canonicalDeployScript) {
     throw new Error(
       `TigerIQ web-hosting boundary violation: only ${canonicalDeployScript} may contain a Vercel deploy command; found ${relative}.`
     );

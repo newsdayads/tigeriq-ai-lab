@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { deploymentEndpoint, deploymentRequestForGitSource, githubAuthorLoginFromEmail, validateReleaseContract, vercelNpxCacheCandidates } from '../scripts/pc-worker/vercel-tigeriq-live-3150-deploy.mjs';
+import { hasVercelDeployIntent } from '../scripts/verify-vercel-deployment-policy.mjs';
 
 const base = {
   projectLink: {
@@ -23,6 +24,22 @@ const base = {
 };
 
 describe('Vercel web-hosting-only hard boundary #3897', () => {
+  it.each([
+    ['vercel deploy --prod', true],
+    ['npx vercel --prod', true],
+    ['vercel.cmd -p', true],
+    ['vercel api /v13/deployments -X POST --input request.json', true],
+    ['vercel api /v13/deployments --method PUT --input request.json', true],
+    ["fetch('https://api.vercel.com/v13/deployments', { method: 'POST' })", true],
+    ['createDeployment({ projectId: \'x\' })', true],
+    ['uses: amondnet/vercel-action@v25', true],
+    ['vercel project list', false],
+    ['vercel inspect https://example.vercel.app', false],
+    ['vercel api /v6/deployments -X GET', false],
+  ])('classifies Vercel deployment intent without blocking read-only inspection: %s', (source, expected) => {
+    expect(hasVercelDeployIntent(source)).toBe(expected);
+  });
+
   it('derives a verified GitHub login from the canonical noreply author email', () => {
     expect(githubAuthorLoginFromEmail('125233768+newsdayads@users.noreply.github.com')).toBe('newsdayads');
     expect(() => githubAuthorLoginFromEmail('unknown@example.com')).toThrow('VERCEL_GITHUB_AUTHOR_LOGIN_UNRESOLVED');
