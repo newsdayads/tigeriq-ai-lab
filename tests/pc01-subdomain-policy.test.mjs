@@ -31,4 +31,7 @@ test('registrar is public opt-in and refuses credentialless service discovery', 
   assert.match(register, /PUBLIC_HTTPS_NOT_200/);
   assert.match(register, /FileShare\]::None/);
   assert.match(register, /File\]::Replace/);
+  assert.doesNotMatch(register, /File\]::Replace\(\$restore,\$registry,\$null\)/);
+  assert.match(register, /\$discard=.*failed/);
+  assert.match(register, /throw \$failure/);
 });
