@@ -64,11 +64,18 @@ try{
     [pscustomobject]@{state='ACCEPTED';hostname=$hostName;port=$Port;https=200;dns='WILDCARD'} | ConvertTo-Json -Compress
   }catch{
     # Restore only this script's registry change, never modify tunnel/DNS/other applications.
+    # File.Replace requires a legal backup path on Windows; passing $null can fail and leave a rejected route behind.
+    $failure=$_
     $restore="$registry.$PID.restore"
+    $discard="$registry.$PID.failed"
     [System.IO.File]::WriteAllText($restore,$old,(New-Object System.Text.UTF8Encoding($false)))
-    if(Test-Path $registry){[System.IO.File]::Replace($restore,$registry,$null)}
-    else{[System.IO.File]::Move($restore,$registry)}
-    throw
+    if(Test-Path $registry){
+      [System.IO.File]::Replace($restore,$registry,$discard)
+      if(Test-Path $discard){Remove-Item $discard -Force -ErrorAction SilentlyContinue}
+    } else {
+      [System.IO.File]::Move($restore,$registry)
+    }
+    throw $failure
   }finally{
     foreach($file in @($temp,$backup,"$registry.$PID.restore")){
       if(Test-Path $file){Remove-Item $file -Force -ErrorAction SilentlyContinue}
