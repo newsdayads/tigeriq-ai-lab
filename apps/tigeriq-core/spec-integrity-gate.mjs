@@ -195,6 +195,22 @@ export function evaluateSpecIntegrity(input = {}, options = {}) {
     }
   }
 
+  const seenRequirementIds = new Set();
+  for (const requirement of reqItems) {
+    if (seenRequirementIds.has(requirement.id)) {
+      return {
+        pass: false,
+        status: SPEC_INTEGRITY_STATUS.BLOCKED,
+        code: 'SPEC_REQUIREMENT_IDS_DUPLICATED',
+        reasons: [`DUPLICATE_REQUIREMENT_ID:${requirement.id}`],
+        checked: 0,
+        total: reqItems.length,
+        details: { unmappedRequirements: [], missingReceipts: [], invalidReceipts: [] }
+      };
+    }
+    seenRequirementIds.add(requirement.id);
+  }
+
   if (reqItems.length === 0) {
     return {
       pass: false,

@@ -545,3 +545,27 @@ test('43. Deterministic malformed inputs smoke (3,000 cases) -> zero unhandled e
   }
   assert.equal(tested, 3000);
 });
+
+test('44. Duplicate requirement IDs fail closed instead of reusing one receipt twice', () => {
+  const res = evaluateSpecIntegrity({
+    spec: {
+      requirements: [
+        { id: 'FR-DUP', text: 'First independent requirement' },
+        { id: 'FR-DUP', text: 'Second independent requirement' }
+      ]
+    },
+    plan: {
+      tasks: [{ id: 'T-DUP', requirements: ['FR-DUP'] }]
+    },
+    receipts: [
+      { requirement_id: 'FR-DUP', proof_url: VALID_URL, head_sha: VALID_SHA_A, status: 'completed', conclusion: 'success' }
+    ],
+    sourceHeadSha: VALID_SHA_A
+  });
+
+  assert.equal(res.pass, false);
+  assert.equal(res.status, 'BLOCKED');
+  assert.equal(res.code, 'SPEC_REQUIREMENT_IDS_DUPLICATED');
+  assert.deepEqual(res.reasons, ['DUPLICATE_REQUIREMENT_ID:FR-DUP']);
+});
+
