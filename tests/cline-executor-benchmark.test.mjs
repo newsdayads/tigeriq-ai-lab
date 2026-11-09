@@ -1,9 +1,18 @@
+import './cline-nv09-sandbox-policy.test.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { access, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { seedLane, scoreLane, fixtureChildEnvironment, verifyFixtureTapSummary, changedLineCount } from '../benchmarks/cline-executor-eval/harness.mjs';
+
+// npm test runs this Cline entrypoint explicitly; include security regressions in required CI.
+import './cline-fixture-read-bounds.test.mjs';
+import './cline-executor-security-extended.test.mjs';
+import './cline-executor-tree-bounds.test.mjs';
+import './cline-executor-lane-integrity.test.mjs';
+import './cline-executor-empty-directory-integrity.test.mjs';
+import './cline-fixture-environment-isolation.test.mjs';
 
 test('benchmark harness seeds identical deterministic fixtures and baseline fails acceptance', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'tigeriq-cline-bench-'));
@@ -74,10 +83,17 @@ test('immutable manifest prevents forged baseline and TASK tampering from creati
   assert.equal(score.qualityPass, false);
 });
 
-test('fixture subprocess environment has no credentials or inherited node test flags', () => {
+test('fixture subprocess environment has no credentials or inherited host profile/temp paths', () => {
+  const privateRoot=path.resolve(os.tmpdir(),'tigeriq-fixture-private');
   const env=fixtureChildEnvironment({
     PATH:'/mock/bin',
     HOME:'/mock/home',
+    TEMP:'/mock/temp',
+    TMP:'/mock/tmp',
+    TMPDIR:'/mock/tmpdir',
+    USERPROFILE:'/mock/profile',
+    APPDATA:'/mock/appdata',
+    LOCALAPPDATA:'/mock/localappdata',
     NODE_TEST_CONTEXT:'child-v8',
     GITHUB_TOKEN:'top-secret',
     TIGERIQ_GITHUB_TOKEN:'top-secret',
@@ -85,8 +101,12 @@ test('fixture subprocess environment has no credentials or inherited node test f
     DATABASE_URL:'top-secret',
     OPENAI_API_KEY:'top-secret',
     NODE_OPTIONS:'--require /tmp/inject.cjs',
-  });
-  assert.deepEqual(env,{PATH:'/mock/bin',HOME:'/mock/home'});
+  },privateRoot);
+  assert.equal(env.PATH,'/mock/bin');
+  for(const key of ['HOME','USERPROFILE','APPDATA','LOCALAPPDATA','TEMP','TMP','TMPDIR'])
+    assert.equal(env[key],privateRoot);
+  for(const key of ['NODE_TEST_CONTEXT','GITHUB_TOKEN','TIGERIQ_GITHUB_TOKEN','OLLAMA_API_KEY','DATABASE_URL','OPENAI_API_KEY','NODE_OPTIONS'])
+    assert.equal(env[key],undefined);
 });
 
 test('seed is fail-closed for force, existing lanes, and traversal paths', async () => {

@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "status": "DESIGN_ONLY_NOT_DEPLOYABLE",
+  "executionEnabled": false,
+  "approval": {
+    "atomicWriterLeaseVerified": false,
+    "independentReviewPassed": false,
+    "osIsolationAttested": false,
+    "benchmarkActionAuthorized": false
+  },
+  "workOrder": 4532,
+  "executionScope": "TIGERIQ_CLINE_NV02_SOURCE_AND_EVAL_V1",
+  "runtime": {
+    "userId": 10001,
+    "rootFilesystemReadOnly": true,
+    "privileged": false,
+    "noNewPrivileges": true,
+    "capabilities": [],
+    "hostPidNamespace": false,
+    "hostNetworkNamespace": false,
+    "hostIpcNamespace": false,
+    "hostDevices": [],
+    "seccomp": "REQUIRED_ATTESTED_PROFILE_NOT_SELECTED",
+    "readHostPaths": [],
+    "writeHostPaths": [],
+    "credentialInjection": false,
+    "hostSocketMounts": [],
+    "userNamespaceIsolationRequired": true,
+    "mountNamespaceIsolationRequired": true,
+    "groupId": 10001,
+    "supplementaryGroupIds": []
+  },
+  "provider": {
+    "name": "ollama",
+    "kind": "LOCAL_ONLY",
+    "modelDigest": "UNRESOLVED_PIN_REQUIRED_BEFORE_RUN",
+    "access": "ATTESTED_RELAY_ONLY_NO_DIRECT_HOST_NETWORK"
+  },
+  "network": {
+    "namespaceIsolationRequired": true,
+    "defaultDeny": true,
+    "dnsExternal": false,
+    "externalEgress": false,
+    "directHostNetwork": false,
+    "allowedDestinationKinds": [
+      "ATTESTED_LOCAL_OLLAMA_RELAY"
+    ],
+    "relayAddress": "UNRESOLVED_DO_NOT_CONNECT",
+    "enforcement": "REQUIRES_OS_AND_FIREWALL_ATTESTATION"
+  },
+  "workspaces": [
+    {
+      "name": "cline",
+      "mountPoint": "/workspaces/cline",
+      "ephemeral": true,
+      "shared": false,
+      "writeScope": "OWN_WORKSPACE_ONLY"
+    },
+    {
+      "name": "nv09",
+      "mountPoint": "/workspaces/nv09",
+      "ephemeral": true,
+      "shared": false,
+      "writeScope": "OWN_WORKSPACE_ONLY"
+    }
+  ],
+  "limits": {
+    "wallSeconds": 180,
+    "cpuCores": 2,
+    "memoryMiB": 2048,
+    "pids": 64,
+    "workspaceMiBEach": 128,
+    "outputBytes": 1048576,
+    "fileBytes": 1048576,
+    "maxFixtureEntries": 256,
+    "maxFixtureDepth": 24,
+    "paidCostUsd": 0
+  },
+  "rollback": {
+    "destroyEphemeralWorkspace": true,
+    "revokeRelayOnExit": true,
+    "terminateProcessGroup": true,
+    "preserveReceiptsOutsideAgentWriteScope": true,
+    "retryRequiresNewLease": true
+  }
+}
