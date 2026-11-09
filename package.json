@@ -23,7 +23,7 @@
     "test:p0:postgres": "node --test tests/coding-postgres-integration.test.mjs",
     "test:p0:g6": "node --test tests/coding-p0-g6-isolated-workflow.test.mjs",
     "test:p0:postgres:ci": "node tests/run-postgres-isolated-ci.mjs",
-    "test:pc01-subdomain": "node --test tests/subdomain-router.test.mjs tests/pc01-subdomain-policy.test.mjs"
+    "test:pc01-subdomain": "node --test tests/subdomain-router.test.mjs tests/pc01-subdomain-policy.test.mjs tests/pc-operator-admin-broker.test.mjs"
   },
   "dependencies": {
     "@vercel/oidc": "3.8.5",
