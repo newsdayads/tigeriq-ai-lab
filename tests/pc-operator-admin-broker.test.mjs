@@ -99,3 +99,48 @@ test('elevated persistent broker accepts only fresh verify_elevation requests an
   assert.doesNotMatch(source, /Invoke-Expression|-Verb\s+RunAs|Start-Process|cmd\.exe/i);
   assert.doesNotMatch(source, /Set-ExecutionPolicy|net\s+user|sc\.exe\s+(?:create|delete)|reg\.exe\s+(?:add|delete)/i);
 });
+
+
+test('scoped News DNS runner reuses only the existing elevated broker task', () => {
+  const source = readFileSync(repoRoot + '/scripts/pc-worker/run-pc-operator-admin-news-dns-task.ps1', 'utf8');
+  assert.match(source, /ValidateSet\('snapshot','cutover','rollback'\)/);
+  assert.match(source, /TigerIQ PC Operator Admin Verify/);
+  assert.match(source, /TIGERIQ_PC_OPERATOR_ADMIN_REQUEST_V2/);
+  assert.match(source, /news_dns_snapshot/);
+  assert.match(source, /news_dns_cutover/);
+  assert.match(source, /news_dns_rollback/);
+  assert.match(source, /gh5648-news-dns-/);
+  assert.match(source, /Get-ScheduledTask/);
+  assert.match(source, /Start-ScheduledTask/);
+  assert.doesNotMatch(source, /Register-ScheduledTask/);
+  assert.doesNotMatch(source, /Unregister-ScheduledTask/);
+  assert.doesNotMatch(source, /-Verb\s+RunAs|Invoke-Expression|cmd\.exe/i);
+});
+
+test('elevated broker hard-codes News DNS scope and fails closed with rollback', () => {
+  const source = readFileSync(repoRoot + '/scripts/pc-worker/pc-operator-admin-verify-broker.ps1', 'utf8');
+  assert.match(source, /\$NewsZone='tigeriq\.io\.vn'/);
+  assert.match(source, /\$NewsHostname='news\.tigeriq\.io\.vn'/);
+  assert.match(source, /\$NewsHealthUrl='https:\/\/news\.tigeriq\.io\.vn\/healthz'/);
+  assert.match(source, /6e1b0f48-cf73-420b-ba3e-9fbb0efc4e61\.cfargotunnel\.com/);
+  assert.match(source, /gh5648-news-dns-backup\.json/);
+  assert.match(source, /Get-TigerIQSecret 'cloudflare-auth-token' 'TigerIQ-Cloudflare-PC01-v1'/);
+  assert.match(source, /NEWS_DNS_PRECONDITION_CONTENT_CHANGED/);
+  assert.match(source, /Invoke-RestMethod -Method Patch/);
+  assert.match(source, /NEWS_DNS_CUTOVER_HEALTH_FAILED_ROLLED_BACK/);
+  assert.match(source, /x-vercel-id/);
+  assert.match(source, /Assert-RecordMatchesSnapshot -Record \$RollbackReadback -Snapshot \$Backup\.record/);
+  assert.doesNotMatch(source, /\$Request\.(?:host|hostname|zone|recordId|content|token)/i);
+  assert.doesNotMatch(source, /Invoke-RestMethod -Method Delete/i);
+  assert.doesNotMatch(source, /Remove-Item[^\r\n]+gh5648-news-dns-backup/i);
+  assert.doesNotMatch(source, /Invoke-Expression|-Verb\s+RunAs|Start-Process|cmd\.exe/i);
+});
+
+test('DNS broker never serializes the Cloudflare credential into evidence', () => {
+  const source = readFileSync(repoRoot + '/scripts/pc-worker/pc-operator-admin-verify-broker.ps1', 'utf8');
+  assert.match(source, /\$Token=Get-TigerIQSecret/);
+  assert.match(source, /headers=\$Headers/);
+  assert.doesNotMatch(source, /token=\$Token/i);
+  assert.doesNotMatch(source, /Authorization=.*Write-BrokerReceipt/i);
+  assert.doesNotMatch(source, /credential.*Write-BrokerReceipt/i);
+});
