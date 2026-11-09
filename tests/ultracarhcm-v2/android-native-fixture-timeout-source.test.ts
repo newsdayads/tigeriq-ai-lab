@@ -8,6 +8,10 @@ const source = readFileSync(
   new URL('./android-native-fixture.test.ts', import.meta.url),
   'utf8',
 );
+const wrapperProperties = readFileSync(
+  new URL('../../apps/ultracarhcm-v2/gradle/wrapper/gradle-wrapper.properties', import.meta.url),
+  'utf8',
+);
 
 describe('GH-5135 native fixture timeout contract', () => {
   it('keeps the Gradle child timeout below the outer Vitest timeout with cold-run margin', () => {
@@ -23,5 +27,9 @@ describe('GH-5135 native fixture timeout contract', () => {
     expect(outerMs).toBeGreaterThanOrEqual(gradleMs + 120_000);
     expect(source).toContain('timeout:ANDROID_GRADLE_TIMEOUT_MS');
     expect(source).toContain('},NATIVE_GATE_TEST_TIMEOUT_MS);');
+
+    const wrapperNetworkTimeout = wrapperProperties.match(/^networkTimeout=(\d+)$/m);
+    expect(wrapperNetworkTimeout).not.toBeNull();
+    expect(Number(wrapperNetworkTimeout![1])).toBeGreaterThanOrEqual(120_000);
   });
 });
