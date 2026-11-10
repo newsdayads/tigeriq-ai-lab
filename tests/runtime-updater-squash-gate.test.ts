@@ -173,6 +173,18 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(src).toContain('Ensure-UpdaterTaskRuntimeTarget');
     expect(src).toContain("error=('RUNTIME_ISOLATION_MIGRATION:'");
     expect(src).not.toContain("Get-Content -Raw -LiteralPath 'D:\\TigerIQ\\State\\core-runtime-source.json'");
+    for(const launcherPath of [
+      'scripts/tigeriq-core/run-core.ps1',
+      'scripts/tigeriq-core/run-coding-lane.ps1',
+      'scripts/tigeriq-core/run-web-control-bundle.ps1',
+    ]){
+      const launcher=readFileSync(launcherPath,'utf8');
+      expect(launcher).toContain("$runtimeReleaseAttempt='C:\\ProgramData\\TigerIQCoreRelease\\core-runtime-release-attempt.json'");
+      expect(launcher).toContain('function Test-ProtectedReleaseAttemptAcl');
+      expect(launcher).toContain("[string]$attempt.result -ne 'STARTED'");
+      expect(launcher).toContain('RUNTIME_RELEASE_ATTEMPT_ACL_UNTRUSTED');
+      expect(launcher).not.toContain("Get-Content -Raw -LiteralPath 'D:\\TigerIQ\\State\\core-runtime-source.json'");
+    }
   });
 
   it('recreates a missing Core Runtime Updater from the active runtime repo',()=>{
