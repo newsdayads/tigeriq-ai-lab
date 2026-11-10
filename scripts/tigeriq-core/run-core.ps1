@@ -16,13 +16,54 @@ Assert-TrustedCredentialStore
 . $credentialStore
 $runtimeRepo='D:\TigerIQ\Runtime\CoreSource'
 $runtimeSourceState='C:\ProgramData\TigerIQCoreRelease\State\core-runtime-source.json'
+$runtimeReleaseAttempt='C:\ProgramData\TigerIQCoreRelease\core-runtime-release-attempt.json'
+function Test-ProtectedReleaseAttemptAcl {
+  $trusted=@('S-1-5-18','S-1-5-32-544')
+  $writeMask=[System.Security.AccessControl.FileSystemRights]::Write -bor
+             [System.Security.AccessControl.FileSystemRights]::Modify -bor
+             [System.Security.AccessControl.FileSystemRights]::FullControl -bor
+             [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+             [System.Security.AccessControl.FileSystemRights]::TakeOwnership -bor
+             [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles
+  try{
+    if(-not [Environment]::OSVersion.Platform.ToString().Equals('Win32NT')){return $false}
+    if(-not(Test-Path -LiteralPath $runtimeReleaseAttempt -PathType Leaf)){return $false}
+    foreach($path in @((Split-Path -Parent $runtimeReleaseAttempt),$runtimeReleaseAttempt)){
+      $item=Get-Item -LiteralPath $path -Force -ErrorAction Stop
+      if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){return $false}
+      $acl=Get-Acl -LiteralPath $path -ErrorAction Stop
+      if($acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -notin $trusted){return $false}
+      foreach($ace in @($acl.Access)){
+        if([string]$ace.AccessControlType -ne 'Allow'){continue}
+        $sid=$ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
+        if($sid -notin $trusted -and ($ace.FileSystemRights -band $writeMask) -ne 0){return $false}
+      }
+    }
+    return $true
+  }catch{return $false}
+}
 function Resolve-TrustedRuntimeRepo {
-  if(-not(Test-Path -LiteralPath $runtimeSourceState)){throw 'RUNTIME_SOURCE_STATE_MISSING'}
-  try{$meta=Get-Content -Raw -LiteralPath $runtimeSourceState|ConvertFrom-Json -ErrorAction Stop}catch{throw 'RUNTIME_SOURCE_STATE_INVALID'}
-  if([string]$meta.schema -ne 'TIGERIQ_RUNTIME_SOURCE_V1'){throw 'RUNTIME_SOURCE_SCHEMA_INVALID'}
-  if([string]$meta.sourcePath -ne $runtimeRepo){throw 'RUNTIME_SOURCE_PATH_UNTRUSTED'}
-  $sha=[string]$meta.currentSha
-  if($sha -notmatch '^[0-9a-f]{40}$'){throw 'RUNTIME_SOURCE_SHA_INVALID'}
+  $sha=$null
+  if(Test-Path -LiteralPath $runtimeSourceState){
+    try{$meta=Get-Content -Raw -LiteralPath $runtimeSourceState|ConvertFrom-Json -ErrorAction Stop}catch{throw 'RUNTIME_SOURCE_STATE_INVALID'}
+    if([string]$meta.schema -ne 'TIGERIQ_RUNTIME_SOURCE_V1'){throw 'RUNTIME_SOURCE_SCHEMA_INVALID'}
+    if([string]$meta.sourcePath -ne $runtimeRepo){throw 'RUNTIME_SOURCE_PATH_UNTRUSTED'}
+    $sha=[string]$meta.currentSha
+    if($sha -notmatch '^[0-9a-f]{40}$'){throw 'RUNTIME_SOURCE_SHA_INVALID'}
+  }else{
+    # One-time bootstrap bridge for the protected-state migration. Trust only the
+    # SYSTEM/Administrators-owned release attempt written by the installed guard.
+    if(-not(Test-Path -LiteralPath $runtimeReleaseAttempt)){throw 'RUNTIME_SOURCE_STATE_MISSING'}
+    if(-not(Test-ProtectedReleaseAttemptAcl)){throw 'RUNTIME_RELEASE_ATTEMPT_ACL_UNTRUSTED'}
+    try{$attempt=Get-Content -Raw -LiteralPath $runtimeReleaseAttempt|ConvertFrom-Json -ErrorAction Stop}catch{throw 'RUNTIME_RELEASE_ATTEMPT_INVALID'}
+    if([string]$attempt.schema -ne 'TIGERIQ_PC01_RELEASE_ATTEMPT_V1' -or [string]$attempt.result -ne 'STARTED'){
+      throw 'RUNTIME_RELEASE_ATTEMPT_NOT_INFLIGHT'
+    }
+    $sha=[string]$attempt.targetSha
+    if($sha -notmatch '^[0-9a-f]{40}$' -or [string]$attempt.previousSha -notmatch '^[0-9a-f]{40}$'){
+      throw 'RUNTIME_RELEASE_ATTEMPT_SHA_INVALID'
+    }
+  }
   if(-not(Test-Path -LiteralPath $runtimeRepo)){throw 'RUNTIME_SOURCE_MISSING'}
   $head=([string](& git -C $runtimeRepo rev-parse HEAD 2>$null)).Trim()
   if($LASTEXITCODE -ne 0 -or $head -ne $sha){throw 'RUNTIME_SOURCE_HEAD_MISMATCH'}
