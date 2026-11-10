@@ -1,12 +1,24 @@
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $root=$PSScriptRoot
-$defaultRepo='D:\TigerIQ\Workspace\tigeriq-ai-lab'
-$runtimeSourceState='D:\TigerIQ\State\core-runtime-source.json'
-$repo=$defaultRepo
-if(Test-Path -LiteralPath $runtimeSourceState){
-  try{$meta=Get-Content -Raw -LiteralPath $runtimeSourceState|ConvertFrom-Json;if($meta.sourcePath -and (Test-Path -LiteralPath ([string]$meta.sourcePath))){$repo=[string]$meta.sourcePath}}catch{}
+$runtimeRepo='D:\TigerIQ\Runtime\CoreSource'
+$runtimeSourceState='C:\ProgramData\TigerIQCoreRelease\State\core-runtime-source.json'
+function Resolve-TrustedRuntimeRepo {
+  if(-not(Test-Path -LiteralPath $runtimeSourceState)){throw 'RUNTIME_SOURCE_STATE_MISSING'}
+  try{$meta=Get-Content -Raw -LiteralPath $runtimeSourceState|ConvertFrom-Json -ErrorAction Stop}catch{throw 'RUNTIME_SOURCE_STATE_INVALID'}
+  if([string]$meta.schema -ne 'TIGERIQ_RUNTIME_SOURCE_V1'){throw 'RUNTIME_SOURCE_SCHEMA_INVALID'}
+  if([string]$meta.sourcePath -ne $runtimeRepo){throw 'RUNTIME_SOURCE_PATH_UNTRUSTED'}
+  $sha=[string]$meta.currentSha
+  if($sha -notmatch '^[0-9a-f]{40}$'){throw 'RUNTIME_SOURCE_SHA_INVALID'}
+  if(-not(Test-Path -LiteralPath $runtimeRepo)){throw 'RUNTIME_SOURCE_MISSING'}
+  $head=([string](& git -C $runtimeRepo rev-parse HEAD 2>$null)).Trim()
+  if($LASTEXITCODE -ne 0 -or $head -ne $sha){throw 'RUNTIME_SOURCE_HEAD_MISMATCH'}
+  $dirty=@(& git -C $runtimeRepo status --porcelain 2>$null)
+  if($LASTEXITCODE -ne 0){throw 'RUNTIME_SOURCE_STATUS_FAILED'}
+  if($dirty.Count){throw 'RUNTIME_SOURCE_DIRTY'}
+  return $runtimeRepo
 }
+$repo=Resolve-TrustedRuntimeRepo
 $sourceRoot=Join-Path $repo 'apps\tigeriq-core'
 
 # Keep the runtime bundle complete and future-proof. The updater fast-forwards the
