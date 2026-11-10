@@ -113,9 +113,9 @@ describe('Core autonomous RCA + Improvement Work Order',()=>{
     expect(source).toContain("data#>>'{provenance,contractId}'=$3");
     expect(source).toContain('githubAutonomousRcaIssueLifecycle');
     expect(source).toContain('AUTONOMOUS_RCA_CANONICAL_REARMED');
-    expect(source).toContain("'CURRENT_STATE=READY_AUTONOMOUS_REPAIR'");
-    expect(source).toContain("'TIGERIQ_EXECUTABLE=true'");
-    expect(source).toContain("'AUTO_QUEUE=INCLUDED'");
+    expect(source).toContain('const proposal=buildImprovementWorkOrder(rca);');
+    expect(source).toContain("'RCA_REARM=true'");
+    expect(source).toContain("'--- HISTORICAL PRIOR TERMINAL STATE ---'");
     expect(source).toContain("stateReason==='completed'");
     expect(source).toContain("req.method==='GET'&&url.pathname==='/api/self-audit/rca-canary'");
     expect(source).not.toContain("req.method==='POST'&&url.pathname==='/api/self-audit/rca-canary'");

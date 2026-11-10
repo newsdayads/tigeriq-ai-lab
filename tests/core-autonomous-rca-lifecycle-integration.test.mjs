@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { describe, it, expect } from 'vitest';
 import { withCoreRcaPgLease } from '../apps/tigeriq-core/core-rca-pg-lease.mjs';
+import { validateWorkOrderLifecycleV2 } from '../apps/tigeriq-core/work-order-lifecycle-v2.mjs';
 import {
   autonomousRcaCanonicalAction, autonomousRcaMaterializationDedupe,
   classifyAutonomousRca, dedupeAutonomousRca, buildImprovementWorkOrder,
@@ -107,12 +108,24 @@ describe('Issue #3278 — actual Core Auto-RCA lifecycle source / safe replay',(
    expect(h.emitted[0].payload.canonicalAction).toBe(action);
   });
  }
- it('rearms closed-completed once, then dedupes open recurrence',async()=>{
+ it('rearms closed-completed with a valid V2 current contract, then dedupes open recurrence',async()=>{
   const h=harness({state:'closed',reason:'completed'});
   const first=await h.run();
   expect(first).toMatchObject({workOrders:0,deduped:1,blocked:0});
   expect(h.patched).toBe(1);expect(h.created).toBe(0);
   expect(h.issue.body).toContain('TIGERIQ_EXECUTABLE=true');
+  expect(h.issue.body).toContain('WORK_ORDER_LIFECYCLE=V2');
+  expect(h.issue.body).toContain('RCA_REARM=true');
+  expect(h.issue.body).toContain('--- HISTORICAL PRIOR TERMINAL STATE ---');
+  const validated=validateWorkOrderLifecycleV2({
+    title:'[P1][AUTO-RCA][SERVICE] recurrence',
+    body:h.issue.body,
+    state:'open',
+    state_reason:'reopened',
+    created_at:'2026-10-15T00:00:00.000Z',
+  });
+  expect(validated.valid).toBe(true);
+  expect(validated.missing).toEqual([]);
   await h.run();expect(h.patched).toBe(1);expect(h.created).toBe(0);
  });
  it('refreshes only the current EVIDENCE_HASH, retains historical header',async()=>{
@@ -125,7 +138,15 @@ describe('Issue #3278 — actual Core Auto-RCA lifecycle source / safe replay',(
  it('keeps same-hash header idempotent',async()=>{
   const h=harness({state:'closed',reason:'completed',priorRearmHash:'CURRENT'});
   await h.run();expect(h.patched).toBe(1);
-  expect(h.issue.body.match(/## AUTO-RCA RECURRENCE REARM/g)).toHaveLength(1);
+  expect(h.issue.body.match(/^RCA_REARM=true$/gm)).toHaveLength(1);
+  const validated=validateWorkOrderLifecycleV2({
+    title:'[P1][AUTO-RCA][SERVICE] recurrence',
+    body:h.issue.body,
+    state:'open',
+    state_reason:'reopened',
+    created_at:'2026-10-15T00:00:00.000Z',
+  });
+  expect(validated.valid).toBe(true);
  });
  it('denies owner HOLD, P0 and excluded body even with fresh EVIDENCE_HASH',async()=>{
   const h=harness({state:'closed',reason:'completed',ownerHold:true,priorRearmHash:'OLD'});

@@ -4542,33 +4542,42 @@ async function githubRearmAutonomousRcaIssue(issueNumber,rca,currentIssue=null){
   const familyMarker=`RCA_FAMILY_KEY=${rca.rcaFamilyKey}`;
   const priorBody=String(current.body||'');
   // Never elevate a canonical issue with Owner/P0, manual or review-only restrictions.
-  // Scan all historical lines: a new leading recurrence header cannot bypass older holds.
+  // Scan all historical lines: a new leading recurrence contract cannot bypass older holds.
   const ownerGate=/^(?:PRIORITY\s*=\s*P0|OWNER_HOLD\s*=\s*(?:true|1)|OWNER_GATE\s*=\s*true|OWNER_APPROVAL_REQUIRED\s*=\s*true|MANUAL_GATE\s*=\s*true|REVIEW_ONLY\s*=\s*true|NO_CODE_CHANGE\s*=\s*true|AUTO_QUEUE\s*=\s*EXCLUDED[^\r\n]*|TIGERIQ_EXECUTABLE\s*=\s*false|CURRENT_STATE\s*=\s*BLOCKED_[^\r\n]*)\s*$/mi;
   if(ownerGate.test(priorBody))throw new Error('RCA_CANONICAL_OWNER_GATE');
-  // Only the leading occurrence of the *current* family/evidence pair is idempotent.
-  // A subsequent closed-completed recurrence with fresh evidence must retain
-  // its previous header as history, but surface the new evidence at the top.
-  const priorHeader=priorBody.startsWith('## AUTO-RCA RECURRENCE REARM')
-    ? priorBody.slice(0,priorBody.indexOf('\n\n')>=0?priorBody.indexOf('\n\n'):priorBody.length)
-    : '';
-  const priorHeaderFields=new Set(priorHeader.split('\n'));
-  const alreadyRearmed=priorHeaderFields.has(familyMarker)&&priorHeaderFields.has(`EVIDENCE_HASH=${rca.evidenceHash}`);
-  const rearmHeader=[
-    '## AUTO-RCA RECURRENCE REARM — AUTHORITATIVE',
-    `SOURCE=SELF_AUDIT_RECURRENCE:${rca.anomalySignature}`,
-    'CURRENT_STATE=READY_AUTONOMOUS_REPAIR',
-    'TIGERIQ_EXECUTABLE=true',
-    'AUTO_QUEUE=INCLUDED',
-    'SELF_UPGRADE_CANDIDATE=true',
-    `RCA_SIGNATURE=${rca.rcaSignature}`,
-    familyMarker,
-    `RCA_CLASS=${rca.class}`,
-    `AFFECTED_SCOPE=${rca.affectedScope}`,
-    `EVIDENCE_HASH=${rca.evidenceHash}`,
-    'DONE=false',
-    'SUPERSEDES_PRIOR_TERMINAL_STATE_BELOW=true',
-  ].join('\n');
-  const body=alreadyRearmed?priorBody:`${rearmHeader}\n\n${priorBody}`;
+
+  // Rearm with the same full Lifecycle V2 contract used for first materialization.
+  // The previous terminal body is retained only behind a HISTORICAL fence so the
+  // validator/router cannot mistake stale fields for the current executable header.
+  const historicalDivider='--- HISTORICAL PRIOR TERMINAL STATE ---';
+  const dividerToken='\n\n'+historicalDivider+'\n\n';
+  const currentSegment=priorBody.includes(dividerToken)
+    ?priorBody.slice(0,priorBody.indexOf(dividerToken))
+    :priorBody;
+  const rearmEvidenceMarker=`RCA_REARM_EVIDENCE_HASH=${rca.evidenceHash}`;
+  const alreadyRearmed=/^RCA_REARM=true\s*$/m.test(currentSegment)
+    &&currentSegment.split(/\r?\n/).some(line=>line.trim()===familyMarker)
+    &&currentSegment.split(/\r?\n/).some(line=>line.trim()===rearmEvidenceMarker);
+
+  let body=priorBody;
+  if(!alreadyRearmed){
+    const proposal=buildImprovementWorkOrder(rca);
+    const sourceLine=`SOURCE=SELF_AUDIT:${rca.anomalySignature}`;
+    const recurrenceSource=`SOURCE=SELF_AUDIT_RECURRENCE:${rca.anomalySignature}`;
+    const evidenceLine=`EVIDENCE_HASH=${rca.evidenceHash}`;
+    let authoritative=String(proposal.body||'').replace(sourceLine,recurrenceSource);
+    authoritative=authoritative.replace(evidenceLine,[
+      evidenceLine,
+      'RCA_REARM=true',
+      rearmEvidenceMarker,
+      'SUPERSEDES_PRIOR_TERMINAL_STATE_BELOW=true',
+    ].join('\n'));
+    if(!authoritative.includes('WORK_ORDER_LIFECYCLE=V2')
+      ||!authoritative.includes(recurrenceSource)
+      ||!authoritative.includes(rearmEvidenceMarker))
+      throw new Error('RCA_CANONICAL_REARM_V2_BUILD_FAILED');
+    body=`${authoritative}\n\n${historicalDivider}\n\n${priorBody}`;
+  }
   const url=`https://api.github.com/repos/${encodeURIComponent(GITHUB_OWNER)}/${encodeURIComponent(GITHUB_REPO)}/issues/${n}`;
   return fetchJson(url,{
     method:'PATCH',
