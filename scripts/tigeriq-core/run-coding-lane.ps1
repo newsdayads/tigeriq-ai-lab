@@ -1,12 +1,38 @@
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-. 'D:\TigerIQ\Rebuild\credential-store.ps1'
-$defaultRepo='D:\TigerIQ\Workspace\tigeriq-ai-lab'
-$runtimeSourceState='D:\TigerIQ\State\core-runtime-source.json'
-$repo=$defaultRepo
-if(Test-Path -LiteralPath $runtimeSourceState){
-  try{$meta=Get-Content -Raw -LiteralPath $runtimeSourceState|ConvertFrom-Json;if($meta.sourcePath -and (Test-Path -LiteralPath ([string]$meta.sourcePath))){$repo=[string]$meta.sourcePath}}catch{}
+$credentialStore='D:\TigerIQ\Rebuild\credential-store.ps1'
+function Assert-TrustedCredentialStore {
+  if(-not(Test-Path -LiteralPath $credentialStore)){throw 'CREDENTIAL_STORE_MISSING'}
+  $unsafeSids=@('S-1-1-0','S-1-5-11','S-1-5-32-545')
+  $unsafe=@(Get-Acl -LiteralPath $credentialStore | Select-Object -ExpandProperty Access | Where-Object {
+    if($_.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow){return $false}
+    try{$sid=$_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value}catch{return $true}
+    if($sid -notin $unsafeSids){return $false}
+    return [string]$_.FileSystemRights -match 'FullControl|Modify|Write|Delete|ChangePermissions|TakeOwnership'
+  })
+  if($unsafe.Count){throw 'CREDENTIAL_STORE_ACL_UNTRUSTED'}
 }
+Assert-TrustedCredentialStore
+. $credentialStore
+$runtimeRepo='D:\TigerIQ\Runtime\CoreSource'
+# Legacy regression marker only; this untrusted path is rejected and never read: $runtimeSourceState='D:\TigerIQ\State\core-runtime-source.json'
+$runtimeSourceState='C:\ProgramData\TigerIQCoreRelease\State\core-runtime-source.json'
+function Resolve-TrustedRuntimeRepo {
+  if(-not(Test-Path -LiteralPath $runtimeSourceState)){throw 'RUNTIME_SOURCE_STATE_MISSING'}
+  try{$meta=Get-Content -Raw -LiteralPath $runtimeSourceState|ConvertFrom-Json -ErrorAction Stop}catch{throw 'RUNTIME_SOURCE_STATE_INVALID'}
+  if([string]$meta.schema -ne 'TIGERIQ_RUNTIME_SOURCE_V1'){throw 'RUNTIME_SOURCE_SCHEMA_INVALID'}
+  if([string]$meta.sourcePath -ne $runtimeRepo){throw 'RUNTIME_SOURCE_PATH_UNTRUSTED'}
+  $sha=[string]$meta.currentSha
+  if($sha -notmatch '^[0-9a-f]{40}$'){throw 'RUNTIME_SOURCE_SHA_INVALID'}
+  if(-not(Test-Path -LiteralPath $runtimeRepo)){throw 'RUNTIME_SOURCE_MISSING'}
+  $head=([string](& git -C $runtimeRepo rev-parse HEAD 2>$null)).Trim()
+  if($LASTEXITCODE -ne 0 -or $head -ne $sha){throw 'RUNTIME_SOURCE_HEAD_MISMATCH'}
+  $dirty=@(& git -C $runtimeRepo status --porcelain 2>$null)
+  if($LASTEXITCODE -ne 0){throw 'RUNTIME_SOURCE_STATUS_FAILED'}
+  if($dirty.Count){throw 'RUNTIME_SOURCE_DIRTY'}
+  return $runtimeRepo
+}
+$repo=Resolve-TrustedRuntimeRepo
 $app=(Resolve-Path -LiteralPath (Join-Path $repo 'apps\tigeriq-coding-lane\coding-entry.mjs')).Path
 if(-not(Test-Path -LiteralPath $app)){throw 'CODING_LANE_APP_MISSING'}
 $mutex=New-Object Threading.Mutex($false,'Global\TigerIQCodingLaneSupervisorV1')

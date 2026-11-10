@@ -80,7 +80,8 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(src).toContain('git -C $runtimeRepo status --porcelain');
     expect(src).toContain('git -C $runtimeRepo reset --hard $targetSha');
     expect(src).toContain('git -C $runtimeRepo reset --hard $previousRuntimeSha');
-    expect(src).toContain('core-runtime-source.json');
+    expect(src).toContain("C:\\ProgramData\\TigerIQCoreRelease\\State\\core-runtime-source.json");
+    expect(src).toContain("else{'C:\\ProgramData\\TigerIQCoreRelease\\Launchers'}");
     expect(src).toContain('Sync-Launchers');
     expect(src).not.toContain('checkout -B core-runtime-sync origin/main');
     expect(src).not.toContain('merge --ff-only origin/main');
@@ -167,7 +168,8 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(launcher).toContain("Get-ScheduledTask -TaskName $updaterTask");
     expect(launcher).toContain("-File $installer -Repo $repo");
     expect(launcher).toContain("CORE_RUNTIME_UPDATER_TASK_RECREATE_FAILED");
-    expect(installer).toContain("param([string]$Repo='D:\\TigerIQ\\Workspace\\tigeriq-ai-lab')");
+    expect(installer).toContain("param([string]$Repo='D:\\TigerIQ\\Runtime\\CoreSource')");
+    expect(installer).toContain("throw 'CORE_RUNTIME_REPO_UNTRUSTED'");
     expect(installer).toContain("$sourceScript=Join-Path $Repo 'scripts\\tigeriq-core\\update-core-runtime.ps1'");
     expect(installer).toContain('Register-ScheduledTask -TaskName $taskName');
     expect(installer).toContain('Start-ScheduledTask -TaskName $taskName');

@@ -1,6 +1,10 @@
-param([string]$Repo='D:\TigerIQ\Workspace\tigeriq-ai-lab')
+param([string]$Repo='D:\TigerIQ\Runtime\CoreSource')
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
+$expectedRepo='D:\TigerIQ\Runtime\CoreSource'
+$repoFull=[IO.Path]::GetFullPath($Repo).TrimEnd('\')
+if($repoFull -ine $expectedRepo){throw 'CORE_RUNTIME_REPO_UNTRUSTED'}
+$Repo=$expectedRepo
 $taskName='TigerIQ Core Runtime Updater'
 $legacyAutonomySupervisorTask='TigerIQ Autonomy Supervisor V2'
 $sourceScript=Join-Path $Repo 'scripts\tigeriq-core\update-core-runtime.ps1'
