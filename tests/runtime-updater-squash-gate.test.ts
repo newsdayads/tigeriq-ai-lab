@@ -163,16 +163,18 @@ describe('runtime updater squash merge gate resolution',()=>{
 
   it('completes ProgramData migration only from a protected committed release receipt',()=>{
     const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
-    expect(src).toContain("$releaseAttemptPath='C:\\ProgramData\\TigerIQCoreRelease\\core-runtime-release-attempt.json'");
-    expect(src).toContain('function Ensure-ProtectedRuntimeIsolationMigration');
-    expect(src).toContain("RUNTIME_RELEASE_ATTEMPT_NOT_COMMITTED");
-    expect(src).toContain("[string]$attempt.result -ne 'COMMITTED'");
-    expect(src).toContain('Save-RuntimeSourceState $head ([string]$attempt.previousSha) $head');
-    expect(src).toContain("Set-ProtectedLauncherTaskTarget $coreTask");
-    expect(src).toContain("Set-ProtectedLauncherTaskTarget $codingTask");
-    expect(src).toContain('Ensure-UpdaterTaskRuntimeTarget');
-    expect(src).toContain("error=('RUNTIME_ISOLATION_MIGRATION:'");
-    expect(src).not.toContain("Get-Content -Raw -LiteralPath 'D:\\TigerIQ\\State\\core-runtime-source.json'");
+    const guard=readFileSync('scripts/tigeriq-core/pc01-release-guard.ps1','utf8');
+    expect(src).toContain("$releaseGuardScript='C:\\ProgramData\\TigerIQCoreRelease\\pc01-release-guard.ps1';if(-not $rollbackCanaryMode){. $releaseGuardScript}");
+    expect(src).toContain('Initialize-ProtectedRuntimeIsolationMigration|Out-Null');
+    expect(guard).toContain("$releaseAttemptPath='C:\\ProgramData\\TigerIQCoreRelease\\core-runtime-release-attempt.json'");
+    expect(guard).toContain('function Test-ProtectedRuntimeReleaseAttemptAcl');
+    expect(guard).toContain('function Initialize-ProtectedRuntimeIsolationMigration');
+    expect(guard).toContain("RUNTIME_RELEASE_ATTEMPT_NOT_COMMITTED");
+    expect(guard).toContain("[string]$attempt.result -ne 'COMMITTED'");
+    expect(guard).toContain("$runtimeState='C:\\ProgramData\\TigerIQCoreRelease\\State\\core-runtime-source.json'");
+    expect(guard).toContain("$launcherRuntime='C:\\ProgramData\\TigerIQCoreRelease\\Launchers'");
+    expect(guard).toContain("Set-ScheduledTask -TaskName $pair.task -Action $action");
+    expect(guard).not.toContain("Get-Content -Raw -LiteralPath 'D:\\TigerIQ\\State\\core-runtime-source.json'");
     for(const launcherPath of [
       'scripts/tigeriq-core/run-core.ps1',
       'scripts/tigeriq-core/run-coding-lane.ps1',
