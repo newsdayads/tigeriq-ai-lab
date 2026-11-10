@@ -29,6 +29,7 @@ $appChromeZeroTouchScript=(Join-Path $runtimeRepo 'scripts\tigeriq-core\appchrom
 $appChromeExternalLocalOnly=$true
 # A merged main commit is NOT an authorized PC01 runtime release.
 $releaseGuardScript='C:\ProgramData\TigerIQCoreRelease\pc01-release-guard.ps1'
+$releaseAttemptPath='C:\ProgramData\TigerIQCoreRelease\core-runtime-release-attempt.json'
 $liveStatusBridgeTask='TigerIQ Live Status Bridge'
 $liveStatusBridgeDir=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-live-status'}else{'D:\TigerIQ\Runtime\LiveStatusBridge'}
 $liveStatusBridgeSource=(Join-Path $runtimeRepo 'apps\tigeriq-live-bridge\server.mjs')
@@ -856,6 +857,322 @@ function Restart-UpdaterAfterExit(){
   $cmd="Start-Sleep -Seconds 4; Start-ScheduledTask -TaskName '$updaterTask'"
   Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-Command',$cmd) -WindowStyle Hidden|Out-Null
 }
+function Test-ProtectedReleaseAttemptAcl {
+  $trusted=@('S-1-5-18','S-1-5-32-544')
+  $writeMask=[System.Security.AccessControl.FileSystemRights]::Write -bor
+             [System.Security.AccessControl.FileSystemRights]::Modify -bor
+             [System.Security.AccessControl.FileSystemRights]::FullControl -bor
+             [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+             [System.Security.AccessControl.FileSystemRights]::TakeOwnership -bor
+             [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles
+  try{
+    if(-not [Environment]::OSVersion.Platform.ToString().Equals('Win32NT')){return $false}
+    if(-not(Test-Path -LiteralPath $releaseAttemptPath -PathType Leaf)){return $false}
+    foreach($path in @((Split-Path -Parent $releaseAttemptPath),$releaseAttemptPath)){
+      $item=Get-Item -LiteralPath $path -Force -ErrorAction Stop
+      if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){return $false}
+      $acl=Get-Acl -LiteralPath $path -ErrorAction Stop
+      if($acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -notin $trusted){return $false}
+      foreach($ace in @($acl.Access)){
+        if([string]$ace.AccessControlType -ne 'Allow'){continue}
+        $sid=$ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
+        if($sid -notin $trusted -and ($ace.FileSystemRights -band $writeMask) -ne 0){return $false}
+      }
+    }
+    return $true
+  }catch{return $false}
+}
+function Set-ProtectedLauncherTaskTarget([string]$taskName,[string]$scriptPath){
+  $task=Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
+  if(-not(Test-Path -LiteralPath $scriptPath)){throw ('PROTECTED_LAUNCHER_MISSING:'+ $scriptPath)}
+  $ps='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+  $action=New-ScheduledTaskAction -Execute $ps -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "'+$scriptPath+'"')
+  Set-ScheduledTask -TaskName $taskName -Action $action|Out-Null
+}
+function Ensure-ProtectedRuntimeIsolationMigration {
+  if($rollbackCanaryMode){return @{action='skip';reason='ROLLBACK_CANARY'}}
+  if(-not(Test-Path -LiteralPath $runtimeRepo)){throw 'RUNTIME_SOURCE_MISSING'}
+  $head=Head $runtimeRepo 'HEAD'
+  if($head -notmatch '^[a-f0-9]{40}
+  $candidateHead=$null
+  try{
+    git -C $runtimeRepo reset --hard $RollbackCanaryCandidateSha|Out-Null
+    if($LASTEXITCODE -ne 0){throw 'ROLLBACK_CANARY_CANDIDATE_RESET_FAILED'}
+    $candidateHead=Head $runtimeRepo 'HEAD'
+    if($candidateHead -ne $RollbackCanaryCandidateSha){throw 'ROLLBACK_CANARY_CANDIDATE_HEAD_MISMATCH'}
+    throw 'SYNTHETIC_CANDIDATE_FAILURE'
+  }catch{
+    $failure=$_.Exception.Message
+    $rollback=Invoke-RuntimeRollback $RollbackCanaryPreviousSha $RollbackCanaryCandidateSha $impact -CanaryMode
+    [Console]::Out.WriteLine(([ordered]@{result='ROLLED_BACK';failure=$failure;candidateHeadBeforeFailure=$candidateHead;rollback=$rollback}|ConvertTo-Json -Compress -Depth 6))
+    exit 0
+  }
+}
+
+if(-not $rollbackCanaryMode){
+  try{$runtimeIsolationMigration=Ensure-ProtectedRuntimeIsolationMigration}
+  catch{
+    Save-State @{result='FAILED';error=('RUNTIME_ISOLATION_MIGRATION:'+ $_.Exception.Message);runtimeSource=$runtimeRepo}
+    exit 76
+  }
+}
+
+while($true){
+  $locked=$false
+  try{
+    $locked=$mutex.WaitOne(0);if(-not $locked){Start-Sleep -Seconds $IntervalSeconds;continue}
+    $webTaskTarget=Ensure-WebTaskRuntimeTarget
+    $appChromeTaskBlueprintState=Sync-AppChromeTaskBlueprint
+    $watchdog=Runtime-Watchdog
+    $legacyLifecycleRetire=Retire-LegacyOpenClawLifecycleOwner
+    $liveStatusBridgeSync=Sync-LiveStatusBridgeRuntime
+    $liveStatusBridgeReconcile=Invoke-LiveStatusBridgeReconcile
+    if(-not(Test-Path -LiteralPath $tokenPath)){Save-State @{result='GITHUB_TOKEN_MISSING';liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
+    $env:GH_TOKEN=[IO.File]::ReadAllText($tokenPath).Trim();if(-not $env:GH_TOKEN){Save-State @{result='GITHUB_TOKEN_EMPTY';liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
+    $bootstrapWatchdog=if(Test-Path -LiteralPath $runtimeRepo){Ensure-BootstrapWatchdogTask}else{@{action='skip';reason='runtime_missing'}}
+    $appChromeInstall=Invoke-AppChromeZeroTouchHelper
+    $runtimeIdentity=if(Test-Path -LiteralPath $runtimeRepo){Head $runtimeRepo 'HEAD'}else{'BOOTSTRAP'}
+    $appChromeRecovery=Invoke-AppChromeOwnerResume $runtimeIdentity
+    git -C $controlRepo fetch origin '+refs/heads/main:refs/remotes/origin/main' --prune|Out-Null;if($LASTEXITCODE -ne 0){throw 'FETCH_FAILED'}
+    $remote=Head $controlRepo 'refs/remotes/origin/main';if(-not $remote){throw 'REMOTE_MAIN_MISSING'}
+    $fetchHead=Head $controlRepo 'FETCH_HEAD';if(-not $fetchHead){throw 'FETCH_HEAD_MISSING'}
+    if($fetchHead -ne $remote){throw 'REMOTE_MAIN_FETCH_HEAD_MISMATCH'}
+    $runtimeExists=Test-Path -LiteralPath $runtimeRepo
+    if($runtimeExists -and (Runtime-Source-Dirty)){Save-State @{result='BLOCKED_DIRTY_RUNTIME';runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
+    $updaterTaskTarget=if($runtimeExists){Ensure-UpdaterTaskRuntimeTarget}else{@{action='skip';reason='runtime_missing';target=$updaterRuntime}}
+    $local=if($runtimeExists){Head $runtimeRepo 'HEAD'}else{$null}
+    $openclawReconcile=@{action='skip';reason='runtime_missing'}
+    $preOpenclawCanary=@{action='skip';reason='runtime_missing'}
+    if($runtimeExists){
+      try{
+        $openclawReconcile=Reconcile-OpenClawRuntime $local
+        $preOpenclawCanary=if($local){Invoke-OpenClawCanary $local (OpenClaw-TreeSha)}else{@{action='skip';reason='identity_missing'}}
+        if([string]$openclawReconcile.action -eq 'restarted' -and [string]$preOpenclawCanary.result -eq 'PASS'){Save-OpenClawAppliedState (OpenClaw-TreeSha)}
+      }catch{
+        $openclawReconcile=@{action='blocked';reason=('OBSERVE_'+$_.Exception.Message)}
+        $preOpenclawCanary=@{action='blocked';result='BLOCKED';reason='OPENCLAW_DEGRADED_NONBLOCKING'}
+      }
+    }
+    if(Test-GithubApiBackoff){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='WAIT_GITHUB_API_RATE_LIMIT';candidateSha=$remote;installedSha=$local;githubApiBackoffUntil=$githubApiBackoffUntil.ToString('o');runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    if($runtimeExists){$local=Resolve-DeployedSourceSha $local $remote}
+    if($runtimeExists -and $local -eq $remote){if(Test-Path -LiteralPath $viewModule){. $viewModule;$null=Reconcile-ApiHealthViewSelfUpdate $local};$mcpGatewaySync=Sync-McpFunnelGatewayRuntime;$mcpGatewayReconcile=if([string]$mcpGatewaySync.action -eq 'blocked'){@{action='blocked';reason=[string]$mcpGatewaySync.reason}}else{Reconcile-McpFunnelGatewayRuntime $local};$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeTaskBlueprint=$appChromeTaskBlueprintState;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;mcpGatewaySync=$mcpGatewaySync;mcpGatewayReconcile=$mcpGatewayReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    $gateSha=Resolve-GateSha $remote
+    if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
+    $impact=if($runtimeExists){Get-Impact $changed}else{@{core=$true;web=$true;coding=$true;openclaw=$false;updater=$true;bootstrap=$true}}
+    if(-not(Test-Path -LiteralPath $releaseGuardScript)){
+      Save-State @{result='WAIT_RELEASE_APPROVAL';candidateSha=$remote;installedSha=$local;releaseGateReason='RELEASE_GUARD_SCRIPT_MISSING';runtimeSource=$runtimeRepo}
+      Start-Sleep -Seconds $IntervalSeconds
+      continue
+    }
+    . $releaseGuardScript
+    $releaseApproval=Get-ReleaseApproval $remote $local $impact $changed $gateSha
+    if(-not $releaseApproval.approved){
+      Save-State @{result='WAIT_RELEASE_APPROVAL';candidateSha=$remote;installedSha=$local;releaseGateReason=$releaseApproval.reason;changedPaths=$changed;impact=$impact;runtimeSource=$runtimeRepo}
+      Start-Sleep -Seconds $IntervalSeconds
+      continue
+    }
+    $oldCore=HealthInfo 'http://100.97.23.87:8795/health';$oldPid=if($oldCore){[int]$oldCore.pid}else{$null}
+    $mcpViewTouched=$false;$mcpViewChanged=$false;$mcpViewReceipt=$null;$mcpGatewaySync=@{action='skip';reason='not_started'}
+    Save-ReleaseAttempt $releaseApproval.requestId $remote $local 'STARTED'
+    $previousRuntimeSha=$local
+    try{
+      Ensure-RuntimeSource $remote
+      Ensure-NodeModules $runtimeRepo
+      $liveStatusBridgeSync=Sync-LiveStatusBridgeRuntime
+      $liveStatusBridgeReconcile=Invoke-LiveStatusBridgeReconcile
+      $remoteDesktopGuard=Reconcile-RemoteDesktopGuard
+      Save-RuntimeSourceState $remote $previousRuntimeSha $gateSha
+      $mcpGatewaySync=Sync-McpFunnelGatewayRuntime
+      if([string]$mcpGatewaySync.action -eq 'blocked'){throw ('MCP_FUNNEL_GATEWAY_SYNC_FAILED:'+ [string]$mcpGatewaySync.reason)}
+      Sync-Launchers
+      $bootstrapWatchdog=Ensure-BootstrapWatchdogTask -AllowSourceRefresh
+      if($impact.updater){Sync-UpdaterRuntime;$updaterTaskTarget=Ensure-UpdaterTaskRuntimeTarget}
+      $coreHealth=$oldCore;$webHealth=$null;$codingHealth=$null;$openclawHealth=$null;$openclawCanary=$null
+      if($impact.core){$coreHealth=Restart-Core $oldPid;if(-not $coreHealth){throw 'CORE_HEALTH_OR_PID_FAILED'}}
+      elseif(-not(HealthInfo 'http://100.97.23.87:8795/health')){throw 'CORE_HEALTH_LOST_WITHOUT_CORE_CHANGE'}
+      if($impact.web){Sync-WebRuntime;$webHealth=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath;if(-not $webHealth){throw 'WEB_CONTROL_HEALTH_OR_PID_FAILED'}}
+      if($impact.coding){$codingHealth=Restart-ServiceTask $codingTask 'http://127.0.0.1:8797/health' $codingPath $legacyCodingPath;if(-not $codingHealth){throw 'CODING_LANE_HEALTH_OR_PID_FAILED'}}
+      if($impact.openclaw){$openclawHealth=Restart-OpenClawGateway;if(-not $openclawHealth){throw 'OPENCLAW_GATEWAY_HEALTH_FAILED'}}
+      $mcpGatewayReconcile=Reconcile-McpFunnelGatewayRuntime $remote
+      if([string]$mcpGatewayReconcile.action -eq 'blocked'){throw ('MCP_FUNNEL_GATEWAY_RECONCILE_FAILED:'+ [string]$mcpGatewayReconcile.reason)}
+      if(Test-Path -LiteralPath $viewModule){. $viewModule;$null=Invoke-McpViewRelease $changed $remote}
+      if($impact.openclaw){
+        $tree=OpenClaw-TreeSha
+        $openclawCanary=Invoke-OpenClawCanary $remote $tree
+        if(-not $openclawCanary -or [string]$openclawCanary.result -ne 'PASS'){
+          $why=if($openclawCanary){[string]$openclawCanary.reason}else{'NO_RESULT'}
+          throw ('OPENCLAW_FUNCTIONAL_CANARY_FAILED:'+ $why)
+        }
+        if($impact.openclaw){Save-OpenClawAppliedState $tree}
+      }
+    }catch{
+      $failure=$_.Exception.Message
+      $null=Invoke-RuntimeRollback $previousRuntimeSha $remote $impact
+      Save-ReleaseAttempt $releaseApproval.requestId $remote $previousRuntimeSha 'ROLLED_BACK'
+      throw ('ROLLED_BACK:'+ $failure)
+    }
+    $newCore=HealthInfo 'http://100.97.23.87:8795/health'
+    if($impact.openclaw -and $null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}
+    Save-ReleaseAttempt $releaseApproval.requestId $remote $previousRuntimeSha 'COMMITTED'
+    if($mcpViewReceipt){Save-ApiHealthViewAppliedState $remote $mcpViewReceipt}
+    Save-State @{result='UPDATED';appChromeTaskBlueprint=$appChromeTaskBlueprintState;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;appChromeInstall=$appChromeInstall;installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;changedPaths=$changed;impact=$impact;updaterTaskTarget=$updaterTaskTarget;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};mcpGatewaySync=$mcpGatewaySync;mcpGatewayReconcile=$mcpGatewayReconcile;remoteDesktopGuard=$remoteDesktopGuard;webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
+    if($impact.updater){Restart-UpdaterAfterExit;exit 75}
+  }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
+  finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}
+  Start-Sleep -Seconds $IntervalSeconds
+}
+
+){throw 'RUNTIME_SOURCE_SHA_INVALID'}
+  if(Runtime-Source-Dirty){throw 'RUNTIME_SOURCE_DIRTY'}
+  $migrated=$false
+  if(Test-Path -LiteralPath $runtimeSourceState){
+    try{$meta=Get-Content -Raw -LiteralPath $runtimeSourceState|ConvertFrom-Json -ErrorAction Stop}catch{throw 'RUNTIME_SOURCE_STATE_INVALID'}
+    if([string]$meta.schema -ne 'TIGERIQ_RUNTIME_SOURCE_V1' -or [string]$meta.sourcePath -ne $runtimeRepo){throw 'RUNTIME_SOURCE_STATE_UNTRUSTED'}
+    if([string]$meta.currentSha -cne $head){throw 'RUNTIME_SOURCE_STATE_HEAD_MISMATCH'}
+  }else{
+    # The legacy updater cannot write the new ProgramData state. Bridge exactly once
+    # from the protected COMMITTED release receipt; never trust D:\TigerIQ\State.
+    if(-not(Test-ProtectedReleaseAttemptAcl)){throw 'RUNTIME_RELEASE_ATTEMPT_ACL_UNTRUSTED'}
+    try{$attempt=Get-Content -Raw -LiteralPath $releaseAttemptPath|ConvertFrom-Json -ErrorAction Stop}catch{throw 'RUNTIME_RELEASE_ATTEMPT_INVALID'}
+    if([string]$attempt.schema -ne 'TIGERIQ_PC01_RELEASE_ATTEMPT_V1' -or [string]$attempt.result -ne 'COMMITTED'){
+      throw 'RUNTIME_RELEASE_ATTEMPT_NOT_COMMITTED'
+    }
+    if([string]$attempt.targetSha -cne $head -or [string]$attempt.previousSha -notmatch '^[a-f0-9]{40}
+  $candidateHead=$null
+  try{
+    git -C $runtimeRepo reset --hard $RollbackCanaryCandidateSha|Out-Null
+    if($LASTEXITCODE -ne 0){throw 'ROLLBACK_CANARY_CANDIDATE_RESET_FAILED'}
+    $candidateHead=Head $runtimeRepo 'HEAD'
+    if($candidateHead -ne $RollbackCanaryCandidateSha){throw 'ROLLBACK_CANARY_CANDIDATE_HEAD_MISMATCH'}
+    throw 'SYNTHETIC_CANDIDATE_FAILURE'
+  }catch{
+    $failure=$_.Exception.Message
+    $rollback=Invoke-RuntimeRollback $RollbackCanaryPreviousSha $RollbackCanaryCandidateSha $impact -CanaryMode
+    [Console]::Out.WriteLine(([ordered]@{result='ROLLED_BACK';failure=$failure;candidateHeadBeforeFailure=$candidateHead;rollback=$rollback}|ConvertTo-Json -Compress -Depth 6))
+    exit 0
+  }
+}
+
+while($true){
+  $locked=$false
+  try{
+    $locked=$mutex.WaitOne(0);if(-not $locked){Start-Sleep -Seconds $IntervalSeconds;continue}
+    $webTaskTarget=Ensure-WebTaskRuntimeTarget
+    $appChromeTaskBlueprintState=Sync-AppChromeTaskBlueprint
+    $watchdog=Runtime-Watchdog
+    $legacyLifecycleRetire=Retire-LegacyOpenClawLifecycleOwner
+    $liveStatusBridgeSync=Sync-LiveStatusBridgeRuntime
+    $liveStatusBridgeReconcile=Invoke-LiveStatusBridgeReconcile
+    if(-not(Test-Path -LiteralPath $tokenPath)){Save-State @{result='GITHUB_TOKEN_MISSING';liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
+    $env:GH_TOKEN=[IO.File]::ReadAllText($tokenPath).Trim();if(-not $env:GH_TOKEN){Save-State @{result='GITHUB_TOKEN_EMPTY';liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
+    $bootstrapWatchdog=if(Test-Path -LiteralPath $runtimeRepo){Ensure-BootstrapWatchdogTask}else{@{action='skip';reason='runtime_missing'}}
+    $appChromeInstall=Invoke-AppChromeZeroTouchHelper
+    $runtimeIdentity=if(Test-Path -LiteralPath $runtimeRepo){Head $runtimeRepo 'HEAD'}else{'BOOTSTRAP'}
+    $appChromeRecovery=Invoke-AppChromeOwnerResume $runtimeIdentity
+    git -C $controlRepo fetch origin '+refs/heads/main:refs/remotes/origin/main' --prune|Out-Null;if($LASTEXITCODE -ne 0){throw 'FETCH_FAILED'}
+    $remote=Head $controlRepo 'refs/remotes/origin/main';if(-not $remote){throw 'REMOTE_MAIN_MISSING'}
+    $fetchHead=Head $controlRepo 'FETCH_HEAD';if(-not $fetchHead){throw 'FETCH_HEAD_MISSING'}
+    if($fetchHead -ne $remote){throw 'REMOTE_MAIN_FETCH_HEAD_MISMATCH'}
+    $runtimeExists=Test-Path -LiteralPath $runtimeRepo
+    if($runtimeExists -and (Runtime-Source-Dirty)){Save-State @{result='BLOCKED_DIRTY_RUNTIME';runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
+    $updaterTaskTarget=if($runtimeExists){Ensure-UpdaterTaskRuntimeTarget}else{@{action='skip';reason='runtime_missing';target=$updaterRuntime}}
+    $local=if($runtimeExists){Head $runtimeRepo 'HEAD'}else{$null}
+    $openclawReconcile=@{action='skip';reason='runtime_missing'}
+    $preOpenclawCanary=@{action='skip';reason='runtime_missing'}
+    if($runtimeExists){
+      try{
+        $openclawReconcile=Reconcile-OpenClawRuntime $local
+        $preOpenclawCanary=if($local){Invoke-OpenClawCanary $local (OpenClaw-TreeSha)}else{@{action='skip';reason='identity_missing'}}
+        if([string]$openclawReconcile.action -eq 'restarted' -and [string]$preOpenclawCanary.result -eq 'PASS'){Save-OpenClawAppliedState (OpenClaw-TreeSha)}
+      }catch{
+        $openclawReconcile=@{action='blocked';reason=('OBSERVE_'+$_.Exception.Message)}
+        $preOpenclawCanary=@{action='blocked';result='BLOCKED';reason='OPENCLAW_DEGRADED_NONBLOCKING'}
+      }
+    }
+    if(Test-GithubApiBackoff){$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='WAIT_GITHUB_API_RATE_LIMIT';candidateSha=$remote;installedSha=$local;githubApiBackoffUntil=$githubApiBackoffUntil.ToString('o');runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    if($runtimeExists){$local=Resolve-DeployedSourceSha $local $remote}
+    if($runtimeExists -and $local -eq $remote){if(Test-Path -LiteralPath $viewModule){. $viewModule;$null=Reconcile-ApiHealthViewSelfUpdate $local};$mcpGatewaySync=Sync-McpFunnelGatewayRuntime;$mcpGatewayReconcile=if([string]$mcpGatewaySync.action -eq 'blocked'){@{action='blocked';reason=[string]$mcpGatewaySync.reason}}else{Reconcile-McpFunnelGatewayRuntime $local};$remoteDesktopGuard=Reconcile-RemoteDesktopGuard;Save-State @{result='NO_CHANGE';installedSha=$local;runtimeSource=$runtimeRepo;bootstrapWatchdog=$bootstrapWatchdog;appChromeTaskBlueprint=$appChromeTaskBlueprintState;appChromeInstall=$appChromeInstall;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;mcpGatewaySync=$mcpGatewaySync;mcpGatewayReconcile=$mcpGatewayReconcile;openclawReconcile=$openclawReconcile;openclawCanary=$preOpenclawCanary;remoteDesktopGuard=$remoteDesktopGuard;updaterTaskTarget=$updaterTaskTarget;webTaskTarget=$webTaskTarget;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    $gateSha=Resolve-GateSha $remote
+    if(-not $gateSha){Save-State @{result='WAIT_GATES';candidateSha=$remote;runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};Start-Sleep -Seconds $IntervalSeconds;continue}
+    [string[]]$changed=if($runtimeExists){@(git -C $controlRepo diff --name-only $local $remote)}else{@('apps/tigeriq-core/','apps/tigeriq-coding-lane/','scripts/tigeriq-core/')}
+    $impact=if($runtimeExists){Get-Impact $changed}else{@{core=$true;web=$true;coding=$true;openclaw=$false;updater=$true;bootstrap=$true}}
+    if(-not(Test-Path -LiteralPath $releaseGuardScript)){
+      Save-State @{result='WAIT_RELEASE_APPROVAL';candidateSha=$remote;installedSha=$local;releaseGateReason='RELEASE_GUARD_SCRIPT_MISSING';runtimeSource=$runtimeRepo}
+      Start-Sleep -Seconds $IntervalSeconds
+      continue
+    }
+    . $releaseGuardScript
+    $releaseApproval=Get-ReleaseApproval $remote $local $impact $changed $gateSha
+    if(-not $releaseApproval.approved){
+      Save-State @{result='WAIT_RELEASE_APPROVAL';candidateSha=$remote;installedSha=$local;releaseGateReason=$releaseApproval.reason;changedPaths=$changed;impact=$impact;runtimeSource=$runtimeRepo}
+      Start-Sleep -Seconds $IntervalSeconds
+      continue
+    }
+    $oldCore=HealthInfo 'http://100.97.23.87:8795/health';$oldPid=if($oldCore){[int]$oldCore.pid}else{$null}
+    $mcpViewTouched=$false;$mcpViewChanged=$false;$mcpViewReceipt=$null;$mcpGatewaySync=@{action='skip';reason='not_started'}
+    Save-ReleaseAttempt $releaseApproval.requestId $remote $local 'STARTED'
+    $previousRuntimeSha=$local
+    try{
+      Ensure-RuntimeSource $remote
+      Ensure-NodeModules $runtimeRepo
+      $liveStatusBridgeSync=Sync-LiveStatusBridgeRuntime
+      $liveStatusBridgeReconcile=Invoke-LiveStatusBridgeReconcile
+      $remoteDesktopGuard=Reconcile-RemoteDesktopGuard
+      Save-RuntimeSourceState $remote $previousRuntimeSha $gateSha
+      $mcpGatewaySync=Sync-McpFunnelGatewayRuntime
+      if([string]$mcpGatewaySync.action -eq 'blocked'){throw ('MCP_FUNNEL_GATEWAY_SYNC_FAILED:'+ [string]$mcpGatewaySync.reason)}
+      Sync-Launchers
+      $bootstrapWatchdog=Ensure-BootstrapWatchdogTask -AllowSourceRefresh
+      if($impact.updater){Sync-UpdaterRuntime;$updaterTaskTarget=Ensure-UpdaterTaskRuntimeTarget}
+      $coreHealth=$oldCore;$webHealth=$null;$codingHealth=$null;$openclawHealth=$null;$openclawCanary=$null
+      if($impact.core){$coreHealth=Restart-Core $oldPid;if(-not $coreHealth){throw 'CORE_HEALTH_OR_PID_FAILED'}}
+      elseif(-not(HealthInfo 'http://100.97.23.87:8795/health')){throw 'CORE_HEALTH_LOST_WITHOUT_CORE_CHANGE'}
+      if($impact.web){Sync-WebRuntime;$webHealth=Restart-ServiceTask $webTask 'http://100.97.23.87:8796/health' $webPath;if(-not $webHealth){throw 'WEB_CONTROL_HEALTH_OR_PID_FAILED'}}
+      if($impact.coding){$codingHealth=Restart-ServiceTask $codingTask 'http://127.0.0.1:8797/health' $codingPath $legacyCodingPath;if(-not $codingHealth){throw 'CODING_LANE_HEALTH_OR_PID_FAILED'}}
+      if($impact.openclaw){$openclawHealth=Restart-OpenClawGateway;if(-not $openclawHealth){throw 'OPENCLAW_GATEWAY_HEALTH_FAILED'}}
+      $mcpGatewayReconcile=Reconcile-McpFunnelGatewayRuntime $remote
+      if([string]$mcpGatewayReconcile.action -eq 'blocked'){throw ('MCP_FUNNEL_GATEWAY_RECONCILE_FAILED:'+ [string]$mcpGatewayReconcile.reason)}
+      if(Test-Path -LiteralPath $viewModule){. $viewModule;$null=Invoke-McpViewRelease $changed $remote}
+      if($impact.openclaw){
+        $tree=OpenClaw-TreeSha
+        $openclawCanary=Invoke-OpenClawCanary $remote $tree
+        if(-not $openclawCanary -or [string]$openclawCanary.result -ne 'PASS'){
+          $why=if($openclawCanary){[string]$openclawCanary.reason}else{'NO_RESULT'}
+          throw ('OPENCLAW_FUNCTIONAL_CANARY_FAILED:'+ $why)
+        }
+        if($impact.openclaw){Save-OpenClawAppliedState $tree}
+      }
+    }catch{
+      $failure=$_.Exception.Message
+      $null=Invoke-RuntimeRollback $previousRuntimeSha $remote $impact
+      Save-ReleaseAttempt $releaseApproval.requestId $remote $previousRuntimeSha 'ROLLED_BACK'
+      throw ('ROLLED_BACK:'+ $failure)
+    }
+    $newCore=HealthInfo 'http://100.97.23.87:8795/health'
+    if($impact.openclaw -and $null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}
+    Save-ReleaseAttempt $releaseApproval.requestId $remote $previousRuntimeSha 'COMMITTED'
+    if($mcpViewReceipt){Save-ApiHealthViewAppliedState $remote $mcpViewReceipt}
+    Save-State @{result='UPDATED';appChromeTaskBlueprint=$appChromeTaskBlueprintState;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;appChromeInstall=$appChromeInstall;installedSha=$remote;gateSha=$gateSha;previousSha=$previousRuntimeSha;runtimeSource=$runtimeRepo;appChromeRecovery=$appChromeRecovery;legacyLifecycleRetire=$legacyLifecycleRetire;changedPaths=$changed;impact=$impact;updaterTaskTarget=$updaterTaskTarget;openclawReconcile=$openclawReconcile;openclawCanary=$openclawCanary;corePid=if($newCore){[int]$newCore.pid}else{$null};previousCorePid=$oldPid;coreRestarted=$impact.core;webRestarted=$impact.web;codingRestarted=$impact.coding;openclawRestarted=$impact.openclaw;openclawPortHealthy=if($openclawHealth){[bool]$openclawHealth.healthy}else{$null};mcpGatewaySync=$mcpGatewaySync;mcpGatewayReconcile=$mcpGatewayReconcile;remoteDesktopGuard=$remoteDesktopGuard;webPid=if($webHealth){$webHealth.pid}else{$null};codingPid=if($codingHealth){$codingHealth.pid}else{$null};watchdog=$watchdog}
+    if($impact.updater){Restart-UpdaterAfterExit;exit 75}
+  }catch{Save-State @{result='FAILED';error=$_.Exception.Message;watchdog=$watchdog}}
+  finally{Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue;if($locked){$mutex.ReleaseMutex()|Out-Null}}
+  Start-Sleep -Seconds $IntervalSeconds
+}
+
+){
+      throw 'RUNTIME_RELEASE_ATTEMPT_SHA_MISMATCH'
+    }
+    Save-RuntimeSourceState $head ([string]$attempt.previousSha) $head
+    $migrated=$true
+  }
+  Sync-Launchers
+  Set-ProtectedLauncherTaskTarget $coreTask (Join-Path $launcherRuntime 'run-core.ps1')
+  Set-ProtectedLauncherTaskTarget $codingTask (Join-Path $launcherRuntime 'run-coding-lane.ps1')
+  $updaterTarget=Ensure-UpdaterTaskRuntimeTarget
+  return @{action=if($migrated){'migrated'}else{'verified'};installedSha=$head;launcherRuntime=$launcherRuntime;updaterTarget=$updaterTarget}
+}
+
 if($rollbackCanaryMode){
   $impact=@{core=$true;web=$true;coding=$true;openclaw=$false;updater=$false}
   $candidateHead=$null
