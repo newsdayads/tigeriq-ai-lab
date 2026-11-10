@@ -161,6 +161,20 @@ describe('runtime updater squash merge gate resolution',()=>{
     expect(src).toContain('if($impact.openclaw -and $null -eq $openclawCanary){$openclawCanary=Invoke-OpenClawCanary $remote (OpenClaw-TreeSha)}');
   });
 
+  it('completes ProgramData migration only from a protected committed release receipt',()=>{
+    const src=readFileSync('scripts/tigeriq-core/update-core-runtime.ps1','utf8');
+    expect(src).toContain("$releaseAttemptPath='C:\\ProgramData\\TigerIQCoreRelease\\core-runtime-release-attempt.json'");
+    expect(src).toContain('function Ensure-ProtectedRuntimeIsolationMigration');
+    expect(src).toContain("RUNTIME_RELEASE_ATTEMPT_NOT_COMMITTED");
+    expect(src).toContain("[string]$attempt.result -ne 'COMMITTED'");
+    expect(src).toContain('Save-RuntimeSourceState $head ([string]$attempt.previousSha) $head');
+    expect(src).toContain("Set-ProtectedLauncherTaskTarget $coreTask");
+    expect(src).toContain("Set-ProtectedLauncherTaskTarget $codingTask");
+    expect(src).toContain('Ensure-UpdaterTaskRuntimeTarget');
+    expect(src).toContain("error=('RUNTIME_ISOLATION_MIGRATION:'");
+    expect(src).not.toContain("Get-Content -Raw -LiteralPath 'D:\\TigerIQ\\State\\core-runtime-source.json'");
+  });
+
   it('recreates a missing Core Runtime Updater from the active runtime repo',()=>{
     const launcher=readFileSync('scripts/tigeriq-core/run-core.ps1','utf8');
     const installer=readFileSync('scripts/tigeriq-core/install-core-updater.ps1','utf8');
