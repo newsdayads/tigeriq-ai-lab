@@ -51,6 +51,27 @@ class VideoSignalClassifierTest {
         assertFalse(monitor.contains("CameraActivity.launch("))
         assertFalse(monitor.contains("WindowManager.addView("))
     }
+    @Test fun usbPresencePathsCannotOpenCameraWindowDirectly() {
+        val service=java.io.File("src/main/java/ai/tigeriq/camera/FloatingCameraService.kt").readText()
+        fun between(start:String,end:String):String {
+            val from=service.indexOf(start)
+            assertTrue("missing start marker: $start",from>=0)
+            val to=service.indexOf(end,from+start.length)
+            assertTrue("missing end marker: $end",to>from)
+            return service.substring(from,to)
+        }
+        val openFromUsb=between("private fun openFromUsb(", "private fun closeFromUsb(")
+        val presence=between("private fun checkCameraPresence()", "private fun findDexDisplay()")
+        for (usbPath in listOf(openFromUsb,presence)) {
+            assertFalse(usbPath.contains("cameraOverlay.show("))
+            assertFalse(usbPath.contains("CameraActivity.launch("))
+            assertFalse(usbPath.contains("ACTION_GEAR_ON"))
+        }
+        assertTrue(openFromUsb.contains("USB_ATTACH_NOT_GEAR"))
+        assertTrue(openFromUsb.contains("requestVideoProbe("))
+        assertTrue(presence.contains("USB_LOST_NOT_R_OFF"))
+    }
+
     @Test fun approvedLayoutAndGuideStylingUnaffected() {
         val source=java.io.File("src/main/java/ai/tigeriq/camera/DynamicGuideView.kt").readText()
         assertTrue(source.contains("drawSportRacing("))
