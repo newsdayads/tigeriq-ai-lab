@@ -121,7 +121,7 @@ test('seed is fail-closed for force, existing lanes, and traversal paths', async
   assert.equal(await readFile(file,'utf8'),before);
 });
 
-test('scorer rejects symlinks in executor-writable fixtures', {skip: process.platform === 'win32'}, async () => {
+test('scorer rejects file symlinks in executor-writable fixtures', {skip: process.platform === 'win32'}, async () => {
   const root=await mkdtemp(path.join(os.tmpdir(),'tigeriq-cline-link-'));
   const seeded=await seedLane({root,lane:'clinelink'});
   const fixtureRoot=seeded.fixtures[0].root;
@@ -129,9 +129,16 @@ test('scorer rejects symlinks in executor-writable fixtures', {skip: process.pla
   await rm(source);
   await symlink(path.join(root,'missing-external-source'),source);
   await assert.rejects(scoreLane({root,lane:'clinelink'}),/BENCHMARK_SYMLINK_FORBIDDEN/);
-  const alias=path.join(root,'symlink-root');
-  await symlink(root,alias,'dir');
-  await assert.rejects(seedLane({root:alias,lane:'otherlane'}),/BENCHMARK_SYMLINK_FORBIDDEN/);
+});
+
+test('seed rejects directory links in benchmark-root ancestors on every supported OS', async () => {
+  const targetParent=await mkdtemp(path.join(os.tmpdir(),'tigeriq-cline-junction-target-'));
+  const linkParent=targetParent+'-link';
+  await symlink(targetParent,linkParent,process.platform === 'win32' ? 'junction' : 'dir');
+  await assert.rejects(
+    seedLane({root:path.join(linkParent,'nested-root'),lane:'otherlane'}),
+    /BENCHMARK_SYMLINK_FORBIDDEN/,
+  );
 });
 
 test('TAP scoring rejects skipped-only, todo-only and missing summaries',()=>{
