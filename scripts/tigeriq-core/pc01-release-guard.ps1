@@ -413,4 +413,69 @@ function Save-ReleaseAttempt([string]$requestId,[string]$targetSha,[string]$prev
   [IO.File]::WriteAllText($tmp,($d|ConvertTo-Json -Depth 4),(New-Object Text.UTF8Encoding($false)))
   Move-Item -Force -LiteralPath $tmp -Destination $releaseAttemptPath
 }
-
+function Test-ProtectedRuntimeReleaseAttemptAcl {
+  $trusted=@('S-1-5-18','S-1-5-32-544')
+  $writeMask=[System.Security.AccessControl.FileSystemRights]::Write -bor
+             [System.Security.AccessControl.FileSystemRights]::Modify -bor
+             [System.Security.AccessControl.FileSystemRights]::FullControl -bor
+             [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+             [System.Security.AccessControl.FileSystemRights]::TakeOwnership -bor
+             [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles
+  try{
+    foreach($path in @((Split-Path -Parent $releaseAttemptPath),$releaseAttemptPath)){
+      $item=Get-Item -LiteralPath $path -Force -ErrorAction Stop
+      if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){return $false}
+      $acl=Get-Acl -LiteralPath $path -ErrorAction Stop
+      if($acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -notin $trusted){return $false}
+      foreach($ace in @($acl.Access)){
+        if([string]$ace.AccessControlType -ne 'Allow'){continue}
+        $sid=$ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
+        if($sid -notin $trusted -and ($ace.FileSystemRights -band $writeMask) -ne 0){return $false}
+      }
+    }
+    return $true
+  }catch{return $false}
+}
+function Initialize-ProtectedRuntimeIsolationMigration {
+  $runtimeRepo='D:\TigerIQ\Runtime\CoreSource'
+  $runtimeState='C:\ProgramData\TigerIQCoreRelease\State\core-runtime-source.json'
+  $launcherRuntime='C:\ProgramData\TigerIQCoreRelease\Launchers'
+  if(-not(Test-Path -LiteralPath $runtimeRepo)){throw 'RUNTIME_SOURCE_MISSING'}
+  $head=([string](& git -C $runtimeRepo rev-parse HEAD 2>$null)).Trim()
+  if($LASTEXITCODE -ne 0 -or $head -notmatch '^[a-f0-9]{40}$'){throw 'RUNTIME_SOURCE_SHA_INVALID'}
+  $dirty=@(& git -C $runtimeRepo status --porcelain 2>$null)
+  if($LASTEXITCODE -ne 0 -or $dirty.Count){throw 'RUNTIME_SOURCE_DIRTY'}
+  $migrated=$false
+  if(Test-Path -LiteralPath $runtimeState){
+    try{$meta=Get-Content -Raw -LiteralPath $runtimeState|ConvertFrom-Json -ErrorAction Stop}catch{throw 'RUNTIME_SOURCE_STATE_INVALID'}
+    if([string]$meta.schema -ne 'TIGERIQ_RUNTIME_SOURCE_V1' -or [string]$meta.sourcePath -ne $runtimeRepo){throw 'RUNTIME_SOURCE_STATE_UNTRUSTED'}
+    if([string]$meta.currentSha -cne $head){throw 'RUNTIME_SOURCE_STATE_HEAD_MISMATCH'}
+  }else{
+    if(-not(Test-ProtectedRuntimeReleaseAttemptAcl)){throw 'RUNTIME_RELEASE_ATTEMPT_ACL_UNTRUSTED'}
+    try{$attempt=Get-Content -Raw -LiteralPath $releaseAttemptPath|ConvertFrom-Json -ErrorAction Stop}catch{throw 'RUNTIME_RELEASE_ATTEMPT_INVALID'}
+    if([string]$attempt.schema -ne 'TIGERIQ_PC01_RELEASE_ATTEMPT_V1' -or [string]$attempt.result -ne 'COMMITTED'){throw 'RUNTIME_RELEASE_ATTEMPT_NOT_COMMITTED'}
+    if([string]$attempt.targetSha -cne $head -or [string]$attempt.previousSha -notmatch '^[a-f0-9]{40}$'){throw 'RUNTIME_RELEASE_ATTEMPT_SHA_MISMATCH'}
+    $state=[ordered]@{schema='TIGERIQ_RUNTIME_SOURCE_V1';sourcePath=$runtimeRepo;currentSha=$head;previousSha=[string]$attempt.previousSha;gateSha=$head;updatedAt=(Get-Date).ToUniversalTime().ToString('o')}
+    New-Item -ItemType Directory -Path (Split-Path -Parent $runtimeState) -Force|Out-Null
+    $tmp=$runtimeState+'.tmp';[IO.File]::WriteAllText($tmp,($state|ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding($false)));Move-Item -Force $tmp $runtimeState
+    $migrated=$true
+  }
+  New-Item -ItemType Directory -Path $launcherRuntime -Force|Out-Null
+  foreach($pair in @(
+    @{task='TigerIQ Core 24x7';name='run-core.ps1'},
+    @{task='TigerIQ Coding Lane 24x7';name='run-coding-lane.ps1'}
+  )){
+    $src=Join-Path $runtimeRepo ('scripts\tigeriq-core\'+$pair.name)
+    $dst=Join-Path $launcherRuntime $pair.name
+    if(-not(Test-Path -LiteralPath $src)){throw ('PROTECTED_LAUNCHER_SOURCE_MISSING:'+ $pair.name)}
+    $tmp=$dst+'.tmp';Copy-Item -LiteralPath $src -Destination $tmp -Force;Move-Item -Force $tmp $dst
+    $task=Get-ScheduledTask -TaskName $pair.task -ErrorAction Stop
+    $first=@($task.Actions|Select-Object -First 1)
+    if([string]$first.Arguments -notmatch [regex]::Escape($dst)){
+      $ps='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+      $action=New-ScheduledTaskAction -Execute $ps -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "'+$dst+'"')
+      Set-ScheduledTask -TaskName $pair.task -Action $action|Out-Null
+    }
+  }
+  return @{action=if($migrated){'migrated'}else{'verified'};installedSha=$head;launcherRuntime=$launcherRuntime}
+}
