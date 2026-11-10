@@ -28,8 +28,7 @@ $appChromeResumeState='D:\TigerIQ\State\app-chrome-runtime-recovery.json'
 $appChromeZeroTouchScript=(Join-Path $runtimeRepo 'scripts\tigeriq-core\appchrome-zero-touch.ps1')
 $appChromeExternalLocalOnly=$true
 # A merged main commit is NOT an authorized PC01 runtime release.
-$releaseGuardScript='C:\ProgramData\TigerIQCoreRelease\pc01-release-guard.ps1'
-$releaseAttemptPath='C:\ProgramData\TigerIQCoreRelease\core-runtime-release-attempt.json'
+$releaseGuardScript='C:\ProgramData\TigerIQCoreRelease\pc01-release-guard.ps1';if(-not $rollbackCanaryMode){. $releaseGuardScript}
 $liveStatusBridgeTask='TigerIQ Live Status Bridge'
 $liveStatusBridgeDir=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-live-status'}else{'D:\TigerIQ\Runtime\LiveStatusBridge'}
 $liveStatusBridgeSource=(Join-Path $runtimeRepo 'apps\tigeriq-live-bridge\server.mjs')
@@ -857,70 +856,6 @@ function Restart-UpdaterAfterExit(){
   $cmd="Start-Sleep -Seconds 4; Start-ScheduledTask -TaskName '$updaterTask'"
   Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-Command',$cmd) -WindowStyle Hidden|Out-Null
 }
-function Test-ProtectedReleaseAttemptAcl {
-  $trusted=@('S-1-5-18','S-1-5-32-544')
-  $writeMask=[System.Security.AccessControl.FileSystemRights]::Write -bor
-             [System.Security.AccessControl.FileSystemRights]::Modify -bor
-             [System.Security.AccessControl.FileSystemRights]::FullControl -bor
-             [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
-             [System.Security.AccessControl.FileSystemRights]::TakeOwnership -bor
-             [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles
-  try{
-    if(-not [Environment]::OSVersion.Platform.ToString().Equals('Win32NT')){return $false}
-    if(-not(Test-Path -LiteralPath $releaseAttemptPath -PathType Leaf)){return $false}
-    foreach($path in @((Split-Path -Parent $releaseAttemptPath),$releaseAttemptPath)){
-      $item=Get-Item -LiteralPath $path -Force -ErrorAction Stop
-      if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){return $false}
-      $acl=Get-Acl -LiteralPath $path -ErrorAction Stop
-      if($acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -notin $trusted){return $false}
-      foreach($ace in @($acl.Access)){
-        if([string]$ace.AccessControlType -ne 'Allow'){continue}
-        $sid=$ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
-        if($sid -notin $trusted -and ($ace.FileSystemRights -band $writeMask) -ne 0){return $false}
-      }
-    }
-    return $true
-  }catch{return $false}
-}
-function Set-ProtectedLauncherTaskTarget([string]$taskName,[string]$scriptPath){
-  $task=Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
-  if(-not(Test-Path -LiteralPath $scriptPath)){throw ('PROTECTED_LAUNCHER_MISSING:'+ $scriptPath)}
-  $ps='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
-  $action=New-ScheduledTaskAction -Execute $ps -Argument ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "'+$scriptPath+'"')
-  Set-ScheduledTask -TaskName $taskName -Action $action|Out-Null
-}
-function Ensure-ProtectedRuntimeIsolationMigration {
-  if($rollbackCanaryMode){return @{action='skip';reason='ROLLBACK_CANARY'}}
-  if(-not(Test-Path -LiteralPath $runtimeRepo)){throw 'RUNTIME_SOURCE_MISSING'}
-  $head=Head $runtimeRepo 'HEAD'
-  if($head -notmatch '^[a-f0-9]{40}$'){throw 'RUNTIME_SOURCE_SHA_INVALID'}
-  if(Runtime-Source-Dirty){throw 'RUNTIME_SOURCE_DIRTY'}
-  $migrated=$false
-  if(Test-Path -LiteralPath $runtimeSourceState){
-    try{$meta=Get-Content -Raw -LiteralPath $runtimeSourceState|ConvertFrom-Json -ErrorAction Stop}catch{throw 'RUNTIME_SOURCE_STATE_INVALID'}
-    if([string]$meta.schema -ne 'TIGERIQ_RUNTIME_SOURCE_V1' -or [string]$meta.sourcePath -ne $runtimeRepo){throw 'RUNTIME_SOURCE_STATE_UNTRUSTED'}
-    if([string]$meta.currentSha -cne $head){throw 'RUNTIME_SOURCE_STATE_HEAD_MISMATCH'}
-  }else{
-    # Legacy updater writes only D:\TigerIQ\State. Bridge exactly once from
-    # the protected COMMITTED receipt written by the installed release guard.
-    if(-not(Test-ProtectedReleaseAttemptAcl)){throw 'RUNTIME_RELEASE_ATTEMPT_ACL_UNTRUSTED'}
-    try{$attempt=Get-Content -Raw -LiteralPath $releaseAttemptPath|ConvertFrom-Json -ErrorAction Stop}catch{throw 'RUNTIME_RELEASE_ATTEMPT_INVALID'}
-    if([string]$attempt.schema -ne 'TIGERIQ_PC01_RELEASE_ATTEMPT_V1' -or [string]$attempt.result -ne 'COMMITTED'){
-      throw 'RUNTIME_RELEASE_ATTEMPT_NOT_COMMITTED'
-    }
-    if([string]$attempt.targetSha -cne $head -or [string]$attempt.previousSha -notmatch '^[a-f0-9]{40}$'){
-      throw 'RUNTIME_RELEASE_ATTEMPT_SHA_MISMATCH'
-    }
-    Save-RuntimeSourceState $head ([string]$attempt.previousSha) $head
-    $migrated=$true
-  }
-  Sync-Launchers
-  Set-ProtectedLauncherTaskTarget $coreTask (Join-Path $launcherRuntime 'run-core.ps1')
-  Set-ProtectedLauncherTaskTarget $codingTask (Join-Path $launcherRuntime 'run-coding-lane.ps1')
-  $updaterTarget=Ensure-UpdaterTaskRuntimeTarget
-  return @{action=if($migrated){'migrated'}else{'verified'};installedSha=$head;launcherRuntime=$launcherRuntime;updaterTarget=$updaterTarget}
-}
-
 if($rollbackCanaryMode){
   $impact=@{core=$true;web=$true;coding=$true;openclaw=$false;updater=$false}
   $candidateHead=$null
@@ -935,14 +870,6 @@ if($rollbackCanaryMode){
     $rollback=Invoke-RuntimeRollback $RollbackCanaryPreviousSha $RollbackCanaryCandidateSha $impact -CanaryMode
     [Console]::Out.WriteLine(([ordered]@{result='ROLLED_BACK';failure=$failure;candidateHeadBeforeFailure=$candidateHead;rollback=$rollback}|ConvertTo-Json -Compress -Depth 6))
     exit 0
-  }
-}
-
-if(-not $rollbackCanaryMode){
-  try{$runtimeIsolationMigration=Ensure-ProtectedRuntimeIsolationMigration}
-  catch{
-    Save-State @{result='FAILED';error=('RUNTIME_ISOLATION_MIGRATION:'+ $_.Exception.Message);runtimeSource=$runtimeRepo}
-    exit 76
   }
 }
 
@@ -967,6 +894,7 @@ while($true){
     $fetchHead=Head $controlRepo 'FETCH_HEAD';if(-not $fetchHead){throw 'FETCH_HEAD_MISSING'}
     if($fetchHead -ne $remote){throw 'REMOTE_MAIN_FETCH_HEAD_MISMATCH'}
     $runtimeExists=Test-Path -LiteralPath $runtimeRepo
+    if($runtimeExists){Initialize-ProtectedRuntimeIsolationMigration|Out-Null}
     if($runtimeExists -and (Runtime-Source-Dirty)){Save-State @{result='BLOCKED_DIRTY_RUNTIME';runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     $updaterTaskTarget=if($runtimeExists){Ensure-UpdaterTaskRuntimeTarget}else{@{action='skip';reason='runtime_missing';target=$updaterRuntime}}
     $local=if($runtimeExists){Head $runtimeRepo 'HEAD'}else{$null}
@@ -994,7 +922,6 @@ while($true){
       Start-Sleep -Seconds $IntervalSeconds
       continue
     }
-    . $releaseGuardScript
     $releaseApproval=Get-ReleaseApproval $remote $local $impact $changed $gateSha
     if(-not $releaseApproval.approved){
       Save-State @{result='WAIT_RELEASE_APPROVAL';candidateSha=$remote;installedSha=$local;releaseGateReason=$releaseApproval.reason;changedPaths=$changed;impact=$impact;runtimeSource=$runtimeRepo}
