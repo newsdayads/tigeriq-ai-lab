@@ -12,6 +12,11 @@ describe('runtime source isolation',()=>{
       expect(src).toContain("$runtimeRepo='D:\\TigerIQ\\Runtime\\CoreSource'");
       expect(src).toContain("$runtimeSourceState='C:\\ProgramData\\TigerIQCoreRelease\\State\\core-runtime-source.json'");
       expect(src).toContain("throw 'RUNTIME_SOURCE_STATE_MISSING'");
+      expect(src).toContain("$runtimeReleaseAttempt='C:\\ProgramData\\TigerIQCoreRelease\\core-runtime-release-attempt.json'");
+      expect(src).toContain("function Test-ProtectedReleaseAttemptAcl");
+      expect(src).toContain("TIGERIQ_PC01_RELEASE_ATTEMPT_V1");
+      expect(src).toContain("RUNTIME_RELEASE_ATTEMPT_NOT_INFLIGHT");
+      expect(src).toContain("RUNTIME_RELEASE_ATTEMPT_ACL_UNTRUSTED");
       expect(src).toContain("throw 'RUNTIME_SOURCE_SCHEMA_INVALID'");
       expect(src).toContain("throw 'RUNTIME_SOURCE_PATH_UNTRUSTED'");
       expect(src).toContain("throw 'RUNTIME_SOURCE_SHA_INVALID'");
@@ -23,6 +28,20 @@ describe('runtime source isolation',()=>{
       expect(src).not.toContain("$defaultRepo='D:\\TigerIQ\\Workspace\\tigeriq-ai-lab'");
       expect(src).not.toContain('$repo=$defaultRepo');
       expect(src).not.toContain('$repo=[string]$meta.sourcePath');
+    }
+  });
+
+  it('uses only a protected in-flight release receipt for the one-time launcher migration bridge',()=>{
+    for(const path of [
+      'scripts/tigeriq-core/run-core.ps1',
+      'scripts/tigeriq-core/run-coding-lane.ps1',
+      'scripts/tigeriq-core/run-web-control-bundle.ps1',
+    ]){
+      const src=readFileSync(path,'utf8');
+      expect(src).toContain("[string]$attempt.result -ne 'STARTED'");
+      expect(src).toContain("[string]$attempt.targetSha");
+      expect(src).toContain("GetOwner([System.Security.Principal.SecurityIdentifier])");
+      expect(src).not.toContain("Get-Content -Raw -LiteralPath 'D:\\TigerIQ\\State\\core-runtime-source.json'");
     }
   });
 
