@@ -27,8 +27,8 @@ $appChromeTaskBlueprintHash='D:\TigerIQ\State\app-chrome-unified-task.sha256'
 $appChromeResumeState='D:\TigerIQ\State\app-chrome-runtime-recovery.json'
 $appChromeZeroTouchScript=(Join-Path $runtimeRepo 'scripts\tigeriq-core\appchrome-zero-touch.ps1')
 $appChromeExternalLocalOnly=$true
-# A merged main commit is NOT an authorized PC01 runtime release.
-$releaseGuardScript='C:\ProgramData\TigerIQCoreRelease\pc01-release-guard.ps1'
+# Merge is not a PC01 release.
+$releaseGuardScript='C:\ProgramData\TigerIQCoreRelease\pc01-release-guard.ps1';if(-not $rollbackCanaryMode){. $releaseGuardScript}
 $liveStatusBridgeTask='TigerIQ Live Status Bridge'
 $liveStatusBridgeDir=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-live-status'}else{'D:\TigerIQ\Runtime\LiveStatusBridge'}
 $liveStatusBridgeSource=(Join-Path $runtimeRepo 'apps\tigeriq-live-bridge\server.mjs')
@@ -894,6 +894,7 @@ while($true){
     $fetchHead=Head $controlRepo 'FETCH_HEAD';if(-not $fetchHead){throw 'FETCH_HEAD_MISSING'}
     if($fetchHead -ne $remote){throw 'REMOTE_MAIN_FETCH_HEAD_MISMATCH'}
     $runtimeExists=Test-Path -LiteralPath $runtimeRepo
+    if($runtimeExists){Initialize-ProtectedRuntimeIsolationMigration|Out-Null}
     if($runtimeExists -and (Runtime-Source-Dirty)){Save-State @{result='BLOCKED_DIRTY_RUNTIME';runtimeSource=$runtimeRepo;liveStatusBridgeSync=$liveStatusBridgeSync;liveStatusBridgeReconcile=$liveStatusBridgeReconcile;watchdog=$watchdog};continue}
     $updaterTaskTarget=if($runtimeExists){Ensure-UpdaterTaskRuntimeTarget}else{@{action='skip';reason='runtime_missing';target=$updaterRuntime}}
     $local=if($runtimeExists){Head $runtimeRepo 'HEAD'}else{$null}
@@ -921,7 +922,6 @@ while($true){
       Start-Sleep -Seconds $IntervalSeconds
       continue
     }
-    . $releaseGuardScript
     $releaseApproval=Get-ReleaseApproval $remote $local $impact $changed $gateSha
     if(-not $releaseApproval.approved){
       Save-State @{result='WAIT_RELEASE_APPROVAL';candidateSha=$remote;installedSha=$local;releaseGateReason=$releaseApproval.reason;changedPaths=$changed;impact=$impact;runtimeSource=$runtimeRepo}
