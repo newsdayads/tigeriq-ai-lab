@@ -27,7 +27,7 @@ $appChromeTaskBlueprintHash='D:\TigerIQ\State\app-chrome-unified-task.sha256'
 $appChromeResumeState='D:\TigerIQ\State\app-chrome-runtime-recovery.json'
 $appChromeZeroTouchScript=(Join-Path $runtimeRepo 'scripts\tigeriq-core\appchrome-zero-touch.ps1')
 $appChromeExternalLocalOnly=$true
-# A merged main commit is NOT an authorized PC01 runtime release.
+# Merge is not a PC01 release.
 $releaseGuardScript='C:\ProgramData\TigerIQCoreRelease\pc01-release-guard.ps1';if(-not $rollbackCanaryMode){. $releaseGuardScript}
 $liveStatusBridgeTask='TigerIQ Live Status Bridge'
 $liveStatusBridgeDir=if($rollbackCanaryMode){Join-Path $runtimeRepo '.canary-live-status'}else{'D:\TigerIQ\Runtime\LiveStatusBridge'}
