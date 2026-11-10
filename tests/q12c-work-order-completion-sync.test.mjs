@@ -81,3 +81,15 @@ test('closed completed without V2 evidence cannot unblock a parent Work Order',(
    created_at:'2026-09-01T00:00:00Z',body:'LEGACY_WORK_ORDER=true'};
  assert.equal(sourceTerminalDependencyAccepted(legacy),true);
 });
+
+test('Owner-closed not_planned issue stays closed and never appears as waiting or DONE in Web Control',()=>{
+ const issue={...acceptedIssue(),number:5365,state:'closed',state_reason:'not_planned',
+  body:acceptedIssue().body.replace('CURRENT_STATE=DONE_ACCEPTED','CURRENT_STATE=NOT_PLANNED').replace('DONE=true','DONE=false')};
+ const projected=projectWorkOrder(issue);
+ assert.equal(projected.closed,true);
+ assert.equal(projected.status,'CLOSED_UNVERIFIED');
+ assert.equal(projected.bucket,'ĐÃ ĐÓNG');
+ assert.equal(projected.state,'ĐÃ ĐÓNG');
+ assert.equal(projected.completionVerified,false);
+ assert.equal(sourceTerminalDependencyAccepted(issue),false);
+});
