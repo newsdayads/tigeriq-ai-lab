@@ -614,7 +614,7 @@ class FloatingCameraService : Service(), DisplayManager.DisplayListener {
     private fun buildNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText("N?t Camera n?i ?? s?n s?ng tr?n DeX")
+            .setContentText(getString(R.string.floating_service_desc))
             .setSmallIcon(R.drawable.ic_camera_floating)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
