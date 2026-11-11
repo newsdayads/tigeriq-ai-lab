@@ -227,6 +227,9 @@ document.addEventListener('visibilitychange', () => {
 });
 setInterval(() => {
   if (document.visibilityState === 'visible') refresh();
-refreshRoster();
 }, 10_000);
+setInterval(() => {
+  if (document.visibilityState === 'visible') refreshRoster();
+}, 30_000);
 refresh();
+refreshRoster();
