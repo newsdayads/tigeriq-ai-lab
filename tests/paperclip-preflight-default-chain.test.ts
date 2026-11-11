@@ -185,7 +185,7 @@ describe('Paperclip R01 production-default preflight call chain (isolated OS)', 
       imageDigestVerified:false,
     });
     expect(result.docker.broker.ready).toBe(true);
-    expect(state.spawned).toEqual(['docker.exe', 'wsl.exe']);
+    expect(state.spawned.map((exe) => exe.split(/[\\/]/).at(-1))).toEqual(['docker.exe', 'wsl.exe']);
     expect(state.lstatPaths).toContain(HEARTBEAT);
     expect(state.writeAttempts).toEqual([]);
     expect(state.socketConnects).toBe(1);
@@ -228,7 +228,7 @@ describe('Paperclip R01 production-default preflight call chain (isolated OS)', 
       arbitraryPath: false,
       arbitraryPort: false,
     });
-    expect(state.spawned).toEqual(['docker.exe', 'wsl.exe']);
+    expect(state.spawned.map((exe) => exe.split(/[\\/]/).at(-1))).toEqual(['docker.exe', 'wsl.exe']);
     expect(state.lstatPaths).toContain(HEARTBEAT);
     expect(state.writeAttempts).toEqual([]);
     expect(state.socketConnects).toBe(1);
@@ -402,7 +402,7 @@ describe('Paperclip R01 production-default preflight call chain (isolated OS)', 
       });
       expect(result.evidence).toMatchObject({ loopbackOnly: false, observedLoopbackBinding: null });
       expect(fetchProbe).toHaveBeenCalledOnce();
-      expect(state.spawned).toEqual(['docker.exe', 'wsl.exe']);
+      expect(state.spawned.map((exe) => exe.split(/[\\/]/).at(-1))).toEqual(['docker.exe', 'wsl.exe']);
       expect(state.writeAttempts).toEqual([]);
       expect(state.socketConnects).toBe(1);
     } finally {
