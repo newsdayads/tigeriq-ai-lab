@@ -13,7 +13,7 @@
   const label=document.createElement('div');label.className='scene-info';
   label.textContent='ANIMAL CITY · VĂN PHÒNG 3D · Kéo để xoay';
   const note=document.createElement('div');note.className='scene-footer';
-  note.textContent='Nhân vật minh họa · Đèn xanh = worker đã được Core xác minh';
+  note.textContent='Khu phía trước minh họa · 6 khu phía sau: nhân viên từ Registry #335, xanh chỉ khi Core xác minh BUSY';
   const reset=document.createElement('button');reset.type='button';
   reset.className='scene-reset';reset.textContent='Góc chuẩn';
   stage.append(canvas,label,note,reset);
@@ -61,6 +61,9 @@
   gl.useProgram(program);
   const colors=new Map();
   const names=['coordination','engineering','quality'],centers=[-4.2,0,4.2];
+  const zonePositions=[[-4.2,-6],[0,-6],[4.2,-6],[-4.2,-10], [0,-10],[4.2,-10]];
+  const zoneColors=['#8dabc6','#a8c2ae','#a6b8d7','#c3b9db','#d4c19e','#a2a8b2'];
+  let officeRoster=null;
   const palette=[
     ['#9ab9ad','#c1ddcb','#468d8e','#b48760'],
     ['#afb9d1','#d7dbec','#7288c8','#ac805c'],
@@ -155,6 +158,29 @@
     ball(x+.26,.71,z+.32,.14,.15,.15,main);
     active=0;
   }
+  function miniMascot(x,z,animal,status,scale=1){
+    const colors={fox:'#e99845',wolf:'#899bab',owl:'#cfa575',beaver:'#a57955',
+      panda:'#f0efe9',deer:'#c68c61',rabbit:'#d4c6df'};
+    const main=colors[animal]||'#9cb4a5',s=Math.max(.20,Math.min(1,scale));
+    const ring=status==='BUSY'?'#42e1a1':status==='WAIT'?'#e2ad51':
+      status==='STOPPED'?'#757c85':status==='IDLE'?'#8ab9da':'#9c9eaa';
+    active=0;
+    ball(x,.045*s,z,.21*s,.036*s,.20*s,ring);
+    cube(x,.23*s,z-.13*s,.37*s,.21*s,.30*s,'#566b78');
+    active=status==='BUSY'?1:0;
+    ball(x,.43*s,z,.18*s,.22*s,.16*s,main);
+    ball(x,.70*s,z+.01*s,.20*s,.21*s,.18*s,main);
+    if(animal==='fox'||animal==='wolf'||animal==='rabbit'||animal==='deer'){
+      ball(x-.13*s,.88*s,z,.075*s,.115*s,.065*s,main);
+      ball(x+.13*s,.88*s,z,.075*s,.115*s,.065*s,main);
+    }else{
+      ball(x-.13*s,.85*s,z,.08*s,.08*s,.07*s,animal==='panda'?'#30343b':main);
+      ball(x+.13*s,.85*s,z,.08*s,.08*s,.07*s,animal==='panda'?'#30343b':main);
+    }
+    ball(x-.08*s,.72*s,z+.16*s,.03*s,.038*s,.02*s,'#28343c');
+    ball(x+.08*s,.72*s,z+.16*s,.03*s,.038*s,.02*s,'#28343c');
+    active=0;
+  }
   const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
   for(const [attrib,size,offset] of [['aPos',3,0],['aNormal',3,12],['aColor',3,24],['aActive',1,36]]){
     const p=gl.getAttribLocation(program,attrib);gl.enableVertexAttribArray(p);
@@ -164,7 +190,7 @@
   gl.enable(gl.DEPTH_TEST);gl.clearColor(.074,.14,.22,1);
   function build(busyRooms){
     vertex=[];
-    cube(0,-.29,0,13.3,.23,5.25,'#57736d');
+    cube(0,-.29,-4.5,13.3,.23,15.2,'#57736d');
     cube(0,-.4,2.48,13,.2,.40,'#d7c09d');
     centers.forEach((x,i)=>{
       const [floor,wall,trim,wood]=palette[i],busy=busyRooms.has(names[i]);
@@ -193,6 +219,24 @@
       ball(x+1.41,1.63,-1.87,.09,.09,.09,busy?'#45e1a2':'#aab7bc');
       cube(x,-.12,2.10,3.91,.12,.13,trim);
     });
+    zonePositions.forEach(([x,z],i)=>{
+      const floor=zoneColors[i],members=officeRoster?.zones?.[i]?.members||[];
+      cube(x,-.07,z,3.91,.19,3.78,floor);
+      cube(x,.30,z-1.82,3.82,.79,.11,'#becfda');
+      cube(x,.78,z-1.82,3.92,.10,.16,floor);
+      cube(x,-.12,z+1.90,3.94,.13,.09,'#526f84');
+      const cols=Math.max(3,Math.ceil(Math.sqrt(Math.max(1,members.length)*1.2)));
+      const rows=Math.ceil(members.length/cols);
+      const dx=cols>1?2.85/(cols-1):0;
+      const dz=rows>1?2.4/(rows-1):0;
+      const scale=Math.max(.22,Math.min(1,Math.min(dx||1,dz||1)/.92));
+      members.forEach((person,j)=>{
+        const px=x-1.43+(j%cols)*dx,pz=z-.98+Math.floor(j/cols)*dz;
+        miniMascot(px,pz,person.animal,person.status,scale);
+      });
+      ball(x+1.56,.69,z-1.74,.10,.10,.10,
+        members.some(p=>p.status==='BUSY')?'#4ce0aa':'#a4b0ba');
+    });
     const arr=new Float32Array(vertex);
     gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,arr,gl.STATIC_DRAW);
     count=arr.length/10;
@@ -209,11 +253,11 @@
       for(let k=0;k<4;k++)m[col*4+row]+=a[k*4+row]*b[col*4+k];
     return m;
   };
-  let theta=.33,elev=.62,zoom=17,pointer=null;
+  let theta=.33,elev=.62,zoom=26,pointer=null;
   function cam(distance){
     const eye=[distance*Math.sin(theta)*Math.cos(elev),
-      .55+distance*Math.sin(elev),distance*Math.cos(theta)*Math.cos(elev)];
-    const forward=norm(sub([0,.6,0],eye));
+      .55+distance*Math.sin(elev),-4.5+distance*Math.cos(theta)*Math.cos(elev)];
+    const forward=norm(sub([0,.6,-4.5],eye));
     const right=norm(cross(forward,[0,1,0]));
     const up=cross(right,forward);
     return {eye,forward,right,up};
@@ -228,7 +272,7 @@
       (far+near)/(near-far),-1,0,0,2*far*near/(near-far),0]);
     return mult(perspective,view);
   }
-  const effectiveDistance=asp=>zoom+(asp<1.2?10:0);
+  const effectiveDistance=asp=>zoom+(asp<1.2?12:0);
   function frame(t){
     if(document.visibilityState==='visible'){
       const size=canvas.getBoundingClientRect(),scale=Math.min(devicePixelRatio||1,2);
@@ -250,7 +294,19 @@
     if(ray[1]>=-.0001)return;
     const dist=(0-c.eye[1])/ray[1];
     const xx=c.eye[0]+dist*ray[0],zz=c.eye[2]+dist*ray[2];
-    if(zz < -2.3||zz>2.3)return;
+    if(zz < -12.1||zz>2.3)return;
+    if(zz<-3.7){
+      const zones=officeRoster?.zones||[];
+      for(let i=0;i<zonePositions.length;i++){
+        const [zx,zzone]=zonePositions[i];
+        if(Math.abs(xx-zx)<1.95&&Math.abs(zz-zzone)<1.95){
+          document.querySelector('[data-animal-zone="'+zones[i]?.id+'"]')
+            ?.scrollIntoView({behavior:'smooth',block:'nearest'});
+          return;
+        }
+      }
+      return;
+    }
     for(let i=0;i<3;i++)if(Math.abs(xx-centers[i])<1.9){
       tabs.find(x=>x.dataset.room===names[i])?.click();return;
     }
@@ -272,15 +328,21 @@
   });
   canvas.addEventListener('pointercancel',()=>{pointer=null});
   canvas.addEventListener('wheel',e=>{
-    e.preventDefault();zoom=Math.max(12,Math.min(27,zoom+Math.sign(e.deltaY)*.7));
+    e.preventDefault();zoom=Math.max(18,Math.min(44,zoom+Math.sign(e.deltaY)*.7));
   },{passive:false});
-  reset.addEventListener('click',()=>{theta=.33;elev=.62;zoom=17});
+  reset.addEventListener('click',()=>{theta=.33;elev=.62;zoom=26});
   window.addEventListener('tigeriq:live',e=>{
     const live=e.detail,next=new Set();
     if(live?.ok===true && live.liveWorkerBindingsVerified===true)
       for(const worker of live.workers||[])
         if(worker.activeWorkerVerified===true && names.includes(worker.room))next.add(worker.room);
     if(names.some(name=>next.has(name)!==busy.has(name))){busy=next;build(busy)}
+  });
+  window.addEventListener('tigeriq:roster',event=>{
+    const data=event.detail;
+    officeRoster=data?.ok===true && Array.isArray(data.zones) && data.zones.length===6
+      ?data:null;
+    build(busy);
   });
   stage.dataset.renderer='webgl';
 })();
