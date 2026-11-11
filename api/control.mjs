@@ -3,6 +3,7 @@ import { decideWithChief } from './chief.mjs';
 import { isOwnerAuthorized } from './owner-auth.mjs';
 import { authorizedPairedWorkCardDevice } from '../apps/shared/owner-paired-work-card.mjs';
 import ownerDecisionHandler from '../apps/tigeriq-core/owner-decision-handler.mjs';
+import {validateOwnerPriorityInput, eligibleOwnerPriorityIssue, priorityFromIssue, priorityMutation} from '../apps/tigeriq-core/owner-priority.mjs';
 import { validateOwnerWorkRequest, makeOwnerRequestReceipt, makeOwnerResultReceipt, ownerWorkRequestHistory, ownerWorkRequestResolved, ownerWorkRequestReplayPlan, ownerWorkRequestTriageStatus } from '../apps/shared/owner-work-request.mjs';
 import { boundedOwnerTriageChild } from '../apps/shared/owner-work-dispatch.mjs';
 
@@ -486,6 +487,48 @@ function sameOriginWrite(req) {
     const error=new Error('invalid_owner_request_origin');error.status=403;throw error;
   }
 }
+// Owner-only GitHub Work Order priority change; cannot be called using a paired device,
+// user-supplied PAT, unsecured PC01 LAN endpoint, or an unauthenticated browser.
+async function ownerPriorityApi(req,res,payload=null,readOnly=false){
+  if(!isOwnerAuthorized(req))return json(res,401,{ok:false,error:'OWNER_LOGIN_REQUIRED'});
+  if(!GITHUB_TOKEN)return json(res,503,{ok:false,error:'GITHUB_OWNER_TOKEN_MISSING'});
+  if(!readOnly){
+    sameOriginWrite(req);
+    if(!/^application\/json(?:;|$)/i.test(String(req.headers['content-type']||'')))
+      return json(res,403,{ok:false,error:'OWNER_JSON_ORIGIN_REQUIRED'});
+  }
+  const number=Number(readOnly
+    ?new URL(req.url||'/', 'https://tigeriq-ai-lab.vercel.app').searchParams.get('issue')
+    :payload?.issueNumber);
+  if(!Number.isSafeInteger(number)||number<1||number>99999999)
+    return json(res,400,{ok:false,error:'ISSUE_NUMBER_INVALID'});
+  const {owner,repo}=repoParts();
+  const path='/repos/'+owner+'/'+repo+'/issues/'+number;
+  const issue=await gh(path,{},GITHUB_TOKEN);
+  if(!eligibleOwnerPriorityIssue(issue))
+    return json(res,409,{ok:false,error:'WORK_ORDER_NOT_ELIGIBLE'});
+  const current=priorityFromIssue(issue);
+  if(readOnly)return json(res,200,{ok:true,number,title:issue.title,priority:current,
+    updatedAt:issue.updated_at,githubUrl:issue.html_url,ownerAuthenticated:true,
+    priorityOptions:['P0','P1','P2','P3','P4','P5'],
+    p0OwnerOnly:true});
+  const input=validateOwnerPriorityInput(payload);
+  if(input.issueNumber!==number)return json(res,400,{ok:false,error:'ISSUE_NUMBER_MISMATCH'});
+  if(issue.updated_at!==input.expectedUpdatedAt||current!==input.expectedPriority)
+    return json(res,409,{ok:false,error:'ISSUE_CHANGED_REFRESH_REQUIRED'});
+  const plan=priorityMutation(issue,input.priority);
+  if(!plan.changed)return json(res,200,{ok:true,unchanged:true,number,priority:current,githubUrl:issue.html_url});
+  await gh(path,{method:'PATCH',headers:{'content-type':'application/json'},
+    body:JSON.stringify({title:plan.title,body:plan.body})},GITHUB_TOKEN);
+  const after=await gh(path,{},GITHUB_TOKEN);
+  if(after.title!==plan.title||priorityFromIssue(after)!==input.priority||
+     (input.priority==='P0'&&!/^TIGERIQ_EXECUTABLE=false$/m.test(String(after.body||''))))
+    return json(res,502,{ok:false,error:'GITHUB_WRITE_READBACK_NOT_VERIFIED'});
+  return json(res,200,{ok:true,number,previous:plan.previous,priority:input.priority,
+    title:after.title,githubUrl:after.html_url,updatedAt:after.updated_at,
+    verified:true,p0OwnerOnly:input.priority==='P0'});
+}
+
 async function ownerRequestIssue(issueNumber, token) {
   const {owner,repo}=repoParts();
   const issue=await gh('/repos/'+owner+'/'+repo+'/issues/'+issueNumber,{},token);
@@ -574,6 +617,7 @@ async function ownerRequestApi(req,res,payload,readOnly=false){
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
+      if (new URL(req.url||'/', 'https://localhost').searchParams.get('operation') === 'owner-priority') return await ownerPriorityApi(req,res,null,true);
       if (new URL(req.url||'/', 'https://localhost').searchParams.get('operation') === 'owner-work-request') return await ownerRequestApi(req,res,null,true);
       // Reuse the existing API function quota; still require Owner session in handler.
       if (new URL(req.url || '/', 'https://tigeriq-ai-lab.vercel.app').searchParams.get('operation') === 'owner-decision')
@@ -588,6 +632,7 @@ export default async function handler(req, res) {
     const optionalToken = clientGithubToken(req);
 
     if (operation === 'owner-decision') return ownerDecisionHandler(req, res, payload);
+    if (operation === 'owner-priority') return await ownerPriorityApi(req,res,payload);
     if (operation === 'owner-work-request') return await ownerRequestApi(req,res,payload);
     if (operation === 'status') return json(res, 200, await statusSnapshot(optionalToken));
     if (operation === 'whoami') return json(res, 200, await githubIdentity((await writeCredential(req)).token));
