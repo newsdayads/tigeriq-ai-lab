@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.12.2",
+  "checkpoint_id": "a66c079bd8c8",
+  "strategy": "manual-commit",
+  "branch": "feat/tigeriq-camera-v1026-oem-wheeltracks",
+  "checkpoints_count": 7,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/a6/6c079bd8c8/0/metadata.json",
+      "transcript": "/a6/6c079bd8c8/0/full.jsonl",
+      "content_hash": "/a6/6c079bd8c8/0/content_hash.txt",
+      "prompt": "/a6/6c079bd8c8/0/prompt.txt"
+    }
+  ],
+  "redaction": {
+    "replacements": 30,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 11,
+      "credentialed_uri": 0,
+      "entropy": 19,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
