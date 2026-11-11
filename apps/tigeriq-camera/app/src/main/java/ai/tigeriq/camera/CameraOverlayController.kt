@@ -113,6 +113,7 @@ object CameraOverlayController {
             try {
                 parkAssistEngine?.stop()
                 uvcManager?.stop()
+                guideView?.resetMotionSteering()
                 overlayView?.visibility = View.GONE
                 isOverlayVisible = false
                 autoOpenedByReverse = false
@@ -233,6 +234,9 @@ object CameraOverlayController {
                 }
             }
         )
+        uvc.onMotionScore = { score ->
+            guideView?.onVideoMotionScore(score)
+        }
         uvcManager = uvc
 
         btnGrantUsb?.setOnClickListener {
@@ -255,6 +259,7 @@ object CameraOverlayController {
                 CameraSettings.STYLE_AUDI_MATRIX -> "Audi Matrix"
                 CameraSettings.STYLE_TESLA_CYBER -> "Tesla Cyber"
                 CameraSettings.STYLE_LUXURY_GOLD -> "Luxury Maybach Gold"
+                CameraSettings.STYLE_OEM_WHEEL -> "Bánh xe OEM"
                 else -> "Mẫu $nextStyle"
             }
             tvStatusMessage?.text = "Mẫu vạch: $styleName"

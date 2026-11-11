@@ -6,6 +6,10 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -16,15 +20,14 @@ import kotlin.math.abs
 
 /**
  * 100% Vector Canvas Engine for TigerIQ Camera Dynamic Reverse Guidelines.
- * Replaces the jagged raster clipping with smooth continuous Bézier curves.
- * Supports 3 professional OEM styles, steering gyro bending, inversion toggle,
- * and high-contrast distance badges (0.5m, 1.0m, 1.5m).
+ * Supports OEM styles + dual tire-track ribbons, concentric ReversePathGeometry arcs,
+ * verified steering angle priority, and vibration-gated Gyro + UVC optical motion curving.
  */
 class DynamicGuideView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
-) : View(context, attrs, defStyleAttr) {
+) : View(context, attrs, defStyleAttr), SensorEventListener {
 
     private val settings = CameraSettings(context)
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -51,19 +54,40 @@ class DynamicGuideView @JvmOverloads constructor(
     }
     private val leftPath = Path()
     private val rightPath = Path()
+    private val wheelRibbonPath = Path()
+    private val crossbarPath = Path()
+    private val wheelFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.argb(145, 10, 132, 255)
+    }
+    private val wheelEdgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+        color = Color.argb(190, 96, 175, 255)
+    }
+    private val outerRailPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+        color = Color.argb(242, 26, 148, 255)
+    }
 
     // Curvature state
     var curvature: Float = 0f
         private set
-    private var targetCurvature: Float = 0f
+    private var currentWheelDegrees: Float = 0f
 
-    // No steering angle can be derived from a stationary Galaxy Z Fold2 gyro.
-    // Only a dedicated verified road-wheel steering source may enable curvature.
-    private var verifiedRoadWheelAngleDegrees: Float? = null
+    private val motionEstimator = MotionSteeringEstimator()
+    private val steeringResolver = GuideSteeringResolver()
 
-    // Touch steer calibration
-    private var touchStartX = 0f
-    private var isTouchSteering = false
+    // Orientation-invariant Gyro + Gravity sensor state
+    private var sensorManager: SensorManager? = null
+    private var isSensorRegistered = false
+    private var gravityX = 0f
+    private var gravityY = 9.81f
+    private var gravityZ = 0f
+    private var gravityReady = false
 
     var isGuideVisible: Boolean
         get() = settings.isGuidelinesEnabled
@@ -72,12 +96,19 @@ class DynamicGuideView @JvmOverloads constructor(
             invalidate()
         }
 
-    /** Legacy broadcast steering parameter is not verified vehicle data. */
-    @Suppress("UNUSED_PARAMETER")
-    fun setSteeringDegrees(degrees: Float) {
-        verifiedRoadWheelAngleDegrees = null
-        targetCurvature = 0f
+    fun onVideoMotionScore(score: Float) {
+        motionEstimator.onVideoMotionScore(score, SystemClock.uptimeMillis())
+    }
+
+    fun resetMotionSteering() {
+        motionEstimator.reset()
+        currentWheelDegrees = 0f
         curvature = 0f
+        invalidate()
+    }
+
+    fun setSteeringDegrees(degrees: Float) {
+        steeringResolver.setLegacySteeringDegrees(degrees, settings.isSteeringInverted)
         invalidate()
     }
 
@@ -86,36 +117,97 @@ class DynamicGuideView @JvmOverloads constructor(
      * vehicle calibration; negative = rear path bends left, positive = right.
      */
     fun setVerifiedRoadWheelAngleDegrees(degrees: Float?) {
-        verifiedRoadWheelAngleDegrees =
-            degrees?.takeIf { it.isFinite() && it in -35f..35f }
-        targetCurvature = (verifiedRoadWheelAngleDegrees ?: 0f) / 35f
+        steeringResolver.setVerifiedRoadWheelAngleDegrees(degrees)
         invalidate()
     }
 
     private val animateRunnable = object : Runnable {
+        private var lastPrefSig = Int.MIN_VALUE
         override fun run() {
             val now = SystemClock.uptimeMillis()
-            // No gyroscope-based steering guessing. Interpolation smooths only
-            // a verified front road-wheel angle, if one ever becomes available.
-            if (verifiedRoadWheelAngleDegrees == null) targetCurvature = 0f
+            val prefSig = (settings.guidelineStyle * 31) xor
+                (settings.guidelineScale * 100f).toInt() xor
+                (if (settings.isOemWheelDistanceBarsEnabled) 0x10 else 0) xor
+                (if (settings.isGuidelinesEnabled) 0x20 else 0) xor
+                (if (settings.isMotionCurveEnabled) 0x40 else 0)
+            val motionDeg = if (settings.isMotionCurveEnabled) {
+                motionEstimator.step(now, settings.isSteeringInverted)
+            } else {
+                0f
+            }
+            val targetDeg = steeringResolver.resolveTargetDegrees(motionDeg)
+            val prevDeg = currentWheelDegrees
+            currentWheelDegrees += 0.35f * (targetDeg - currentWheelDegrees)
+            if (abs(currentWheelDegrees) < 0.1f && abs(targetDeg) < 0.1f) {
+                currentWheelDegrees = 0f
+            }
+            curvature = currentWheelDegrees / 35f
 
-            // Smooth interpolation
-            curvature = 0.68f * curvature + 0.32f * targetCurvature
-            if (abs(curvature) < 0.002f) curvature = 0f
-
-            invalidate()
+            if (prefSig != lastPrefSig || abs(currentWheelDegrees - prevDeg) > 0.02f || abs(currentWheelDegrees) > 0.05f) {
+                lastPrefSig = prefSig
+                invalidate()
+            }
             mainHandler.postDelayed(this, 33) // ~30 fps
         }
     }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        registerSensors()
         mainHandler.post(animateRunnable)
     }
 
     override fun onDetachedFromWindow() {
+        unregisterSensors()
         mainHandler.removeCallbacks(animateRunnable)
         super.onDetachedFromWindow()
+    }
+
+    private fun registerSensors() {
+        if (isSensorRegistered) return
+        try {
+            val sm = context.applicationContext.getSystemService(Context.SENSOR_SERVICE) as? SensorManager ?: return
+            sensorManager = sm
+            sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE)?.let {
+                sm.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+            }
+            sm.getDefaultSensor(Sensor.TYPE_GRAVITY)?.let {
+                sm.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+            }
+            isSensorRegistered = true
+        } catch (_: Throwable) {}
+    }
+
+    private fun unregisterSensors() {
+        if (!isSensorRegistered) return
+        try {
+            sensorManager?.unregisterListener(this)
+        } catch (_: Throwable) {}
+        isSensorRegistered = false
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+    override fun onSensorChanged(event: SensorEvent?) {
+        val ev = event ?: return
+        val v = ev.values ?: return
+        if (v.size < 3) return
+        when (ev.sensor.type) {
+            Sensor.TYPE_GRAVITY -> {
+                gravityX = v[0]
+                gravityY = v[1]
+                gravityZ = v[2]
+                gravityReady = true
+            }
+            Sensor.TYPE_GYROSCOPE -> {
+                motionEstimator.onGyroSample(
+                    wx = v[0], wy = v[1], wz = v[2],
+                    gx = gravityX, gy = gravityY, gz = gravityZ,
+                    hasGravity = gravityReady,
+                    timestampMs = SystemClock.uptimeMillis()
+                )
+            }
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -142,9 +234,8 @@ class DynamicGuideView @JvmOverloads constructor(
 
         val cx = w * 0.5f
         val maxShift = (w * 0.5f - bottomHalfW - dp(24f)).coerceAtLeast(dp(20f))
-        val wheelAngle = (verifiedRoadWheelAngleDegrees ?: 0f).toDouble()
+        val wheelAngle = currentWheelDegrees.toDouble().coerceIn(-35.0, 35.0)
         // Kinematic bicycle model: physically-grounded rear-axle movement.
-        // 2.9m wheelbase and width are model placeholders until vehicle calibration.
         val pFull = ReversePathGeometry.sample(3.0, wheelAngle, 2.9, 1.8)
         val pMiddle = ReversePathGeometry.sample(1.5, wheelAngle, 2.9, 1.8)
         val shift = (pFull.centerX.toFloat() * topHalfW / 0.9f * warp)
@@ -174,6 +265,9 @@ class DynamicGuideView @JvmOverloads constructor(
         rightPath.quadTo(ctrlRx, midY, trX, topY)
 
         when (style) {
+            CameraSettings.STYLE_OEM_WHEEL -> {
+                drawOemWheelTrack(canvas, cx, bottomY, topY, bottomHalfW, topHalfW, wheelAngle, scale)
+            }
             CameraSettings.STYLE_PORSCHE_GT -> {
                 drawPorscheGt(canvas, blX, brX, tlX, trX, ctrlLx, ctrlRx, bottomY, topY, scale)
             }
@@ -190,6 +284,127 @@ class DynamicGuideView @JvmOverloads constructor(
                 drawSportRacing(canvas, blX, brX, tlX, trX, ctrlLx, ctrlRx, bottomY, topY, scale)
             }
         }
+    }
+
+    /**
+     * MẪU 6: Đường bánh xe OEM (2 viền thân xe mảnh + khe hở + 2 dải bánh xe xanh + thanh đỏ 0.5m cố định)
+     */
+    private fun drawOemWheelTrack(
+        canvas: Canvas,
+        cx: Float,
+        bottomY: Float,
+        topY: Float,
+        bottomHalfW: Float,
+        topHalfW: Float,
+        wheelAngle: Double,
+        scale: Float
+    ) {
+        val sMin = 0.35
+        val sMax = 2.90
+        val steps = 20
+        val outerOffset = 0.92
+        val tireOuterOffset = 0.84
+        val tireInnerOffset = 0.56
+        val warpDeg = (wheelAngle * settings.warpFactor.toDouble()).coerceIn(-35.0, 35.0)
+
+        fun buildRibbon(innerU: Double, outerU: Double) {
+            wheelRibbonPath.reset()
+            for (i in 0..steps) {
+                val s = sMin + (sMax - sMin) * (i.toDouble() / steps)
+                val wt = ReversePathGeometry.sampleTrackPoint(s, warpDeg, 2.9, innerU)
+                val pt = ReversePathGeometry.worldToScreen(wt.x, wt.back, cx, bottomY, topY, bottomHalfW, topHalfW)
+                if (i == 0) wheelRibbonPath.moveTo(pt.x, pt.y) else wheelRibbonPath.lineTo(pt.x, pt.y)
+            }
+            for (i in steps downTo 0) {
+                val s = sMin + (sMax - sMin) * (i.toDouble() / steps)
+                val wt = ReversePathGeometry.sampleTrackPoint(s, warpDeg, 2.9, outerU)
+                val pt = ReversePathGeometry.worldToScreen(wt.x, wt.back, cx, bottomY, topY, bottomHalfW, topHalfW)
+                wheelRibbonPath.lineTo(pt.x, pt.y)
+            }
+            wheelRibbonPath.close()
+            canvas.drawPath(wheelRibbonPath, wheelFillPaint)
+            wheelEdgePaint.strokeWidth = dp(1.2f) * scale
+            canvas.drawPath(wheelRibbonPath, wheelEdgePaint)
+        }
+
+        fun buildRail(path: Path, lateralU: Double) {
+            path.reset()
+            val railStart = sMin - 0.04
+            val railEnd = sMax + 0.06
+            for (i in 0..steps) {
+                val s = railStart + (railEnd - railStart) * (i.toDouble() / steps)
+                val wt = ReversePathGeometry.sampleTrackPoint(s, warpDeg, 2.9, lateralU)
+                val pt = ReversePathGeometry.worldToScreen(wt.x, wt.back, cx, bottomY, topY, bottomHalfW, topHalfW)
+                if (i == 0) path.moveTo(pt.x, pt.y) else path.lineTo(pt.x, pt.y)
+            }
+            outerRailPaint.strokeWidth = dp(3.0f) * scale
+            canvas.drawPath(path, outerRailPaint)
+        }
+
+        buildRibbon(-tireInnerOffset, -tireOuterOffset)
+        buildRibbon(tireInnerOffset, tireOuterOffset)
+        buildRail(leftPath, -outerOffset)
+        buildRail(rightPath, outerOffset)
+
+        val showMetricBars = settings.isOemWheelDistanceBarsEnabled
+        if (showMetricBars) {
+            linePaint.color = Color.argb(140, 255, 255, 255)
+            linePaint.strokeWidth = dp(2.0f) * scale
+            for (d in 0 until 7) {
+                val s1 = 0.45 + d * 0.34
+                val s2 = s1 + 0.17
+                if (s2 > sMax) break
+                val w1 = ReversePathGeometry.sampleTrackPoint(s1, warpDeg, 2.9, 0.0)
+                val w2 = ReversePathGeometry.sampleTrackPoint(s2, warpDeg, 2.9, 0.0)
+                val p1 = ReversePathGeometry.worldToScreen(w1.x, w1.back, cx, bottomY, topY, bottomHalfW, topHalfW)
+                val p2 = ReversePathGeometry.worldToScreen(w2.x, w2.back, cx, bottomY, topY, bottomHalfW, topHalfW)
+                canvas.drawLine(p1.x, p1.y, p2.x, p2.y, linePaint)
+            }
+
+            drawCurvedMetricBar(canvas, cx, bottomY, topY, bottomHalfW, topHalfW, warpDeg, 1.25, outerOffset, Color.rgb(234, 179, 8), "1.0m", scale)
+            drawCurvedMetricBar(canvas, cx, bottomY, topY, bottomHalfW, topHalfW, warpDeg, 2.15, outerOffset, Color.rgb(34, 197, 94), "1.5m", scale)
+        }
+
+        // Fixed horizontal RED rear-bumper clearance bar (~0.5m, stays anchored to car bumper)
+        val bLeft = ReversePathGeometry.worldToScreen(-outerOffset, 0.48, cx, bottomY, topY, bottomHalfW, topHalfW)
+        val bRight = ReversePathGeometry.worldToScreen(outerOffset, 0.48, cx, bottomY, topY, bottomHalfW, topHalfW)
+        linePaint.color = Color.rgb(244, 63, 94)
+        linePaint.strokeWidth = dp(4.5f) * scale
+        canvas.drawLine(bLeft.x, bLeft.y, bRight.x, bRight.y, linePaint)
+        if (showMetricBars) {
+            drawBadge(canvas, cx, bLeft.y, "0.5m", Color.rgb(244, 63, 94), scale)
+        }
+    }
+
+    private fun drawCurvedMetricBar(
+        canvas: Canvas,
+        cx: Float,
+        bottomY: Float,
+        topY: Float,
+        bottomHalfW: Float,
+        topHalfW: Float,
+        wheelAngle: Double,
+        sMeters: Double,
+        outerOffset: Double,
+        color: Int,
+        label: String,
+        scale: Float
+    ) {
+        crossbarPath.reset()
+        val segs = 12
+        for (i in 0..segs) {
+            val u = -outerOffset + (outerOffset * 2.0) * (i.toDouble() / segs)
+            val wt = ReversePathGeometry.sampleTrackPoint(sMeters, wheelAngle, 2.9, u)
+            val pt = ReversePathGeometry.worldToScreen(wt.x, wt.back, cx, bottomY, topY, bottomHalfW, topHalfW)
+            if (i == 0) crossbarPath.moveTo(pt.x, pt.y) else crossbarPath.lineTo(pt.x, pt.y)
+        }
+        linePaint.color = color
+        linePaint.strokeWidth = dp(2.8f) * scale
+        canvas.drawPath(crossbarPath, linePaint)
+
+        val midW = ReversePathGeometry.sampleTrackPoint(sMeters, wheelAngle, 2.9, 0.0)
+        val midP = ReversePathGeometry.worldToScreen(midW.x, midW.back, cx, bottomY, topY, bottomHalfW, topHalfW)
+        drawBadge(canvas, midP.x, midP.y, label, color, scale)
     }
 
     /**

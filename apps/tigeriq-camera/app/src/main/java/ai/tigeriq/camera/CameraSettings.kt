@@ -13,7 +13,8 @@ class CameraSettings(context: Context) {
         const val STYLE_AUDI_MATRIX = 2
         const val STYLE_TESLA_CYBER = 3
         const val STYLE_LUXURY_GOLD = 4
-        const val TOTAL_STYLES = 5
+        const val STYLE_OEM_WHEEL = 5
+        const val TOTAL_STYLES = 6
 
         // Backwards compatibility
         const val STYLE_SPORT_RACING = 0
@@ -27,11 +28,23 @@ class CameraSettings(context: Context) {
         private const val KEY_WARP_FACTOR = "warp_factor"
         private const val KEY_REVERSE_IMMEDIATE_CLOSE = "reverse_immediate_close"
         private const val KEY_STEERING_INVERTED = "steering_inverted"
+        private const val KEY_MOTION_CURVE_ENABLED = "motion_curve_enabled"
+        private const val KEY_OEM_WHEEL_DISTANCE_BARS = "oem_wheel_distance_bars"
+        private const val KEY_MIGRATED_V26_OEM_WHEEL = "migrated_v26_oem_wheel"
         private const val KEY_GUIDELINE_STYLE = "guideline_style"
         private const val KEY_GUIDELINE_SCALE = "guideline_scale"
         private const val KEY_GUIDELINE_OFFSET_Y = "guideline_offset_y"
         private const val KEY_PARK_ASSIST_BEEP = "park_assist_beep"
         private const val KEY_NIGHT_BOOSTER = "night_booster"
+    }
+
+    init {
+        if (!prefs.getBoolean(KEY_MIGRATED_V26_OEM_WHEEL, false)) {
+            prefs.edit()
+                .putInt(KEY_GUIDELINE_STYLE, STYLE_OEM_WHEEL)
+                .putBoolean(KEY_MIGRATED_V26_OEM_WHEEL, true)
+                .apply()
+        }
     }
 
     var isParkAssistBeepEnabled: Boolean
@@ -79,8 +92,16 @@ class CameraSettings(context: Context) {
         get() = prefs.getBoolean(KEY_STEERING_INVERTED, false)
         set(value) = prefs.edit().putBoolean(KEY_STEERING_INVERTED, value).apply()
 
+    var isMotionCurveEnabled: Boolean
+        get() = prefs.getBoolean(KEY_MOTION_CURVE_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_MOTION_CURVE_ENABLED, value).apply()
+
+    var isOemWheelDistanceBarsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_OEM_WHEEL_DISTANCE_BARS, false)
+        set(value) = prefs.edit().putBoolean(KEY_OEM_WHEEL_DISTANCE_BARS, value).apply()
+
     var guidelineStyle: Int
-        get() = prefs.getInt(KEY_GUIDELINE_STYLE, STYLE_SPORT_RACING)
+        get() = prefs.getInt(KEY_GUIDELINE_STYLE, STYLE_OEM_WHEEL)
         set(value) = prefs.edit().putInt(KEY_GUIDELINE_STYLE, value).apply()
 
     var guidelineScale: Float

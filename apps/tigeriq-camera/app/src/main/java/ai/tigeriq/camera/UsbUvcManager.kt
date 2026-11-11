@@ -47,6 +47,11 @@ class UsbUvcManager(
     @Volatile private var latestFrameAt = 0L
     @Volatile private var lastFrameMetricsAt = 0L
     @Volatile private var lastVideoDecisionAt = 0L
+    @Volatile private var lastMotionAt = 0L
+    @Volatile var onMotionScore: ((Float) -> Unit)? = null
+    private var hasPrevRoadMotionSample = false
+    private val prevRoadMotionSample = ByteArray(UvcFrameSignalEvidence.ROAD_MOTION_GRID_SIZE)
+    private val currRoadMotionSample = ByteArray(UvcFrameSignalEvidence.ROAD_MOTION_GRID_SIZE)
     private var previewSession = 0
 
     /** Frame evidence only. Never uses black frames as proof of a gear change. */
@@ -64,6 +69,21 @@ class UsbUvcManager(
             helper.setFrameCallback(IFrameCallback { bytes ->
                 val now = SystemClock.elapsedRealtime()
                 latestFrameAt = now
+                val motionCallback = onMotionScore
+                if (motionCallback != null && now - lastMotionAt >= 100L) {
+                    lastMotionAt = now
+                    val score = UvcFrameSignalEvidence.computeRoadMotionScore(
+                        bytes, width, height, prevRoadMotionSample, currRoadMotionSample
+                    )
+                    if (score != null) {
+                        System.arraycopy(currRoadMotionSample, 0, prevRoadMotionSample, 0, currRoadMotionSample.size)
+                        if (hasPrevRoadMotionSample) {
+                            motionCallback.invoke(score)
+                        } else {
+                            hasPrevRoadMotionSample = true
+                        }
+                    }
+                }
                 val decisionDue = onVideoMetrics != null &&
                     now - lastVideoDecisionAt >= 300L
                 val logDue = now - lastFrameMetricsAt >= 2000L
@@ -263,6 +283,8 @@ class UsbUvcManager(
         latestFrameAt = 0L
         lastFrameMetricsAt = 0L
         lastVideoDecisionAt = 0L
+        lastMotionAt = 0L
+        hasPrevRoadMotionSample = false
         previewSurface?.let {
             try {
                 cameraHelper?.removeSurface(it)
