@@ -166,7 +166,11 @@ class CameraActivity : AppCompatActivity() {
                     handleUsbPermissionState(device, hasPermission)
                 }
             }
-        )
+        ).also { mgr ->
+            mgr.onMotionScore = { score ->
+                guideView.onVideoMotionScore(score)
+            }
+        }
 
         setupControls()
         processIntent(intent)
@@ -235,6 +239,7 @@ class CameraActivity : AppCompatActivity() {
                 CameraSettings.STYLE_AUDI_MATRIX -> "Audi Matrix Cyber"
                 CameraSettings.STYLE_TESLA_CYBER -> "Tesla Cyber Vision"
                 CameraSettings.STYLE_LUXURY_GOLD -> "Maybach Luxury Gold"
+                CameraSettings.STYLE_OEM_WHEEL -> "Bánh xe OEM"
                 else -> "Sport OEM"
             }
             tvStatusMessage.text = "Mẫu vạch: $styleName"

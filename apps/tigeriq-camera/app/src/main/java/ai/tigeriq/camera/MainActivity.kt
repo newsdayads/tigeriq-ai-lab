@@ -48,13 +48,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var switchParkAssist: SwitchCompat
     private lateinit var switchNightBooster: SwitchCompat
     private lateinit var switchGuidelines: SwitchCompat
+    private lateinit var switchMotionCurve: SwitchCompat
     private lateinit var switchInvertSteering: SwitchCompat
+    private lateinit var switchWheelMetricBars: SwitchCompat
 
     private lateinit var btnStyleSport: Button
     private lateinit var btnStylePorsche: Button
     private lateinit var btnStyleAudi: Button
     private lateinit var btnStyleTesla: Button
     private lateinit var btnStyleMaybach: Button
+    private lateinit var btnStyleOemWheel: Button
 
     private lateinit var btnScaleNormal: Button
     private lateinit var btnScaleLarge: Button
@@ -194,7 +197,9 @@ class MainActivity : AppCompatActivity() {
         switchParkAssist = findViewById(R.id.switchParkAssist)
         switchNightBooster = findViewById(R.id.switchNightBooster)
         switchGuidelines = findViewById(R.id.switchGuidelines)
+        switchMotionCurve = findViewById(R.id.switchMotionCurve)
         switchInvertSteering = findViewById(R.id.switchInvertSteering)
+        switchWheelMetricBars = findViewById(R.id.switchWheelMetricBars)
 
         btnScaleNormal = findViewById(R.id.btnScaleNormal)
         btnScaleLarge = findViewById(R.id.btnScaleLarge)
@@ -247,7 +252,9 @@ class MainActivity : AppCompatActivity() {
         switchParkAssist.isChecked = settings.isParkAssistBeepEnabled
         switchNightBooster.isChecked = settings.isNightBoosterEnabled
         switchGuidelines.isChecked = settings.isGuidelinesEnabled
+        switchMotionCurve.isChecked = settings.isMotionCurveEnabled
         switchInvertSteering.isChecked = settings.isSteeringInverted
+        switchWheelMetricBars.isChecked = settings.isOemWheelDistanceBarsEnabled
 
         switchParkAssist.setOnCheckedChangeListener { _, isChecked ->
             settings.isParkAssistBeepEnabled = isChecked
@@ -296,17 +303,26 @@ class MainActivity : AppCompatActivity() {
             settings.isGuidelinesEnabled = isChecked
         }
 
+        switchMotionCurve.setOnCheckedChangeListener { _, isChecked ->
+            settings.isMotionCurveEnabled = isChecked
+        }
+
         switchInvertSteering.setOnCheckedChangeListener { _, isChecked ->
             settings.isSteeringInverted = isChecked
             Toast.makeText(this, if (isChecked) "Đã đảo chiều bẻ lái" else "Hướng bẻ lái mặc định", Toast.LENGTH_SHORT).show()
         }
 
-        // Style Buttons (5 OEM & Futuristic Styles)
+        switchWheelMetricBars.setOnCheckedChangeListener { _, isChecked ->
+            settings.isOemWheelDistanceBarsEnabled = isChecked
+        }
+
+        // Style Buttons (6 OEM & Futuristic Styles)
         btnStyleSport = findViewById(R.id.btnStyleSport)
         btnStylePorsche = findViewById(R.id.btnStylePorsche)
         btnStyleAudi = findViewById(R.id.btnStyleAudi)
         btnStyleTesla = findViewById(R.id.btnStyleTesla)
         btnStyleMaybach = findViewById(R.id.btnStyleMaybach)
+        btnStyleOemWheel = findViewById(R.id.btnStyleOemWheel)
 
         updateStyleButtonHighlight(settings.guidelineStyle)
         btnStyleSport.setOnClickListener {
@@ -333,6 +349,11 @@ class MainActivity : AppCompatActivity() {
             settings.guidelineStyle = CameraSettings.STYLE_LUXURY_GOLD
             updateStyleButtonHighlight(CameraSettings.STYLE_LUXURY_GOLD)
             Toast.makeText(this, "Đã chọn: Mẫu Maybach Luxury Gold", Toast.LENGTH_SHORT).show()
+        }
+        btnStyleOemWheel.setOnClickListener {
+            settings.guidelineStyle = CameraSettings.STYLE_OEM_WHEEL
+            updateStyleButtonHighlight(CameraSettings.STYLE_OEM_WHEEL)
+            Toast.makeText(this, "Đã chọn: Mẫu Bánh xe OEM", Toast.LENGTH_SHORT).show()
         }
 
         // Scale Buttons
@@ -411,7 +432,8 @@ class MainActivity : AppCompatActivity() {
             CameraSettings.STYLE_PORSCHE_GT to btnStylePorsche,
             CameraSettings.STYLE_AUDI_MATRIX to btnStyleAudi,
             CameraSettings.STYLE_TESLA_CYBER to btnStyleTesla,
-            CameraSettings.STYLE_LUXURY_GOLD to btnStyleMaybach
+            CameraSettings.STYLE_LUXURY_GOLD to btnStyleMaybach,
+            CameraSettings.STYLE_OEM_WHEEL to btnStyleOemWheel
         )
 
         buttons.forEach { (s, btn) ->
