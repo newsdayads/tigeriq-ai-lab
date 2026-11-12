@@ -590,6 +590,8 @@ body.api-health .employee-card{cursor:pointer!important}
 @media(prefers-reduced-motion:reduce){body.api-health :is(.wo-filter,.filter){transition:none!important}}
 
 /* Source-aligned LIVE detail actions: blue Vy, teal GitHub, red Close. */
+body.api-health .work-detail-modal #workDetailCopy{
+ background:#334155!important;color:#F1F5F9!important;border:1px solid #475569!important}
 body.api-health .work-detail-modal #workDetailAskVy{
  background:var(--tiq-action-chat)!important;color:#fff!important;border:1px solid var(--tiq-ready)!important}
 body.api-health .work-detail-modal #workDetailGithub{
@@ -643,7 +645,7 @@ body.api-health .work-detail-modal .work-detail-actions :is(button,a)[hidden]{
   grid-template-columns:repeat(2,minmax(0,1fr))!important;
  }
  body.api-health .work-detail-modal #workDetailCloseBottom{
-  grid-column:1 / -1!important;
+  grid-column:auto!important;
  }
  body.api-health .work-detail-modal .work-detail-actions:has(#workDetailGithub[hidden]) #workDetailCloseBottom{
   grid-column:auto!important;
@@ -1055,6 +1057,7 @@ if(!window.__wdTabsBound){window.__wdTabsBound=true;document.addEventListener('c
 })}
 function populateWorkDetail(row){
  workDetailRow=row;const token=++wdToken;
+ const copyBtn=document.getElementById('workDetailCopy');if(copyBtn){copyBtn.textContent='Copy';copyBtn.title='Sao chép yêu cầu công việc';}
  const s=woVisualStatus(row),label=WO_STATUS[s]||s;
  workDetailModal.style.setProperty('--detail-status',HEALTH_WO_STATUS_COLORS[s]||'#94A3B8');
  workDetailModal.dataset.workState=s.toLowerCase();
