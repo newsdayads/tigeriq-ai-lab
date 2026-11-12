@@ -3,7 +3,7 @@
   "checkpoint_id": "6486af4bcfcc",
   "strategy": "manual-commit",
   "branch": "feat/ultracar-v1-sync-v1213",
-  "checkpoints_count": 7,
+  "checkpoints_count": 72,
   "files_touched": [
     "version.json"
   ],
@@ -26,6 +26,12 @@
       "transcript": "/64/86af4bcfcc/2/full.jsonl",
       "content_hash": "/64/86af4bcfcc/2/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/64/86af4bcfcc/3/metadata.json",
+      "transcript": "/64/86af4bcfcc/3/full.jsonl",
+      "content_hash": "/64/86af4bcfcc/3/content_hash.txt",
+      "prompt": "/64/86af4bcfcc/3/prompt.txt"
     }
   ],
   "token_usage": {
@@ -37,14 +43,14 @@
     "subagent_tokens_complete": true
   },
   "redaction": {
-    "replacements": 27610,
+    "replacements": 27887,
     "layers": {
-      "betterleaks": 1,
+      "betterleaks": 69,
       "connection_string": 0,
       "credential_key": 0,
-      "credential_value": 13,
+      "credential_value": 32,
       "credentialed_uri": 0,
-      "entropy": 27597,
+      "entropy": 27788,
       "key_context": 0,
       "provider_token": 0,
       "shell_stdin": 0
