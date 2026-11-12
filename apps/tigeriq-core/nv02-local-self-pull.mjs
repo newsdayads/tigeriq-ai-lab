@@ -586,10 +586,34 @@ export function resolveNv02Command02State({
 }
 export function noEligibleNv02Work() { return { state: NV02_READY_NO_ELIGIBLE_WORK, policy: NV02_LOCAL_GITHUB_SELF_PULL }; }
 
+export function resolveNv02ContextualSkills(issue) {
+  const text = `${issue?.title || ''} ${issue?.body || ''} ${(issue?.labels || []).map(l => typeof l === 'string' ? l : l?.name).join(' ')}`.toLowerCase();
+  const skills = [
+    'TIGERIQ_ACTIVE_SKILLS_INJECTED:',
+    '- CONTEXT_BUDGET: Giữ context gọn; không lặp lại toàn văn prompt cũ; chỉ cập nhật delta/evidence.',
+  ];
+  const isCoding = /code|bug|fix|feat|test|ci|script|app|pr|pipeline|patch|typescript|javascript/i.test(text);
+  if (isCoding) {
+    skills.push('- SPEC_FIRST_TDD: Xác định scope, tiêu chí nghiệm thu và bất biến trước khi code; với lỗi tái hiện được phải chứng minh đỏ trước xanh.');
+    skills.push('- MINIMAL_CHANGE_OUTPUT: Chỉ sửa tối thiểu đúng phạm vi (scoped diff); tuyệt đối không regenerate cả file gây ghi đè phá hủy.');
+  }
+  const isReviewOrMultiRole = /review|kiem tra|độc lập|judge|gate/i.test(text);
+  if (isReviewOrMultiRole) {
+    skills.push('- ROLE_SEPARATED_EXECUTION: Tách bạch vai trò lập kế hoạch, thực thi và kiểm tra; cấm tự phê duyệt (self-approval) việc mình làm.');
+  }
+  const isFailureOrRegression = /fail|lỗi|regression|stuck|block/i.test(text);
+  if (isFailureOrRegression) {
+    skills.push('- LEARN_FROM_FAILURE: Phân tích root cause từ bằng chứng thật; không retry mù quáng quá 2 lần cùng một lỗi.');
+  }
+  return skills.join('\n');
+}
+
 export function buildNv02LocalSelfPullPrompt(issue, lease) {
   const sourceRevision = nv02AuthorityRevision(issue);
+  const contextualSkills = resolveNv02ContextualSkills(issue);
   return [
     'LÀM — NO YAPPING.', `NV02_LOCAL_GITHUB_SELF_PULL=${NV02_LOCAL_GITHUB_SELF_PULL}`,
+    contextualSkills,
     `CURRENT_WORK_ORDER=#${issue.number} - ${issue.title}`, `WORK_ORDER=#${issue.number}`, `RESOURCE_SCOPE=${lease.resourceScope}`, `LEASE_ID=${lease.leaseId}`, `SOURCE_REVISION=${sourceRevision}`,
     'Core không assign/route NV02. App Chrome chỉ là UI continuity/transport.',
     'P0 tuyệt đối không đọc, nhận, claim hoặc execute. Làm đúng một Work Order này đến DONE hoặc BLOCKED.',

@@ -5,6 +5,7 @@ import {
   activeResourceScopes,
   activeNv02Lease,
   buildNv02LocalSelfPullPrompt,
+  resolveNv02ContextualSkills,
   claimNv02WorkOrder,
   noEligibleNv02Work,
   resolveNv02Command02State,
@@ -436,6 +437,19 @@ describe('NV02 local GitHub self-pull contract', () => {
     expect(prompt).toContain(`SOURCE_REVISION=${currentRevision}`);
     expect(prompt).toContain('đọc lại WORK_ORDER authoritative trên GitHub');
     expect(prompt).toContain('không archive nếu chưa có durable terminal evidence');
+  });
+
+  it('contextually injects relevant active skills into NV02 prompt for coding and review work', () => {
+    const codingTask = { number: 4001, title: 'Fix bug in auth pipeline', body: 'Investigate and patch failure', labels: ['bug', 'coding'] };
+    const codingPrompt = buildNv02LocalSelfPullPrompt(codingTask, { resourceScope: 'AUTH_FIX', leaseId: 'lease-c1' });
+    expect(codingPrompt).toContain('TIGERIQ_ACTIVE_SKILLS_INJECTED:');
+    expect(codingPrompt).toContain('SPEC_FIRST_TDD');
+    expect(codingPrompt).toContain('MINIMAL_CHANGE_OUTPUT');
+    expect(codingPrompt).toContain('LEARN_FROM_FAILURE');
+
+    const reviewTask = { number: 4002, title: 'Independent review of PR 4001', body: 'Review and verify gate', labels: ['review'] };
+    const reviewPrompt = buildNv02LocalSelfPullPrompt(reviewTask, { resourceScope: 'AUTH_REVIEW', leaseId: 'lease-r1' });
+    expect(reviewPrompt).toContain('ROLE_SEPARATED_EXECUTION');
   });
 
   it('carries bounded independent-review failover and dedupe rules in the NV02 assignment prompt', () => {

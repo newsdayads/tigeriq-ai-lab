@@ -231,6 +231,11 @@ async function saveAndArchive(workerId,{requireDone=true}={}){
     await waitForSaveCompletion(ctx);
     const receipt=await waitForDurableSaveReceipt(saveToken,workerId,dispatchedAt);
     await assertArchiveAllowed(workerId,{requireDone});
+    if(typeof chrome?.tabs?.reload==='function'){
+      await chrome.tabs.reload(ctx.tabId);
+      await waitForTabComplete(ctx.tabId);
+      await sleep(2500);
+    }
     const result=await chrome.tabs.sendMessage(ctx.tabId,{type:'TIGERIQ_ARCHIVE_CONVERSATION'});
     if(!result?.ok) throw new Error(String(result?.status||'ARCHIVE_FAILED'));
     if(proof.jobId)await recordArchivedJob(workerId,proof.jobId);
