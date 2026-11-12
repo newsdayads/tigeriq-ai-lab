@@ -87,7 +87,22 @@ for(const width of [390,1024,1648]){
   await expect(page.locator('#workDetailProgress')).toContainText('50%');
   await expect(page.locator('#workDetailGithub')).toHaveAttribute('href',/github\.com\/newsdayads\/tigeriq-ai-lab\/issues\/3278/);
   const controls=await page.locator('.work-detail-actions > *').evaluateAll(nodes=>nodes.filter(e=>getComputedStyle(e).display!=='none').map(e=>Math.round(e.getBoundingClientRect().width)));
-  expect(controls).toHaveLength(3);
+  expect(controls).toHaveLength(4);
+  await expect(page.locator('#workDetailCopy')).toHaveText('Copy');
+  await page.evaluate(()=>{
+    document.execCommand=(command)=>{
+      if(command==='copy'){
+        document.documentElement.dataset.copiedWork=(document.activeElement as HTMLTextAreaElement).value;
+        return true;
+      }
+      return false;
+    };
+  });
+  const beforeTabs=page.context().pages().length;
+  await page.locator('#workDetailCopy').click();
+  expect(page.context().pages().length).toBe(beforeTabs);
+  await expect(page.locator('#workDetailCopy')).toHaveText('Đã copy');
+  expect(await page.locator('html').getAttribute('data-copied-work')).toContain('Work Order #3278');
   if(width>700)expect(Math.max(...controls)-Math.min(...controls)).toBeLessThanOrEqual(2);
   await page.locator('#workDetailGithub').hover();
   expect(await page.locator('#workDetailGithub').evaluate(e=>getComputedStyle(e).textDecorationLine)).toBe('none');
