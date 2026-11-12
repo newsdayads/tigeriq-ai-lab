@@ -1,7 +1,7 @@
 version: 1
 owner_issue: 859
 parent_issue: 822
-updated: 2026-10-12
+updated: 2026-11-12
 source_catalog:
   batch_id: owner-video-lessons-2026-09-18
   source_type: chatgpt_attachment
@@ -239,7 +239,7 @@ skills:
     state: CANDIDATE
     version: 0.1.0
     provenance_batch: owner-direct-2026-11-12
-    source_log: docs/skills/product-3d-engineering/SKILL.md
+    source_log: product-3d-engineering/SKILL.md
     target: physical-product-cad
     triggers: "3d thiết kế sản phẩm in 3D CAD STL STEP 3MF Bambu P1S OpenSCAD Blender kỹ thuật"
     summary: "CAD-first workflow, measured orthographic drawing, 4–6 verified model views, printability and slicer evidence, safely adapted from pinned external reference skills; not installed on host."
