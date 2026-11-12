@@ -4,6 +4,14 @@ Status: Bootstrap Entry Point
 Priority: P0
 Updated: 2026-11-06
 
+<!-- TIGERIQ_3D_DRIVE_DESTINATION_20261112 -->
+## TIGERIQ 3D — GOOGLE DRIVE ĐÍCH LƯU MẶC ĐỊNH (OWNER 12/11/2026)
+OWNER_DIRECT=true | STORAGE_TARGET=GOOGLE_DRIVE | FOLDER_ID=1QFje3OTZfDIeCMfrH5aHoMWqXNwJP2xM
+- Khi thực hiện việc thiết kế/in 3D TigerIQ, đọc `docs/3d/GOOGLE_DRIVE_DESTINATION.md` trên GitHub `main` trước khi lưu thành phẩm. Đích mặc định là thư mục **TigerIQ 3D**: https://drive.google.com/drive/folders/1QFje3OTZfDIeCMfrH5aHoMWqXNwJP2xM.
+- Quyền đã có: tự tải kết quả sản phẩm 3D lên thư mục này qua Google Drive connector và đọc lại xác minh, không hỏi lại nơi lưu; không tự gửi lệnh in, phát hành công khai hay ghi đè thành phẩm khác phiên bản.
+- Chỉ xác nhận `DRIVE_SAVED` sau khi upload và kiểm tra `parent_ids`. Chat/ứng dụng khác chỉ áp dụng sau khi tải được GitHub canonical thật, không tự đồng bộ.
+<!-- /TIGERIQ_3D_DRIVE_DESTINATION_20261112 -->
+
 <!-- PC01_ONLY_NEW_WEB_OWNER_20261106 -->
 ## P1 — WEBSITE/APP MỚI: PC01-ONLY, KHÔNG VERCEL — OWNER 06/11/2026
 OWNER_DIRECT=true | ISSUE=#5648 | NO_NEW_VERCEL=true | PC01_NEW_WEB_DEFAULT=true
