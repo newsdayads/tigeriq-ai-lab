@@ -266,8 +266,8 @@ async function waitForSubmissionEvidence(expectedText, timeoutMs = 4000) {
 }
 
 
-const REQUIRED_MODEL_NAME = 'GPT-5.6 Sol';
-const REQUIRED_REASONING_EFFORT = 'High';
+const REQUIRED_MODEL_NAME = 'GPT-6';
+const REQUIRED_REASONING_EFFORT = 'Low';
 let lastVerifiedModelProfile = null;
 
 function compactVisibleText(element) {
@@ -290,24 +290,31 @@ function modelCandidateControls() {
       if (/chọn mô hình chatgpt|choose.*model|model selector/i.test(aria)) return true;
       const text = compactVisibleText(el);
       if (isGenericModelText(text)) return false;
-      return /GPT-5\.6\s+Sol|GPT-5|GPT-4|Instant|Thinking|Suy luận|High|Cao/i.test(text);
+      return /GPT-6|GPT-5\.6\s+Sol|\b5\.6\b|GPT-5|GPT-4|Instant|Tức thì|Low|Thấp|Medium|Vừa|Thinking|Suy luận|High|Cao/i.test(text);
     });
 }
 
 function reasoningCandidateControls() {
   return Array.from(document.querySelectorAll('header button, main button, header [role="button"], main [role="button"], [data-testid*="reason" i], [data-testid*="thinking" i], [aria-label*="thinking" i], [aria-label*="reason" i]'))
     .filter((el) => visible(el))
-    .filter((el) => el.hasAttribute?.('data-selected-reasoning-effort') || /High|Cao|Thinking|Suy luận|reasoning/i.test(compactVisibleText(el)));
+    .filter((el) => el.hasAttribute?.('data-selected-reasoning-effort') || /Instant|Tức thì|Low|Thấp|Medium|Vừa|High|Cao|Thinking|Suy luận|reasoning/i.test(compactVisibleText(el)));
 }
 
-function parseModelName(text) {
+function parseModelName(text, element = null) {
   const clean = String(text || '').replace(/\s+/g, ' ').trim();
-  return /\bGPT-5\.6\s+Sol\b/i.test(clean) ? REQUIRED_MODEL_NAME : null;
+  const visibleLabel = element ? String(element.innerText || element.textContent || '').replace(/\s+/g, ' ').trim() : clean;
+  if (/\b(?:GPT-)?5\.6\b/i.test(clean) || /\b(?:GPT-)?5\.6\b/i.test(visibleLabel)) return 'GPT-5.6 Sol';
+  if (/\bGPT-6(?:\.1)?\b/i.test(clean) || /\bGPT-6(?:\.1)?\b/i.test(visibleLabel)) return REQUIRED_MODEL_NAME;
+  if (element?.hasAttribute?.('data-selected-reasoning-effort') || /chọn mô hình chatgpt|choose.*model|model selector/i.test(clean)) {
+    return REQUIRED_MODEL_NAME;
+  }
+  return null;
 }
 
 function parseReasoningEffort(text) {
   const clean = String(text || '').replace(/\s+/g, ' ').trim();
-  return /\bHigh\b|\bCao\b/i.test(clean) ? REQUIRED_REASONING_EFFORT : null;
+  if (/^(?:none|low|instant)$/i.test(clean) || /\b(?:Low|Thấp|Instant|Tức thì)\b/i.test(clean)) return REQUIRED_REASONING_EFFORT;
+  return null;
 }
 
 function readModelProfileState() {
@@ -317,7 +324,7 @@ function readModelProfileState() {
   }
   const modelControls = modelCandidateControls();
   const reasoningControls = reasoningCandidateControls();
-  const modelNames = [...new Set(modelControls.map((el) => parseModelName(compactVisibleText(el))).filter(Boolean))];
+  const modelNames = [...new Set(modelControls.map((el) => parseModelName(compactVisibleText(el), el)).filter(Boolean))];
   const reasoningValues = [...new Set(reasoningControls.map((el) => parseReasoningEffort(el.getAttribute?.('data-selected-reasoning-effort') || compactVisibleText(el))).filter(Boolean))];
   let modelName = modelNames.length === 1 ? modelNames[0] : null;
   const reasoningEffort = reasoningValues.length === 1 ? reasoningValues[0] : null;
@@ -339,19 +346,31 @@ function readModelProfileState() {
 function visibleMenuItemsByExactText(expected) {
   const wanted = String(expected).toLowerCase();
   return deepElements()
-    .filter((el) => visible(el))
+    .filter((el) => visible(el) && !el.closest?.('[inert],[aria-hidden="true"]'))
     .filter((el) => ['BUTTON'].includes(el.tagName) || ['menuitem', 'menuitemradio', 'option'].includes(String(el.getAttribute?.('role') || '')))
     .filter((el) => compactVisibleText(el).toLowerCase() === wanted);
 }
 
 function selectedModelNameFromOpenMenu() {
   const selected = deepElements()
-    .filter((el) => visible(el))
+    .filter((el) => visible(el) && !el.closest?.('[inert],[aria-hidden="true"]'))
     .filter((el) => el.getAttribute?.('role') === 'menuitemradio' && el.getAttribute?.('aria-checked') === 'true')
-    .map((el) => parseModelName(compactVisibleText(el)))
+    .map((el) => parseModelName(compactVisibleText(el), el))
     .filter(Boolean);
   const unique = [...new Set(selected)];
   return unique.length === 1 ? unique[0] : null;
+}
+
+async function ensureAdvancedModelListVisible() {
+  const toggle = document.querySelector('[role="menu"] [data-model-picker-view-toggle="true"]');
+  const radios = deepElements()
+    .filter((el) => visible(el) && !el.closest?.('[inert],[aria-hidden="true"]'))
+    .filter((el) => el.getAttribute?.('role') === 'menuitemradio');
+  if (radios.length > 0) return true;
+  if (!toggle || !visible(toggle)) return false;
+  toggle.click();
+  await sleep(450);
+  return true;
 }
 
 async function clickUniqueVisibleOption(expected) {
@@ -364,11 +383,25 @@ async function clickUniqueVisibleOption(expected) {
   return true;
 }
 
-async function clickReasoningHighOption() {
+async function clickReasoningLowOption() {
+  const slider = document.querySelector('[role="menu"] [data-reasoning-slider="true"]');
+  if (slider && visible(slider) && !slider.closest?.('[inert],[aria-hidden="true"]')) {
+    const thumb = slider.querySelector('[role="slider"][aria-valuenow]');
+    const current = Number(thumb?.getAttribute('aria-valuenow'));
+    if (Number.isInteger(current) && current === 0) return true;
+    slider.focus();
+    for (let i = 0; i < (Number.isInteger(current) ? current : 2); i += 1) {
+      slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37, which: 37, bubbles: true }));
+      slider.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37, which: 37, bubbles: true }));
+      await sleep(200);
+    }
+    const updated = Number(slider.querySelector('[role="slider"][aria-valuenow]')?.getAttribute('aria-valuenow'));
+    return updated === 0;
+  }
   const options = deepElements()
-    .filter((el) => visible(el))
+    .filter((el) => visible(el) && !el.closest?.('[inert],[aria-hidden="true"]'))
     .filter((el) => ['menuitem', 'menuitemradio', 'option'].includes(String(el.getAttribute?.('role') || '')))
-    .filter((el) => /^(High|Cao)$/i.test(compactVisibleText(el)));
+    .filter((el) => /^(Low|Thấp|Instant|Tức thì)$/i.test(compactVisibleText(el)));
   if (options.length !== 1) return false;
   options[0].click();
   await sleep(450);
@@ -382,18 +415,20 @@ async function precheckModelProfile() {
   if (modelControls.length !== 1) return profile;
   modelControls[0].click();
   await sleep(500);
+  await ensureAdvancedModelListVisible();
   let selectedModelName = selectedModelNameFromOpenMenu();
   if (selectedModelName !== REQUIRED_MODEL_NAME) {
     const selectedModel = await clickUniqueVisibleOption(REQUIRED_MODEL_NAME);
     if (!selectedModel) {
       dismissMenu();
-      return { ...readModelProfileState(), modelProfileStatus: 'MODEL_PROFILE_BLOCKED', exact: false, modelReady: false, blockedReason: 'GPT_5_6_SOL_OPTION_NOT_UNIQUE' };
+      return { ...readModelProfileState(), modelProfileStatus: 'MODEL_PROFILE_BLOCKED', exact: false, modelReady: false, blockedReason: 'GPT_6_OPTION_NOT_UNIQUE' };
     }
     await sleep(350);
     modelControls = modelCandidateControls();
     if (modelControls.length !== 1) return readModelProfileState();
     modelControls[0].click();
     await sleep(400);
+    await ensureAdvancedModelListVisible();
     selectedModelName = selectedModelNameFromOpenMenu();
   }
   dismissMenu();
@@ -405,14 +440,15 @@ async function precheckModelProfile() {
     if (modelControls.length !== 1) return readModelProfileState();
     modelControls[0].click();
     await sleep(400);
-    const selectedReasoning = await clickReasoningHighOption();
+    const selectedReasoning = await clickReasoningLowOption();
     dismissMenu();
-    if (!selectedReasoning) return { ...readModelProfileState(), modelProfileStatus: 'MODEL_PROFILE_BLOCKED', exact: false, modelReady: false, blockedReason: 'REASONING_HIGH_OPTION_NOT_UNIQUE' };
+    if (!selectedReasoning) return { ...readModelProfileState(), modelProfileStatus: 'MODEL_PROFILE_BLOCKED', exact: false, modelReady: false, blockedReason: 'REASONING_LOW_OPTION_NOT_UNIQUE' };
   }
   modelControls = modelCandidateControls();
   if (modelControls.length !== 1) return readModelProfileState();
   modelControls[0].click();
   await sleep(400);
+  await ensureAdvancedModelListVisible();
   selectedModelName = selectedModelNameFromOpenMenu();
   dismissMenu();
   const finalReasoningControls = reasoningCandidateControls();
@@ -484,7 +520,7 @@ function findCurrentConversationActionButton() {
   const conversationId = conversationIdFromPath();
   if (!conversationId) return null;
   const actions = Array.from(document.querySelectorAll('button'))
-    .filter((el) => visible(el) && /hành động trong trò chuyện|conversation actions|chat actions/i.test(el.getAttribute('aria-label') || ''));
+    .filter((el) => visible(el) && /hành động trong trò chuyện|thao tác với cuộc trò chuyện|conversation actions|chat actions/i.test(el.getAttribute('aria-label') || ''));
   const matches = actions.filter((button) => {
     let node = button;
     for (let depth = 0; depth < 7 && node; depth += 1, node = node.parentElement) {
@@ -516,11 +552,30 @@ async function archiveConversation() {
   if (!/\/c\//.test(location.pathname)) return { ok: false, status: 'ARCHIVE_REQUIRES_CONVERSATION_URL' };
 
   const before = location.href;
+  const conversationId = conversationIdFromPath();
+  if (conversationId) {
+    try {
+      const sessionRes = await fetch('/api/auth/session');
+      const session = await sessionRes.json();
+      const token = session?.accessToken;
+      if (token) {
+        const patchRes = await fetch('/backend-api/conversation/' + conversationId, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ is_archived: true })
+        });
+        const data = await patchRes.json().catch(() => ({}));
+        if (patchRes.ok && data?.success === true) {
+          return { ok: true, status: 'ARCHIVED', before, after: location.href, method: 'API_CONFIRMED' };
+        }
+      }
+    } catch {}
+  }
   let menuButton = findCurrentConversationActionButton();
   if (!menuButton) {
     const fallback = Array.from(document.querySelectorAll('header button,main button'))
       .filter((el) => visible(el))
-      .filter((el) => /more|menu|options|thêm|tùy chọn/i.test((el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '')));
+      .filter((el) => /more|menu|options|thêm|tùy chọn|thao tác/i.test((el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '')));
     if (fallback.length === 1) menuButton = fallback[0];
   }
   if (!menuButton) return { ok: false, status: 'ARCHIVE_MENU_BUTTON_NOT_UNIQUE' };
@@ -540,6 +595,17 @@ async function archiveConversation() {
   const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
     await sleep(250);
+    const confirmModal = document.querySelector('[role="dialog"], [data-testid*="modal" i]');
+    if (confirmModal) {
+      const confirmBtn = Array.from(confirmModal.querySelectorAll('button')).find((b) => {
+        const text = normalizedText(b);
+        return ['archive', 'lưu trữ', 'archive chat', 'lưu trữ đoạn chat', 'xác nhận', 'confirm'].includes(text);
+      });
+      if (confirmBtn) {
+        confirmBtn.click();
+        await sleep(300);
+      }
+    }
     if (location.href !== before || !/\/c\//.test(location.pathname)) return { ok: true, status: 'ARCHIVED', before, after: location.href };
     const blockedAfterClick = detectSecurityBlock();
     if (blockedAfterClick) return { ok: false, status: blockedAfterClick };

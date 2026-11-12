@@ -10,6 +10,10 @@ describe('Chrome Controller safe save-and-archive',()=>{
     expect(content).toContain("['archive', 'lưu trữ']");
     expect(content).toContain('ARCHIVE_NOT_CONFIRMED');
     expect(content).toContain("message?.type === 'TIGERIQ_ARCHIVE_CONVERSATION'");
+    expect(content).toContain('confirmModal');
+    const bridge=readFileSync('apps/chrome-controller/direct-cdp-bridge.mjs','utf8');
+    expect(bridge).toContain('await reloadTarget(target)');
+    expect(bridge).toContain('ARCHIVE_PRE_RELOAD_ERROR');
   });
 
   it('requires terminal external evidence and a fresh durable receipt for direct archive',()=>{

@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import http from 'node:http';
+import {CYCLE_LIMIT} from './runtime/nv02-cycle-21.mjs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import {
-  CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS,
+  CONTINUE_MIN_MS, CONTINUE_MAX_MS, REFRESH_MIN_MS, REFRESH_MAX_MS, NV02_CONTINUE_PROMPTS,
   WORKER_F5_MIN_MS, WORKER_F5_MAX_MS, CONTINUITY_WORKERS,
   MAX_STALLED_CHECKS, WORKING_PROGRESS_CHECK_MS, MAX_WORKING_UNCHANGED_CHECKS, AWAITING_WORK_START_TIMEOUT_MS,
   deriveNv02Phase, deriveWorkerPhase, detectWorkerAssistantTerminal,
@@ -50,9 +51,11 @@ const APP_CHROME_LOCAL_UI_ONLY=true;
 const NV02_F5_MIN_MS=5*60*1000;
 const NV02_F5_MAX_MS=10*60*1000;
 
-function pickNv02ContinuePrompt(previous='',random=Math.random){
-  const prior=String(previous||'').replace(/^02\s*-\s*/,'');
-  return `02 - ${pickContinuePrompt(prior,random)}`;
+function pickNv02ContinuePrompt(previous='',context='ACTIVE',random=Math.random){
+  const prior=String(previous||'').split(/\r?\n/)[0].replace(/^02\s*-\s*/,'');
+  const candidates=NV02_CONTINUE_PROMPTS.filter(text=>text!==prior);
+  const pool=candidates.length?candidates:NV02_CONTINUE_PROMPTS;
+  return '02 - '+pool[Math.min(pool.length-1,Math.floor(random()*pool.length))];
 }
 const NV02_STALLED_RELOAD_CHECKS=10;
 const NV02_STALLED_RESET_CHECKS=14;
@@ -64,9 +67,9 @@ const VIEW_FOLLOW_MIN_MS=3*1000;
 const VIEW_FOLLOW_MAX_MS=8*1000;
 function applyNv02VerifiedModelProfile(ui){
   const sameUrl=Boolean(nv02VerifiedModelProfile&&ui?.url&&nv02VerifiedModelProfile.url===ui.url);
-  const reasoningHigh=ui?.reasoningEffort==='High';
-  if(!sameUrl||!reasoningHigh)return ui;
-  const exact={...ui,modelProfileStatus:'MODEL_PROFILE_VERIFIED',modelName:'GPT-5.6 Sol',reasoningEffort:'High',modelReady:true,modelExact:true,verifiedAt:nv02VerifiedModelProfile.verifiedAt,blockedReason:null};
+  const reasoningLow=ui?.reasoningEffort==='Low';
+  if(!sameUrl||!reasoningLow)return ui;
+  const exact={...ui,modelProfileStatus:'MODEL_PROFILE_VERIFIED',modelName:'GPT-6',reasoningEffort:'Low',modelReady:true,modelExact:true,verifiedAt:nv02VerifiedModelProfile.verifiedAt,blockedReason:null};
   exact.uiPhase=exact.securityBlock?'BLOCKED':(exact.chatLoadError||exact.connectionPending)?'STALLED':exact.uiBusy?'WORKING':exact.uiReady?'READY':'STALLED';
   return exact;
 }
@@ -666,10 +669,10 @@ function loadNv02Continuity(){
 function applyNv02DurableVerifiedModelProfile(ui){
   if(!ui||ui.modelExact===true)return ui;
   if(ui.securityBlock||ui.authRequired||ui.chatLoadError||ui.connectionPending)return ui;
-  if(ui.modelControlPresent!==true||ui.reasoningEffort!=='High')return ui;
+  if(ui.modelControlPresent!==true||ui.reasoningEffort!=='Low')return ui;
   const state=loadNv02Continuity();
   if(!state.modelVerifiedAt||!isNv02ProjectContext(ui.url))return ui;
-  const exact={...ui,modelProfileStatus:'MODEL_PROFILE_VERIFIED',modelName:'GPT-5.6 Sol',reasoningEffort:'High',modelReady:true,modelExact:true,verifiedAt:state.modelVerifiedAt,blockedReason:null};
+  const exact={...ui,modelProfileStatus:'MODEL_PROFILE_VERIFIED',modelName:'GPT-6',reasoningEffort:'Low',modelReady:true,modelExact:true,verifiedAt:state.modelVerifiedAt,blockedReason:null};
   exact.uiPhase=(exact.chatLoadError||exact.connectionPending)?'STALLED':exact.uiBusy?'WORKING':exact.uiReady?'READY':'STALLED';
   return exact;
 }
@@ -829,19 +832,26 @@ const UI_EXPR=`(()=>{const detectAssistantTerminal=${ASSISTANT_TERMINAL_DETECTOR
   const requestTimeoutError=Boolean(chatRetry)&&/(yêu cầu (?:đã )?hết thời gian chờ|đã hết thời gian chờ gửi tin nhắn|request (?:has )?timed out|request timeout|timed out (?:while )?sending)/i.test(retryContext+' | '+pageText);
   const connectionPending=location.hostname==='chatgpt.com'&&/(^|\\s)(đang kết nối\\.\\.\\.|connecting\\.\\.\\.)(\\s|$)/i.test(pageText);
   const chatLoadError=location.hostname==='chatgpt.com'&&Boolean(conversationLoadError||requestTimeoutError||responseInterrupted);
-  const reasoningControls=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button,[role="button"]')].filter(e=>{if(!vis(e))return false;const label=String((e.innerText||e.textContent||'')).replace(/\\s+/g,' ').trim();if(!/^(?:cao|high)$/i.test(label))return false;const hint=String((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||''));return e.matches('button.__composer-pill')||e.hasAttribute('data-selected-reasoning-effort')||/chọn mô hình chatgpt|choose.*model|model selector/i.test(hint)}):[];
+  const reasoningControls=location.hostname==='chatgpt.com'?[...document.querySelectorAll('button,[role="button"]')].filter(e=>{if(!vis(e))return false;const hint=String((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||''));const isPicker=e.matches('button.__composer-pill[aria-haspopup="menu"]')||e.hasAttribute('data-selected-reasoning-effort')||/chọn mô hình chatgpt|choose.*model|model selector/i.test(hint);if(!isPicker)return false;const label=String((e.innerText||e.textContent||'')).replace(/\\s+/g,' ').trim();return e.hasAttribute('data-selected-reasoning-effort')||/(?:tức thì|instant|thấp|low|vừa|tiêu chuẩn|medium|standard|cao|high|nhanh|fast|tự động|auto|5\\.6|gpt-6)/i.test(label)}):[];
   const reasoningControl=reasoningControls.length===1?reasoningControls[0]:null;
   const latestModelNode=location.hostname==='chatgpt.com'?[...document.querySelectorAll('[data-message-author-role="assistant"][data-message-model-slug]')].filter(vis).at(-1):null;
   const modelSlug=String(latestModelNode?.getAttribute('data-message-model-slug')||'').trim();
   const modelControl=reasoningControl;
   const modelLabel=String((reasoningControl?.getAttribute('aria-label')||'')+' '+(reasoningControl?.getAttribute('title')||'')+' '+(reasoningControl?.innerText||reasoningControl?.textContent||'')).replace(/\s+/g,' ').trim();
-  const modelName=/^gpt-5-6-(?:thinking|sol)$/i.test(modelSlug)?'GPT-5.6 Sol':null;
-  const reasoningRaw=reasoningControl?.getAttribute('data-selected-reasoning-effort')||modelLabel;
-  const reasoningEffort=/(^|\s)(high|cao)(\s|$)/i.test(String(reasoningRaw||''))?'High':null;
-  const modelExact=location.hostname!=='chatgpt.com'||Boolean(reasoningControl&&modelName==='GPT-5.6 Sol'&&reasoningEffort==='High');
+  const isLegacy56=/(?:^|\s)5\\.6(?:\s|$)/i.test(modelLabel)||(!reasoningControl&&/^gpt-5-6/i.test(modelSlug));
+  const modelName=reasoningControl?(isLegacy56?'GPT-5.6 Sol':'GPT-6'):null;
+  const effortAttr=String(reasoningControl?.getAttribute('data-selected-reasoning-effort')||'').trim().toLowerCase();
+  const reasoningEffort=(effortAttr==='none'||effortAttr==='low'||/(?:^|\s)(?:low|thấp|instant|tức thì)(?:\s|$)/i.test(modelLabel))
+    ?'Low'
+    :(effortAttr==='medium'||/(?:^|\s)(?:medium|vừa|tiêu chuẩn|standard)(?:\s|$)/i.test(modelLabel))
+      ?'Medium'
+      :(effortAttr==='high'||/(?:^|\s)(?:high|cao)(?:\s|$)/i.test(modelLabel))
+        ?'High'
+        :null;
+  const modelExact=location.hostname!=='chatgpt.com'||Boolean(reasoningControl&&modelName==='GPT-6'&&reasoningEffort==='Low');
   const modelReady=modelExact;
   const modelProfileStatus=modelExact?'MODEL_PROFILE_VERIFIED':'MODEL_PROFILE_BLOCKED';
-  const blockedReason=modelExact?null:(!reasoningControl?'REASONING_CONTROL_NOT_EXACT_OR_UNIQUE':!modelName?'MODEL_SLUG_NOT_GPT_5_6_SOL':'REASONING_NOT_HIGH');
+  const blockedReason=modelExact?null:(!reasoningControl?'REASONING_CONTROL_NOT_EXACT_OR_UNIQUE':modelName!=='GPT-6'?'MODEL_NOT_GPT_6':'REASONING_NOT_LOW');
   const verifiedAt=modelExact?new Date().toISOString():null;
   const uiBusy=location.hostname==='chatgpt.com'?Boolean(stop):Boolean(stop||activityBusy);
   const activityRoot=activityBusy?.closest?.('.block-BQZwFn')||activityBusy?.parentElement||null;
@@ -1036,25 +1046,64 @@ async function maybeRecoverChatLoadError(w,target,ui,now=Date.now()){
   await continuityEventFor(w,'CHAT_UNLOADABLE_BLOCKED',{url:ui?.url||null,blockedUntil});
   return true;
 }
-const MODEL_SELECTOR_POINT_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const openMenus=[...document.querySelectorAll('[role="menu"][data-state="open"]')].filter(vis);if(openMenus.some(menu=>[...menu.querySelectorAll('[role="menuitemradio"][aria-checked="true"],[role="option"][aria-selected="true"]')].some(e=>/^(?:GPT-)?5\\.6\\s+Sol$/i.test(text(e)))))return{ok:true,status:'MODEL_SELECTOR_ALREADY_OPEN',alreadyOpen:true};const current=[...document.querySelectorAll('button.__composer-pill[aria-haspopup="menu"]')].filter(e=>vis(e)&&/^(?:Cao|High|Tiêu chuẩn|Standard|Nhanh|Fast|Tự động|Auto)$/i.test(text(e)));const legacy=[...document.querySelectorAll('button,[role="button"]')].filter(e=>vis(e)&&(e.hasAttribute('data-selected-reasoning-effort')||e.getAttribute('data-testid')==='model-switcher-dropdown-button'||/trình chọn mô hình|chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||''))));const controls=current.length?current:legacy;if(controls.length!==1)return{ok:false,status:'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE',count:controls.length,labels:controls.slice(0,5).map(text)};const r=controls[0].getBoundingClientRect();return{ok:true,status:'MODEL_SELECTOR_POINT',alreadyOpen:false,x:r.left+r.width/2,y:r.top+r.height/2,label:text(controls[0])}})()`;
-async function openNv02ModelSelector(target){
+const MODEL_SELECTOR_POINT_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const openMenus=[...document.querySelectorAll('[role="menu"][data-state="open"]')].filter(vis);if(openMenus.length>0)return{ok:true,status:'MODEL_SELECTOR_ALREADY_OPEN',alreadyOpen:true};const current=[...document.querySelectorAll('button.__composer-pill[aria-haspopup="menu"]')].filter(e=>vis(e)&&/(?:Tức thì|Instant|Thấp|Low|Cao|High|Vừa|Medium|Tiêu chuẩn|Standard|Nhanh|Fast|Tự động|Auto|5\.6|GPT-6)/i.test(text(e)));const legacy=[...document.querySelectorAll('button,[role="button"]')].filter(e=>vis(e)&&(e.hasAttribute('data-selected-reasoning-effort')||e.getAttribute('data-testid')==='model-switcher-dropdown-button'||/trình chọn mô hình|chọn mô hình chatgpt|choose.*model|model selector/i.test((e.getAttribute('aria-label')||'')+' '+(e.getAttribute('title')||''))));const controls=current.length?current:legacy;if(controls.length!==1)return{ok:false,status:'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE',count:controls.length,labels:controls.slice(0,5).map(text)};const r=controls[0].getBoundingClientRect();return{ok:true,status:'MODEL_SELECTOR_POINT',alreadyOpen:false,x:r.left+r.width/2,y:r.top+r.height/2,label:text(controls[0])}})()`;
+const MODEL_LIST_VIEW_STATE_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'&&!e.closest('[inert],[aria-hidden="true"]')};const menu=document.querySelector('[role="menu"][data-state="open"]');const view=menu?.querySelector('[data-model-picker-view]')?.getAttribute('data-model-picker-view')||null;const radios=[...document.querySelectorAll('[role="menu"] [role="menuitemradio"]')].filter(vis);if(radios.length>0)return{ok:true,status:'MODEL_LIST_ALREADY_VISIBLE',alreadyVisible:true,view};const toggle=menu?.querySelector('[data-model-picker-view-toggle="true"]');if(!toggle||!vis(toggle))return{ok:false,status:'MODEL_VIEW_TOGGLE_NOT_FOUND',view};const r=toggle.getBoundingClientRect();return{ok:true,status:'MODEL_VIEW_TOGGLE_POINT',alreadyVisible:false,view,x:r.left+r.width/2,y:r.top+r.height/2}})()`;
+async function openNv02ModelSelector(target,{showModels=false}={}){
   const p=await pageRpc(target);
   try{
     const point=(await p.call('Runtime.evaluate',{expression:MODEL_SELECTOR_POINT_EXPR,returnByValue:true},5000)).result.value;
     if(!point?.ok)return point||{ok:false,status:'MODEL_CONTROL_NOT_EXACT_OR_UNIQUE'};
-    if(!point.alreadyOpen)await cdpMouseClick(p,point);
+    if(!point.alreadyOpen){
+      await cdpMouseClick(p,point);
+      await sleep(randomDelay(700,1200));
+    }
+    if(showModels){
+      const viewState=(await p.call('Runtime.evaluate',{expression:MODEL_LIST_VIEW_STATE_EXPR,returnByValue:true},5000)).result.value;
+      if(viewState?.ok&&!viewState.alreadyVisible){
+        await cdpMouseClick(p,viewState);
+        await sleep(randomDelay(700,1200));
+      }
+    }
     await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
     return{ok:true,status:point.alreadyOpen?'MODEL_SELECTOR_ALREADY_OPEN':'MODEL_SELECTOR_OPENED',label:point.label||null};
   }finally{p.close();}
 }
-const MODEL_56_SOL_CLICK_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const opts=[...document.querySelectorAll('button,[role="menuitem"],[role="menuitemradio"],[role="option"]')].filter(e=>vis(e)&&/^(?:GPT-)?5\\.6\\s+Sol(?:\\s|$)/i.test(text(e)));if(opts.length!==1)return{ok:false,status:'GPT_5_6_SOL_OPTION_NOT_UNIQUE',count:opts.length,labels:opts.slice(0,5).map(text)};opts[0].click();return{ok:true,status:'GPT_5_6_SOL_SELECTED'}})()`;
-const REASONING_HIGH_CLICK_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const opts=[...document.querySelectorAll('button,[role="menuitem"],[role="menuitemradio"],[role="option"]')].filter(e=>vis(e)&&/^(?:High|Cao)(?:\\s|$)/i.test(text(e)));if(opts.length!==1)return{ok:false,status:'REASONING_HIGH_OPTION_NOT_UNIQUE',count:opts.length,labels:opts.slice(0,5).map(text)};opts[0].click();return{ok:true,status:'REASONING_HIGH_SELECTED'}})()`;
-const MODEL_SELECTED_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const checked=[...document.querySelectorAll('[role="menuitemradio"][aria-checked="true"],[role="option"][aria-selected="true"]')].filter(vis);const labels=checked.map(text);const exact=labels.filter(x=>/^(?:GPT-)?5\\.6\\s+Sol$/i.test(x));return{ok:exact.length===1,modelName:exact.length===1?'GPT-5.6 Sol':null,checkedLabels:labels.slice(0,10)}})()`;
+const MODEL_6_POINT_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'&&!e.closest('[inert],[aria-hidden="true"]')};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const opts=[...document.querySelectorAll('button,[role="menuitem"],[role="menuitemradio"],[role="option"]')].filter(e=>vis(e)&&/^(?:GPT-)?6(?:\.1)?(?:\s|$)/i.test(text(e)));if(opts.length!==1)return{ok:false,status:'GPT_6_OPTION_NOT_UNIQUE',count:opts.length,labels:opts.slice(0,5).map(text)};const r=opts[0].getBoundingClientRect();return{ok:true,status:'GPT_6_OPTION_POINT',x:r.left+r.width/2,y:r.top+r.height/2,label:text(opts[0])}})()`;
+async function selectNv02Model6(target){
+  const p=await pageRpc(target);
+  try{
+    const point=(await p.call('Runtime.evaluate',{expression:MODEL_6_POINT_EXPR,returnByValue:true},5000)).result.value;
+    if(!point?.ok)return point||{ok:false,status:'GPT_6_SELECT_FAILED'};
+    await cdpMouseClick(p,point);
+    await sleep(600);
+    return{ok:true,status:'GPT_6_SELECTED',label:point.label||null};
+  }finally{p.close();}
+}
+const REASONING_LOW_SLIDER_EXPR="(()=>{const visible=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'&&!e.closest('[inert],[aria-hidden=\"true\"]')};const parts=[...document.querySelectorAll('[data-reasoning-slider=\"true\"]')].filter(visible);if(parts.length!==1)return{ok:false,status:'REASONING_SLIDER_NOT_UNIQUE',count:parts.length};const part=parts[0],thumb=part.querySelector('[role=\"slider\"][aria-valuenow][aria-valuemax]'),root=part.querySelector('[data-locked]');if(!thumb||!root)return{ok:false,status:'REASONING_SLIDER_STRUCTURE_CHANGED'};const current=Number(thumb.getAttribute('aria-valuenow')),max=Number(thumb.getAttribute('aria-valuemax')),min=Number(thumb.getAttribute('aria-valuemin'));if(min!==0||max!==2||!Number.isInteger(current)||current<0||current>2)return{ok:false,status:'REASONING_SLIDER_RANGE_CHANGED',current,min,max};if(root.getAttribute('data-locked')==='true'||part.getAttribute('aria-disabled')==='true')return{ok:false,status:'REASONING_SLIDER_LOCKED'};const btns=[...document.querySelectorAll('button[aria-label=\"Chọn mô hình ChatGPT\"]')].filter(visible);if(btns.length!==1)return{ok:false,status:'REASONING_MODEL_CONTROL_NOT_UNIQUE',count:btns.length};const selected=btns[0].getAttribute('data-selected-reasoning-effort');if(current===0)return{ok:selected==='none'||selected==='low',status:(selected==='none'||selected==='low')?'REASONING_ALREADY_LOW':'REASONING_SLIDER_CONTROL_MISMATCH',alreadyLow:selected==='none'||selected==='low',steps:0};if(!((current===1&&selected==='medium')||(current===2&&selected==='high')))return{ok:false,status:'REASONING_SLIDER_CONTROL_MISMATCH',current,selected};part.focus();if(document.activeElement!==part)return{ok:false,status:'REASONING_SLIDER_FOCUS_FAILED'};return{ok:true,status:'REASONING_SLIDER_FOCUSED',steps:current,current}})()";
+const REASONING_LOW_VERIFY_EXPR="(()=>{const visible=e=>{if(!e)return false;const r=e.getBoundingClientRect();return r.width>0&&r.height>0};const parents=[...document.querySelectorAll('[data-reasoning-slider=\"true\"]')].filter(visible);const buttons=[...document.querySelectorAll('button[aria-label=\"Chọn mô hình ChatGPT\"]')].filter(visible);const thumb=parents.length===1?parents[0].querySelector('[role=\"slider\"][aria-valuenow][aria-valuemax]'):null;const value=Number(thumb?.getAttribute('aria-valuenow')),max=Number(thumb?.getAttribute('aria-valuemax')),label=buttons.length===1?buttons[0].getAttribute('data-selected-reasoning-effort'):null;const ok=parents.length===1&&buttons.length===1&&max===2&&value===0&&(label==='none'||label==='low');return{ok,status:ok?'REASONING_LOW_VERIFIED':'REASONING_LOW_NOT_VERIFIED',value,max,label}})()";
+async function selectNv02ReasoningLow(target){
+  const p=await pageRpc(target);
+  try{
+    const request=(await p.call('Runtime.evaluate',{expression:REASONING_LOW_SLIDER_EXPR,returnByValue:true},7000)).result?.value;
+    if(!request?.ok)return request||{ok:false,status:'REASONING_SLIDER_RESULT_UNAVAILABLE'};
+    if(request.alreadyLow===true)return{ok:true,status:'REASONING_LOW_ALREADY_SELECTED'};
+    if(!Number.isInteger(request.steps)||request.steps<1||request.steps>2)return{ok:false,status:'REASONING_SLIDER_STEPS_INVALID'};
+    for(let i=0;i<request.steps;i++){
+      await p.call('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowLeft',code:'ArrowLeft',windowsVirtualKeyCode:37,nativeVirtualKeyCode:37},7000);
+      await p.call('Input.dispatchKeyEvent',{type:'keyUp',key:'ArrowLeft',code:'ArrowLeft',windowsVirtualKeyCode:37,nativeVirtualKeyCode:37},7000);
+      await sleep(220);
+    }
+    await sleep(300);
+    const checked=(await p.call('Runtime.evaluate',{expression:REASONING_LOW_VERIFY_EXPR,returnByValue:true},7000)).result?.value;
+    return checked?.ok?{...checked,status:'REASONING_LOW_SELECTED'}:(checked||{ok:false,status:'REASONING_LOW_VERIFY_UNAVAILABLE'});
+  }finally{p.close();}
+}
+const MODEL_SELECTED_EXPR=`(()=>{const vis=e=>{if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none'&&!e.closest('[inert],[aria-hidden="true"]')};const text=e=>String(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();const checked=[...document.querySelectorAll('[role="menuitemradio"][aria-checked="true"],[role="option"][aria-selected="true"]')].filter(vis);const labels=checked.map(text);const exact=labels.filter(x=>/^(?:GPT-)?6(?:\.1)?$/i.test(x));return{ok:exact.length===1,modelName:exact.length===1?'GPT-6':null,checkedLabels:labels.slice(0,10)}})()`;
 const MODEL_MENU_DISMISS_EXPR=`(()=>{document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true}));return{ok:true}})()`;
 async function inspectNv02SelectedModel(target){
   const raw=await uiStateRaw(target);
   if(raw?.securityBlock)throw new Error(raw.securityBlock);
-  const opened=await openNv02ModelSelector(target);
+  const opened=await openNv02ModelSelector(target,{showModels:true});
   if(!opened?.ok)throw new Error(opened?.status||'MODEL_SELECTOR_OPEN_FAILED');
   await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
   const selected=await evalPage(target,MODEL_SELECTED_EXPR);
@@ -1062,38 +1111,42 @@ async function inspectNv02SelectedModel(target){
   const after=await uiStateRaw(target);
   const modelName=selected?.modelName||null;
   const reasoningEffort=after?.reasoningEffort||null;
-  const exact=modelName==='GPT-5.6 Sol'&&reasoningEffort==='High';
+  const exact=modelName==='GPT-6'&&reasoningEffort==='Low';
   if(exact)nv02VerifiedModelProfile={url:after.url,verifiedAt:new Date().toISOString()};
   else if(nv02VerifiedModelProfile?.url===after?.url)nv02VerifiedModelProfile=null;
   return exact
     ? applyNv02VerifiedModelProfile({...after,modelName,reasoningEffort})
-    : {...after,modelName,modelProfileStatus:'MODEL_PROFILE_BLOCKED',modelReady:false,modelExact:false,verifiedAt:null,blockedReason:modelName!=='GPT-5.6 Sol'?'MODEL_NAME_NOT_GPT_5_6_SOL':'REASONING_NOT_HIGH'};
+    : {...after,modelName,modelProfileStatus:'MODEL_PROFILE_BLOCKED',modelReady:false,modelExact:false,verifiedAt:null,blockedReason:modelName!=='GPT-6'?'MODEL_NOT_GPT_6':'REASONING_NOT_LOW'};
 }
 async function ensureNv02ModelProfile(target){
   let profile=await inspectNv02SelectedModel(target);
   const maxAttempts=3;
   for(let i=0;i<maxAttempts;i++){
-    if(profile?.modelExact===true&&profile?.modelName==='GPT-5.6 Sol'&&profile?.reasoningEffort==='High')break;
-    if(profile?.modelName!=='GPT-5.6 Sol'){
-      const opened=await openNv02ModelSelector(target);
+    if(profile?.modelExact===true&&profile?.modelName==='GPT-6'&&profile?.reasoningEffort==='Low')break;
+    if(profile?.modelName!=='GPT-6'){
+      const opened=await openNv02ModelSelector(target,{showModels:true});
       if(!opened?.ok)throw new Error(opened?.status||'MODEL_SELECTOR_OPEN_FAILED');
       await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
-      const modelSelected=await evalPage(target,MODEL_56_SOL_CLICK_EXPR);
-      if(!modelSelected?.ok)throw new Error(modelSelected?.status||'GPT_5_6_SOL_SELECT_FAILED');
+      const modelSelected=await selectNv02Model6(target);
+      if(!modelSelected?.ok)throw new Error(modelSelected?.status||'GPT_6_SELECT_FAILED');
+      await evalPage(target,MODEL_MENU_DISMISS_EXPR).catch(()=>{});
       await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
       profile=await inspectNv02SelectedModel(target);
     }
-    if(profile?.modelName==='GPT-5.6 Sol'&&profile?.reasoningEffort!=='High'){
-      const reasoningOpened=await openNv02ModelSelector(target);
+    if(profile?.modelName==='GPT-6'&&profile?.reasoningEffort!=='Low'){
+      await evalPage(target,MODEL_MENU_DISMISS_EXPR).catch(()=>{});
+      await sleep(300);
+      const reasoningOpened=await openNv02ModelSelector(target,{showModels:false});
       if(!reasoningOpened?.ok)throw new Error(reasoningOpened?.status||'REASONING_SELECTOR_OPEN_FAILED');
       await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
-      const reasoningSelected=await evalPage(target,REASONING_HIGH_CLICK_EXPR);
-      if(!reasoningSelected?.ok)throw new Error(reasoningSelected?.status||'REASONING_HIGH_SELECT_FAILED');
+      const reasoningSelected=await selectNv02ReasoningLow(target);
+      await evalPage(target,MODEL_MENU_DISMISS_EXPR).catch(()=>{});
+      if(!reasoningSelected?.ok)throw new Error(reasoningSelected?.status||'REASONING_LOW_SELECT_FAILED');
       await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
       profile=await inspectNv02SelectedModel(target);
     }
   }
-  if(profile?.modelExact!==true||profile?.modelName!=='GPT-5.6 Sol'||profile?.reasoningEffort!=='High')throw new Error('MODEL_PROFILE_MISMATCH');
+  if(profile?.modelExact!==true||profile?.modelName!=='GPT-6'||profile?.reasoningEffort!=='Low')throw new Error('MODEL_PROFILE_MISMATCH');
   const state=loadNv02Continuity();
   const currentUrl=String(profile.url||'');
   saveNv02Continuity({...state,verifiedChatUrl:currentUrl,resumeChatUrl:hasCurrentNv02Chat(currentUrl)?currentUrl:state.resumeChatUrl,modelVerifiedAt:String(profile.verifiedAt||new Date().toISOString())});
@@ -1104,33 +1157,37 @@ async function inspectChatGptSelectedModel(target){
   const raw=await uiStateRaw(target);
   if(raw?.securityBlock)throw new Error(raw.securityBlock);
   if(raw?.modelExact===true)return raw;
-  const opened=await openNv02ModelSelector(target);
+  const opened=await openNv02ModelSelector(target,{showModels:true});
   if(!opened?.ok)throw new Error(opened?.status||'MODEL_SELECTOR_OPEN_FAILED');
   await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
   const selected=await evalPage(target,MODEL_SELECTED_EXPR);
   await evalPage(target,MODEL_MENU_DISMISS_EXPR).catch(()=>{});
   const after=await uiStateRaw(target);
   const modelName=selected?.modelName||null,reasoningEffort=after?.reasoningEffort||null;
-  return{...after,modelName,reasoningEffort,modelExact:modelName==='GPT-5.6 Sol'&&reasoningEffort==='High'};
+  return{...after,modelName,reasoningEffort,modelExact:modelName==='GPT-6'&&reasoningEffort==='Low'};
 }
 async function ensureChatGptModelProfile(target){
   let profile=await inspectChatGptSelectedModel(target);
   for(let i=0;i<3&&profile?.modelExact!==true;i+=1){
-    if(profile?.modelName!=='GPT-5.6 Sol'){
-      const opened=await openNv02ModelSelector(target);
+    if(profile?.modelName!=='GPT-6'){
+      const opened=await openNv02ModelSelector(target,{showModels:true});
       if(!opened?.ok)throw new Error(opened?.status||'MODEL_SELECTOR_OPEN_FAILED');
       await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
-      const selected=await evalPage(target,MODEL_56_SOL_CLICK_EXPR);
-      if(!selected?.ok)throw new Error(selected?.status||'GPT_5_6_SOL_SELECT_FAILED');
+      const selected=await selectNv02Model6(target);
+      await evalPage(target,MODEL_MENU_DISMISS_EXPR).catch(()=>{});
+      if(!selected?.ok)throw new Error(selected?.status||'GPT_6_SELECT_FAILED');
       await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
     }
     profile=await inspectChatGptSelectedModel(target);
-    if(profile?.modelName==='GPT-5.6 Sol'&&profile?.reasoningEffort!=='High'){
-      const opened=await openNv02ModelSelector(target);
+    if(profile?.modelName==='GPT-6'&&profile?.reasoningEffort!=='Low'){
+      await evalPage(target,MODEL_MENU_DISMISS_EXPR).catch(()=>{});
+      await sleep(300);
+      const opened=await openNv02ModelSelector(target,{showModels:false});
       if(!opened?.ok)throw new Error(opened?.status||'REASONING_SELECTOR_OPEN_FAILED');
       await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
-      const selected=await evalPage(target,REASONING_HIGH_CLICK_EXPR);
-      if(!selected?.ok)throw new Error(selected?.status||'REASONING_HIGH_SELECT_FAILED');
+      const selected=await selectNv02ReasoningLow(target);
+      await evalPage(target,MODEL_MENU_DISMISS_EXPR).catch(()=>{});
+      if(!selected?.ok)throw new Error(selected?.status||'REASONING_LOW_SELECT_FAILED');
       await sleep(randomDelay(UI_STABILITY_PACING_MIN_MS,UI_STABILITY_PACING_MAX_MS));
       profile=await inspectChatGptSelectedModel(target);
     }
@@ -1375,7 +1432,7 @@ async function prepareWorkerForPlannedRestart(w,target,initialUi){
   return{ok:true,status:'PLANNED_RESTART_PREPARED',url:currentUrl};
 }
 
-function archiveMenuPointExpr(){return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};if(!/\\/c\\//.test(location.pathname))return{ok:false,status:'ARCHIVE_REQUIRES_CONVERSATION_URL'};const before=location.href,title=document.title.trim(),conversationId=(location.pathname.match(/\\/c\\/([^/?#]+)/)||[])[1]||'';if(!conversationId)return{ok:false,status:'ARCHIVE_CONVERSATION_ID_MISSING'};const direct=[...document.querySelectorAll('button[data-testid="conversation-options-button"],button[data-testid*="conversation"][data-testid*="option"]')].filter(vis);const more=[...document.querySelectorAll('button,[role="button"]')].filter(vis).filter(e=>{const label=(e.getAttribute('aria-label')||e.getAttribute('title')||'').replace(/\\s+/g,' ').trim().toLowerCase();const r=e.getBoundingClientRect();return ['thêm','more','more options','thêm tùy chọn'].includes(label)&&r.top>=0&&r.top<100&&r.right>=innerWidth-120});const candidates=direct.length?direct:more;if(candidates.length!==1)return{ok:false,status:'ARCHIVE_HEADER_MENU_COUNT_'+candidates.length,conversationId,directCount:direct.length,moreCount:more.length};const r=candidates[0].getBoundingClientRect();return{ok:true,status:'ARCHIVE_MENU_POINT',source:direct.length?'HEADER_CONVERSATION_OPTIONS':'HEADER_TOOLBAR_MORE',before,title,conversationId,x:r.left+r.width/2,y:r.top+r.height/2}})()`; }
+function archiveMenuPointExpr(){return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};if(!/\\/c\\//.test(location.pathname))return{ok:false,status:'ARCHIVE_REQUIRES_CONVERSATION_URL'};const before=location.href,title=document.title.trim(),conversationId=(location.pathname.match(/\\/c\\/([^/?#]+)/)||[])[1]||'';if(!conversationId)return{ok:false,status:'ARCHIVE_CONVERSATION_ID_MISSING'};const direct=[...document.querySelectorAll('button[data-testid="conversation-options-button"],button[data-testid*="conversation"][data-testid*="option"]')].filter(vis);const more=[...document.querySelectorAll('button,[role="button"]')].filter(vis).filter(e=>{const label=(e.getAttribute('aria-label')||e.getAttribute('title')||'').replace(/\\s+/g,' ').trim().toLowerCase();const r=e.getBoundingClientRect();return ['thêm','more','more options','thêm tùy chọn','thao tác với cuộc trò chuyện','conversation actions','tác vụ khác'].some(k=>label.includes(k))&&r.top>=0&&r.top<100&&r.right>=innerWidth-200});const candidates=direct.length?direct:more;if(candidates.length!==1)return{ok:false,status:'ARCHIVE_HEADER_MENU_COUNT_'+candidates.length,conversationId,directCount:direct.length,moreCount:more.length};const r=candidates[0].getBoundingClientRect();return{ok:true,status:'ARCHIVE_MENU_POINT',source:direct.length?'HEADER_CONVERSATION_OPTIONS':'HEADER_TOOLBAR_MORE',before,title,conversationId,x:r.left+r.width/2,y:r.top+r.height/2}})()`; }
 function archiveItemPointExpr(){return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const norm=e=>(e?.innerText||e?.textContent||e?.getAttribute?.('aria-label')||'').replace(/\\s+/g,' ').trim().toLowerCase();const all=[...document.querySelectorAll('[role="menuitem"]')].filter(vis);const archive=all.filter(e=>{const t=norm(e);if(/all|tất cả/i.test(t))return false;return t==='archive'||t==='lưu trữ'||t==='archive chat'||t==='archive conversation'||t==='lưu trữ đoạn chat'||t==='lưu trữ trò chuyện'||t==='lưu trữ cuộc trò chuyện'||t.startsWith('archive ')||t.startsWith('lưu trữ ')});const unarchive=all.filter(e=>/^(unarchive|bỏ lưu trữ|khôi phục khỏi lưu trữ|restore from archive)(\\b|$)/i.test(norm(e)));if(archive.length!==1){if(unarchive.length===1)return{ok:true,status:'ARCHIVE_ALREADY_DONE',alreadyArchived:true,text:(unarchive[0].innerText||unarchive[0].textContent||'').trim()};return{ok:false,status:'ARCHIVE_ACTION_COUNT_'+archive.length,labels:all.map(norm)};}const r=archive[0].getBoundingClientRect();return{ok:true,status:'ARCHIVE_ACTION_POINT',x:r.left+r.width/2,y:r.top+r.height/2,text:(archive[0].innerText||archive[0].textContent||'').trim()}})()`; }
 function archiveFocusExpr(){return `(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const norm=e=>(e?.innerText||e?.textContent||e?.getAttribute?.('aria-label')||'').replace(/\\s+/g,' ').trim().toLowerCase();const items=[...document.querySelectorAll('[role="menuitem"]')].filter(vis);const archive=items.filter(e=>{const t=norm(e);if(/all|tất cả/i.test(t))return false;return t==='archive'||t==='lưu trữ'||t==='archive chat'||t==='archive conversation'||t==='lưu trữ đoạn chat'||t==='lưu trữ trò chuyện'||t==='lưu trữ cuộc trò chuyện'||t.startsWith('archive ')||t.startsWith('lưu trữ ')});if(archive.length!==1)return{ok:false,status:'ARCHIVE_FOCUS_COUNT_'+archive.length,labels:items.map(norm)};archive[0].focus();return{ok:document.activeElement===archive[0],status:document.activeElement===archive[0]?'ARCHIVE_ACTION_FOCUSED':'ARCHIVE_ACTION_FOCUS_FAILED',text:(archive[0].innerText||archive[0].textContent||'').trim(),activeRole:document.activeElement?.getAttribute?.('role')||null}})()`;}
 async function activateArchiveMenuItem(p){
@@ -1400,8 +1457,44 @@ function archiveConfirmExpr(before,conversationId){
   return `(()=>{const before=${expectedBefore},conversationId=${expectedConversation};const sameConversation=Boolean(conversationId)&&location.pathname.endsWith('/c/'+conversationId);const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'};const norm=e=>(e?.innerText||e?.textContent||e?.getAttribute?.('aria-label')||'').replace(/\\s+/g,' ').trim().toLowerCase();const unarchive=[...document.querySelectorAll('[role="menuitem"]')].filter(vis).filter(e=>/^(unarchive|bỏ lưu trữ|khôi phục khỏi lưu trữ|restore from archive)(\\b|$)/i.test(norm(e)));return{url:location.href,path:location.pathname,sameConversation,navigated:location.href!==before,unarchiveVisible:unarchive.length===1}})()`;
 }
 async function archiveChat(target){
+  try{
+    await reloadTarget(target);
+    await waitForPostReloadNv02Ui(target);
+    await sleep(1500);
+  }catch(e){
+    log('ARCHIVE_PRE_RELOAD_ERROR',{error:String(e?.message||e)});
+  }
   const p=await pageRpc(target);
   try{
+    const apiArchiveExpr = `(async ()=>{
+      const match = location.pathname.match(/\\/c\\/([^/?#]+)/);
+      const conversationId = match?.[1];
+      if (!conversationId) return { ok: false, status: 'ARCHIVE_CONVERSATION_ID_MISSING' };
+      try {
+        const sessionRes = await fetch('/api/auth/session');
+        const session = await sessionRes.json();
+        const token = session?.accessToken;
+        if (!token) return { ok: false, status: 'ARCHIVE_NO_SESSION_TOKEN' };
+        const patchRes = await fetch('/backend-api/conversation/' + conversationId, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+          },
+          body: JSON.stringify({ is_archived: true })
+        });
+        const patchData = await patchRes.json().catch(() => ({ status: patchRes.status }));
+        if (patchRes.ok && patchData?.success === true) {
+          return { ok: true, status: 'ARCHIVED', conversationId, confirmation: 'API_CONFIRMED' };
+        }
+      } catch (err) {}
+      return { ok: false, status: 'API_ARCHIVE_ATTEMPT_FAILED' };
+    })()`;
+    const apiResult = (await p.call('Runtime.evaluate', { expression: apiArchiveExpr, awaitPromise: true, returnByValue: true }, 8000)).result?.value;
+    if (apiResult?.ok) {
+      log('ARCHIVE_SUCCESS_VIA_API', apiResult);
+      return apiResult;
+    }
     const menuPoint=(await p.call('Runtime.evaluate',{expression:archiveMenuPointExpr(),returnByValue:true,userGesture:true},5000)).result.value;
     if(!menuPoint?.ok)return menuPoint||{ok:false,status:'ARCHIVE_MENU_POINT_MISSING'};
     await cdpMouseClick(p,menuPoint,{paced:false});
@@ -1423,6 +1516,7 @@ async function archiveChat(target){
     const deadline=Date.now()+10000;
     while(Date.now()<deadline){
       await sleep(250);
+      await p.call('Runtime.evaluate',{expression:`(()=>{const vis=e=>{const r=e?.getBoundingClientRect(),s=e&&getComputedStyle(e);return !!e&&r.width>0&&r.height>0&&s.display!==\'none\'&&s.visibility!==\'hidden\'};const norm=e=>(e?.innerText||e?.textContent||'\'').toLowerCase();const dialogs=[...document.querySelectorAll(\'[role="dialog"],[data-testid*="modal" i]\')].filter(vis);for(const d of dialogs){const b=[...d.querySelectorAll(\'button\')].filter(vis).find(x=>[\'archive\',\'lưu trữ\',\'xác nhận\',\'confirm\'].some(k=>norm(x).includes(k)));if(b){b.click();return true;}}return false;})()`,returnByValue:true}).catch(()=>{});
       const state=(await p.call('Runtime.evaluate',{expression:archiveConfirmExpr(menuPoint.before,menuPoint.conversationId),returnByValue:true},3000)).result.value;
       if(state?.sameConversation===false||state?.unarchiveVisible===true){
         const confirmation=state?.unarchiveVisible===true?'UNARCHIVE_ACTION_VISIBLE':'LEFT_CURRENT_CONVERSATION';
@@ -1510,7 +1604,7 @@ async function rotateNv02ToFreshChat(target,state,reason,{idle=false}={}){
     const active={...loadNv02Continuity(),
       idleState:'',pendingContinue:false,awaitingWorkStart:true,awaitingWorkStartSince:now,
       nextContinueAt:nextRandomAt(now,CONTINUE_MIN_MS,CONTINUE_MAX_MS),
-      lastPrompt:prompt,dispatchesInChat:Number(state?.dispatchesInChat||0)+1,lastPhase:'WORKING',
+      lastPrompt:prompt,dispatchesInChat:1,lastPhase:'WORKING',
       lastIdleMarkerSignature:'',idleWakeBaselineSignature:''
     };
     saveNv02Continuity(active);
@@ -1564,7 +1658,7 @@ async function waitForNv02PreservedChatSettled(target,expectedUrl,timeoutMs=3000
   return{ok:false,status:'PRESERVED_CHAT_UI_NOT_SETTLED',ui:last};
 }
 function nv02BootModelCheckTransient(error){
-  return /MODEL_CONTROL_NOT_EXACT_OR_UNIQUE|MODEL_SELECTOR_OPEN_FAILED|MODEL_PROFILE_MISMATCH|GPT_5_6_SOL_OPTION_NOT_UNIQUE|REASONING_HIGH_OPTION_NOT_UNIQUE|REASONING_CONTROL_NOT_EXACT_OR_UNIQUE|CDP_TIMEOUT|operation was aborted|AbortError|TimeoutError/i.test(String(error?.message||error));
+  return /MODEL_CONTROL_NOT_EXACT_OR_UNIQUE|MODEL_SELECTOR_OPEN_FAILED|MODEL_PROFILE_MISMATCH|GPT_6_OPTION_NOT_UNIQUE|GPT_6_SELECT_FAILED|REASONING_LOW_SELECT_FAILED|REASONING_LOW_VERIFY_UNAVAILABLE|REASONING_CONTROL_NOT_EXACT_OR_UNIQUE|CDP_TIMEOUT|operation was aborted|AbortError|TimeoutError/i.test(String(error?.message||error));
 }
 async function ensureNv02LocalReadyLocked(target,initialUi=null,{forceFresh=false}={}){
   let ui=initialUi||await uiState(target);
@@ -1636,6 +1730,7 @@ async function withNv02Mutation(fn,purpose='NORMAL',ttlMs=30000){
   }
 }
 async function dispatchNaturalContinueLocked(target,state,now){
+  if(Number(state.dispatchesInChat||0)>=CYCLE_LIMIT)return;
   await scrollToBottom(target).catch(()=>{});
   const selected=await chooseLocalContinuePrompt('NV02',state);
   const prompt=selected.prompt;
@@ -1749,11 +1844,15 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   const currentChat=hasCurrentNv02Chat(ui?.url);
   const currentTrackedWork=currentChat;
   if(state.postF5RecoveryPending===true){
-    const postF5StableUi=currentChat&&ui?.composerReady===true&&!ui?.chatLoadError&&!ui?.connectionPending&&!ui?.securityBlock;
+    const postF5StableUi=(currentChat||isNv02ProjectContext(ui?.url))&&ui?.composerReady===true&&!ui?.chatLoadError&&!ui?.connectionPending&&!ui?.securityBlock;
     if(postF5StableUi&&Number(state.postF5StableSince||0)<=0){
       state={...state,postF5StableSince:now};
       saveNv02Continuity(state);
       await continuityEvent('POST_F5_STABLE_GRACE_ARMED',{postF5StableSince:state.postF5StableSince,stableGraceMs:NV02_POST_F5_STABLE_GRACE_MS});
+    }else if(postF5StableUi&&Number(state.postF5StableSince||0)>0&&(now-Number(state.postF5StableSince||0))>=NV02_POST_F5_STABLE_GRACE_MS){
+      state={...state,postF5RecoveryPending:false,postF5StableSince:0};
+      saveNv02Continuity(state);
+      await continuityEvent('POST_F5_STABLE_GRACE_SATISFIED',{stableForMs:now-Number(state.postF5StableSince||0)});
     }else if(!postF5StableUi&&Number(state.postF5StableSince||0)>0){
       state={...state,postF5StableSince:0};
       saveNv02Continuity(state);
@@ -1764,11 +1863,40 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     state={...state,verifiedChatUrl:String(ui.url),modelVerifiedAt:String(ui.verifiedAt||new Date().toISOString())};
     saveNv02Continuity(state);
   }
-  if(phase==='READY'&&['READY_NO_ELIGIBLE_WORK',NV02_LEGACY_ROTATE_MARKER].includes(String(ui?.assistantTerminal||''))&&String(ui?.assistantSignature||'')!==String(state.lastIdleMarkerSignature||'')){
+  const terminalMarker = String(ui?.assistantTerminal || '');
+  const leaseReleased = /lease.*(?:đã nhả|da nha)|(?:đã nhả|da nha).*lease/i.test(String(ui?.assistantResultTail || ''));
+  const workFinishedInChat = currentChat && phase === 'READY' && (
+    ['DONE', 'TIGERIQ_CHAT_ROTATE_READY', 'BLOCKED', 'EXTERNAL_WAIT'].includes(terminalMarker) || leaseReleased
+  );
+  if (workFinishedInChat) {
+    const rotateReason = `NV02_WORK_COMPLETED_${terminalMarker || 'LEASE_RELEASED'}`;
+    await continuityEvent('NV02_WORK_COMPLETED_ROTATE_INITIATED', {
+      url: ui?.url || null,
+      terminal: terminalMarker,
+      reason: rotateReason
+    });
+    const rotated = await rotateNv02ToFreshChat(target, state, rotateReason, { idle: false });
+    if (rotated?.ok) {
+      await continuityEvent('NV02_WORK_COMPLETED_ROTATE_SUCCESS', {
+        status: rotated.status,
+        prompt: rotated.prompt
+      });
+      return;
+    } else {
+      await continuityEvent('NV02_WORK_COMPLETED_ROTATE_FAILED', {
+        status: rotated?.status || null
+      });
+      state = { ...loadNv02Continuity(), nextContinueAt: now + 10000 };
+      saveNv02Continuity(state);
+      return;
+    }
+  }
+
+  if(phase==='READY'&&terminalMarker==='READY_NO_ELIGIBLE_WORK'&&String(ui?.assistantSignature||'')!==String(state.lastIdleMarkerSignature||'')){
     try{fs.writeFileSync(NV02_IDLE_MARKER,`${new Date().toISOString()} READY_NO_ELIGIBLE_WORK`);}catch{}
     state={...state,idleState:'READY_NO_ELIGIBLE_WORK',pendingContinue:false,awaitingWorkStart:false,awaitingWorkStartSince:0,nextContinueAt:0,nextIdleWakeAt:nextRandomAt(now,NV02_IDLE_WAKE_MIN_MS,NV02_IDLE_WAKE_MAX_MS),lastIdleMarkerSignature:String(ui?.assistantSignature||''),idleWakeBaselineSignature:''};
     saveNv02Continuity(state);
-    await continuityEvent('READY_NO_ELIGIBLE_WORK',{durable:true,sourceTerminal:String(ui?.assistantTerminal||''),nextIdleWakeAt:state.nextIdleWakeAt});
+    await continuityEvent('READY_NO_ELIGIBLE_WORK',{durable:true,sourceTerminal:terminalMarker,nextIdleWakeAt:state.nextIdleWakeAt});
     return;
   }
 
@@ -1785,6 +1913,16 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
     await continuityEvent(deferred?'VIEW_FOLLOW_BOTTOM_DEFERRED':'VIEW_FOLLOW_BOTTOM',{status:followed?.status||null,pacingMs:followed?.pacingMs||null,nextViewFollowAt:state.nextViewFollowAt});
   }
   if(phase==='BLOCKED'){await continuityEvent('BLOCKED',{securityBlock:ui?.securityBlock||null});return;}
+  if(Number(state.dispatchesInChat||0)>=CYCLE_LIMIT){
+    if(phase!=='READY'||now<Number(state.rotationRetryAt||0))return;
+    const rotated=await rotateNv02ToFreshChat(target,state,'CYCLE_LIMIT',{idle:false});
+    if(rotated?.ok!==true){
+      const retryAt=now+10*60*1000;
+      saveNv02Continuity({...loadNv02Continuity(),pendingContinue:false,rotationRetryAt:retryAt});
+      await continuityEvent('NV02_CYCLE_LIMIT_ROTATION_DEFERRED',{status:rotated?.status||'ROTATE_NOT_CONFIRMED',retryAt});
+    }
+    return;
+  }
   if(now>=Number(state.nextRefreshAt||0)){
     let resetResult=null;
     try{
@@ -1820,6 +1958,10 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   if(now>=Number(state.nextPeriodicF5At||0)){
     if(bootContextTransitionPending){
       await continuityEvent('PERIODIC_F5_OVERDUE_DEFERRED_FOR_BOOT_CONTEXT',{nextPeriodicF5At:state.nextPeriodicF5At,crashResumePending:state.crashResumePending===true});
+    }else if(phase==='READY'&&state.pendingContinue===true&&now>=Number(state.nextContinueAt||0)){
+      state={...state,nextPeriodicF5At:now+60_000};
+      saveNv02Continuity(state);
+      await continuityEvent('PERIODIC_F5_DEFERRED_PENDING_CONTINUE',{nextPeriodicF5At:state.nextPeriodicF5At});
     }else{
     if(state.postF5RecoveryPending===true){
       const stableSince=Number(state.postF5StableSince||0);
@@ -1890,6 +2032,7 @@ async function maybeNv02Continuity(w,target,ui,{allowContinue=true}={}){
   if(chatLoadRecoveryHandled)return;
   state=loadNv02Continuity();
   if(state.idleState==='READY_NO_ELIGIBLE_WORK'&&state.awaitingWorkStart!==true){
+    if(Number(state.dispatchesInChat||0)>=CYCLE_LIMIT)return;
     if(phase==='READY'){
       const wakeAt=Number(state.nextIdleWakeAt)||now;
       if(now<wakeAt)return;
@@ -2038,6 +2181,7 @@ async function handleCommand(w,target,command){
   if(action==='LOCAL_CONTINUE_NOW'){
     if(bootFreshContextPending.has(w.id))return{status:'LOCAL_CONTINUE_DEFERRED_BOOT'};
     const stateBefore=w.id==='NV02'?loadNv02Continuity():loadWorkerContinuity(w.id);
+    if(w.id==='NV02'&&Number(stateBefore.dispatchesInChat||0)>=CYCLE_LIMIT)return{status:'NV02_CYCLE_LIMIT_HOLD'};
     if(w.id==='NV02'&&stateBefore.idleState==='READY_NO_ELIGIBLE_WORK'&&stateBefore.awaitingWorkStart!==true){
       const raw=await uiState(target);
       const phase=deriveNv02Phase(raw||{});

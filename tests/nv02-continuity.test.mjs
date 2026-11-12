@@ -18,6 +18,9 @@ describe('NV02 continuity policy', () => {
     expect(detectWorkerAssistantTerminal('STATE=READY_NO_ELIGIBLE_WORK')).toBe('READY_NO_ELIGIBLE_WORK');
     expect(detectWorkerAssistantTerminal('TIGERIQ_CHAT_ROTATE_READY')).toBe('TIGERIQ_CHAT_ROTATE_READY');
     expect(detectWorkerAssistantTerminal('không phải TIGERIQ_CHAT_ROTATE_READY')).toBe('');
+    expect(detectWorkerAssistantTerminal('XONG — chu kỳ sửa lỗi -> test xanh -> merge MAIN đã hoàn tất.\nPR #5638 merged.\nLease NV02 đã nhả có biên nhận.')).toBe('DONE');
+    expect(detectWorkerAssistantTerminal('CHƯA XONG do còn cổng APK ký.\nLease NV02 đã nhả có biên nhận.')).toBe('TIGERIQ_CHAT_ROTATE_READY');
+    expect(detectWorkerAssistantTerminal('Lease NV02 đã nhả có biên nhận.')).toBe('TIGERIQ_CHAT_ROTATE_READY');
   });
 
   it('recovers READY awaitingWorkStart after one bounded acknowledgement window',()=>{
@@ -238,7 +241,7 @@ describe('NV02 continuity policy', () => {
     expect(continueDispatch).not.toContain('CONTINUE_SKIPPED_NO_CURRENT_WORK');
     expect(continueDispatch).not.toContain('CONTINUE_SKIPPED_CURRENT_WORK_UNVERIFIED');
     expect(source).not.toContain("withNv02Mutation(()=>ensureNv02ModelProfile(target),'MODEL_PROFILE_RECOVERY')");
-    expect(source).toContain("modelName==='GPT-5.6 Sol'");
+    expect(source).toContain("modelName==='GPT-6'");
     expect(source).toContain("const NV02_F5_MAX_MS=10*60*1000");
     expect(source).toContain("const UI_STABILITY_PACING_MIN_MS=3000");
     expect(source).toContain("const UI_STABILITY_PACING_MAX_MS=8000");
@@ -246,7 +249,7 @@ describe('NV02 continuity policy', () => {
     expect(source).toContain("nextViewFollowAt");
     expect(source).toContain("await scrollToBottom(target).catch");
     expect(source).not.toContain("withNv02Mutation(()=>scrollToBottom(target),'VIEW_FOLLOW_BOTTOM'");
-    expect(source).toContain("reasoningEffort==='High'");
+    expect(source).toContain("reasoningEffort==='Low'");
     expect(source).toContain("async open(timeout=4000)");
     expect(source).toContain("fail(new Error('CDP_OPEN_TIMEOUT'))");
     expect(source).toContain("fail(new Error('CDP_OPEN_ERROR'))");
@@ -342,7 +345,7 @@ describe('NV02 continuity policy', () => {
 
     expect(source).toContain("verifiedChatUrl:String(raw.verifiedChatUrl||'')");
     expect(source).toContain("function applyNv02DurableVerifiedModelProfile(ui)");
-    expect(source).toContain("ui.modelControlPresent!==true||ui.reasoningEffort!=='High'");
+    expect(source).toContain("ui.modelControlPresent!==true||ui.reasoningEffort!=='Low'");
     expect(source).not.toContain("!sameNv02Chat(state.verifiedChatUrl,ui?.url)");
     expect(source).toContain("return applyNv02DurableVerifiedModelProfile(applyNv02VerifiedModelProfile(raw))");
     const tickWorker=source.slice(source.indexOf('async function tickWorker'),source.indexOf('async function tick()'));
@@ -455,14 +458,14 @@ describe('NV02 continuity policy', () => {
     expect(ui).toContain(`document.querySelectorAll('button,[role="button"]')`);
     expect(ui).toContain('chọn mô hình chatgpt|choose.*model|model selector');
     expect(ui).toContain("e.hasAttribute('data-selected-reasoning-effort')");
-    expect(source).toContain("Cao|High|Tiêu chuẩn|Standard|Nhanh|Fast|Tự động|Auto");
+    expect(source).toContain("Tức thì|Instant|Thấp|Low|Cao|High|Vừa|Medium|Tiêu chuẩn|Standard|Nhanh|Fast|Tự động|Auto");
     expect(source).toContain("const MODEL_SELECTOR_POINT_EXPR=");
-    expect(source).toContain("async function openNv02ModelSelector(target)");
+    expect(source).toContain("async function openNv02ModelSelector(target");
     expect(source).toContain("MODEL_SELECTOR_ALREADY_OPEN");
     expect(source).toContain("cdpMouseClick(p,point)");
     expect(source).toContain("[role=\"menuitemradio\"][aria-checked=\"true\"]");
-    expect(source).toContain("GPT-5.6 Sol");
-    expect(source).toContain("modelName==='GPT-5.6 Sol'&&reasoningEffort==='High'");
+    expect(source).toContain("GPT-6");
+    expect(source).toContain("modelName==='GPT-6'&&reasoningEffort==='Low'");
     expect(source).not.toContain("const MODEL_SELECTOR_CLICK_EXPR=");
   });
 
@@ -537,7 +540,7 @@ describe('NV02 continuity policy', () => {
     expect(installer).toContain("BRIDGE_APPROVED_HEAD_MISMATCH");
     expect(installer).toContain("BRIDGE_SOURCE_HASH_MISMATCH");
     expect(installer).toContain("NV02_MODEL_NOT_READY");
-    expect(installer).toContain("NV02_REASONING_NOT_HIGH");
+    expect(installer).toContain("NV02_REASONING_NOT_LOW");
     const resumeModeIndex=installer.indexOf("Set-OwnerMode ([bool]$ResumeAutomation)");
     const modelWaitIndex=installer.indexOf("$deadline=(Get-Date).AddSeconds(30)");
     expect(resumeModeIndex).toBeGreaterThan(-1);

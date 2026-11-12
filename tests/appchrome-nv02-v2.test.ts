@@ -22,7 +22,7 @@ describe('App Chrome NV02 V2 boundary', () => {
   it('uses only one exact prefixed continuation command for bounded idle wake', () => {
     expect(bridge).not.toContain('NV02_SELF_PULL_WAKE_PROMPT');
     expect(bridge).not.toContain('NV02_ROTATION_INSTRUCTION');
-    expect(bridge).toContain('return `02 - ${pickContinuePrompt(prior,random)}`;');
+    expect(bridge).toContain("return '02 - '+pool[Math.min(pool.length-1,Math.floor(random()*pool.length))];");
     expect(bridge).toContain('NV02_IDLE_CONTINUE_WAKE_DISPATCHED');
     expect(bridge).toContain('detectWorkerAssistantTerminal');
     expect(bridge).toContain('assistantTerminal=detectAssistantTerminal(assistantTextRaw)');
@@ -41,9 +41,9 @@ describe('App Chrome NV02 V2 boundary', () => {
 
   it('uses the one canonical short-command pool with an NV02-specific prefix adapter', () => {
     const continuity=readFileSync('apps/chrome-controller/extension/continuity.js','utf8');
-    expect(bridge).not.toContain('NV02_CONTINUE_PROMPTS');
+    expect(bridge).toContain('NV02_CONTINUE_PROMPTS');
     expect(bridge).toContain("workerId==='NV02'?pickNv02ContinuePrompt(state?.lastPrompt):pickWorkerContinuePrompt(workerId,state?.lastPrompt)");
-    expect(bridge).toContain('return `02 - ${pickContinuePrompt(prior,random)}`;');
+    expect(bridge).toContain("return '02 - '+pool[Math.min(pool.length-1,Math.floor(random()*pool.length))];");
     expect(continuity).toContain("'Làm tiếp, không đổi việc'");
   });
 
@@ -206,7 +206,7 @@ describe('NV02 V2 independent maintenance timers', () => {
     expect(bridge).toContain('NV02_IDLE_CONTINUE_WAKE_UNCERTAIN');
     expect(bridge).toContain('nextIdleWakeAt:now+60_000');
     expect(bridge).toContain('NV02_IDLE_CONTINUE_WAKE_DISPATCHED');
-    expect(bridge).toContain('return `02 - ${pickContinuePrompt(prior,random)}`;');
+    expect(bridge).toContain("return '02 - '+pool[Math.min(pool.length-1,Math.floor(random()*pool.length))];");
     const f5Gate=bridge.indexOf("if(now>=Number(state.nextPeriodicF5At||0))");
     const idleGate=bridge.indexOf("if(state.idleState==='READY_NO_ELIGIBLE_WORK'&&state.awaitingWorkStart!==true)");
     expect(f5Gate).toBeGreaterThan(-1);
@@ -313,7 +313,7 @@ describe('NV02 broken-chat durable recovery contract', () => {
     expect(bridge).not.toContain('NV02_SELF_PULL_WAKE_PROMPT');
     expect(bridge).not.toContain('NV02_ROTATION_INSTRUCTION');
     expect(bridge).toContain("const prompt=pickNv02ContinuePrompt(state?.lastPrompt)");
-    expect(bridge).toContain('return `02 - ${pickContinuePrompt(prior,random)}`;');
+    expect(bridge).toContain("return '02 - '+pool[Math.min(pool.length-1,Math.floor(random()*pool.length))];");
   });
 });
 
