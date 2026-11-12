@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.12.2",
+  "checkpoint_id": "a3b83de8c7a3",
+  "strategy": "manual-commit",
+  "branch": "fix/ultracar-v1214-featurecard-npe",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/a3/b83de8c7a3/0/metadata.json",
+      "transcript": "/a3/b83de8c7a3/0/full.jsonl",
+      "content_hash": "/a3/b83de8c7a3/0/content_hash.txt",
+      "prompt": "/a3/b83de8c7a3/0/prompt.txt"
+    }
+  ],
+  "redaction": {
+    "replacements": 288,
+    "layers": {
+      "betterleaks": 68,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 19,
+      "credentialed_uri": 0,
+      "entropy": 202,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.12.2",
+  "checkpoint_id": "a3b83de8c7a3",
+  "session_id": "f4cd40d1-845a-4965-95af-0b0d9fdfa6f1",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-12T10:41:56.6190099Z",
+  "branch": "fix/ultracar-v1214-featurecard-npe",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Antigravity",
+  "model": "gemini-3.8-flash-medium",
+  "turn_id": "2a488b670302",
+  "redaction": {
+    "replacements": 288,
+    "layers": {
+      "betterleaks": 68,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 19,
+      "credentialed_uri": 0,
+      "entropy": 202,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 67
+  }
+}
