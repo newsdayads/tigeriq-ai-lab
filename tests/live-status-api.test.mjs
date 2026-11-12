@@ -559,7 +559,7 @@ describe('TigerIQ Live Work Order projection', () => {
         'OWNER_CLOSEOUT_KIND=ADMINISTRATIVE_COMPLETED',
         'OWNER_CLOSEOUT_SOURCE=OWNER_CHAT_2026_11_12',
         'OWNER_CLOSEOUT_TECHNICAL_ACCEPTANCE=false',
-      ].join('\\n'),
+      ].join('\n'),
     };
     expect(parseRecentCompletedIssue(base,now)).toBeNull();
     expect(parseRecentClosedIssue(base,now)).toMatchObject({
