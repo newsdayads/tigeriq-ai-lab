@@ -233,3 +233,13 @@ skills:
     target: coding-lane
     triggers: backend máy chủ api service database postgres worker schema contract integration
     summary: Scoped backend implementation with contract, failure reproduction, idempotency, API/database integration tests and exact-head receipts.
+
+  - id: product-3d-engineering
+    title: Professional 3D Product Engineering and CAD Review
+    state: CANDIDATE
+    version: 0.1.0
+    provenance_batch: owner-direct-2026-11-12
+    source_log: docs/skills/product-3d-engineering/SKILL.md
+    target: physical-product-cad
+    triggers: "3d thiết kế sản phẩm in 3D CAD STL STEP 3MF Bambu P1S OpenSCAD Blender kỹ thuật"
+    summary: "CAD-first workflow, measured orthographic drawing, 4–6 verified model views, printability and slicer evidence, safely adapted from pinned external reference skills; not installed on host."
