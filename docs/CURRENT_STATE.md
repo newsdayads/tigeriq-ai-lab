@@ -1,3 +1,21 @@
+# LIVE STATE OVERRIDE — 2026-11-12 — ULTRACAR HCM V1.2.13 (BUILD 359) PUBLISHED & SYNCED
+Authority: Direct Owner Instruction ("Cập nhật trạng thái mới nhất của App lên Github và Dashbroad TigerIQ. Đã là bản mới 1.2.13 rồi mà trên này vẫn còn trạng thái V73") + Issue #5129 + Issue #504.
+
+1. **Phát hành UltraCar HCM v1.2.13 (Build 359) trên Drive, GitHub & OTA:**
+   - Package: `com.tigeriq.dexsplit` | `versionCode`: `359` | `versionName`: `1.2.13`
+   - File Drive: `G:\Drive của tôi\TigerIQ UltraCar\UltraCar_v1.2.13.apk` (35,203,574 bytes)
+   - SHA-256: `8D2142788569B5E158456415A6ABC30A7BFF4667A99796429D1847CBFF3BDC00`
+   - Chữ ký: `debug.keystore` chuẩn (cert SHA-256 `71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558`), APK Signature v2/v3 PASS.
+   - OTA & GitHub: `version.json` trên `main`, nhị phân `UltraCar_latest.apk` trên nhánh `apk-dist`, mã nguồn & unit test tại `apps/ultracarhcm-v1/src` & `apps/ultracarhcm-v1/tests`.
+
+2. **Nội dung kỹ thuật chính từ V74 → v1.2.13 (Build 359):**
+   - **Vạch lùi OEM Vector Canvas (`NativeGuideWarpView`, `ReversePathGeometry`, `MotionSteeringEstimator`):** dải bánh chuyển sắc xanh lá → vàng → đỏ theo kích thước 0.5m / 1.0m / 1.5m sát mép lề đường, lọc rung động khi đánh lái.
+   - **Remote Bluetooth vô lăng (`RemoteKeyAccessibilityService`, `RemoteKeyShortcutEngine`):** nhấn giữ phím < 2 giây bật/tắt trực tiếp Camera Popup giống nút nổi Camera `[R]`, không còn ẩn nhầm app UltraCar.
+   - **Đồng bộ tự động GitHub ↔ Dashboard TigerIQ (`#5129`):** workflow `.github/workflows/ultracar-version-dashboard-sync.yml` + `apps/ultracarhcm-v1/release/sync-ultracar-status.mjs` tự cập nhật Issue `#5129` (và Dashboard `ai.tigeriq.io.vn`) mỗi khi `version.json` / `current-release.json` cập nhật lên `main`.
+   - **Trạng thái QA thiết bị thật:** Unit test Java (`GuideEngineUnitTest`, `RemoteKeyShortcutUnitTest`) PASS; kiểm thử thực tế trên Z Fold 2 / Samsung DeX đang ở trạng thái **CHỜ ANH SƠN** nghiệm thu.
+
+---
+
 # LIVE STATE OVERRIDE — 2026-11-02 — ULTRACAR HCM V1.0.74 (BUILD 315) VERIFIED & PUBLISHED
 Authority: Direct Owner Instruction ("Gộp lại là 1 App. Duyệt thực hiện đi. Tôi cần App chuyên nghiệp") + Issue #504.
 

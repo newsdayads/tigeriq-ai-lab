@@ -1,0 +1,60 @@
+{
+  "workItem": 5129,
+  "projectId": "dexcam-personal",
+  "projectName": "DeXCam Personal",
+  "workstreamId": "ultracarhcm-v1",
+  "workstreamName": "UltraCarHCM V1",
+  "packageName": "com.tigeriq.dexsplit",
+  "versionCode": 359,
+  "versionName": "1.2.13",
+  "releaseTag": "v1.2.13",
+  "fileName": "UltraCar_v1.2.13.apk",
+  "sizeBytes": 35203574,
+  "sha256": "8D2142788569B5E158456415A6ABC30A7BFF4667A99796429D1847CBFF3BDC00",
+  "certificateSha256": "71617043EACE89E5F220EA9168B0A9592808111B0F17EAA219F5E6ECEB569558",
+  "apkDistUrl": "https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/apk-dist/UltraCar_latest.apk",
+  "releaseUrl": "https://github.com/newsdayads/tigeriq-ai-lab/releases/tag/v1.2.13",
+  "versionJsonUrl": "https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/main/version.json",
+  "sourceUrl": "https://github.com/newsdayads/tigeriq-ai-lab/tree/main/apps/ultracarhcm-v1/src",
+  "unitTestUrl": "https://github.com/newsdayads/tigeriq-ai-lab/tree/main/apps/ultracarhcm-v1/tests",
+  "publishedAt": "2026-11-12T02:25:17Z",
+  "ownerQaPending": true,
+  "releaseNotes": "TigerIQ UltraCar v1.2.13 (BUILD 359) — Vạch lùi OEM góc lái rộng + Remote BT < 2s bật Camera Popup",
+  "highlights": [
+    "Vạch lùi OEM Vector Canvas (NativeGuideWarpView / ReversePathGeometry): dải bánh chuyển sắc xanh lá -> vàng -> đỏ, thẳng đúng tỉ lệ khoảng cách 0.5m / 1.0m / 1.5m và đồng bộ hướng đánh lái + lọc rung MotionSteeringEstimator.",
+    "Remote Bluetooth vô lăng (RemoteKeyAccessibilityService / RemoteKeyShortcutEngine): nhấn giữ < 2 giây bật/tắt đúng Camera Popup giống icon nổi; không còn ẩn nhầm app UltraCar khi giữ < 2 giây.",
+    "Đồng bộ OTA & Dashboard: version.json, nhánh apk-dist (UltraCar_latest.apk), GitHub Release v1.2.13 và Issue #5129 trên ai.tigeriq.io.vn tự động cập nhật khi phát hành."
+  ],
+  "checklist": [
+    {
+      "label": "Build, zipalign & ký UltraCar_v1.2.13.apk (Build 359, SHA-256 8D214278...)",
+      "done": true,
+      "evidenceLabel": "Release v1.2.13",
+      "evidenceUrl": "https://github.com/newsdayads/tigeriq-ai-lab/releases/tag/v1.2.13"
+    },
+    {
+      "label": "Đẩy mã nguồn Java v1.2.13 và unit tests (GuideEngineUnitTest, RemoteKeyShortcutUnitTest PASS) lên main",
+      "done": true,
+      "evidenceLabel": "apps/ultracarhcm-v1/src",
+      "evidenceUrl": "https://github.com/newsdayads/tigeriq-ai-lab/tree/main/apps/ultracarhcm-v1/src"
+    },
+    {
+      "label": "Cập nhật OTA manifest version.json & nhị phân apk-dist/UltraCar_latest.apk",
+      "done": true,
+      "evidenceLabel": "version.json",
+      "evidenceUrl": "https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/main/version.json"
+    },
+    {
+      "label": "Đồng bộ tự động từ GitHub main sang Issue #5129 và Dashboard TigerIQ",
+      "done": true,
+      "evidenceLabel": "workflow đồng bộ",
+      "evidenceUrl": "https://github.com/newsdayads/tigeriq-ai-lab/blob/main/.github/workflows/ultracar-version-dashboard-sync.yml"
+    },
+    {
+      "label": "Kiểm thử thực tế v1.2.13 trên Z Fold 2 / DeX (nút [R], vạch lùi OEM, Remote BT < 2s bật Camera Popup)",
+      "done": false,
+      "evidenceLabel": null,
+      "evidenceUrl": null
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+name: UltraCar Version & Dashboard Sync
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'version.json'
+      - 'apps/ultracarhcm-v1/release/current-release.json'
+      - 'apps/ultracarhcm-v1/release/sync-ultracar-status.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sync-work-order:
+    name: Sync UltraCar Version to Issue #5129
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Verify sync contract tests
+        run: node --test tests/ultracar-sync-status.test.mjs
+      - name: Sync GitHub Issue #5129 (Dashboard TigerIQ source)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node apps/ultracarhcm-v1/release/sync-ultracar-status.mjs --apply --comment --issue 5129 --repo "${{ github.repository }}"
