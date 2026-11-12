@@ -711,7 +711,7 @@ export function parseRecentClosedIssue(issue, now = Date.now()) {
   // from the actionable closure-conflict list after an explicit closeout.
   const ownerAdministrativeCloseout = reason === 'completed' &&
     bodyValue(body, 'OWNER_CLOSEOUT_KIND') === 'ADMINISTRATIVE_COMPLETED' &&
-    /^OWNER_CHAT_\\d{4}_\\d{2}_\\d{2}$/.test(bodyValue(body, 'OWNER_CLOSEOUT_SOURCE')) &&
+    /^OWNER_CHAT_[0-9]{4}_[0-9]{2}_[0-9]{2}$/.test(bodyValue(body, 'OWNER_CLOSEOUT_SOURCE')) &&
     bodyValue(body, 'OWNER_CLOSEOUT_TECHNICAL_ACCEPTANCE').toLowerCase() === 'false';
   const blockedPhase = /(?:^|_)BLOCKED(?:_|$)/.test(phase);
   const closureConflict = declaredIncomplete && !ownerAdministrativeCloseout &&
