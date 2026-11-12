@@ -18,10 +18,10 @@ import { validateWorkOrderLifecycleV2 } from '../apps/tigeriq-core/work-order-li
 test('version.json and current-release.json stay strictly synchronized', () => {
   const { versionData, releaseData } = loadManifests(process.cwd());
   assert.doesNotThrow(() => validateReleaseManifestConsistency(versionData, releaseData));
-  assert.equal(versionData.versionCode, 359);
-  assert.equal(versionData.versionName, '1.2.13');
-  assert.equal(versionData.latestVersionCode, 359);
-  assert.equal(versionData.latestVersionName, '1.2.13');
+  assert.equal(versionData.versionCode, 360);
+  assert.equal(versionData.versionName, '1.2.14');
+  assert.equal(versionData.latestVersionCode, 360);
+  assert.equal(versionData.latestVersionName, '1.2.14');
 });
 
 test('generated #5129 issue satisfies both live-status dashboard and lifecycle-v2 gates', () => {
@@ -55,13 +55,13 @@ test('generated #5129 issue satisfies both live-status dashboard and lifecycle-v
   assert.equal(parsed.progressTotal, 5);
   assert.equal(parsed.progressDone, 4);
   assert.equal(parsed.progressPercent, 80);
-  assert.match(parsed.title, /1\.2\.13/);
+  assert.match(parsed.title, /1\.2\.14/);
 });
 
 test('dry-run CLI helper succeeds cleanly and sync comment contains structured state', () => {
   const { releaseData } = loadManifests(process.cwd());
   const comment = buildSyncComment(releaseData);
-  assert.match(comment, /^<!-- ULTRACAR_SYNC_V359_/);
+  assert.match(comment, /^<!-- ULTRACAR_SYNC_V360_/);
   assert.match(comment, /CURRENT_STATE=READY_FOR_OWNER_APPROVAL/);
   assert.match(comment, /DONE=false/);
 
@@ -69,8 +69,8 @@ test('dry-run CLI helper succeeds cleanly and sync comment contains structured s
   assert.equal(res.ok, true);
   assert.equal(res.dryRun, true);
   assert.equal(res.issue, 5129);
-  assert.equal(res.versionCode, 359);
-  assert.equal(res.versionName, '1.2.13');
+  assert.equal(res.versionCode, 360);
+  assert.equal(res.versionName, '1.2.14');
 });
 
 test('manifest mismatch fails closed', () => {
