@@ -706,9 +706,16 @@ export function parseRecentClosedIssue(issue, now = Date.now()) {
   // explicit acceptance conflict in ANY lifecycle phase (READY/WAIT/BLOCKED).
   // Preserve historic not_planned filtering except proven blocked conflicts.
   const declaredIncomplete = bodyValue(body, 'DONE').toLowerCase() === 'false';
+  // Owner can conclude administrative tracking without asserting physical or
+  // production acceptance. Keep DONE=false but remove this archived issue
+  // from the actionable closure-conflict list after an explicit closeout.
+  const ownerAdministrativeCloseout = reason === 'completed' &&
+    bodyValue(body, 'OWNER_CLOSEOUT_KIND') === 'ADMINISTRATIVE_COMPLETED' &&
+    /^OWNER_CHAT_[0-9]{4}_[0-9]{2}_[0-9]{2}$/.test(bodyValue(body, 'OWNER_CLOSEOUT_SOURCE')) &&
+    bodyValue(body, 'OWNER_CLOSEOUT_TECHNICAL_ACCEPTANCE').toLowerCase() === 'false';
   const blockedPhase = /(?:^|_)BLOCKED(?:_|$)/.test(phase);
-  const closureConflict = declaredIncomplete && (reason === 'completed' ||
-    (reason === 'not_planned' && blockedPhase));
+  const closureConflict = declaredIncomplete && !ownerAdministrativeCloseout &&
+    (reason === 'completed' || (reason === 'not_planned' && blockedPhase));
   if (reason === 'duplicate' || (reason === 'not_planned' && !closureConflict)) return null;
   if (['CANCELLED','CANCELED','SUPERSEDED','NOT_PLANNED'].includes(bodyValue(body,'STATE').toUpperCase()) ||
       /^SUPERSEDED(?:_BY)?=/mi.test(body)) return null;
@@ -724,14 +731,16 @@ export function parseRecentClosedIssue(issue, now = Date.now()) {
     employeeId: issueEmployeeId(issue),
     status: 'CLOSED_UNVERIFIED', workKind: 'WORK',
     ...workflowRelationsForIssue(issue),
-    closureConflict, closureReason: reason,
+    closureConflict, closureReason: reason, ownerAdministrativeCloseout,
     closureConflictReason: closureConflict
       ? (reason === 'completed' ? 'GitHub đã đóng với lý do hoàn tất nhưng DONE=false; chưa nghiệm thu' : 'GitHub đã đóng nhưng CURRENT_STATE vẫn BLOCKED và DONE=false')
       : null,
     blocker: closureConflict ? bodyValue(body, 'BLOCKER').slice(0, 320) || (blockedPhase ? phase : 'DONE=false') : null,
     nextStep: closureConflict ? 'Đối chiếu quyết định đóng và cổng thiết bị với Owner; không tự mở lại hoặc giao việc' : null,
     progressPercent: null, progressSource: 'closed_unverified',
-    progressDetail: closureConflict ? 'LỆCH TRẠNG THÁI: GitHub đã đóng nhưng DONE=false, chưa nghiệm thu' : 'Đã đóng trên GitHub; chưa xác minh nghiệm thu',
+    progressDetail: closureConflict ? 'LỆCH TRẠNG THÁI: GitHub đã đóng nhưng DONE=false, chưa nghiệm thu' :
+      ownerAdministrativeCloseout ? 'Đã kết thúc theo quyết định Owner; chưa nghiệm thu kỹ thuật' :
+      'Đã đóng trên GitHub; chưa xác minh nghiệm thu',
     completionVerified: false,
     lifecycleTiming: validateWorkOrderLifecycleV2(issue).timestamps,
     closedAt, updatedAt: closedAt, url: issue.html_url || null,

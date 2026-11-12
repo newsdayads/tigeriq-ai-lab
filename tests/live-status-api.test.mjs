@@ -547,6 +547,30 @@ describe('TigerIQ Live Work Order projection', () => {
     expect(parseRecentClosedIssue({...base,state_reason:'duplicate'},now)).toBeNull();
   });
 
+  it('archives Owner administrative closeout without showing an open closure conflict or faking technical DONE', () => {
+    const now=Date.parse('2026-11-12T04:00:00Z');
+    const base={
+      number:5648,title:'[P1][OWNER] Chấm dứt luồng Vercel mặc định',
+      state:'closed',state_reason:'completed',closed_at:'2026-11-12T03:37:03Z',
+      html_url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/5648',
+      body:[
+        'CURRENT_STATE=PR5660_MERGED_ROUTER_LOCAL_PASS_ULTRACAR_PUBLIC_404_REQUIRES_AUTHORIZED_TUNNEL_RELOAD',
+        'DONE=false','PRIORITY=P1',
+        'OWNER_CLOSEOUT_KIND=ADMINISTRATIVE_COMPLETED',
+        'OWNER_CLOSEOUT_SOURCE=OWNER_CHAT_2026_11_12',
+        'OWNER_CLOSEOUT_TECHNICAL_ACCEPTANCE=false',
+      ].join('\n'),
+    };
+    expect(parseRecentCompletedIssue(base,now)).toBeNull();
+    expect(parseRecentClosedIssue(base,now)).toMatchObject({
+      number:5648,status:'CLOSED_UNVERIFIED',closureConflict:false,
+      ownerAdministrativeCloseout:true,completionVerified:false,progressPercent:null,
+    });
+    expect(parseRecentClosedIssue(base,now)?.progressDetail).toMatch(/kết thúc theo quyết định Owner/i);
+    expect(parseRecentClosedIssue({...base,body:base.body.replace('OWNER_CLOSEOUT_KIND=ADMINISTRATIVE_COMPLETED','OWNER_CLOSEOUT_KIND=UNKNOWN')},now)?.closureConflict).toBe(true);
+    expect(parseRecentClosedIssue({...base,body:base.body.replace('OWNER_CLOSEOUT_TECHNICAL_ACCEPTANCE=false','OWNER_CLOSEOUT_TECHNICAL_ACCEPTANCE=true')},now)?.closureConflict).toBe(true);
+  });
+
   it('does not treat historical closed issues as verified completions without V2 receipts', () => {
     const now=Date.parse('2026-09-25T00:00:00Z');
     expect(parseRecentCompletedIssue({
