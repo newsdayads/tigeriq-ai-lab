@@ -8,6 +8,7 @@ on:
       - 'version.json'
       - 'apps/ultracarhcm-v1/release/current-release.json'
       - 'apps/ultracarhcm-v1/release/sync-ultracar-status.mjs'
+      - '.github/workflows/ultracar-version-dashboard-sync.yml'
   workflow_dispatch:
 
 permissions:
@@ -23,6 +24,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
       - name: Verify sync contract tests
         run: node --test tests/ultracar-sync-status.test.mjs
       - name: Sync GitHub Issue #5129 (Dashboard TigerIQ source)
