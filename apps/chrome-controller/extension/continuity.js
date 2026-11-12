@@ -229,7 +229,7 @@ export function detectWorkerAssistantTerminal(rawText=''){
       .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
       .replace(/[.!。]+$/,'').trim().toUpperCase();
     const m=String(marker||'').toUpperCase();
-    return line===m||line.startsWith(m+'_')||line===`STATE=${m}`||line.startsWith(`STATE=${m}_`)||line===`STATE: ${m}`||line.startsWith(`STATE: ${m}_`)||line===`STATUS=${m}`||line.startsWith(`STATUS=${m}_`)||line===`STATUS: ${m}`||line.startsWith(`STATUS: ${m}_`)||line===`TRANG THAI=${m}`||line.startsWith(`TRANG THAI=${m}_`)||line===`TRANG THAI: ${m}`||line.startsWith(`TRANG THAI: ${m}_`);
+    return line===m||line.startsWith(m+'_')||line.startsWith(`${m} `)||line.startsWith(`${m}-`)||line.startsWith(`${m}—`)||line.startsWith(`${m}:`)||line===`STATE=${m}`||line.startsWith(`STATE=${m}_`)||line===`STATE: ${m}`||line.startsWith(`STATE: ${m}_`)||line===`STATUS=${m}`||line.startsWith(`STATUS=${m}_`)||line===`STATUS: ${m}`||line.startsWith(`STATUS: ${m}_`)||line===`TRANG THAI=${m}`||line.startsWith(`TRANG THAI=${m}_`)||line===`TRANG THAI: ${m}`||line.startsWith(`TRANG THAI: ${m}_`);
   });
   if(markerLine('TIGERIQ_CHAT_ROTATE_READY'))return 'TIGERIQ_CHAT_ROTATE_READY';
   if(markerLine('READY_NO_ELIGIBLE_WORK')||/\bREAL_BLOCKER_NO_ELIGIBLE_CLAIM\b/i.test(text))return 'READY_NO_ELIGIBLE_WORK';

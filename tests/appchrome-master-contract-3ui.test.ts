@@ -25,8 +25,8 @@ describe('App Chrome Master Contract 3 UI V1',()=>{
     expect(poolStart).toBeGreaterThan(-1);
     for(const command of commands)expect(pool).toContain(`'${command}'`);
     expect((pool.match(/^\s*'.+',?$/gm)||[])).toHaveLength(21);
-    expect(bridge).not.toContain('NV02_CONTINUE_PROMPTS');
-    expect(bridge).toContain('return `02 - ${pickContinuePrompt(prior,random)}`;');
+    expect(bridge).toContain('NV02_CONTINUE_PROMPTS');
+    expect(bridge).toContain("return '02 - '+pool[Math.min(pool.length-1,Math.floor(random()*pool.length))];");
     expect(continuity).toContain("return code?code+' - '+base:base");
     expect(bridge).not.toContain('NV02_ROTATION_INSTRUCTION');
     expect(bridge).not.toContain('NV02_SELF_PULL_WAKE_PROMPT');
@@ -96,8 +96,8 @@ describe('App Chrome Master Contract 3 UI V1',()=>{
   });
 
   it('requires NV02 visible model verification and keeps generic model preservation',()=>{
-    expect(bridge).toContain("modelName:'GPT-5.6 Sol'");
-    expect(bridge).toContain("reasoningEffort:'High'");
+    expect(bridge).toContain("modelName:'GPT-6'");
+    expect(bridge).toContain("reasoningEffort:'Low'");
     expect(bridge).toContain('ensureNv02ModelProfile');
     expect(bridge).toContain("if(w.id!=='NV02'&&state.modelCheckAttempted!==true)");
     expect(bridge).toContain('BOOT_MODEL_PROFILE_PRESERVED');

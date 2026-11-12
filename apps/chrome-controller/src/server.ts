@@ -438,7 +438,7 @@ async function startWorker(workerId:WorkerId){
 
 
 function modelProfileGateReason(hb:Heartbeat|undefined){
-  if(hb?.modelProfileStatus==='MODEL_PROFILE_VERIFIED'&&hb.modelName==='GPT-5.6 Sol'&&hb.reasoningEffort==='High'&&hb.modelReady===true)return '';
+  if(hb?.modelProfileStatus==='MODEL_PROFILE_VERIFIED'&&hb.modelName==='GPT-6'&&hb.reasoningEffort==='Low'&&hb.modelReady===true)return '';
   return hb?.blockedReason||hb?.modelProfileStatus||'MODEL_PROFILE_UNVERIFIED';
 }
 
@@ -1479,8 +1479,8 @@ async function handleApi(req:IncomingMessage,res:ServerResponse,url:URL):Promise
       const security=heartbeatStopReason(state.lastHeartbeat);
       if(security)throw new Error(security);
       const hb=state.lastHeartbeat;
-      if(hb?.modelExact!==true||hb.modelName!=='GPT-5.6 Sol'||hb.reasoningEffort!=='High'||hb.modelReady!==true)
-        throw new Error('MODEL_PROFILE_BLOCKED:RECOVERY_RESUME_REQUIRES_GPT_5_6_SOL_HIGH');
+      if(hb?.modelExact!==true||hb.modelName!=='GPT-6'||hb.reasoningEffort!=='Low'||hb.modelReady!==true)
+        throw new Error('MODEL_PROFILE_BLOCKED:RECOVERY_RESUME_REQUIRES_GPT_6_LOW');
       if(!browserMutationLeases.active('NV02'))throw new Error('BROWSER_MUTATION_LEASE_REQUIRED:NV02');
       const data=await body(req);
       const jobId=String(data.jobId??'').trim();

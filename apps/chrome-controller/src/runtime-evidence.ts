@@ -132,8 +132,8 @@ export function buildRuntimeEvidence(input: RuntimeEvidenceInput, now = new Date
   const nv02 = input.workers.find((worker) => worker.id === 'NV02');
   const nv02Heartbeat = nv02?.lastHeartbeat;
   const modelExact = nv02Heartbeat?.modelProfileStatus === 'MODEL_PROFILE_VERIFIED'
-    && nv02Heartbeat?.modelName === 'GPT-5.6 Sol'
-    && nv02Heartbeat?.reasoningEffort === 'High'
+    && nv02Heartbeat?.modelName === 'GPT-6'
+    && nv02Heartbeat?.reasoningEffort === 'Low'
     && nv02Heartbeat?.modelReady === true;
   return {
     modelVerification: {

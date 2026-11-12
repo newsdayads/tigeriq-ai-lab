@@ -540,7 +540,7 @@ describe('NV02 continuity policy', () => {
     expect(installer).toContain("BRIDGE_APPROVED_HEAD_MISMATCH");
     expect(installer).toContain("BRIDGE_SOURCE_HASH_MISMATCH");
     expect(installer).toContain("NV02_MODEL_NOT_READY");
-    expect(installer).toContain("NV02_REASONING_NOT_HIGH");
+    expect(installer).toContain("NV02_REASONING_NOT_LOW");
     const resumeModeIndex=installer.indexOf("Set-OwnerMode ([bool]$ResumeAutomation)");
     const modelWaitIndex=installer.indexOf("$deadline=(Get-Date).AddSeconds(30)");
     expect(resumeModeIndex).toBeGreaterThan(-1);

@@ -49,7 +49,7 @@ export function failClosedWorkerSafetyState():WorkerSafetySnapshot {
   return{
     pausedWorkers:[...WORKER_IDS],
     manualCloseSuppressedWorkers:[...WORKER_IDS],
-    modelProfile: { model: 'GPT-5.6 Sol', profile: 'High', restoredAt: new Date().toISOString() },
+    modelProfile: { model: 'GPT-6', profile: 'Low', restoredAt: new Date().toISOString() },
   };
 }
 

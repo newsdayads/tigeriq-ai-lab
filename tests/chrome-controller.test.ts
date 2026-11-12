@@ -100,8 +100,8 @@ describe('review evidence and extension lifecycle',()=>{
     const runtimeEvidence=readFileSync('apps/chrome-controller/src/runtime-evidence.ts','utf8');
     const server=readFileSync('apps/chrome-controller/src/server.ts','utf8');
     expect(content).toContain('TIGERIQ_MODEL_PROFILE_PRECHECK');
-    expect(content).toContain("REQUIRED_MODEL_NAME = 'GPT-5.6 Sol'");
-    expect(content).toContain("REQUIRED_REASONING_EFFORT = 'High'");
+    expect(content).toContain("REQUIRED_MODEL_NAME = 'GPT-6'");
+    expect(content).toContain("REQUIRED_REASONING_EFFORT = 'Low'");
     expect(content).toContain('MODEL_PROFILE_BLOCKED');
     expect(content).not.toContain('document.body.innerText');
     expect(content).not.toContain("includes('Plus')");
@@ -111,8 +111,8 @@ describe('review evidence and extension lifecycle',()=>{
     expect(runtimeEvidence).not.toContain('exact-model-hash');
     expect(runtimeEvidence).toContain('modelProfileStatus');
     expect(server).not.toContain("await sendCommand(workerId,'MODEL_PREFLIGHT')");
-    expect(server).toContain("modelName!=='GPT-5.6 Sol'");
-    expect(server).toContain("reasoningEffort!=='High'");
+    expect(server).toContain("modelName!=='GPT-6'");
+    expect(server).toContain("reasoningEffort!=='Low'");
     expect(server).not.toContain('AUTOPILOT_MODEL_PROFILE_BLOCKED');
   });
 

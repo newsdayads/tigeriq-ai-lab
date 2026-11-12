@@ -190,7 +190,7 @@ try{
 
   Assert-Ok ($null -ne $worker.lastHeartbeat) 'NV02_HEARTBEAT_MISSING'
   Assert-Ok ($worker.lastHeartbeat.modelReady -eq $true) 'NV02_MODEL_NOT_READY'
-  Assert-Ok ([string]$worker.lastHeartbeat.reasoningEffort -eq 'high') 'NV02_REASONING_NOT_HIGH'
+  Assert-Ok ([string]$worker.lastHeartbeat.reasoningEffort -eq 'low') 'NV02_REASONING_NOT_LOW'
   Assert-Ok ([string]::IsNullOrWhiteSpace([string]$worker.lastHeartbeat.securityBlock)) 'NV02_SECURITY_BLOCK'
 
   $controllerPid=(Get-NetTCPConnection -LocalPort 8798 -State Listen|Select-Object -First 1).OwningProcess
