@@ -1,7 +1,12 @@
 {
-  "versionCode": 335,
-  "versionName": "1.0.89",
+  "versionCode": 359,
+  "versionName": "1.2.13",
+  "latestVersionCode": 359,
+  "latestVersionName": "1.2.13",
   "apkUrl": "https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/apk-dist/UltraCar_latest.apk",
-  "sha256": "5DEC4BD0B434A53911FCE6833BB7D307CA15C28ACB0962EAA017AF09F12D2011",
-  "releaseNotes": "TigerIQ UltraCar v1.0.89 (BUILD 335)"
+  "sha256": "8D2142788569B5E158456415A6ABC30A7BFF4667A99796429D1847CBFF3BDC00",
+  "mandatory": false,
+  "releaseNotes": "TigerIQ UltraCar v1.2.13 (BUILD 359) — Vạch lùi OEM góc lái rộng + Remote BT < 2s bật Camera Popup",
+  "certificateSha256": "71617043EACE89E5F220EA9168B0A9592808111B0F17EAA219F5E6ECEB569558",
+  "driveFileName": "UltraCar_v1.2.13.apk"
 }
