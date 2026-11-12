@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.12.2",
+  "checkpoint_id": "aef732d7ebca",
+  "strategy": "manual-commit",
+  "branch": "fix/ultracar-sync-workflow-deps",
+  "checkpoints_count": 65,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/ae/f732d7ebca/0/metadata.json",
+      "transcript": "/ae/f732d7ebca/0/full.jsonl",
+      "content_hash": "/ae/f732d7ebca/0/content_hash.txt",
+      "prompt": "/ae/f732d7ebca/0/prompt.txt"
+    }
+  ],
+  "redaction": {
+    "replacements": 278,
+    "layers": {
+      "betterleaks": 68,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 19,
+      "credentialed_uri": 0,
+      "entropy": 192,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
