@@ -18,10 +18,10 @@ import { validateWorkOrderLifecycleV2 } from '../apps/tigeriq-core/work-order-li
 test('version.json and current-release.json stay strictly synchronized', () => {
   const { versionData, releaseData } = loadManifests(process.cwd());
   assert.doesNotThrow(() => validateReleaseManifestConsistency(versionData, releaseData));
-  assert.equal(versionData.versionCode, 360);
-  assert.equal(versionData.versionName, '1.2.14');
-  assert.equal(versionData.latestVersionCode, 360);
-  assert.equal(versionData.latestVersionName, '1.2.14');
+  assert.equal(versionData.versionCode, 361);
+  assert.equal(versionData.versionName, '1.2.15');
+  assert.equal(versionData.latestVersionCode, 361);
+  assert.equal(versionData.latestVersionName, '1.2.15');
 });
 
 test('generated #5129 issue satisfies both live-status dashboard and lifecycle-v2 gates', () => {
@@ -35,7 +35,7 @@ test('generated #5129 issue satisfies both live-status dashboard and lifecycle-v
     body,
     state: 'open',
     created_at: '2026-10-22T06:00:42Z',
-    updated_at: '2026-11-12T03:50:00Z',
+    updated_at: '2026-11-13T04:12:00Z',
     html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/5129',
     user: { login: 'newsdayads' },
     labels: [],
@@ -55,13 +55,13 @@ test('generated #5129 issue satisfies both live-status dashboard and lifecycle-v
   assert.equal(parsed.progressTotal, 5);
   assert.equal(parsed.progressDone, 4);
   assert.equal(parsed.progressPercent, 80);
-  assert.match(parsed.title, /1\.2\.14/);
+  assert.match(parsed.title, /1\.2\.15/);
 });
 
 test('dry-run CLI helper succeeds cleanly and sync comment contains structured state', () => {
   const { releaseData } = loadManifests(process.cwd());
   const comment = buildSyncComment(releaseData);
-  assert.match(comment, /^<!-- ULTRACAR_SYNC_V360_/);
+  assert.match(comment, /^<!-- ULTRACAR_SYNC_V361_/);
   assert.match(comment, /CURRENT_STATE=READY_FOR_OWNER_APPROVAL/);
   assert.match(comment, /DONE=false/);
 
@@ -69,8 +69,8 @@ test('dry-run CLI helper succeeds cleanly and sync comment contains structured s
   assert.equal(res.ok, true);
   assert.equal(res.dryRun, true);
   assert.equal(res.issue, 5129);
-  assert.equal(res.versionCode, 360);
-  assert.equal(res.versionName, '1.2.14');
+  assert.equal(res.versionCode, 361);
+  assert.equal(res.versionName, '1.2.15');
 });
 
 test('manifest mismatch fails closed', () => {
@@ -94,26 +94,26 @@ test('prepareReleaseManifests computes SHA-256 & updates both manifests atomical
       'apps/ultracarhcm-v1/release/current-release.json',
       join(scratch, 'apps/ultracarhcm-v1/release/current-release.json'),
     );
-    const dummyApk = join(scratch, 'UltraCar_v1.2.14.apk');
+    const dummyApk = join(scratch, 'UltraCar_v1.2.15.apk');
     const dummyPayload = 'dummy-apk-payload-for-test';
     writeFileSync(dummyApk, dummyPayload, 'utf8');
 
     const { versionData, releaseData } = prepareReleaseManifests({
       root: scratch,
       apk: dummyApk,
-      versionCode: 360,
-      versionName: '1.2.14',
+      versionCode: 361,
+      versionName: '1.2.15',
       notes: 'Test bump',
     });
 
-    assert.equal(versionData.versionCode, 360);
-    assert.equal(versionData.versionName, '1.2.14');
-    assert.equal(releaseData.releaseTag, 'v1.2.14');
+    assert.equal(versionData.versionCode, 361);
+    assert.equal(versionData.versionName, '1.2.15');
+    assert.equal(releaseData.releaseTag, 'v1.2.15');
     assert.equal(releaseData.sizeBytes, Buffer.byteLength(dummyPayload, 'utf8'));
     assert.equal(versionData.sha256, releaseData.sha256);
     assert.equal(
       JSON.parse(readFileSync(join(scratch, 'version.json'), 'utf8')).versionCode,
-      360,
+      361,
     );
   } finally {
     rmSync(scratch, { recursive: true, force: true });
