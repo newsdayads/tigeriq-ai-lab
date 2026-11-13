@@ -1,12 +1,12 @@
 {
-  "versionCode": 360,
-  "versionName": "1.2.14",
-  "latestVersionCode": 360,
-  "latestVersionName": "1.2.14",
+  "versionCode": 361,
+  "versionName": "1.2.15",
+  "latestVersionCode": 361,
+  "latestVersionName": "1.2.15",
   "apkUrl": "https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/apk-dist/UltraCar_latest.apk",
-  "sha256": "7719B936EE5280696EC495CCC433629805BC636F7AF1A163DD8AD65F057C6944",
+  "sha256": "BB14EBA9C8390ECA6693BD4F018AFA5AA6CA21F6F947F3F245C2863AC9000D19",
   "mandatory": false,
-  "releaseNotes": "TigerIQ UltraCar v1.2.14 (BUILD 360) — Sửa triệt để crash FeatureCardHelper.beginRow / Lip NPE và đồng bộ phiên bản crash report",
+  "releaseNotes": "TigerIQ UltraCar v1.2.15 (BUILD 361) — Sửa dứt điểm lỗi dư dải lề/khe hở bất đối xứng một bên màn hình trên Samsung DeX (Galaxy Z Fold 2 / Android 13)",
   "certificateSha256": "71617043EACE89E5F220EA9168B0A9592808111B0F17EAA219F5E6ECEB569558",
-  "driveFileName": "UltraCar_v1.2.14.apk"
+  "driveFileName": "UltraCar_v1.2.15.apk"
 }
