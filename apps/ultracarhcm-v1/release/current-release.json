@@ -5,35 +5,35 @@
   "workstreamId": "ultracarhcm-v1",
   "workstreamName": "UltraCarHCM V1",
   "packageName": "com.tigeriq.dexsplit",
-  "versionCode": 361,
-  "versionName": "1.2.15",
-  "releaseTag": "v1.2.15",
-  "fileName": "UltraCar_v1.2.15.apk",
+  "versionCode": 362,
+  "versionName": "1.2.16",
+  "releaseTag": "v1.2.16",
+  "fileName": "UltraCar_v1.2.16.apk",
   "sizeBytes": 35203574,
-  "sha256": "BB14EBA9C8390ECA6693BD4F018AFA5AA6CA21F6F947F3F245C2863AC9000D19",
+  "sha256": "337B8FA1B14C9FF85D0CB5E814EFF608C69A1239C9824D6E43C6E14ACCA90022",
   "certificateSha256": "71617043EACE89E5F220EA9168B0A9592808111B0F17EAA219F5E6ECEB569558",
   "apkDistUrl": "https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/apk-dist/UltraCar_latest.apk",
-  "releaseUrl": "https://github.com/newsdayads/tigeriq-ai-lab/releases/tag/v1.2.15",
+  "releaseUrl": "https://github.com/newsdayads/tigeriq-ai-lab/releases/tag/v1.2.16",
   "versionJsonUrl": "https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/main/version.json",
   "sourceUrl": "https://github.com/newsdayads/tigeriq-ai-lab/tree/main/apps/ultracarhcm-v1/src",
   "unitTestUrl": "https://github.com/newsdayads/tigeriq-ai-lab/tree/main/apps/ultracarhcm-v1/tests",
-  "publishedAt": "2026-11-13T04:12:00Z",
+  "publishedAt": "2026-11-13T05:50:08Z",
   "ownerQaPending": true,
-  "releaseNotes": "TigerIQ UltraCar v1.2.15 (BUILD 361) — Sửa dứt điểm lỗi dư dải lề/khe hở bất đối xứng một bên màn hình trên Samsung DeX (Galaxy Z Fold 2 / Android 13)",
+  "releaseNotes": "TigerIQ UltraCar v1.2.16 (BUILD 362) — Khôi phục layout chuẩn v1.2.12 (giữ nguyên thanh dock UltraCar) + Remote BT phím vô lăng < 2s bật Camera Popup trực tiếp",
   "highlights": [
-    "Sửa dứt điểm lỗi dư dải lề / khe hở bất đối xứng một bên màn hình trên Samsung DeX: gỡ bỏ điều kiện ngược Build.VERSION.SDK_INT >= 36 trong gz2.smali, rw2.smali và qy2.smali.",
-    "Liên kết trực tiếp với cờ cài đặt dexReserveStrip (mặc định = false -> 100% full width, xOffset = 0), cả hai cửa sổ chia đôi chạm sát mép màn hình không còn khoảng trống.",
-    "Bảo lưu toàn bộ các bản vá từ v1.2.14: xử lý triệt để NPE FeatureCardHelper.beginRow, giữ vạch lùi OEM góc rộng và gán phím Remote Bluetooth vô lăng."
+    "Khôi phục chuẩn xác toàn bộ layout hiển thị và thanh dock UltraCar (FloatingQuickBar) theo đúng bản chuẩn v1.2.12; chấm dứt hoàn toàn hiện tượng cửa sổ con tràn che khuất thanh công cụ UltraCar.",
+    "Remote Bluetooth phím vô lăng (RemoteKeyAccessibilityService / RemoteKeyShortcutEngine): bấm < 2 giây bật/tắt trực tiếp Camera Popup nổi như nút cảm ứng [R]; loại bỏ hoàn toàn lệnh startActivity gây ẩn UltraCar.",
+    "Đồng bộ OTA & Dashboard tự động: version.json, nhánh apk-dist, GitHub Release v1.2.16 và Issue #5129."
   ],
   "checklist": [
     {
-      "label": "Build, zipalign & ký UltraCar_v1.2.15.apk (Build 361, SHA-256 BB14EBA9...)",
+      "label": "Build, zipalign & ký UltraCar_v1.2.16.apk (Build 362, SHA-256 337B8FA1...)",
       "done": true,
-      "evidenceLabel": "Release v1.2.15",
-      "evidenceUrl": "https://github.com/newsdayads/tigeriq-ai-lab/releases/tag/v1.2.15"
+      "evidenceLabel": "Release v1.2.16",
+      "evidenceUrl": "https://github.com/newsdayads/tigeriq-ai-lab/releases/tag/v1.2.16"
     },
     {
-      "label": "Kiểm chứng bytecode gz2.smali / rw2.smali / qy2.smali & automated unit tests (GuideEngineUnitTest, RemoteKeyShortcutUnitTest, ultracar-sync-status PASS)",
+      "label": "Rà soát chuẩn xác layout baseline v1.2.12 & automated unit tests (GuideEngineUnitTest, RemoteKeyShortcutUnitTest, ultracar-sync-status PASS)",
       "done": true,
       "evidenceLabel": "apps/ultracarhcm-v1/tests",
       "evidenceUrl": "https://github.com/newsdayads/tigeriq-ai-lab/tree/main/apps/ultracarhcm-v1/tests"
@@ -51,7 +51,7 @@
       "evidenceUrl": "https://github.com/newsdayads/tigeriq-ai-lab/blob/main/.github/workflows/ultracar-version-dashboard-sync.yml"
     },
     {
-      "label": "Kiểm thử thực tế v1.2.15 trên Z Fold 2 / DeX (cửa sổ kín màn hình, không dư khe lề bên trái)",
+      "label": "Kiểm thử thực tế v1.2.16 trên Z Fold 2 / DeX (thanh dock UltraCar hiển thị đầy đủ, remote phím bấm < 2s bật popup camera tức thì)",
       "done": false,
       "evidenceLabel": null,
       "evidenceUrl": null
