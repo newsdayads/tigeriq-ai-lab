@@ -1,12 +1,12 @@
 {
-  "versionCode": 361,
-  "versionName": "1.2.15",
-  "latestVersionCode": 361,
-  "latestVersionName": "1.2.15",
+  "versionCode": 362,
+  "versionName": "1.2.16",
+  "latestVersionCode": 362,
+  "latestVersionName": "1.2.16",
   "apkUrl": "https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/apk-dist/UltraCar_latest.apk",
-  "sha256": "BB14EBA9C8390ECA6693BD4F018AFA5AA6CA21F6F947F3F245C2863AC9000D19",
+  "sha256": "337B8FA1B14C9FF85D0CB5E814EFF608C69A1239C9824D6E43C6E14ACCA90022",
   "mandatory": false,
-  "releaseNotes": "TigerIQ UltraCar v1.2.15 (BUILD 361) — Sửa dứt điểm lỗi dư dải lề/khe hở bất đối xứng một bên màn hình trên Samsung DeX (Galaxy Z Fold 2 / Android 13)",
+  "releaseNotes": "TigerIQ UltraCar v1.2.16 (BUILD 362) — Khôi phục layout chuẩn v1.2.12 (giữ nguyên thanh dock UltraCar) + Remote BT phím vô lăng < 2s bật Camera Popup trực tiếp",
   "certificateSha256": "71617043EACE89E5F220EA9168B0A9592808111B0F17EAA219F5E6ECEB569558",
-  "driveFileName": "UltraCar_v1.2.15.apk"
+  "driveFileName": "UltraCar_v1.2.16.apk"
 }
