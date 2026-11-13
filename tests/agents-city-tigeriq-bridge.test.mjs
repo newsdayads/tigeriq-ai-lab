@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {normalizeCoreSnapshot, fetchCoreSnapshot, CORE_URL, CORE_REQUEST_TIMEOUT_MS, CORE_REQUEST_TOTAL_BUDGET_MS} from '../apps/agents-city-tigeriq/core-readonly.mjs';
 import {normalizeLiveCoreSnapshot, fetchLiveCoreSnapshot, CORE_STATUS_URL} from '../apps/agents-city-tigeriq/core-live-readonly.mjs';
 import {createAnimalCityServer} from '../apps/agents-city-tigeriq/server.mjs';
+import {TIGER_CEO,ANIMAL_ZONES,projectAnimalRoster} from '../apps/agents-city-tigeriq/roster-zones.mjs';
 
 const NOW = Date.parse('2026-10-29T03:00:00.000Z');
 function source(now = NOW) {
@@ -376,4 +377,110 @@ test('Core live status projects job lease for Animal City verification',async()=
   const statusJobsQuery=core.split('\n').find(line=>
     line.includes('from tigeriq_jobs order by created_at desc limit 40')) || '';
   assert.match(statusJobsQuery,/started_at,lease_until,completed_at/);
+});
+
+const workforceIds='NV00 NV01 NV02 NV03 NV04 NV05 NV06 NV07 NV08 NV09 NV10 NV11 NV12 NV13 NV14 NV15 NV16 NV17 NV18 NV19 NV20 NV102'.split(' ');
+const workforceForR03=workforceIds.map(employee_id=>({
+  employee_id,name:'Registry '+employee_id,admin_state:employee_id==='NV05'?'RETIRED':
+    employee_id==='NV14'?'RATE_LIMIT_429':employee_id==='NV01'?'OWNER_STOPPED':'READY'
+}));
+
+test('Animal roster — six zones, 22 unique slots and Tiger CEO separate from NV00',()=>{
+  const p=projectAnimalRoster(workforceForR03,{fresh:true});
+  assert.equal(ANIMAL_ZONES.length,6);
+  assert.equal(TIGER_CEO.id,'tiger-ceo');
+  assert.equal(p.staff.length,22);
+  assert.equal(new Set(p.staff.map(x=>x.employeeId)).size,22);
+  assert.deepEqual(p.zones.map(x=>x.members.length),[2,4,3,2,7,4]);
+  assert.equal(p.staff.find(x=>x.employeeId==='NV102').zoneId,'execution');
+  assert.equal(p.staff.find(x=>x.employeeId==='NV05').status,'STOPPED');
+  assert.equal(p.staff.find(x=>x.employeeId==='NV14').status,'WAIT');
+});
+
+test('Animal roster — NV103 future ID, duplicate and invalid source fail closed',()=>{
+  const p=projectAnimalRoster([...workforceForR03,{employee_id:'NV103',name:'New worker'},
+    workforceForR03[0],{employee_id:'<script>',name:'bad'}],{fresh:true});
+  assert.equal(p.staff.length,23);
+  assert.equal(p.staff.find(x=>x.employeeId==='NV103').zoneId,'execution');
+  assert.equal(projectAnimalRoster(null,{fresh:true}).staff.length,0);
+});
+
+test('Animal roster — no live worker never claims BUSY, stale source stays UNKNOWN',()=>{
+  const workers=[{employeeId:'NV09',activeWorkerVerified:true,resourceId:'res:local',currentJobId:'JOB-123'},
+    {employeeId:'NV10',activeWorkerVerified:false,resourceId:'x',currentJobId:'JOB-456'},
+    {employeeId:'NV01',activeWorkerVerified:true,resourceId:'x',currentJobId:'JOB-789'}];
+  const idle=projectAnimalRoster(workforceForR03,{fresh:true});
+  assert.equal(idle.staff.filter(x=>x.status==='BUSY').length,0);
+  const live=projectAnimalRoster(workforceForR03,{fresh:true,workers});
+  assert.equal(live.staff.find(x=>x.employeeId==='NV09').status,'BUSY');
+  assert.equal(live.staff.find(x=>x.employeeId==='NV10').status,'IDLE');
+  assert.equal(live.staff.find(x=>x.employeeId==='NV01').status,'STOPPED');
+  const stale=projectAnimalRoster(workforceForR03,{fresh:false,workers});
+  assert.equal(stale.staff.every(x=>x.status==='UNKNOWN'),true);
+});
+
+async function withRosterApp(rosterProvider,fetchImpl,run){
+  const app=createAnimalCityServer({fetchImpl,rosterProvider});
+  await new Promise(resolve=>app.listen(0,'127.0.0.1',resolve));
+  try {await run('http://127.0.0.1:'+app.address().port)}
+  finally {await new Promise(resolve=>app.close(resolve))}
+}
+const rosterOk=()=>({workforce:workforceForR03,workforceMeta:{
+  stale:false,source:'registry-335-live',version:'57',fetchedAt:new Date().toISOString()
+}});
+
+test('Animal roster — HTTP API only reads Registry and independently verified Core workers',async()=>{
+  await withRosterApp(async()=>rosterOk(),fetchBoth({now:Date.now()}),async root=>{
+    const response=await fetch(root+'/api/roster');
+    assert.equal(response.status,200);
+    const p=await response.json();
+    assert.equal(p.ok,true);
+    assert.equal(p.readOnly,true);
+    assert.equal(p.sourceFresh,true);
+    assert.equal(p.total,22);
+    assert.deepEqual(p.zones.map(x=>x.members.length),[2,4,3,2,7,4]);
+    assert.equal(p.staff.filter(x=>x.status==='BUSY').length,2);
+    assert.equal(p.ceo.id,'tiger-ceo');
+    assert.equal((await fetch(root+'/api/roster',{method:'POST'})).status,405);
+  });
+});
+
+test('Animal roster — stale Registry and Core error cannot claim activity',async()=>{
+  await withRosterApp(async()=>({...rosterOk(),workforceMeta:{...rosterOk().workforceMeta,stale:true}}),
+    fetchBoth({now:Date.now()}),async root=>{
+      const p=await (await fetch(root+'/api/roster')).json();
+      assert.equal(p.registryFresh,false);
+      assert.equal(p.sourceFresh,false);
+      assert.equal(p.staff.filter(x=>x.status==='BUSY').length,0);
+      assert.equal(p.staff.length,22);
+    });
+  await withRosterApp(async()=>rosterOk(),fetchBoth({now:Date.now(),invalidLive:true}),async root=>{
+    const p=await (await fetch(root+'/api/roster')).json();
+    assert.equal(p.registryFresh,true);
+    assert.equal(p.liveVerified,false);
+    assert.equal(p.sourceFresh,false);
+    assert.equal(p.staff.every(x=>x.status==='UNKNOWN'),true);
+  });
+});
+
+test('Animal roster — upstream registry failure returns 503 with empty workforce',async()=>{
+  await withRosterApp(async()=>{throw Error('UNAVAILABLE')},fetchBoth({now:Date.now()}),async root=>{
+    const response=await fetch(root+'/api/roster');
+    assert.equal(response.status,503);
+    const p=await response.json();
+    assert.equal(p.ok,false);
+    assert.deepEqual(p.staff,[]);
+    assert.deepEqual(p.zones,[]);
+  });
+});
+
+test('Animal roster — existing 3 Core room UI retained with six 3D roster zones',async()=>{
+  const world=await readFile(new URL('../apps/agents-city-tigeriq/scene3d.js',import.meta.url),'utf8');
+  const app=await readFile(new URL('../apps/agents-city-tigeriq/app.js',import.meta.url),'utf8');
+  assert.match(world,/zonePositions\.forEach/);
+  assert.match(world,/tigeriq:roster/);
+  assert.match(world,/activeWorkerVerified===true/);
+  assert.match(app,/tigeriq:roster/);
+  assert.match(app,/textContent/);
+  assert.doesNotMatch(app, /innerHTML\s*=/);
 });
