@@ -24,3 +24,17 @@ OWNER_DIRECT=true | DATE=2026-11-12 | SCOPE=3D_ARTIFACT_STORAGE | STATUS=OWNER_A
 - Skill CAD ứng viên: `docs/skills/product-3d-engineering/SKILL.md` (PR #5714, chưa ACTIVE tại thời điểm ghi nhận).
 
 Không tạo thêm hệ thống điều phối hoặc nguồn sự thật; đây là quy tắc đích lưu của luồng 3D nằm dưới GitHub main.
+
+
+## Owner override — một file 3MF trực tiếp lên Drive (14/11/2026)
+OWNER_DIRECT=true | SCOPE=3D_DELIVERY | PRIORITY=OWNER_LATEST | DEFAULT_OUTPUT=ONE_3MF | NO_ZIP=true
+
+Khi Owner yêu cầu tạo/sửa mẫu in 3D cho Bambu Lab (đặc biệt P1S), mặc định:
+1. Dựng CAD tham số dựa trên số đo vật thật và kích thước lọt lòng; tính bề dày thành, dung sai lắp, cơ cấu chuyển động; không thay bản vẽ kỹ thuật bằng ảnh AI.
+2. Kiểm tra mesh kín/manifold, va chạm, độ hở và lắp ghép trong phạm vi công cụ thực tế; phân biệt MODEL_UNSLICED, SLICED_VERIFIED, PRINT_TESTED. Không tuyên bố kiểm thử máy/slicing/in thật nếu chưa có bằng chứng.
+3. **Giao đúng một tệp .3mf, không ZIP**, trừ khi Owner chỉ định định dạng khác. Nếu có nhiều chi tiết, đặt trong cùng một 3MF; phân biệt 3MF mô hình với 3MF đã slice bằng tên và trạng thái.
+4. **Tải chính tệp .3mf lên Google Drive thư mục TigerIQ 3D** (ID: `1QFje3OTZfDIeCMfrH5aHoMWqXNwJP2xM`) qua connector trực tiếp, không hỏi lại nơi lưu và không dừng ở link sandbox.
+5. Đọc lại Drive metadata, kiểm tra `parent_ids` đúng thư mục, tên, MIME và dung lượng; **chỉ sau đó** gửi link Drive thật cho Owner. Nếu upload lỗi, thử khắc phục hợp lệ; báo `DRIVE_UPLOAD_PENDING` nếu vẫn chưa được. Không nói đã upload khi chưa có biên nhận.
+6. Không tự gửi lệnh in, chia sẻ công khai, phát hành hay ghi đè mẫu đã nghiệm thu; giữ các cổng quyền hiện hành.
+
+Quy tắc này ghi tại GitHub canonical để chat/agent tương lai **đọc và áp dụng khi nạp nguồn GitHub main**; không khẳng định ChatGPT/Gemini tự động nạp GitHub qua mọi chat khi chưa kiểm chứng. Quy tắc mới về định dạng 3MF mặc định ghi đè ví dụ ZIP/STL trước đây, không xóa quyền dùng định dạng khác khi Owner yêu cầu.
