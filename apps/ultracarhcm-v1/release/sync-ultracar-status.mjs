@@ -261,8 +261,8 @@ export function prepareReleaseManifests(opts = {}) {
       {
         label: `Kiểm thử thực tế ${releaseTag} trên Z Fold 2 / DeX (nút [R], vạch lùi OEM, Remote BT < 2s bật Camera Popup)`,
         done: Boolean(opts.ownerAccepted),
-        evidenceLabel: null,
-        evidenceUrl: null,
+        evidenceLabel: opts.ownerAccepted ? 'Owner QA Z Fold 2 / #5129' : null,
+        evidenceUrl: opts.ownerAccepted ? `https://github.com/${opts.repo || DEFAULT_REPO}/issues/${prevRelease.workItem || DEFAULT_ISSUE}` : null,
       },
     ],
   };

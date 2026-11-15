@@ -1,3 +1,21 @@
+# LIVE STATE OVERRIDE — 2026-11-15 — ULTRACAR HCM V1.2.23 (BUILD 369) GOLDEN STABLE & ACCEPTED
+Authority: Direct Owner Acceptance ("Ok. Được rồi nha. Lưu bản chuẩn này lại. Lưu trạng thái mới nhất lên hệ thống luôn.") + Issue #5129.
+
+1. **Phát hành & Lưu bản chuẩn UltraCar HCM v1.2.23 (Build 369):**
+   - Package: `com.tigeriq.dexsplit` | `versionCode`: `369` | `versionName`: `1.2.23`
+   - File Drive: `G:\Drive của tôi\TigerIQ UltraCar\UltraCar_v1.2.23.apk` (35,219,958 bytes)
+   - Backup Golden Stable: `G:\Drive của tôi\TigerIQ UltraCar\Backup\UltraCar_v1.2.23_369_GOLDEN_STABLE.apk`
+   - SHA-256: `07FA280005D71C0D4E38C085C3077ED01B66497E1E3EB54B0C2ED4D7999F038E`
+   - Chữ ký: `D:\TigerIQ\Tools\debug.keystore` chuẩn (cert SHA-256 `71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558`), APK Signature v2/v3 PASS.
+   - OTA & GitHub: `version.json` trên `main`, nhị phân `UltraCar_latest.apk` trên nhánh `apk-dist`, GitHub Release `v1.2.23`, Issue `#5129` (`OWNER_ACCEPTED=true`, `DONE=true`).
+
+2. **Nội dung kỹ thuật chính trong v1.2.22 → v1.2.23 (Build 369):**
+   - **Sửa triệt để lỗi dư khúc bên trái trên DeX Android 13:** thêm `ya1.getDexDensity(Context)` để `gz2.g()`, `gz2.A()`, `gz2.f()` lấy đúng `density` của màn hình DeX (thay vì `Application` density trên điện thoại Z Fold 2), đồng thời khớp mép `0.18f` trong `gz2.e()` và bỏ cộng `halfGap` ở mép trái trong `hp5.toAbsoluteRect()`.
+   - **Sửa lỗi thanh dock đè đáy cửa sổ con:** chuyển `MainActivity.onWindowFocusChanged(Z)` sang `V44UiBridge.onWindowFocusChanged(Z)` để ẩn `FloatingQuickBar` khi đang thao tác trên cửa sổ con, giúp cửa sổ con tràn sát mép taskbar DeX.
+   - **Nghiệm thu:** Anh Sơn đã xác nhận đạt trên Z Fold 2 / DeX ngày 2026-11-15.
+
+---
+
 # LIVE STATE OVERRIDE — 2026-11-12 — ULTRACAR HCM V1.2.13 (BUILD 359) PUBLISHED & SYNCED
 Authority: Direct Owner Instruction ("Cập nhật trạng thái mới nhất của App lên Github và Dashbroad TigerIQ. Đã là bản mới 1.2.13 rồi mà trên này vẫn còn trạng thái V73") + Issue #5129 + Issue #504.
 

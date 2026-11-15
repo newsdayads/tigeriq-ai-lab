@@ -5,32 +5,32 @@
   "workstreamId": "ultracarhcm-v1",
   "workstreamName": "UltraCarHCM V1",
   "packageName": "com.tigeriq.dexsplit",
-  "versionCode": 362,
-  "versionName": "1.2.16",
-  "releaseTag": "v1.2.16",
-  "fileName": "UltraCar_v1.2.16.apk",
-  "sizeBytes": 35203574,
-  "sha256": "337B8FA1B14C9FF85D0CB5E814EFF608C69A1239C9824D6E43C6E14ACCA90022",
+  "versionCode": 369,
+  "versionName": "1.2.23",
+  "releaseTag": "v1.2.23",
+  "fileName": "UltraCar_v1.2.23.apk",
+  "sizeBytes": 35219958,
+  "sha256": "07FA280005D71C0D4E38C085C3077ED01B66497E1E3EB54B0C2ED4D7999F038E",
   "certificateSha256": "71617043EACE89E5F220EA9168B0A9592808111B0F17EAA219F5E6ECEB569558",
   "apkDistUrl": "https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/apk-dist/UltraCar_latest.apk",
-  "releaseUrl": "https://github.com/newsdayads/tigeriq-ai-lab/releases/tag/v1.2.16",
+  "releaseUrl": "https://github.com/newsdayads/tigeriq-ai-lab/releases/tag/v1.2.23",
   "versionJsonUrl": "https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/main/version.json",
   "sourceUrl": "https://github.com/newsdayads/tigeriq-ai-lab/tree/main/apps/ultracarhcm-v1/src",
   "unitTestUrl": "https://github.com/newsdayads/tigeriq-ai-lab/tree/main/apps/ultracarhcm-v1/tests",
-  "publishedAt": "2026-11-13T05:50:08Z",
-  "ownerQaPending": true,
-  "releaseNotes": "TigerIQ UltraCar v1.2.16 (BUILD 362) — Khôi phục layout chuẩn v1.2.12 (giữ nguyên thanh dock UltraCar) + Remote BT phím vô lăng < 2s bật Camera Popup trực tiếp",
+  "publishedAt": "2026-11-15T00:07:46Z",
+  "ownerQaPending": false,
+  "releaseNotes": "TigerIQ UltraCar v1.2.23 (BUILD 369) — Bản chuẩn Golden Stable đã nghiệm thu Z Fold 2 / DeX: sửa lề trái dùng đúng DeX density (gz2/ya1) & ẩn FloatingQuickBar khi mất focus (không che đáy)",
   "highlights": [
-    "Khôi phục chuẩn xác toàn bộ layout hiển thị và thanh dock UltraCar (FloatingQuickBar) theo đúng bản chuẩn v1.2.12; chấm dứt hoàn toàn hiện tượng cửa sổ con tràn che khuất thanh công cụ UltraCar.",
-    "Remote Bluetooth phím vô lăng (RemoteKeyAccessibilityService / RemoteKeyShortcutEngine): bấm < 2 giây bật/tắt trực tiếp Camera Popup nổi như nút cảm ứng [R]; loại bỏ hoàn toàn lệnh startActivity gây ẩn UltraCar.",
-    "Đồng bộ OTA & Dashboard tự động: version.json, nhánh apk-dist, GitHub Release v1.2.16 và Issue #5129."
+    "Sửa triệt để lỗi dư khúc bên trái trên DeX Android 13: ya1.getDexDensity() lấy đúng density màn hình DeX cho gz2.g/A/f (thay vì density điện thoại) và khớp mép 0.18f + bỏ half-gap trái.",
+    "Sửa lỗi thanh dock dưới đáy đè cửa sổ con: MainActivity.onWindowFocusChanged() ẩn FloatingQuickBar khi đang thao tác trên cửa sổ con, giúp cửa sổ tràn sát mép taskbar DeX.",
+    "Đã nghiệm thu thực tế trên Z Fold 2 / DeX bởi anh Sơn (OWNER_ACCEPTED=true, DONE=true) và lưu Backup Golden Stable."
   ],
   "checklist": [
     {
-      "label": "Build, zipalign & ký UltraCar_v1.2.16.apk (Build 362, SHA-256 337B8FA1...)",
+      "label": "Build, zipalign & ký UltraCar_v1.2.23.apk (Build 369, SHA-256 07FA2800...)",
       "done": true,
-      "evidenceLabel": "Release v1.2.16",
-      "evidenceUrl": "https://github.com/newsdayads/tigeriq-ai-lab/releases/tag/v1.2.16"
+      "evidenceLabel": "Release v1.2.23",
+      "evidenceUrl": "https://github.com/newsdayads/tigeriq-ai-lab/releases/tag/v1.2.23"
     },
     {
       "label": "Rà soát chuẩn xác layout baseline v1.2.12 & automated unit tests (GuideEngineUnitTest, RemoteKeyShortcutUnitTest, ultracar-sync-status PASS)",
@@ -51,10 +51,10 @@
       "evidenceUrl": "https://github.com/newsdayads/tigeriq-ai-lab/blob/main/.github/workflows/ultracar-version-dashboard-sync.yml"
     },
     {
-      "label": "Kiểm thử thực tế v1.2.16 trên Z Fold 2 / DeX (thanh dock UltraCar hiển thị đầy đủ, remote phím bấm < 2s bật popup camera tức thì)",
-      "done": false,
-      "evidenceLabel": null,
-      "evidenceUrl": null
+      "label": "Kiểm thử thực tế v1.2.23 trên Z Fold 2 / DeX (nút [R], vạch lùi OEM, Remote BT < 2s bật Camera Popup)",
+      "done": true,
+      "evidenceLabel": "Owner QA Z Fold 2 / #5129",
+      "evidenceUrl": "https://github.com/newsdayads/tigeriq-ai-lab/issues/5129"
     }
   ]
 }
