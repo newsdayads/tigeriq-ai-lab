@@ -1,12 +1,12 @@
 {
-  "versionCode": 362,
-  "versionName": "1.2.16",
-  "latestVersionCode": 362,
-  "latestVersionName": "1.2.16",
+  "versionCode": 369,
+  "versionName": "1.2.23",
+  "latestVersionCode": 369,
+  "latestVersionName": "1.2.23",
   "apkUrl": "https://raw.githubusercontent.com/newsdayads/tigeriq-ai-lab/apk-dist/UltraCar_latest.apk",
-  "sha256": "337B8FA1B14C9FF85D0CB5E814EFF608C69A1239C9824D6E43C6E14ACCA90022",
+  "sha256": "07FA280005D71C0D4E38C085C3077ED01B66497E1E3EB54B0C2ED4D7999F038E",
   "mandatory": false,
-  "releaseNotes": "TigerIQ UltraCar v1.2.16 (BUILD 362) — Khôi phục layout chuẩn v1.2.12 (giữ nguyên thanh dock UltraCar) + Remote BT phím vô lăng < 2s bật Camera Popup trực tiếp",
+  "releaseNotes": "TigerIQ UltraCar v1.2.23 (BUILD 369) — Bản chuẩn Golden Stable đã nghiệm thu Z Fold 2 / DeX: sửa lề trái dùng đúng DeX density (gz2/ya1) & ẩn FloatingQuickBar khi mất focus (không che đáy)",
   "certificateSha256": "71617043EACE89E5F220EA9168B0A9592808111B0F17EAA219F5E6ECEB569558",
-  "driveFileName": "UltraCar_v1.2.16.apk"
+  "driveFileName": "UltraCar_v1.2.23.apk"
 }

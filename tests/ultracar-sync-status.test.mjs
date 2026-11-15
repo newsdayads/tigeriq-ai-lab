@@ -18,10 +18,10 @@ import { validateWorkOrderLifecycleV2 } from '../apps/tigeriq-core/work-order-li
 test('version.json and current-release.json stay strictly synchronized', () => {
   const { versionData, releaseData } = loadManifests(process.cwd());
   assert.doesNotThrow(() => validateReleaseManifestConsistency(versionData, releaseData));
-  assert.equal(versionData.versionCode, 362);
-  assert.equal(versionData.versionName, '1.2.16');
-  assert.equal(versionData.latestVersionCode, 362);
-  assert.equal(versionData.latestVersionName, '1.2.16');
+  assert.equal(versionData.versionCode, 369);
+  assert.equal(versionData.versionName, '1.2.23');
+  assert.equal(versionData.latestVersionCode, 369);
+  assert.equal(versionData.latestVersionName, '1.2.23');
 });
 
 test('generated #5129 issue satisfies both live-status dashboard and lifecycle-v2 gates', () => {
@@ -33,9 +33,9 @@ test('generated #5129 issue satisfies both live-status dashboard and lifecycle-v
     number: 5129,
     title,
     body,
-    state: 'open',
+    state: 'closed',
     created_at: '2026-10-22T06:00:42Z',
-    updated_at: '2026-11-13T04:12:00Z',
+    updated_at: '2026-11-15T00:08:00Z',
     html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/5129',
     user: { login: 'newsdayads' },
     labels: [],
@@ -46,31 +46,24 @@ test('generated #5129 issue satisfies both live-status dashboard and lifecycle-v
   assert.equal(lifecycle.valid, true, `Lifecycle V2 missing fields: ${lifecycle.missing.join(', ')}`);
 
   const parsed = parseOpenWorkIssue(issue);
-  assert.ok(parsed, 'parseOpenWorkIssue should return a valid row');
-  assert.equal(parsed.status, 'OWNER_GATE');
-  assert.equal(parsed.ownerGate, true);
-  assert.equal(parsed.technicalComplete, true);
-  assert.equal(parsed.ownerApprovalPending, true);
-  assert.equal(parsed.progressChecklistVerified, true);
-  assert.equal(parsed.progressTotal, 5);
-  assert.equal(parsed.progressDone, 4);
-  assert.equal(parsed.progressPercent, 80);
-  assert.match(parsed.title, /1\.2\.16/);
+  assert.equal(parsed, null, 'closed DONE issue is not an open work issue');
+  assert.match(title, /1\.2\.23/);
+  assert.match(title, /Nghiệm thu hoàn tất/);
 });
 
 test('dry-run CLI helper succeeds cleanly and sync comment contains structured state', () => {
   const { releaseData } = loadManifests(process.cwd());
   const comment = buildSyncComment(releaseData);
-  assert.match(comment, /^<!-- ULTRACAR_SYNC_V362_/);
-  assert.match(comment, /CURRENT_STATE=READY_FOR_OWNER_APPROVAL/);
-  assert.match(comment, /DONE=false/);
+  assert.match(comment, /^<!-- ULTRACAR_SYNC_V369_/);
+  assert.match(comment, /CURRENT_STATE=DONE/);
+  assert.match(comment, /DONE=true/);
 
   const res = syncIssueWithGh({ root: process.cwd(), dryRun: true });
   assert.equal(res.ok, true);
   assert.equal(res.dryRun, true);
   assert.equal(res.issue, 5129);
-  assert.equal(res.versionCode, 362);
-  assert.equal(res.versionName, '1.2.16');
+  assert.equal(res.versionCode, 369);
+  assert.equal(res.versionName, '1.2.23');
 });
 
 test('manifest mismatch fails closed', () => {
