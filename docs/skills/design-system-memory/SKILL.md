@@ -21,7 +21,7 @@ Use when a task creates, audits, or changes a user interface and must preserve a
 3. Record durable decisions in the existing DESIGN.md or equivalent scoped contract.
 4. Separate observed facts from inference.
 5. Preserve approved patterns unless the task explicitly changes them.
-6. For Meta Astryx proposals, read `references/astryx-adoption.md`; apply patterns first, and block unverified library installation or blanket React migration.
+6. Astryx: read `references/astryx-adoption.md` before adoption.
 
 ## Tools / Output
 Use existing design evidence and scoped repository documentation. Output a product-scoped durable design contract or bounded updates to it.
