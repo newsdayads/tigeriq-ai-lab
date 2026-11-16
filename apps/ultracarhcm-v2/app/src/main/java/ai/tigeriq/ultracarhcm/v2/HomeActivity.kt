@@ -1741,7 +1741,8 @@ class HomeActivity : ComponentActivity() {
             "Khôi phục dữ liệu V2",
             "Hồ sơ người lái",
             "Quyền & riêng tư",
-            "Phục hồi / định danh bản cài"
+            "Phục hồi / định danh bản cài",
+            "Phím Bluetooth vô lăng (giữ để mở Camera)"
         )
         AlertDialog.Builder(this).setTitle("UltraCarHCM V2 — Bản xây dựng")
             .setItems(options) { _, which ->
@@ -1776,6 +1777,7 @@ class HomeActivity : ComponentActivity() {
                     9 -> startActivity(Intent(this, ProfileActivity::class.java))
                     10 -> startActivity(Intent(this, PrivacyActivity::class.java))
                     11 -> startActivity(Intent(this, RecoveryActivity::class.java))
+                    12 -> startActivity(Intent(this, RemoteKeyConfigActivity::class.java))
                 }
             }.show()
     }
