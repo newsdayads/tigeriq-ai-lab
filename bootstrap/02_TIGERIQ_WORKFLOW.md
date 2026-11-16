@@ -2,7 +2,7 @@
 Version: 4.2
 Status: Source of Truth
 Priority: P0
-Updated: 2026-10-08
+Updated: 2026-11-17
 
 ## OWNER INTERACTION V6 — P0 (14/10/2026)
 - Mọi phản hồi Vy cho anh Sơn, kể cả câu hỏi đơn giản và cập nhật từng bước trong lúc thực hiện: áp dụng `docs/OWNER_INTERACTION_V6.md` cùng Interaction Policy #504, theo chế độ LINH HOẠT đã chọn 17/11/2026. Màu/biểu tượng vector đúng trạng thái, thanh % chỉ từ checklist đã xác minh; button phải trỏ thao tác thật, không giả đã dispatch/DUYỆT/đã ký.
