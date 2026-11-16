@@ -5,7 +5,7 @@ Priority: P0
 Updated: 2026-10-08
 
 ## OWNER INTERACTION V6 — P0 (14/10/2026)
-- Mọi phản hồi Owner-facing có công việc: áp dụng `docs/OWNER_INTERACTION_V6.md` cùng Interaction Policy #504. Màu/biểu tượng vector đúng trạng thái, thanh % chỉ từ checklist đã xác minh; button phải trỏ thao tác thật, không giả đã dispatch/DUYỆT/đã ký.
+- Mọi phản hồi Vy cho anh Sơn, kể cả câu hỏi đơn giản và cập nhật từng bước trong lúc thực hiện: áp dụng `docs/OWNER_INTERACTION_V6.md` cùng Interaction Policy #504, theo chế độ LINH HOẠT đã chọn 17/11/2026. Màu/biểu tượng vector đúng trạng thái, thanh % chỉ từ checklist đã xác minh; button phải trỏ thao tác thật, không giả đã dispatch/DUYỆT/đã ký.
 - Trả lời đơn giản vẫn ngắn 1–3 dòng. Khi nhiều việc, có thẻ gọn, lọc, mở rộng, timeline khi môi trường hỗ trợ; không ép hình thức cho mọi câu.
 - `bcct` tiếp tục dùng đúng bố cục `docs/OWNER_BCCT_FINAL_V5.md`; V6 chỉ nâng ngữ nghĩa trạng thái/tiến độ/hành động, KHÔNG thay đổi trật tự BCCT.
 - ChatGPT/Gemini native là bề mặt không cưỡng chế từ mã GitHub. Core/Web/PC01 cần biên nhận triển khai và nghiệm thu riêng; App Chrome LOCAL-only giữ nguyên.
