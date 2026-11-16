@@ -21,7 +21,7 @@ BCCT chi tiết bắt buộc bổ sung trong các phần phù hợp: bằng ch�
 ## Giao diện trực quan — trong khả năng nền tảng
 - **Thẻ số liệu**: nền pastel hoặc màu có độ tương phản đạt yêu cầu; dùng ít thành tố, số lớn và nhãn rõ.
 - **Màu ngữ nghĩa**: xanh lá = hoàn tất *đã xác minh*; xanh dương = đang xử lý *có bằng chứng*; vàng/hổ phách = đang chờ; đỏ = lỗi hoặc trở ngại P0 thực sự; xám = chưa rõ/không có dữ liệu.
-- **Biểu tượng**: dùng Lucide/vector theo ngữ cảnh (máy tính, bộ não AI, điện thoại, lịch, khóa, kiểm tra). Emoji trạng thái/đầu mục trực tiếp chỉ thuộc bộ canonical `✅ ⚙️ ⏳ ⚠️ 🔒 💡 📌 ➡️`; **không** thay thế nhãn tiếng Việt bằng màu hay emoji tròn.
+- **Biểu tượng**: dùng Lucide/vector theo ngữ cảnh; tuyệt đối không tự sinh emoji trạng thái/đầu mục. Khi không hỗ trợ icon vector, dùng chữ thuần. Quy tắc này tuân theo `docs/OWNER_INTERACTION_V6.md` và `docs/OWNER_BCCT_FINAL_V5.md` mới hơn, không tạo bộ icon thứ hai.
 - **Biểu đồ**: chỉ từ dữ liệu đã kiểm chứng, có tiêu đề, phạm vi mẫu số và dấu thời gian; chọn cột/tròn/đường đúng mục đích. Không dùng số liệu demo dưới nhãn 'toàn dự án'.
 - **Tương tác**: thẻ lọc (tất cả / chưa xong / P0 / đã xong), chọn việc và xem chi tiết; các nút phải hoạt động, trỏ đúng nguồn/động tác thật. Không dùng nút giả.
 - **Di động**: bố cục tự chuyển 2 cột → 1 cột khi màn hẹp, chữ ngắn dễ đọc trên iPhone; không kéo ngang. Ánh xạ sang bản chữ nếu nền tảng không hỗ trợ giao diện/tương tác.
