@@ -30,7 +30,7 @@ test('Unslop uses existing anti-slop detectors and preserves false-positive guar
 
 test('Unslop is review-only and does not authorize a new skill, React install, or production', () => {
   expect(rubric).toContain('do not create a fourth Skill');
-  expect(rubric).toContain('do not infer');
+  expect(rubric).toContain('Do not infer');
   expect(rubric).toContain('React 19+');
   expect(rubric).toContain('production deploy');
   expect(skill).toContain('Owner Interaction V6');
