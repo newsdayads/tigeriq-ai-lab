@@ -1,6 +1,6 @@
 # TIGERIQ — CHUẨN TRÌNH BÀY BCCT TRỰC QUAN V2
 Version: 2.0
-Status: Owner-approved P0 presentation contract
+Status: Legacy reference — superseded by docs/OWNER_BCCT_FINAL_V5.md and docs/OWNER_INTERACTION_V6.md
 Date: 2026-10-08
 Authority: Owner direct instruction > Constitution/Workflow > Interaction Policy issue #504 > this specification
 Work Order: #4545 — Chuẩn hóa báo cáo trực quan có màu, icon, biểu đồ và tương tác
