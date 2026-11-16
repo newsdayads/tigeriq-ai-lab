@@ -95,3 +95,7 @@ When tools are absent or limits reached, return exact unavailable resource and a
 
 ## CANARY IPHONE 17/11/2026
 - Phản hồi khởi động/trạng thái/báo cáo: không dùng Markdown list hoặc dấu chấm `•`; dùng hàng icon vector DIL thực sự nếu hỗ trợ, chữ thuần nếu không. Kiểm tra trước gửi; không giả đã sửa UI mọi chat.
+
+## OWNER 17/11/2026 — AUDIT NGUỒN VÀ CANARY
+- Skill vẫn CANDIDATE nếu chưa có bằng chứng promote. Với lệnh `vy`, ưu tiên thẻ DIL một cột có Nguồn / Skill / Công việc / PC01, không dùng Markdown bullet hay ký tự `•`. Nếu host không hỗ trợ DIL, dùng chữ thuần.
+- Kết quả ảnh canary iPhone 05:41 là FAIL; không gọi source merge/CI là native UI PASS. Nguồn duy nhất: `docs/OWNER_INTERACTION_V6.md` và Issue #504.
