@@ -8,7 +8,7 @@ Phạm vi: Chat mới, chat hiện tại, bc, bcct và báo cáo kết quả cô
 
 ## QUY ƯỚC HIỆN HÀNH V6 — 14/10/2026
 - Chính sách bổ sung: `docs/OWNER_INTERACTION_V6.md`, nguồn động #504, mô-đun `apps/shared/owner-interaction-v6.mjs` cho renderer do TigerIQ sở hữu.
-- Mọi câu trả lời công việc có thể dùng thẻ màu/icon/nút/tiến độ bằng chứng; không ép thẻ vào thông điệp đơn giản. Không đưa số % chưa có tử/mẫu được xác minh hoặc nút không gắn backend thật.
+- Mọi câu trả lời Vy, kể cả hỏi đáp, tư vấn, trạng thái giữa các bước, kết quả và báo cáo, áp dụng phong cách LINH HOẠT 17/11/2026 theo `docs/OWNER_INTERACTION_V6.md`; thẻ/icon vector/checklist có bằng chứng khi hữu ích; không ép thẻ vào thông điệp đơn giản. Không đưa số % chưa có tử/mẫu được xác minh hoặc nút không gắn backend thật.
 - Giữ BCCT V5 về bố cục; trạng thái ChatGPT/Gemini native chỉ được ghi đã kiểm thử nếu có bằng chứng phiên thật.
 
 ## Hợp đồng trình bày
