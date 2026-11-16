@@ -48,3 +48,13 @@ test('webui shortcut loads all three ACTIVE design skills in default bounded con
   expect(result.contextBlock).toContain('astryx-adoption.md');
   expect(result.skipped.filter((s: { reason: string }) => s.reason === 'CONTEXT_BUDGET')).toEqual([]);
 });
+
+test('design Skill contracts fit Windows CRLF with verified agency reference reserve', () => {
+  const ids = ['design-system-memory', 'image-to-ui-implementation', 'visual-quality-gate'];
+  const windowsChars = ids.reduce((n, id) => {
+    const source = read('docs/skills/' + id + '/SKILL.md').trim();
+    return n + source.replace(/\r?\n/g, '\r\n').length;
+  }, 0);
+  // PC01 installed pinned agency reference added 324 chars; loader holds 120 chars headroom.
+  expect(windowsChars).toBeLessThanOrEqual(6000 - 324 - 120);
+});
