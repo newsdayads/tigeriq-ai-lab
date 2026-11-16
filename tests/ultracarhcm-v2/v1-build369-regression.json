@@ -7,7 +7,15 @@
     "packageName": "com.tigeriq.dexsplit",
     "apkSha256": "07FA280005D71C0D4E38C085C3077ED01B66497E1E3EB54B0C2ED4D7999F038E",
     "released": "2026-11-15",
-    "evidence": "https://github.com/newsdayads/tigeriq-ai-lab/releases/tag/v1.2.23"
+    "evidence": "https://github.com/newsdayads/tigeriq-ai-lab/releases/tag/v1.2.23",
+    "embeddedManifestObserved": {
+      "versionName": "1.2.16",
+      "versionCode": 362,
+      "packageName": "com.tigeriq.dexsplit",
+      "evidence": "REA 6.9.0 inspect-android-package AND Android aapt dump badging on exact APK SHA, PC01 2026-11-17",
+      "signedCertSha256": "71617043EACE89E5F220EA9168B0A9592808111B0F17EAA219F5E6ECEB569558"
+    },
+    "metadataConsistency": "MISMATCH_RELEASE_369_VERSUS_EMBEDDED_362_UNRESOLVED"
   },
   "targetPackage": "ai.tigeriq.ultracarhcm.v2",
   "acceptance": "NO_AUTOMATIC_PASS_SOURCE_CODE_OR_MOCK_TEST_ONLY",
