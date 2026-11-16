@@ -35,6 +35,12 @@ Với từng nút/nhấn giữ/tab/luồng/khởi động lại/hỏng mạng/US
 | F21 | UI dọc/ngang/DeX | 1/2/3 cột, không cắt |
 | F22 | Crash/ANR/offline/rollback | Cài song song V1/V2 |
 
+## Phát hiện G0 — metadata APK không khớp nhãn phát hành (17/11/2026)
+- Hash tệp chuẩn V1.2.23 trên PC01 trùng manifest phát hành: `07FA280005D71C0D4E38C085C3077ED01B66497E1E3EB54B0C2ED4D7999F038E`. **REA 6.9.0/JADX 0.7.1** `inspect-android-package` thành công với artifact riêng tư (không đẩy byte APK lên GitHub).
+- Hai phép kiểm tra độc lập **REA** và **Android aapt dump badging** cùng đọc AndroidManifest của chính file này: `packageName=com.tigeriq.dexsplit`, `versionName=1.2.16`, `versionCode=362`, trong khi manifest phát hành bên ngoài ghi `1.2.23 / 369`. Chữ ký được đọc riêng bằng `apksigner` và khớp chứng chỉ công bố.
+- Đây là **sai lệch định danh phát hành**; không được suy các chức năng mới đã mất hoặc đã có. Không sửa lại/bỏ chữ ký V1, không đổi OTA Production trong việc V2. Cần kiểm chứng bản V1 thực tế trên thiết bị và sửa đường build/release ở việc V1 nếu được giao riêng. Ma trận V2 giữ cả **nhãn phát hành** và **định danh nhúng trong APK** để đối chiếu.
+- Bằng chứng REA được giữ riêng tại PC01: `D:\TigerIQ\Evidence\ultracar-v1223-rea690-manifest-20261117.json`, SHA-256 `BA13A8224E6122C96094E0D63502EBC4A9583A3F7C09F7249762F8336CCE8FBA`. Chỉ chia sẻ kết luận dạng siêu dữ liệu, không đưa mã/asset riêng tư vào GitHub.
+
 ## 10 chênh lệch KHÔNG ĐƯỢC mất từ các bản V1 mới
 Các ca D01–D10 và F được gắn trong `tests/ultracarhcm-v2/v1-build369-regression.json`. Nội dung ca:
 - **D01** (F05) — Vạch lùi Vector Canvas, 0.5/1/1.5 m, cong theo đánh lái, đảo chiều, hiệu chuẩn. **Nghiệm thu:** Ghi video V1.2.23 và V2, chứng minh hình vạch động và khoảng cách trên camera UVC thật.
