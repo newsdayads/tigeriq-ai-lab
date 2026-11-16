@@ -1,0 +1,192 @@
+{
+  "schema": "tigeriq.ultracarhcm-v2.v1-build369-regression.v1",
+  "workOrder": "GH-5135",
+  "source": {
+    "version": "1.2.23",
+    "versionCode": 369,
+    "packageName": "com.tigeriq.dexsplit",
+    "apkSha256": "07FA280005D71C0D4E38C085C3077ED01B66497E1E3EB54B0C2ED4D7999F038E",
+    "released": "2026-11-15",
+    "evidence": "https://github.com/newsdayads/tigeriq-ai-lab/releases/tag/v1.2.23",
+    "embeddedManifestObserved": {
+      "versionName": "1.2.16",
+      "versionCode": 362,
+      "packageName": "com.tigeriq.dexsplit",
+      "evidence": "REA 6.9.0 inspect-android-package AND Android aapt dump badging on exact APK SHA, PC01 2026-11-17",
+      "signedCertSha256": "71617043EACE89E5F220EA9168B0A9592808111B0F17EAA219F5E6ECEB569558"
+    },
+    "metadataConsistency": "MISMATCH_RELEASE_369_VERSUS_EMBEDDED_362_UNRESOLVED"
+  },
+  "targetPackage": "ai.tigeriq.ultracarhcm.v2",
+  "acceptance": "NO_AUTOMATIC_PASS_SOURCE_CODE_OR_MOCK_TEST_ONLY",
+  "cases": [
+    {
+      "id": "D01",
+      "features": [
+        "F05"
+      ],
+      "expected": "Vạch lùi Vector Canvas, 0.5/1/1.5 m, cong theo đánh lái, đảo chiều, hiệu chuẩn",
+      "acceptance": "Ghi video V1.2.23 và V2, chứng minh hình vạch động và khoảng cách trên camera UVC thật",
+      "requiredEvidence": [
+        "VIDEO_V1_V2",
+        "GEAR_R_LOG",
+        "GUIDE_CALIBRATION"
+      ],
+      "state": "NOT_TESTED",
+      "artifactSha256": null,
+      "deviceEvidence": null
+    },
+    {
+      "id": "D02",
+      "features": [
+        "F05"
+      ],
+      "expected": "3 mẫu vạch Sport Racing, Luxury OEM, Minimalist Modern",
+      "acceptance": "Chuyển/lưu/khởi động lại từng mẫu, xác minh sự khác biệt hình thực tế",
+      "requiredEvidence": [
+        "DEVICE_VIDEO",
+        "PERSISTENCE_RESTART"
+      ],
+      "state": "NOT_TESTED",
+      "artifactSha256": null,
+      "deviceEvidence": null
+    },
+    {
+      "id": "D03",
+      "features": [
+        "F04",
+        "F06",
+        "F10"
+      ],
+      "expected": "Nút camera [R] chạm ngắn bật/tắt, giữ lâu mở cài đặt",
+      "acceptance": "Không tắt app chính, không tạo cửa sổ/nút nổi trùng",
+      "requiredEvidence": [
+        "TAP_LONGPRESS_VIDEO",
+        "APP_LIFECYCLE_LOG"
+      ],
+      "state": "NOT_TESTED",
+      "artifactSha256": null,
+      "deviceEvidence": null
+    },
+    {
+      "id": "D04",
+      "features": [
+        "F04",
+        "F10"
+      ],
+      "expected": "Phím điều khiển Bluetooth vô lăng bật/tắt cửa sổ camera",
+      "acceptance": "Đúng thời gian giữ của V1, thử khi ứng dụng ngoài đang có tiêu điểm",
+      "requiredEvidence": [
+        "BLUETOOTH_REMOTE_VIDEO",
+        "ANDROID_INPUT_LOG"
+      ],
+      "state": "NOT_TESTED",
+      "artifactSha256": null,
+      "deviceEvidence": null
+    },
+    {
+      "id": "D05",
+      "features": [
+        "F05",
+        "F07"
+      ],
+      "expected": "Tín hiệu số R mở camera ưu tiên, thoát R đóng đúng điều kiện",
+      "acceptance": "Đo tín hiệu R thật trên xe đứng yên; USB attached không được đồng nghĩa vào R",
+      "requiredEvidence": [
+        "GEAR_R_SIGNAL_EVIDENCE",
+        "CAMERA_LIFECYCLE_LOG"
+      ],
+      "state": "NOT_TESTED",
+      "artifactSha256": null,
+      "deviceEvidence": null
+    },
+    {
+      "id": "D06",
+      "features": [
+        "F01",
+        "F07",
+        "F21"
+      ],
+      "expected": "Mật độ màn hình DeX bên ngoài, không thừa viền trái; tỷ lệ 0.18, half-gap",
+      "acceptance": "Ảnh cùng DPI ngoài DeX theo V1.2.23; so tọa độ và mật độ thực",
+      "requiredEvidence": [
+        "DEX_DISPLAY_METRICS",
+        "SCREENSHOT_SIDE_BY_SIDE"
+      ],
+      "state": "NOT_TESTED",
+      "artifactSha256": null,
+      "deviceEvidence": null
+    },
+    {
+      "id": "D07",
+      "features": [
+        "F04",
+        "F07",
+        "F21"
+      ],
+      "expected": "FloatingQuickBar không che đáy khi cửa sổ con lấy tiêu điểm",
+      "acceptance": "Đo dock/resize/focus/minimize/maximize 10 lượt với cửa sổ thực",
+      "requiredEvidence": [
+        "DEX_FOCUS_VIDEO",
+        "WINDOW_BOUNDS_LOG"
+      ],
+      "state": "NOT_TESTED",
+      "artifactSha256": null,
+      "deviceEvidence": null
+    },
+    {
+      "id": "D08",
+      "features": [
+        "F08",
+        "F10",
+        "F16"
+      ],
+      "expected": "5 nút cấu hình đã lưu, 9 ô ứng dụng, áp dụng bố cục, sao lưu",
+      "acceptance": "Thử bấm/giữ/cập nhật/xóa/khởi động lại/khôi phục, đúng dữ liệu V1",
+      "requiredEvidence": [
+        "INPUT_TRACE",
+        "RESTART_PERSISTENCE",
+        "BACKUP_RESTORE_LOG"
+      ],
+      "state": "NOT_TESTED",
+      "artifactSha256": null,
+      "deviceEvidence": null
+    },
+    {
+      "id": "D09",
+      "features": [
+        "F03",
+        "F04",
+        "F20"
+      ],
+      "expected": "Camera UVC trong một UltraCar, không tạo xung đột chọn app khi cắm USB",
+      "acceptance": "Kết nối, rút/cắm, quyền USB, không giả preview, không mất frame",
+      "requiredEvidence": [
+        "PHYSICAL_UVC_VIDEO",
+        "USB_PERMISSION_LOG"
+      ],
+      "state": "NOT_TESTED",
+      "artifactSha256": null,
+      "deviceEvidence": null
+    },
+    {
+      "id": "D10",
+      "features": [
+        "F14",
+        "F15",
+        "F22"
+      ],
+      "expected": "Phiên bản trong Hồ sơ, kênh OTA và ký riêng V2, V1 không bị ghi đè",
+      "acceptance": "Xác nhận package/version/SHA/cert, cập nhật đúng kênh TEST, không đổi V1",
+      "requiredEvidence": [
+        "SIGNED_APK_HASH",
+        "SIGNER_CERT",
+        "PROFILE_SCREENSHOT",
+        "COEXISTENCE_LOG"
+      ],
+      "state": "NOT_TESTED",
+      "artifactSha256": null,
+      "deviceEvidence": null
+    }
+  ]
+}
