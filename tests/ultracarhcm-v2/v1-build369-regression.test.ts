@@ -16,6 +16,11 @@ describe('GH-5135 V1 Build 369 full-function baseline gate', () => {
     expect(contract.source.apkSha256).toBe(v1.sha256);
     expect(contract.targetPackage).toBe('ai.tigeriq.ultracarhcm.v2');
     expect(contract.source.packageName).not.toBe(contract.targetPackage);
+    expect(contract.source.embeddedManifestObserved.packageName).toBe(v1.packageName);
+    expect(contract.source.embeddedManifestObserved.versionCode).toBe(362);
+    expect(contract.source.embeddedManifestObserved.versionName).toBe('1.2.16');
+    expect(contract.source.embeddedManifestObserved.versionCode).not.toBe(v1.versionCode);
+    expect(contract.source.metadataConsistency).toBe('MISMATCH_RELEASE_369_VERSUS_EMBEDDED_362_UNRESOLVED');
   });
 
   it('covers every new D01-D10 regression and maps each to existing F01-F22', () => {
