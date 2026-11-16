@@ -23,6 +23,13 @@
 
 **An toàn:** `ReverseGearReceiver` được khai báo `exported=true`, không khai báo permission tại manifest. Không được coi bất cứ broadcast vào receiver là tín hiệu số R vật lý được xác thực; V2 phải xác minh nguồn/trạng thái thực và giới hạn điều khiển camera an toàn. AccessibilityService yêu cầu quyền đặc biệt do người dùng tự cấp. Đây là phân loại bề mặt tĩnh; chưa kết luận lỗ hổng bảo mật hoặc cơ chế hành vi vì chưa rà logic trong receiver.
 
+## Chênh lệch trực tiếp từ AndroidManifest của V2 hiện tại
+Đọc `apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml` trên GitHub `main` ngày 17/11/2026: 17 thành phần ứng dụng, có `.UsbCameraActivity`, `.OverlayService` và `.DexDockReceiver`, nhưng **chưa khai báo** thành phần tương đương `RemoteKeyAccessibilityService` và `ReverseGearReceiver`. Do đó:
+- **D04/F10:** Phím Bluetooth vô lăng V1 chưa có đường dịch vụ accessibility tương đương V2; không thể chấm đã bảo toàn hành vi chỉ từ `OverlayService`.
+- **D05/F05:** V2 mới nhận `EXTRA_REVERSE_ACTIVE` từ Intent; chưa chứng minh có nguồn tín hiệu số R độc lập/xác thực. **Không được** giải thích USB kết nối = số R.
+- Việc đưa AccessibilityService mới vào V2 là thay đổi quyền/bề mặt bảo mật cần xác minh và cấp quyền Android thật; tuyệt đối không sao chép quyền của V1 một cách mù quáng.
+- Hai mục này cần mã, kiểm thử đơn vị và kiểm thử thực trên xe đứng yên. Đây là **khoảng trống mã nguồn đã xác minh**, không phải bằng chứng chạy ứng dụng bị lỗi ở thiết bị.
+
 ## Khoảng trống còn lại
 - Manifest và class inventory không phải bản đồ đầy đủ màn/tab/nút. Phải quan sát V1.2.23 thật, chụp từng trạng thái, so khớp F01–F22/D01–D10.
 - Chưa có biên nhận camera UVC/số R/DeX ngoài/remote Bluetooth tương đương ở V2; chưa đủ media/giấy phép F18.
