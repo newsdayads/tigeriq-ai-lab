@@ -8,43 +8,29 @@
 - Provenance: registry.yaml; #976
 
 ## Trigger
-Use after UI implementation or when auditing whether a rendered interface matches approved design evidence and remains usable.
+After UI changes, webui workflow, or an Unslop audit of rendered UI.
 
-## Input
-- Rendered UI state.
-- Approved reference/design contract.
-- Applicable viewport, interaction, accessibility, and responsive acceptance.
+## Inputs
+Rendered UI at accepted viewports; approved reference/DESIGN.md; interaction, responsive, and accessibility acceptance.
 
 ## Steps
-1. Verify the rendered result, not source code alone.
-2. Combine screenshot/reference comparison with geometry, clipping/overflow, typography, spacing, interaction, accessibility basics, and responsive checks when in scope.
-3. Reuse existing Playwright/product visual-regression mechanisms.
-4. Keep deterministic detector evidence separate from holistic visual judgment.
-5. Record concrete deltas and return mismatches to implementation.
-6. Astryx: require scoped React 19+ pilot evidence.
-7. Unslop UI audit: apply the existing `detectors.json` anti-generic-UI checks and `references/unslop-ui-audit.md` to the **rendered** page; classify each finding as reproducible defect, design-contract mismatch, or advisory style suggestion.
+1. Inspect **rendered** screenshots and DOM, not source alone.
+2. Check geometry, clipping/overflow, typography, spacing, component hierarchy, responsive behavior, interaction and accessibility basics.
+3. Reuse existing Playwright and visual regression plus `detectors.json`: distinguish deterministic findings from subjective style judgments.
+4. Apply Unslop audit in `references/unslop-ui-audit.md`: inspect generic AI-style patterns, context and false-positive guards; advisory aesthetics never hard-fail alone.
+5. Respect Owner Interaction V6 and scoped design contracts; preserve approved branding. Astryx React 19+ requires its own gated pilot evidence.
+6. Report element, viewport, expected/observed delta, severity, screenshot/DOM receipt, fix and retest.
 
-## Tools / Output
-Use existing browser/visual regression tooling and detector definitions in `docs/skills/visual-quality-gate/detectors.json`, plus the Unslop audit rubric. Output PASS/FAIL with viewport, screenshot/DOM evidence, severity, false-positive guards, and actionable deltas.
+## Verdict / Acceptance
+- PASS: scoped rendered, behavioral and applicable hard checks verified.
+- PASS_WITH_ADVISORIES: only nonblocking style suggestions remain.
+- FAIL: verified blocker or approved-contract violation with evidence.
+- NOT_VERIFIED: missing rendered UI, viewport, interactions or other required evidence.
+- Never auto-update golden baselines on failure; a stable pixel hash is not proof of quality.
+- A hard detector blocks only after applying its false-positive guards.
 
-## Acceptance
-- Golden/reference outputs are never auto-updated merely because a test failed.
-- A stable pixel hash is not treated as proof of design quality.
-- Hard detector findings block only when severity and false-positive guards allow it.
-- Advisory findings never hard-fail by themselves.
-- Unslop aesthetic preferences cannot override an approved DESIGN.md, Astryx policy, accessibility, or Owner Interaction V6.
-- Without rendered screenshots/DOM and relevant viewport evidence, report NOT_VERIFIED instead of PASS.
+## Tools / Evidence
+Use existing browser/visual-regression tools, `docs/skills/visual-quality-gate/detectors.json`, and documented screenshot/DOM evidence; source #976.
 
-## Evidence
-- #976 - AI Design Intelligence skills.
-- docs/skills/visual-quality-gate/detectors.json
-- Existing Playwright/product visual regression outputs.
-
-## Fallback
-If visual evidence is incomplete, return the missing evidence/state rather than a subjective PASS.
-
-## Safety
-Keep browser testing isolated from live NV02/NV03/NV04 control sessions unless separately authorized. This skill does not widen browser permissions, release Production, or change credential/security boundaries.
-
-## Non-goals
-It does not self-approve its own implementation, auto-bless baselines, or create a parallel browser/design authority.
+## Safety / Boundaries
+No separate Unslop Skill, auto-approved baseline, parallel browser authority, package installation, or Production release. Isolate browser testing from NV02/NV03/NV04 live control sessions unless separately authorized. Do not widen credentials, security or browser permissions.
