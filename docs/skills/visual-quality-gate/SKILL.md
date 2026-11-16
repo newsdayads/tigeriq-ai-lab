@@ -2,7 +2,7 @@
 
 ## Identity
 - ID: visual-quality-gate
-- Version: 1.0.1
+- Version: 1.0.2
 - State: ACTIVE
 - Target: ui-verification
 - Provenance: registry.yaml; #976
@@ -22,15 +22,18 @@ Use after UI implementation or when auditing whether a rendered interface matche
 4. Keep deterministic detector evidence separate from holistic visual judgment.
 5. Record concrete deltas and return mismatches to implementation.
 6. Astryx: require scoped React 19+ pilot evidence.
+7. Unslop UI audit: apply the existing `detectors.json` anti-generic-UI checks and `references/unslop-ui-audit.md` to the **rendered** page; classify each finding as reproducible defect, design-contract mismatch, or advisory style suggestion.
 
 ## Tools / Output
-Use existing browser/visual regression tooling and detector definitions in `docs/skills/visual-quality-gate/detectors.json`. Output PASS/FAIL with concrete evidence and deltas.
+Use existing browser/visual regression tooling and detector definitions in `docs/skills/visual-quality-gate/detectors.json`, plus the Unslop audit rubric. Output PASS/FAIL with viewport, screenshot/DOM evidence, severity, false-positive guards, and actionable deltas.
 
 ## Acceptance
 - Golden/reference outputs are never auto-updated merely because a test failed.
 - A stable pixel hash is not treated as proof of design quality.
 - Hard detector findings block only when severity and false-positive guards allow it.
 - Advisory findings never hard-fail by themselves.
+- Unslop aesthetic preferences cannot override an approved DESIGN.md, Astryx policy, accessibility, or Owner Interaction V6.
+- Without rendered screenshots/DOM and relevant viewport evidence, report NOT_VERIFIED instead of PASS.
 
 ## Evidence
 - #976 - AI Design Intelligence skills.
