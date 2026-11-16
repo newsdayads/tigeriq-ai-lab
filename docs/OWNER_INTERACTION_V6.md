@@ -90,3 +90,14 @@ OWNER_DIRECT=true | MODE=ADAPTIVE | SCOPE=ALL_VY_OWNER_FACING_REPLIES
 - Nút chỉ hiển thị khi có hành động thực được hỗ trợ; không tạo nút giả. Nếu bề mặt không hỗ trợ thẻ/vector, dùng chữ thuần ngắn gọn.
 - Hiệu lực tại cuộc trò chuyện hiện tại theo chỉ đạo trực tiếp; GitHub main chỉ sau PR/kiểm tra/hợp nhất/đọc lại. Các cuộc trò chuyện khác, Gemini, Web, PC01 cần nghiệm thu riêng, không tự nhận đồng bộ toàn cục.
 ACCEPTANCE=MAIN_READBACK_AND_NEW_CHAT_CANARY_REQUIRED | NATIVE_HOST_ENFORCEMENT=NOT_CLAIMED
+
+
+## OWNER 17/11/2026 — SỬA LỖI CANARY IPHONE: CẤM DANH SÁCH DẤU CHẤM TRONG BÁO CÁO VY
+EVIDENCE=OWNER_SCREENSHOT_20261117_0541 | RESULT=FAILED_NATIVE_CHAT_CANARY | SCOPE=OWNER_FACING_STATUS_AND_REPORTS
+- Lỗi nghiệm thu thực: phản hồi lệnh `vy` vẫn hiển thị `• Nguồn:`, `• Skill:`, `• UltraCar:`, `• PC01:` dạng Markdown list. Source/CI đạt không chứng minh UI đạt.
+- Với phản hồi trạng thái, khởi động, báo cáo, kiểm thử, checklist hoặc công việc nhiều bước: **KHÔNG dùng Markdown list** (`- `, `* `, `+ `, `1. `) và không dùng ký tự `•` làm đầu dòng. Chỉ dùng DIL `<box>`/`<row>`/`<icon>`/`<text>` và các thành phần thật khi khả dụng; mỗi hàng một biểu tượng vector Lucide + trạng thái + nội dung, ưu tiên thẻ viền trung tính, nhỏ gọn. Với nền tảng không hỗ trợ DIL, dùng các đoạn chữ thuần ngắn tách dòng, không giả thẻ/icon.
+- Phản hồi lệnh `vy`: một thẻ KHỞI ĐỘNG có 4 hàng Nguồn / Skill / Công việc / PC01. Mỗi hàng chỉ hiện bằng chứng đã đọc trong chính phiên; Skill CANDIDATE không đổi thành ACTIVE; PC01 chưa kiểm tra thì ghi CHƯA XÁC MINH. Kết luận `XONG` chỉ cho **khởi động có đủ nguồn**, không ngụ ý mọi tác vụ/thiết bị đã nghiệm thu.
+- Phản hồi đang làm: một thẻ TIẾN TRÌNH với hàng `Đã xác minh`, `Đang thực hiện`, `Còn chờ`; chỉ hiển thị hàng có dữ liệu thật. Không tự tạo % hoặc thông báo công việc đang chạy nền.
+- Trước khi gửi báo cáo: kiểm tra bản nháp, nếu có `•` hoặc Markdown bullet thì chuyển thành hàng vector thật. Không dùng HTML literal như giải pháp ép ChatGPT native. Nút ứng dụng `•••` ở thanh công cụ là UI hệ thống, ngoài quyền kiểm soát.
+- Cổng nghiệm thu: (1) mã nguồn + CI; (2) thẻ DIL thực tế trong **chat hiện tại**; (3) chat mới iPhone với `vy`; (4) các tài khoản/nền tảng khác. Mỗi cổng có biên nhận riêng. **Không tuyên bố FIXED_CROSS_CHAT** nếu chưa có ảnh/biên nhận chat mới.
+- Đây là điều khoản bổ sung trong **cùng chính sách V6**, không tạo chuẩn thứ hai. Chỉ sửa hành vi đầu ra mà assistant có quyền, không hứa điều khiển renderer ChatGPT.

@@ -36,3 +36,14 @@ test('BCCT V5 remains protected and V6 does not claim host-wide installation', (
   assert.match(bcct, /Icon vector thống nhất/);
   assert.match(v6, /NATIVE_HOST_ENFORCEMENT=NOT_CLAIMED/);
 });
+
+test('iPhone native chat failure is captured with no Markdown bullets for status reports', () => {
+  const v6 = read('docs/OWNER_INTERACTION_V6.md');
+  const skill = read('docs/skills/vy-owner-collaboration/SKILL.md');
+  assert.match(v6, /FAILED_NATIVE_CHAT_CANARY/);
+  assert.match(v6, /KHÔNG dùng Markdown list/);
+  assert.match(v6, /DIL/);
+  assert.match(v6, /không dùng ký tự \`•\`/);
+  assert.match(v6, /FIXED_CROSS_CHAT/);
+  assert.match(skill, /không dùng Markdown list/);
+});
