@@ -78,3 +78,7 @@ STATE=OWNER_ICON_V4_CROSS_SURFACE_ACCEPTANCE_GATE
 - Câu hỏi đơn giản: một dòng hoặc thẻ nhỏ. Nhiệm vụ nhiều bước: icon vector Lucide, thẻ gọn, checklist có trạng thái/bằng chứng, bước đang làm và kết luận; không ép giao diện dài cho câu hỏi ngắn.
 - Không giả công việc đang chạy, không giả hoàn tất hoặc %; giữ chính sách báo cáo nhị phân, BCCT V5, quyền và cổng kiểm thử hiện hành.
 - Các bề mặt ChatGPT/Gemini không tự đồng bộ chỉ từ thay đổi GitHub; phải nghiệm thu riêng.
+
+## OWNER 17/11/2026 — THẤT BẠI CANARY IPHONE / THỨ TỰ ƯU TIÊN
+- Đây là tài liệu lịch sử V3/V4; `docs/OWNER_INTERACTION_V6.md` + Issue #504 là nguồn trình bày hiện hành. Không dùng mẫu Markdown bullet từ phần cũ để trình bày báo cáo/trạng thái/checklist Vy.
+- Giao diện mới dùng hàng icon vector DIL thật khi hỗ trợ, hoặc chữ thuần; ảnh chat mới iPhone 05:41 còn `•` nên chưa nghiệm thu xuyên phiên.
