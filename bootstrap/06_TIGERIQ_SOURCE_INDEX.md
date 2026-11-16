@@ -58,7 +58,7 @@ Nếu nguồn thấp hơn xung đột nguồn cao hơn, nguồn thấp hơn khô
 4. Với App Chrome, GitHub chỉ cung cấp policy ranh giới và authority công việc/quyền của NV02/NV03/NV04; source/runtime/deploy App Chrome không lấy từ GitHub.
 5. Nếu không phải App Chrome: đọc đủ 5 Bootstrap canonical theo Loader.
 6. Interaction #504 bắt buộc mọi NEW CHAT: đọc trước phản hồi Owner đầu tiên, kể cả chat thường; đây là authority cho ngôn ngữ + icon + compact layout + mã việc + progress truth.
-7. Direct chat/NEW CHAT phải chạy pre-send icon guard theo Loader: chỉ `✅ ⚙️ ⏳ ⚠️ 🔒 💡 📌 ➡️` được dùng làm icon trạng thái/đầu mục; cấm icon màu tự phát như `🔴 🟠 🟡 🟢 🔵 🟣 ⚪ ⚫`.
+7. Mọi phản hồi Vy trong chat hiện tại/NEW CHAT dùng `docs/OWNER_INTERACTION_V6.md` và Interaction Policy #504 theo chế độ LINH HOẠT 17/11/2026. Cổng icon: không tự sinh emoji trạng thái/đầu mục; dùng icon vector Lucide khi hỗ trợ, nếu không dùng chữ thuần. Mỗi bước thực thi chỉ hiển thị checklist/trạng thái khi có bằng chứng thật; không giả % hoặc kết quả.
 8. Nếu message chỉ là số nguyên `N`, đọc CENTRAL + registry hiện hành → resolve command trước khi làm.
 9. Nếu task phụ thuộc trạng thái hiện hành, đọc `docs/CURRENT_STATE.md`, queue/P0/Work Order và evidence liên quan.
 10. Trong cùng phiên hợp lệ, không đọc lặp nguồn tĩnh đã xác minh nếu version/pointer chưa đổi; refresh nguồn động cần thiết trước mutation/kết luận.
