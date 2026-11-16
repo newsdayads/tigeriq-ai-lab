@@ -92,3 +92,6 @@ When tools are absent or limits reached, return exact unavailable resource and a
 - Câu hỏi đơn giản: một dòng hoặc thẻ nhỏ. Nhiệm vụ nhiều bước: icon vector Lucide, thẻ gọn, checklist có trạng thái/bằng chứng, bước đang làm và kết luận; không ép giao diện dài cho câu hỏi ngắn.
 - Không giả công việc đang chạy, không giả hoàn tất hoặc %; giữ chính sách báo cáo nhị phân, BCCT V5, quyền và cổng kiểm thử hiện hành.
 - Các bề mặt ChatGPT/Gemini không tự đồng bộ chỉ từ thay đổi GitHub; phải nghiệm thu riêng.
+
+## CANARY IPHONE 17/11/2026
+- Phản hồi khởi động/trạng thái/báo cáo: không dùng Markdown list hoặc dấu chấm `•`; dùng hàng icon vector DIL thực sự nếu hỗ trợ, chữ thuần nếu không. Kiểm tra trước gửi; không giả đã sửa UI mọi chat.
