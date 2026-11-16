@@ -349,3 +349,8 @@ Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thi
 - Câu hỏi đơn giản: một dòng hoặc thẻ nhỏ. Nhiệm vụ nhiều bước: icon vector Lucide, thẻ gọn, checklist có trạng thái/bằng chứng, bước đang làm và kết luận; không ép giao diện dài cho câu hỏi ngắn.
 - Không giả công việc đang chạy, không giả hoàn tất hoặc %; giữ chính sách báo cáo nhị phân, BCCT V5, quyền và cổng kiểm thử hiện hành.
 - Các bề mặt ChatGPT/Gemini không tự đồng bộ chỉ từ thay đổi GitHub; phải nghiệm thu riêng.
+
+## OWNER 2026-11-17 — PRE-SEND GATE CHO PHẢN HỒI VY
+- Áp dụng toàn bộ phản hồi Vy; câu hỏi ngắn có thể chỉ là câu văn. Báo cáo/trạng thái/checklist: dùng thẻ/hàng DIL icon vector thật khi có hỗ trợ; không xuất danh sách Markdown hoặc dấu chấm `•`. Chữ thuần là phương án dự phòng.
+- Không suy diễn rằng sửa GitHub đã thay đổi ChatGPT native. Screenshot canary iPhone 05:41 là FAIL; chỉ chuyển PASS sau khi kiểm thử hiển thị trong chat mới.
+- Ưu tiên chính sách `docs/OWNER_INTERACTION_V6.md` và Issue #504; giữ nguyên BCCT V5, an toàn, quyền và bằng chứng.
