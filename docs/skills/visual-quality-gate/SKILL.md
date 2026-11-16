@@ -10,7 +10,7 @@
 ## Trigger
 After UI changes, webui workflow, or an Unslop audit of rendered UI.
 
-## Inputs
+## Input
 Rendered UI at accepted viewports; approved reference/DESIGN.md; interaction, responsive, and accessibility acceptance.
 
 ## Steps
@@ -21,7 +21,7 @@ Rendered UI at accepted viewports; approved reference/DESIGN.md; interaction, re
 5. Respect Owner Interaction V6 and scoped design contracts; preserve approved branding. Astryx React 19+ requires its own gated pilot evidence.
 6. Report element, viewport, expected/observed delta, severity, screenshot/DOM receipt, fix and retest.
 
-## Verdict / Acceptance
+## Acceptance
 - PASS: scoped rendered, behavioral and applicable hard checks verified.
 - PASS_WITH_ADVISORIES: only nonblocking style suggestions remain.
 - FAIL: verified blocker or approved-contract violation with evidence.
@@ -29,8 +29,17 @@ Rendered UI at accepted viewports; approved reference/DESIGN.md; interaction, re
 - Never auto-update golden baselines on failure; a stable pixel hash is not proof of quality.
 - A hard detector blocks only after applying its false-positive guards.
 
-## Tools / Evidence
-Use existing browser/visual-regression tools, `docs/skills/visual-quality-gate/detectors.json`, and documented screenshot/DOM evidence; source #976.
+## Tools / Output
+Use existing browser/visual-regression tools and `detectors.json`.
 
-## Safety / Boundaries
-No separate Unslop Skill, auto-approved baseline, parallel browser authority, package installation, or Production release. Isolate browser testing from NV02/NV03/NV04 live control sessions unless separately authorized. Do not widen credentials, security or browser permissions.
+## Evidence
+Viewport screenshot/DOM receipts, deltas; #976.
+
+## Fallback
+Missing evidence => NOT_VERIFIED.
+
+## Safety
+Isolate browser testing from NV02/NV03/NV04 live sessions unless separately authorized. Never widen credentials, browser permissions, or Production release.
+
+## Non-goals
+No separate Unslop Skill, auto-approved baseline, parallel browser authority or package installation.
