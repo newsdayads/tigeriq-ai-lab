@@ -47,3 +47,19 @@ test('iPhone native chat failure is captured with no Markdown bullets for status
   assert.match(v6, /FIXED_CROSS_CHAT/);
   assert.match(skill, /không dùng Markdown list/);
 });
+
+test('Owner source audit routes every report entrypoint to actual visual canary gate', () => {
+  for (const path of [
+    'bootstrap/00_TIGERIQ_LOADER.md',
+    'bootstrap/02_TIGERIQ_WORKFLOW.md',
+    'bootstrap/06_TIGERIQ_SOURCE_INDEX.md',
+    'docs/OWNER_CHAT_REPORT_VISUAL_V3.md',
+    'docs/OWNER_BCCT_FINAL_V5.md',
+    'docs/skills/vy-owner-collaboration/SKILL.md'
+  ]) {
+    const content = read(path);
+    assert.match(content, /canary|CANARY|Canary/);
+    assert.match(content, /Markdown bullet|Markdown list/);
+    assert.match(content, /DIL/);
+  }
+});
