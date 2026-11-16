@@ -1,7 +1,7 @@
 # TIGERIQ — SOURCE INDEX
 Version: 3.5
 Status: Source Architecture
-Updated: 2026-10-02
+Updated: 2026-11-17
 
 ## 1. Mục tiêu
 Đồng nhất ChatGPT Plus, ChatGPT Go và Gemini Pro về một entry point nguồn duy nhất, tránh duy trì 3 bộ file thủ công và tránh lệch phiên bản. Authority canonical của TigerIQ nằm trên GitHub, **ngoại trừ App Chrome đã được tách LOCAL-only trên PC01**; các tài khoản AI chỉ giữ/trỏ tới Loader.
