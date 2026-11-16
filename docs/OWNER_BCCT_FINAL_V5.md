@@ -72,3 +72,6 @@ STATE=APPROVED_SPEC_PENDING_IMPLEMENTATION_AND_ACCEPTANCE
 2. Kiểm thử nút LÀM NGAY và TỰ XẾP ƯU TIÊN & XỬ LÝ: trace Core + idempotency + readback phản ánh trạng thái thật. Kiểm thử màn hình iPhone và desktop cho các nút, bộ lọc, mở rộng.
 3. Rà soát độc lập, CI, kiểm tra an toàn đạt; branch → PR → merge, phát hành web/runtime theo đúng cổng riêng. GitHub main merge KHÔNG đồng nghĩa Production đã phát hành.
 4. Ghi riêng trạng thái UI_CHATGPT_NATIVE=NOT_ENFORCEABLE_FROM_REPO. Không khẳng định đã khóa mọi phiên AI chỉ bằng thay đổi GitHub. Không đụng App Chrome LOCAL-only; RDC chỉ dùng đọc hạn mức theo yêu cầu; không dùng Codex mặc định.
+
+## OWNER 17/11/2026 — GATE ICON THỰC TẾ
+- Giữ nguyên sáu nhóm và bố cục BCCT V5. Trong phần trình bày Vy trên ChatGPT có hỗ trợ DIL, dùng hàng icon Lucide vector thật, không biến checklist thành Markdown bullet hoặc dấu chấm `•`. Nếu không có DIL: chữ thuần. Nghiệm thu chat mới tách biệt với CI.
