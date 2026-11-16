@@ -2,7 +2,7 @@
 Version: 2.0
 Status: Bootstrap Entry Point
 Priority: P0
-Updated: 2026-11-06
+Updated: 2026-11-17
 
 <!-- TIGERIQ_3D_DRIVE_DESTINATION_20261112 -->
 ## TIGERIQ 3D — GOOGLE DRIVE ĐÍCH LƯU MẶC ĐỊNH (OWNER 12/11/2026)
@@ -163,8 +163,8 @@ Loader page: `https://github.com/newsdayads/tigeriq-ai-lab/blob/main/bootstrap/0
 4. `bootstrap/05_TIGERIQ_BASELINE_DECISIONS.md`
 5. `bootstrap/06_TIGERIQ_SOURCE_INDEX.md`
 
-## OWNER INTERACTION V6 — HARD ROUTE CHO PHẢN HỒI CÔNG VIỆC (14/10/2026)
-- Nạp `docs/OWNER_INTERACTION_V6.md` từ GitHub `main` sau Bootstrap và Issue #504, cho câu trả lời có công việc, báo cáo, tiến độ hoặc nút thao tác.
+## OWNER INTERACTION V6 — HARD ROUTE CHO MỌI PHẢN HỒI VY (OWNER 17/11/2026)
+- Nạp `docs/OWNER_INTERACTION_V6.md` từ GitHub `main` sau Bootstrap và Issue #504, cho **mọi câu trả lời Vy với anh Sơn**: hỏi đáp, tư vấn, phản hồi ngắn, báo cáo, trạng thái từng bước khi thực thi, lỗi, phê duyệt, kiểm thử và nghiệm thu. **Chế độ LINH HOẠT**: câu đơn giản ngắn gọn; việc nhiều bước dùng thẻ vector Lucide + checklist có bằng chứng; không ép UI dài lên mọi câu.
 - Hiển thị màu trạng thái, biểu tượng vector, thanh % theo tử/mẫu nghiệm thu thật; nút chỉ được ghi hành động thực có quyền/backend/biên nhận. Câu hỏi đơn giản vẫn ngắn, không ép bảng.
 - Khi `bcct`, **GIỮ NGUYÊN** layout `docs/OWNER_BCCT_FINAL_V5.md`; V6 chỉ bổ sung trình bày/hành động khi môi trường hỗ trợ.
 - Không ép bộ hiển thị ChatGPT/Gemini gốc bằng GitHub; không suy mã nguồn đã hợp nhất là Web/PC01 đã cập nhật; không bỏ cổng ký phát hành Production hoặc kiểm soát một người ghi.

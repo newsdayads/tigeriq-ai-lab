@@ -2,10 +2,10 @@
 Version: 4.2
 Status: Source of Truth
 Priority: P0
-Updated: 2026-10-08
+Updated: 2026-11-17
 
 ## OWNER INTERACTION V6 — P0 (14/10/2026)
-- Mọi phản hồi Owner-facing có công việc: áp dụng `docs/OWNER_INTERACTION_V6.md` cùng Interaction Policy #504. Màu/biểu tượng vector đúng trạng thái, thanh % chỉ từ checklist đã xác minh; button phải trỏ thao tác thật, không giả đã dispatch/DUYỆT/đã ký.
+- Mọi phản hồi Vy cho anh Sơn, kể cả câu hỏi đơn giản và cập nhật từng bước trong lúc thực hiện: áp dụng `docs/OWNER_INTERACTION_V6.md` cùng Interaction Policy #504, theo chế độ LINH HOẠT đã chọn 17/11/2026. Màu/biểu tượng vector đúng trạng thái, thanh % chỉ từ checklist đã xác minh; button phải trỏ thao tác thật, không giả đã dispatch/DUYỆT/đã ký.
 - Trả lời đơn giản vẫn ngắn 1–3 dòng. Khi nhiều việc, có thẻ gọn, lọc, mở rộng, timeline khi môi trường hỗ trợ; không ép hình thức cho mọi câu.
 - `bcct` tiếp tục dùng đúng bố cục `docs/OWNER_BCCT_FINAL_V5.md`; V6 chỉ nâng ngữ nghĩa trạng thái/tiến độ/hành động, KHÔNG thay đổi trật tự BCCT.
 - ChatGPT/Gemini native là bề mặt không cưỡng chế từ mã GitHub. Core/Web/PC01 cần biên nhận triển khai và nghiệm thu riêng; App Chrome LOCAL-only giữ nguyên.
@@ -343,3 +343,9 @@ Với thay đổi Loader/Bootstrap cốt lõi: bắt buộc regression tối thi
 - App Chrome PC01 LOCAL-only nhắc NV03 tự kiểm tra nguồn GitHub và tự nhận công việc trên tài khoản NV03; không phải dịch vụ claim GitHub. Chỉ được mutation sau khi chính NV03 xác minh GitHub hợp lệ và claim/lease không trùng. Không xung đột RESOURCE_SCOPE, không P0/hard gates, không tự review mã do chính mình làm.
 - NV04 vẫn do Core điều phối review/research, có thể nhận review thay NV03 khi đủ năng lực. Việc giao NV04 chưa bị Owner thay đổi.
 - NV03_SELF_PULL_ACTIVE là trạng thái phải chứng minh bằng bằng chứng trên PC01 và GitHub, không suy ra từ PR merge, cấu hình hoặc việc Chrome đã gửi prompt.
+
+## OWNER 2026-11-17 — CHẾ ĐỘ PHẢN HỒI VY LINH HOẠT
+- Quy chuẩn trình bày duy nhất: `docs/OWNER_INTERACTION_V6.md` mục `VY ADAPTIVE RESPONSE FOR ALL REPLIES`; áp dụng cho mọi loại phản hồi với anh Sơn, kể cả thông báo từng bước trong lúc thực thi.
+- Câu hỏi đơn giản: một dòng hoặc thẻ nhỏ. Nhiệm vụ nhiều bước: icon vector Lucide, thẻ gọn, checklist có trạng thái/bằng chứng, bước đang làm và kết luận; không ép giao diện dài cho câu hỏi ngắn.
+- Không giả công việc đang chạy, không giả hoàn tất hoặc %; giữ chính sách báo cáo nhị phân, BCCT V5, quyền và cổng kiểm thử hiện hành.
+- Các bề mặt ChatGPT/Gemini không tự đồng bộ chỉ từ thay đổi GitHub; phải nghiệm thu riêng.

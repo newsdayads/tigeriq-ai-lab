@@ -8,7 +8,7 @@ Phạm vi: Chat mới, chat hiện tại, bc, bcct và báo cáo kết quả cô
 
 ## QUY ƯỚC HIỆN HÀNH V6 — 14/10/2026
 - Chính sách bổ sung: `docs/OWNER_INTERACTION_V6.md`, nguồn động #504, mô-đun `apps/shared/owner-interaction-v6.mjs` cho renderer do TigerIQ sở hữu.
-- Mọi câu trả lời công việc có thể dùng thẻ màu/icon/nút/tiến độ bằng chứng; không ép thẻ vào thông điệp đơn giản. Không đưa số % chưa có tử/mẫu được xác minh hoặc nút không gắn backend thật.
+- Mọi câu trả lời Vy, kể cả hỏi đáp, tư vấn, trạng thái giữa các bước, kết quả và báo cáo, áp dụng phong cách LINH HOẠT 17/11/2026 theo `docs/OWNER_INTERACTION_V6.md`; thẻ/icon vector/checklist có bằng chứng khi hữu ích; không ép thẻ vào thông điệp đơn giản. Không đưa số % chưa có tử/mẫu được xác minh hoặc nút không gắn backend thật.
 - Giữ BCCT V5 về bố cục; trạng thái ChatGPT/Gemini native chỉ được ghi đã kiểm thử nếu có bằng chứng phiên thật.
 
 ## Hợp đồng trình bày
@@ -72,3 +72,9 @@ Phạm vi: Chat mới, chat hiện tại, bc, bcct và báo cáo kết quả cô
 - Không tự động điều khiển App Chrome, dùng RDC, Codex, sửa quyền, phát hành Production hay thay đổi cấu hình máy để ép áp dụng chính sách này. Mọi việc cần quyền mới phải theo cổng Owner và quyền sở hữu một người ghi tại mỗi phạm vi.
 - Điều kiện đóng mục tiêu "đồng nhất toàn bộ": lập danh sách bề mặt thực tế; mã nguồn + kiểm thử + rà soát + xác minh sau phát hành cho bề mặt TigerIQ; xác minh chat mới và chat đang mở cho từng tài khoản truy cập được; các phần nền tảng không cưỡng chế được phải nêu giới hạn rõ ràng và không đánh dấu hoàn tất toàn bộ.
 STATE=OWNER_ICON_V4_CROSS_SURFACE_ACCEPTANCE_GATE
+
+## OWNER 2026-11-17 — CHẾ ĐỘ PHẢN HỒI VY LINH HOẠT
+- Quy chuẩn trình bày duy nhất: `docs/OWNER_INTERACTION_V6.md` mục `VY ADAPTIVE RESPONSE FOR ALL REPLIES`; áp dụng cho mọi loại phản hồi với anh Sơn, kể cả thông báo từng bước trong lúc thực thi.
+- Câu hỏi đơn giản: một dòng hoặc thẻ nhỏ. Nhiệm vụ nhiều bước: icon vector Lucide, thẻ gọn, checklist có trạng thái/bằng chứng, bước đang làm và kết luận; không ép giao diện dài cho câu hỏi ngắn.
+- Không giả công việc đang chạy, không giả hoàn tất hoặc %; giữ chính sách báo cáo nhị phân, BCCT V5, quyền và cổng kiểm thử hiện hành.
+- Các bề mặt ChatGPT/Gemini không tự đồng bộ chỉ từ thay đổi GitHub; phải nghiệm thu riêng.
