@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "reviewDate": "2026-11-17",
+  "issue": 5721,
+  "upstream": {
+    "repository": "https://github.com/meta/astryx",
+    "license": "MIT",
+    "release": "BETA",
+    "framework": "React",
+    "minimumReactMajor": 19,
+    "assetCopied": false,
+    "installerExecuted": false
+  },
+  "governance": {
+    "mode": "PATTERNS_FIRST",
+    "libraryInstall": "BLOCKED_UNTIL_SEPARATE_PINNED_PACKAGE_AUDIT",
+    "globalReactMigration": false,
+    "productionMutation": false,
+    "designAuthority": "SCOPED_DESIGN_MD_AND_OWNER_INTERACTION_V6",
+    "newSkillCreated": false,
+    "pc01RequiredForSourceOnly": false
+  },
+  "areas": [
+    {
+      "id": "tigeriq-showcase",
+      "path": "apps/tigeriq-showcase/index.html",
+      "observedStack": "HTML_CSS_JS",
+      "decision": "PATTERNS_ONLY"
+    },
+    {
+      "id": "tigeriq-web-studio",
+      "path": "apps/tigeriq-web-studio/index.html",
+      "observedStack": "HTML_CSS_JS",
+      "decision": "PATTERNS_ONLY"
+    },
+    {
+      "id": "ultracar-hcm-web",
+      "path": "apps/ultracar-hcm-web/index.html",
+      "observedStack": "HTML_CSS_JS",
+      "decision": "PATTERNS_ONLY"
+    },
+    {
+      "id": "web-control-and-work-center",
+      "observedStack": "UNVERIFIED",
+      "decision": "REVIEW_UI_ONLY"
+    },
+    {
+      "id": "future-react-web-ui",
+      "observedStack": "CONDITIONAL_REACT_19_PLUS",
+      "decision": "PILOT_ONLY_AFTER_GATES"
+    },
+    {
+      "id": "android-apps",
+      "observedStack": "NATIVE_ANDROID",
+      "decision": "NOT_APPLICABLE"
+    },
+    {
+      "id": "ai-core-and-device-control",
+      "observedStack": "NON_UI_OR_CONTROL_PLANE",
+      "decision": "NOT_APPLICABLE"
+    },
+    {
+      "id": "game-and-3d-engine",
+      "observedStack": "CANVAS_OR_3D_ENGINE",
+      "decision": "CONTROLS_PATTERNS_ONLY"
+    }
+  ],
+  "pilotGates": [
+    "ACTUAL_REACT19_TARGET",
+    "APPROVED_SCOPE",
+    "PINNED_UPSTREAM_VERSION_AND_HASH",
+    "LICENSE_AND_DEPENDENCY_AUDIT",
+    "PACKAGE_SCRIPTS_REVIEW",
+    "ISOLATED_REVERSIBLE_BRANCH",
+    "RESPONSIVE_ACCESSIBILITY_INTERACTION_TESTS",
+    "INDEPENDENT_REVIEW_WHEN_REQUIRED",
+    "PRODUCTION_GATE_AND_LIVE_READBACK"
+  ],
+  "evidenceStatus": "SOURCE_ONLY_NO_PC01_OR_PRODUCTION_ACCEPTANCE"
+}
