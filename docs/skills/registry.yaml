@@ -137,12 +137,12 @@ skills:
   - id: visual-quality-gate
     title: Visual Quality Gate
     state: ACTIVE
-    version: 1.0.1
+    version: 1.0.2
     provenance_batch: owner-design-ui-video-2026-09-19
     source_log: learning-log/2026-09-19-design-ui-video.md
     target: ui-verification
-    triggers: visual screenshot playwright layout geometry clipping accessibility responsive ui giao diện verify kiểm tra astryx
-    summary: Verify rendered UI against approved design evidence using existing browser and visual-regression mechanisms without auto-blessing baselines.
+    triggers: visual screenshot playwright layout geometry clipping accessibility responsive ui giao diện verify kiểm tra astryx unslop soi lỗi giao diện
+    summary: Verify rendered UI with existing visual regression plus evidence-based Unslop anti-generic-UI audit; preserve false-positive guards and approved baselines.
 
   - id: isolated-parallel-execution
     title: Isolated Parallel Execution
