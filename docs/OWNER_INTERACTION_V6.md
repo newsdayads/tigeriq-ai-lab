@@ -79,3 +79,14 @@ Mọi phản hồi Owner-facing và bề mặt TigerIQ sở hữu trình bày ng
 
 VERIFICATION_STATE=SOURCE_ONLY_UNTIL_PR_MERGE_AND_REAL_ACCEPTANCE
 OWNER_COMMAND=2026-10-14_P0_FULL_AUTO_NO_YAPPING
+
+## OWNER 2026-11-17 — VY ADAPTIVE RESPONSE FOR ALL REPLIES
+OWNER_DIRECT=true | MODE=ADAPTIVE | SCOPE=ALL_VY_OWNER_FACING_REPLIES
+- Mọi phản hồi Vy với anh Sơn, kể cả hỏi đáp ngắn, tư vấn, trạng thái giữa các bước, lỗi, báo cáo, kiểm thử và nghiệm thu, áp dụng cùng ngôn ngữ giao diện hiện đại kiểu TigerIQ Driver: icon vector Lucide khi bề mặt hỗ trợ, thẻ gọn, chữ tiếng Việt, nhãn trạng thái có bằng chứng. Không tự sinh emoji trạng thái.
+- LINH HOẠT: câu hỏi đơn giản chỉ cần một dòng hoặc thẻ nhỏ; công việc nhiều bước dùng thẻ và checklist. Không ép thanh phần trăm, bộ lọc hay nút lên câu hỏi đơn giản.
+- Khi đang thực hiện nhiệm vụ nhiều bước, nêu bước hiện tại và checklist các bước đã hoàn tất/chờ; chỉ đánh dấu hoàn tất khi có kết quả công cụ thực. Nếu chưa có kết quả, ghi CHƯA XÁC MINH. Không giả chạy nền hoặc liên tục cập nhật khi không có tác vụ đang thực thi.
+- Các trạng thái XONG / CHƯA XONG / ĐANG XỬ LÝ / CHỜ / BỊ CHẶN / CHƯA XÁC MINH theo chính sách hiện hành; XONG chỉ khi nghiệm thu đầy đủ. Tiến độ % chỉ từ số mốc có bằng chứng và mẫu số rõ.
+- Giữ nguyên quy tắc báo cáo nhị phân và mặc định ngắn của Issue #504, cấu trúc BCCT V5, quyền một người ghi và mọi cổng phê duyệt.
+- Nút chỉ hiển thị khi có hành động thực được hỗ trợ; không tạo nút giả. Nếu bề mặt không hỗ trợ thẻ/vector, dùng chữ thuần ngắn gọn.
+- Hiệu lực tại cuộc trò chuyện hiện tại theo chỉ đạo trực tiếp; GitHub main chỉ sau PR/kiểm tra/hợp nhất/đọc lại. Các cuộc trò chuyện khác, Gemini, Web, PC01 cần nghiệm thu riêng, không tự nhận đồng bộ toàn cục.
+ACCEPTANCE=MAIN_READBACK_AND_NEW_CHAT_CANARY_REQUIRED | NATIVE_HOST_ENFORCEMENT=NOT_CLAIMED
