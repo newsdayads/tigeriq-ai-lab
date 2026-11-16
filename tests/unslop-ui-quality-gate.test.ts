@@ -35,3 +35,16 @@ test('Unslop is review-only and does not authorize a new skill, React install, o
   expect(rubric).toContain('production deploy');
   expect(skill).toContain('Owner Interaction V6');
 });
+
+test('webui shortcut loads all three ACTIVE design skills in default bounded context', () => {
+  const result = matchAndLoadSkills('webui');
+  expect(result.skills.map((s: { id: string }) => s.id).sort()).toEqual([
+    'design-system-memory',
+    'image-to-ui-implementation',
+    'visual-quality-gate',
+  ]);
+  expect(result.totalChars).toBeLessThanOrEqual(6000);
+  expect(result.contextBlock).toContain('references/unslop-ui-audit.md');
+  expect(result.contextBlock).toContain('astryx-adoption.md');
+  expect(result.skipped.filter((s: { reason: string }) => s.reason === 'CONTEXT_BUDGET')).toEqual([]);
+});
