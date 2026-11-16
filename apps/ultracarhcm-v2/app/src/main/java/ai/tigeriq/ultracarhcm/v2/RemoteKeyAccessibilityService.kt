@@ -146,17 +146,16 @@ class RemoteKeyAccessibilityService : AccessibilityService() {
             KeyEvent.ACTION_UP -> {
                 if (pressCode != keyCode) return true
                 val elapsed = (now - pressStartedAt).coerceAtLeast(0L)
-                val triggered = pressTriggered ||
+                val alreadyTriggered = pressTriggered
+                val triggerOnRelease = !alreadyTriggered &&
                     RemoteKeyRules.longPress(
                         elapsed,
                         settings.getLong(RemoteKeyRules.HOLD_MS, RemoteKeyRules.DEFAULT_HOLD_MS),
                     )
                 clearPress()
-                if (triggered) {
-                    if (!pressTriggered && elapsed < RemoteKeyRules.MAX_PRESS_MS) {
-                        toggleRealCamera()
-                    }
-                } else {
+                if (triggerOnRelease) {
+                    toggleRealCamera()
+                } else if (!alreadyTriggered) {
                     replayShortKey(keyCode)
                 }
                 return true
