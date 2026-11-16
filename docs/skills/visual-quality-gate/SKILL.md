@@ -21,7 +21,7 @@ Use after UI implementation or when auditing whether a rendered interface matche
 3. Reuse existing Playwright/product visual-regression mechanisms.
 4. Keep deterministic detector evidence separate from holistic visual judgment.
 5. Record concrete deltas and return mismatches to implementation.
-6. For Astryx, require scoped React 19+ pilot evidence; source-only reviews cannot pass production UI acceptance.
+6. Astryx: require scoped React 19+ pilot evidence.
 
 ## Tools / Output
 Use existing browser/visual regression tooling and detector definitions in `docs/skills/visual-quality-gate/detectors.json`. Output PASS/FAIL with concrete evidence and deltas.
