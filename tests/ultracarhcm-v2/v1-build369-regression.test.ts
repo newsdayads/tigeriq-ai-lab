@@ -44,6 +44,8 @@ describe('GH-5135 V1 Build 369 full-function baseline gate', () => {
       expect(c.artifactSha256).toBeNull();
       expect(c.deviceEvidence).toBeNull();
     }
-    for (const f of v2.features) expect(f.testStatus).not.toMatch(/ACCEPTED|PASS/);
+    for (const f of v2.features) {
+      expect(['SOURCE_ONLY_NOT_ACCEPTED', 'DEVICE_QA_NOT_TESTED', 'NOT_TESTED_NO_IMPLEMENTATION']).toContain(f.testStatus);
+    }
   });
 });
