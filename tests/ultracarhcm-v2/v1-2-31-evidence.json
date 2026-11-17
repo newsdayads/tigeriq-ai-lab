@@ -1,0 +1,88 @@
+{
+  "schema": "tigeriq.ultracarhcm.v2.latest-drive-v1-baseline.v1",
+  "workOrder": "GH-5135",
+  "observedAt": "2026-11-17",
+  "scope": "SOURCE_AUDIT_AND_SINGLE_S10_ACTIVITY_QA_NOT_FULL_PARITY",
+  "v1": {
+    "fileName": "UltraCar_v1.2.31.apk",
+    "driveFileId": "1wp8w4SN3f2hmtluzB0xue4lh0qtppilE",
+    "fileSize": 35166511,
+    "sha256": "D8B8DE0A454ACB88E911AD11331EFF91884714466EF8B4554807D8D3447F82FC",
+    "embeddedVersionName": "1.2.16",
+    "embeddedVersionCode": 362,
+    "packageName": "com.tigeriq.dexsplit",
+    "certificateSha256": "71617043EACE89E5F220EA9168B0A9592808111B0F17EAA219F5E6ECEB569558",
+    "classCount": 9369,
+    "resourcesCount": 622,
+    "manifestComponents": 27,
+    "manifestPermissions": 18,
+    "reaEvidenceSha": "D9F73DCD1C7D6044FB678E1C2C74B6DEA0F9F22F43DEEDA8D41DB3F132B511C9",
+    "installedS10BaseSha256": "D8B8DE0A454ACB88E911AD11331EFF91884714466EF8B4554807D8D3447F82FC",
+    "installedMatchesDriveFile": true,
+    "releaseLabelVersionVerified": false
+  },
+  "v2": {
+    "qaPackage": "ai.tigeriq.ultracarhcm.v2.rqa",
+    "qaSourceSha": "ea5aaafbb5f992735a1c281e6208a12bda86fa3e",
+    "qaApkSha256": "57FE271FE691BE1B10F15CEA4179363810070B37DFB2F2DA4C2C8BCE0E3DEA68",
+    "instrumentation": {
+      "device": "SM-G977N",
+      "screenLaunchPass": 14,
+      "cameraPermissionContractPass": 1,
+      "totalPass": 15,
+      "totalFail": 0,
+      "evidenceSha256": "7C65B9E5CC031A951A03A373CC66ED76CBE5C5AC96EB882C13D28FDC44A5DE95"
+    },
+    "cameraPermissionGranted": false,
+    "externalDexVerified": false,
+    "uvcHardwareVerified": false,
+    "gearRVerified": false,
+    "bluetoothRemoteHardwareVerified": false
+  },
+  "releaseGates": {
+    "allF01F22Accepted": false,
+    "allD01D10Accepted": false,
+    "currentV1ExternalLabelMatchesEmbeddedVersion": false,
+    "ownerMediaRightsVerified": false,
+    "licenseBackendVerified": false,
+    "testReleaseAllowed": false
+  },
+  "findings": [
+    {
+      "id": "B01",
+      "category": "V1_VERSION_DIVERGENCE",
+      "detail": "V1.2.31 Drive label differs from AndroidManifest 1.2.16/362; identical internal version as V1.2.23, with different APK SHA",
+      "status": "OPEN"
+    },
+    {
+      "id": "B02",
+      "category": "REAL_V1_BASELINE",
+      "detail": "S10 installed V1 base APK SHA equals Drive V1.2.31 exactly; screenshots are grounded to current installed APK",
+      "status": "VERIFIED"
+    },
+    {
+      "id": "B03",
+      "category": "VISUAL_GAP",
+      "detail": "V1 has city road/vehicle/media/weather and embedded camera popup; QA V2 has dark placeholder cockpit and simple Sport panel. Visual parity not accepted.",
+      "status": "OPEN"
+    },
+    {
+      "id": "B04",
+      "category": "BT_REMOTE",
+      "detail": "V1 contains RemoteKeyAccessibilityService, learn key/hold/replay. V2 source PR adds user-granted independent implementation, physical remote test not accepted.",
+      "status": "SOURCE_IMPLEMENTED_DEVICE_QA_PENDING"
+    },
+    {
+      "id": "B05",
+      "category": "GEAR_SIGNAL",
+      "detail": "V1 ReverseGearReceiver ignores unverified REVERSE broadcasts; V2 must not invent gear-R hardware trigger.",
+      "status": "SAFETY_GATE"
+    },
+    {
+      "id": "B06",
+      "category": "CAMERA_POPUP",
+      "detail": "V2 source changes shortcut from USB stream toggle to popup close; DeX placement rules added but DeX hardware unavailable.",
+      "status": "SOURCE_IMPLEMENTED_DEVICE_QA_PENDING"
+    }
+  ]
+}

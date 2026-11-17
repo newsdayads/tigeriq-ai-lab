@@ -115,12 +115,14 @@ class OverlayService : Service(), DisplayManager.DisplayListener {
                 var startX = 0
                 var startY = 0
                 var dragging = false
+                var pressedAtMs = 0L
                 val slop = ViewConfiguration.get(ctx).scaledTouchSlop
                 override fun onTouch(v: View, event: MotionEvent): Boolean {
                     when (event.actionMasked) {
                         MotionEvent.ACTION_DOWN -> {
                             downX = event.rawX; downY = event.rawY
                             startX = p.x; startY = p.y; dragging = false
+                            pressedAtMs = event.eventTime
                             return true
                         }
                         MotionEvent.ACTION_MOVE -> {
@@ -156,6 +158,15 @@ class OverlayService : Service(), DisplayManager.DisplayListener {
                                     } catch (t: Throwable) {
                                         Log.e(logTag, "Persistence rollback layout update failed", t)
                                     }
+                                }
+                            } else if (event.eventTime - pressedAtMs >= 700L) {
+                                try {
+                                    startActivity(
+                                        Intent(this@OverlayService, RemoteKeyConfigActivity::class.java)
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                    )
+                                } catch (error: RuntimeException) {
+                                    Log.e(logTag, "Cannot open Bluetooth remote configuration", error)
                                 }
                             } else {
                                 UsbCameraActivity.toggleFromShortcut(this@OverlayService, currentId)

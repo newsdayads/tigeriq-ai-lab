@@ -8,8 +8,11 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Rect
+import android.hardware.display.DisplayManager
 import android.os.Bundle
 import android.util.Log
+import android.view.Display
 import android.view.Gravity
 import android.view.TextureView
 import android.view.View
@@ -31,7 +34,8 @@ class UsbCameraActivity : Activity() {
             val existingDisplayId = existing?.window?.decorView?.display?.displayId
 
             if (CameraDisplayRules.shouldToggleExisting(existingDisplayId, displayId)) {
-                existing?.runOnUiThread { existing.toggle() }
+                // Short tap of the global Camera/[R] shortcut toggles the POPUP, not merely USB frames.
+                existing?.runOnUiThread { existing.finish() }
                 return
             }
 
@@ -46,6 +50,22 @@ class UsbCameraActivity : Activity() {
             try {
                 val opts = ActivityOptions.makeBasic()
                 if (displayId >= 0) opts.launchDisplayId = displayId
+                if (displayId != Display.DEFAULT_DISPLAY && displayId >= 0) {
+                    // DeX freeform placement request. Android/OEM owns final window geometry.
+                    // Never inherit phone density when sizing an external-display window.
+                    val display = (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
+                        ?.getDisplay(displayId)
+                    if (display?.isValid == true) {
+                        val density = context.createDisplayContext(display).resources.displayMetrics.density
+                        CameraWindowBoundsRules.initial(
+                            display.mode.physicalWidth,
+                            display.mode.physicalHeight,
+                            density,
+                        )?.let { bounds ->
+                            opts.launchBounds = Rect(bounds.left, bounds.top, bounds.right, bounds.bottom)
+                        }
+                    }
+                }
                 context.startActivity(intent, opts.toBundle())
                 if (existing != null && existingDisplayId != displayId) {
                     existing.runOnUiThread { existing.finish() }

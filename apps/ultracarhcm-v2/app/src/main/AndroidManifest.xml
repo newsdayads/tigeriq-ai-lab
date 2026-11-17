@@ -46,6 +46,18 @@
           android:name="android.support.FILE_PROVIDER_PATHS"
           android:resource="@xml/update_file_paths"/>
     </provider>
+    <activity android:name=".RemoteKeyConfigActivity" android:exported="false" />
+    <service
+        android:name=".RemoteKeyAccessibilityService"
+        android:exported="true"
+        android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+      <intent-filter>
+        <action android:name="android.accessibilityservice.AccessibilityService" />
+      </intent-filter>
+      <meta-data
+          android:name="android.accessibilityservice"
+          android:resource="@xml/remote_key_accessibility_v2" />
+    </service>
     <service android:name=".OverlayService" android:exported="false"/>
     <receiver android:name=".DexDockReceiver" android:exported="true">
       <intent-filter>
