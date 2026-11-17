@@ -69,14 +69,14 @@ describe('GH-5135 V1.0.64 QuickBar source contract', () => {
   it('launches installed packages and routes the local camera target without fabricating installs', () => {
     expect(home).toContain('packageManager.getLaunchIntentForPackage(target)');
     expect(home).toContain('target == QuickSlotRules.CAMERA_TARGET');
-    expect(home).toContain('startActivity(Intent(this, UsbCameraActivity::class.java))');
+    expect(home).toContain('UsbCameraActivity.toggleFromShortcut(this, requestedCameraDisplayId())');
     expect(home).toContain('Chưa tìm thấy ứng dụng: $label');
     const start = home.indexOf('private fun launchQuickSlot(slot: JSONObject)');
     const end = home.indexOf('private fun showCustomQuickSlotEditor', start);
     const block = home.slice(start, end);
     expect(block).toContain('catch (error: RuntimeException)');
     expect(block).toContain('QuickBar external app launch failed');
-    expect(block).toContain('Không thể mở ứng dụng: $label');
+    expect(block).toContain('Không thể mở ứng dụng đúng khung DeX: $label');
     expect(block).not.toMatch(/ACTION_VIEW|market:\/\/|play\.google\.com/);
   });
 });
