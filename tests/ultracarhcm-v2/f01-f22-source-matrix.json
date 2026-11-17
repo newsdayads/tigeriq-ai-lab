@@ -42,9 +42,10 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleRules.kt",
-        "tests/ultracarhcm-v2/vehicle-profile-persistence-source.test.ts"
+        "tests/ultracarhcm-v2/vehicle-profile-persistence-source.test.ts",
+        "apps/ultracarhcm-v2/app/src/androidTest/java/ai/tigeriq/ultracarhcm/v2/V2FunctionalScreenActionsDeviceTest.kt"
       ],
-      "gap": "Two verified source vehicle choices, local model/color selection and bounded license-plate display are implemented. Vehicle model plus legacy migration flag and license-plate changes now require synchronous persistence success before refreshing or acknowledging the UI. Full V1 branded card styling, moving-state behavior and real-media parity remain open.",
+      "gap": "Two verified source vehicle choices, local model/color selection and bounded license-plate display are implemented. Vehicle model plus legacy migration flag and license-plate changes now require synchronous persistence success before refreshing or acknowledging the UI. Full V1 branded card styling, moving-state behavior and real-media parity remain open. 2026-11-17 real S10 QA: native model selection + legacy Limo flag + normalized license plate save were exercised by actual Activity buttons and persisted preferences; original QA state was restored. Entire Android simulated-secondary-display suite 53/53 PASS, evidence in tests/ultracarhcm-v2/GUI_REAL_CONTROL_AUDIT_20261117.md. Moving vehicle media, exact V1 Golden visual, physical DeX and original brand assets still not accepted.",
       "actual": "VehicleActivity lets the user choose between the two existing source vehicle choices (Limo đỏ and Lamborghini trắng) and store a bounded local license plate. It commits vehicle model plus the legacy limo migration boolean and commits the normalized plate before showing success; Home renders the selected parked vehicle plus the saved plate.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
