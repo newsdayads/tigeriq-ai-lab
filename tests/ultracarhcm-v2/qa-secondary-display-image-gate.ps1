@@ -64,8 +64,18 @@ function Measure-ScreenImage {
 
 function Invoke-QaAdb {
     param([string[]]$Arguments)
-    $lines = @(& $AdbPath -s $Serial @Arguments 2>&1)
-    if ($LASTEXITCODE -ne 0) {
+    # Windows PowerShell 5.1 maps native stderr (including successful
+    # "adb pull: 1 file pulled") to ErrorRecord when Stop is set globally.
+    # Accept both streams, but trust ONLY the native process exit code.
+    $oldPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $lines = @(& $AdbPath -s $Serial @Arguments 2>&1)
+        $nativeExit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $oldPreference
+    }
+    if ($nativeExit -ne 0) {
         throw ("ADB_FAILED: " + ($Arguments -join ' ') + " => " + ($lines -join ' | '))
     }
     return @($lines | ForEach-Object { $_.ToString() })
