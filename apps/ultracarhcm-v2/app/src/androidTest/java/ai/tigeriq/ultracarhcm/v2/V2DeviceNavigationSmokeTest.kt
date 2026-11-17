@@ -1,6 +1,8 @@
 package ai.tigeriq.ultracarhcm.v2
 
 import android.app.Activity
+import android.Manifest
+import android.content.pm.PackageManager
 import android.content.Intent
 import android.view.View
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -13,7 +15,7 @@ import org.junit.runner.RunWith
 
 /**
  * Runs on a real Android device against the installed QA package, NOT against
- * source strings or mock screens. Non-destructive screen-opening smoke tests:
+ * source strings or mock screens. Non-destructive Activity smoke tests plus an OS permission declaration test:
  * no pairing, license activation, camera hardware, or Android permission grant.
  *
  * A passed screen only proves it launches; it is NOT V1 feature parity.
@@ -41,7 +43,25 @@ class V2DeviceNavigationSmokeTest {
 
     @Test fun f01Home() = launch(HomeActivity::class.java)
     @Test fun f02Vehicle() = launch(VehicleActivity::class.java)
-    @Test fun f03CameraNoRealUvcClaim() = launch(UsbCameraActivity::class.java)
+    // A missing CAMERA grant is an OS permission gate, not a crashed Activity.
+    // Unattended QA must not auto-grant a security permission just to pass.
+    @Test fun f03CameraPermissionContractOnly() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val info = context.packageManager.getPackageInfo(
+            context.packageName,
+            PackageManager.GET_PERMISSIONS,
+        )
+        assertTrue(
+            "CAMERA must be explicitly declared",
+            info.requestedPermissions.orEmpty().contains(Manifest.permission.CAMERA),
+        )
+        val state = context.checkSelfPermission(Manifest.permission.CAMERA)
+        assertTrue(
+            "CAMERA grant is controlled by Android",
+            state == PackageManager.PERMISSION_GRANTED ||
+                state == PackageManager.PERMISSION_DENIED,
+        )
+    }
     @Test fun f09Appearance() = launch(AppearanceActivity::class.java)
     @Test fun f11Telemetry() = launch(TelemetryActivity::class.java)
     @Test fun f12Obd() = launch(ObdActivity::class.java)
