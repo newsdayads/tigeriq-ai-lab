@@ -32,14 +32,22 @@ export function assessFullParityRelease(candidate) {
   if (!isSha(signed.certificateSha256) || signed.verifiedV2 !== true ||
       signed.verifiedV3 !== true) reasons.push('ANDROID_SIGNATURE_V2_V3_NOT_VERIFIED');
   if (!isSha(c.sourceGitSha)) reasons.push('SOURCE_SHA_UNVERIFIED');
-  // The official owner-accepted Golden V1 is v1.2.23 Build 369.
-  // An S10 file named v1.2.31 reports 1.2.16/362 internally and cannot
-  // supersede the canonical signed/owner-accepted release by filename alone.
+  // Owner's release metadata labels the accepted Golden V1 v1.2.23/Build369.
+  // On 17 Nov 2026, aapt2 dump badging AND binary XMLTREE both confirmed
+  // the exact signed Golden SHA below actually embeds 1.2.16/Build362.
+  // This conflict must NOT invalidate Owner's historical UI acceptance, but
+  // until a separately governed provenance reconciliation it must block a
+  // V2 release claiming full parity with a falsely attested V1 baseline.
   if (c.v1Baseline?.sha256 !== '07FA280005D71C0D4E38C085C3077ED01B66497E1E3EB54B0C2ED4D7999F038E' ||
       c.v1Baseline?.versionCode !== 369 ||
       c.v1Baseline?.versionName !== '1.2.23') {
     reasons.push('GOLDEN_V1_1223_BUILD369_IDENTITY_NOT_PINNED');
   }
+  // Verified by two independent parsers, not just the untrusted APK filename.
+  // Exact PC01 receipt hash: 8EDCFA452DCB750F732ABFE6992FDB7D7702FBDAF329BE8D8B64C37F2991784E.
+  // Never auto-clear using mock accepted flags; owner-governed resolution is
+  // required to update this gate and its source/receipt tests.
+  reasons.push('GOLDEN_V1_BUILD369_RELEASE_LABEL_VS_EMBEDDED_BUILD362_UNRESOLVED');
   const validRecord = (record, id) =>
     objectRecord(record) && record.id === id && record.status === 'ACCEPTED' &&
     record.signedApkSha256 === apkSha && typeof record.deviceId === 'string' &&
