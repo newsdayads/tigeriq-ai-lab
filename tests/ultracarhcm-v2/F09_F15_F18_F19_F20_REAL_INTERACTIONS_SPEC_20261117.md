@@ -16,3 +16,5 @@ The 15-screen smoke and 46 Android tests assert that pages open and render. They
 - Abort tests unless target package ends **exactly** in `.vqa`; never write V1 or user V2 preferences.
 - Never claim these 5 surface-level tests prove F01–F22 parity, functional UVC/Gear-R, Google Play signing, or physical DeX.
 - Run Gradle build, unit tests, S10 complete Android instrumentation and record exact source SHA/log/rollback. No release APK or Drive mutations.
+
+7. **F02 Vehicle selection/plate:** select actual Limo and Lamborghini controls and verify model plus legacy migration preference; edit and save normalized license plate through real Activity widgets; restore the exact pre-test QA Home preference snapshot. Never alter user V1/V2 vehicle settings.
