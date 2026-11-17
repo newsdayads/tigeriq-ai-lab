@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="33"/>
+  <!-- Android 11+ launcher-package visibility for the nine user-assigned slots.
+       This is NOT QUERY_ALL_PACKAGES or an additional runtime permission. -->
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.MAIN"/>
+      <category android:name="android.intent.category.LAUNCHER"/>
+    </intent>
+  </queries>
   <uses-feature android:name="android.hardware.usb.host" android:required="false"/>
   <uses-feature android:name="android.hardware.camera" android:required="false"/>
   <uses-feature android:name="android.software.freeform_window_management" android:required="false"/>

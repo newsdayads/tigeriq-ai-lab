@@ -19,6 +19,22 @@ describe('GH-5135 F03/F20 camera runtime permission gate', () => {
     expect(start).toBeGreaterThan(permissionCheck);
   });
 
+  it('never opens the OS CAMERA permission dialog just by opening the Camera window', () => {
+    const created = activity.slice(
+      activity.indexOf('override fun onCreate('),
+      activity.indexOf('private fun chooseVisualGuideStyle('),
+    );
+    expect(created).toContain('openCameraWithoutPermissionPrompt()');
+    expect(created).not.toMatch(/\\bopenCamera\\(\\)/);
+    const safeStart = activity.slice(
+      activity.indexOf('private fun openCameraWithoutPermissionPrompt()'),
+      activity.indexOf('private fun openCamera()'),
+    );
+    expect(safeStart).toContain('Chạm CAM để cấp quyền CAMERA');
+    expect(safeStart).not.toContain('requestPermissions(');
+    expect(activity).toContain('requestPermissions(arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_REQUEST)');
+  });
+
   it('keeps permission denial visible instead of auto-granting or starting UVC', () => {
     expect(activity).toContain('Quyền CAMERA bị từ chối — Camera USB chưa mở');
     expect(activity).toContain('awaitingCameraPermission');
@@ -41,7 +57,7 @@ describe('GH-5135 F03/F20 camera runtime permission gate', () => {
     );
     expect(start).toContain('if (resumeCameraOnStart)');
     expect(start).toContain('resumeCameraOnStart = false');
-    expect(start).toContain('openCamera()');
+    expect(start).toContain('openCameraWithoutPermissionPrompt()');
 
     const stop = activity.slice(
       activity.indexOf('override fun onStop()'),

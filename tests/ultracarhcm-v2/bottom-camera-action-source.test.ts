@@ -28,7 +28,7 @@ describe('GH-5135 F10 bottom Camera action source contract', () => {
     expect(block).toContain('"CAMERA"');
     expect(block).toContain('outline = false');
     expect(block).toContain('transparent = true');
-    expect(block).toContain('startActivity(Intent(this, UsbCameraActivity::class.java))');
+    expect(block).toContain('UsbCameraActivity.toggleFromShortcut(this, requestedCameraDisplayId())');
   });
 
   it('does not make the Ultrabot renderer itself own Camera semantics', () => {

@@ -1,5 +1,6 @@
 package ai.tigeriq.ultracarhcm.v2
 
+import android.app.ActivityOptions
 import android.app.AlertDialog
 import android.net.Uri
 import android.content.Context
@@ -7,12 +8,14 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.provider.Settings
 import android.os.Looper
+import android.view.Display
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
@@ -227,9 +230,13 @@ class HomeActivity : ComponentActivity() {
         }
     }
 
-    // DisplayManager APIs work back to minSdk 26; Activity.getDisplay() requires API 30.
-    private fun requestedCameraDisplayId(): Int =
-        DexUtils.resolveDisplay(this, 0)?.displayId ?: 0
+    // Prefer verified Samsung DeX; otherwise preserve this Activity's actual
+    // display ID for isolated virtual-screen QA and normal Android multi-display.
+    // An overlay by itself never certifies native DeX.
+    private fun requestedCameraDisplayId(): Int {
+        val homeDisplay = window.decorView.display?.displayId ?: Display.DEFAULT_DISPLAY
+        return DexUtils.resolveDisplay(this, homeDisplay)?.displayId ?: homeDisplay
+    }
 
     private fun shape(fill: Int, stroke: Int = Color.TRANSPARENT, radius: Float = 16f): GradientDrawable {
         return GradientDrawable().apply {
@@ -470,21 +477,53 @@ class HomeActivity : ComponentActivity() {
         when {
             target.isEmpty() -> toast("Bấm giữ ô để gán ứng dụng")
             target == QuickSlotRules.CAMERA_TARGET ->
-                startActivity(Intent(this, UsbCameraActivity::class.java))
+                UsbCameraActivity.toggleFromShortcut(this, requestedCameraDisplayId())
             else -> {
                 val launch = packageManager.getLaunchIntentForPackage(target)
                 if (launch == null) {
                     toast("Chưa tìm thấy ứng dụng: $label")
                 } else {
                     try {
-                        startActivity(launch)
+                        // The owner V1 reference shows a tall Home panel beside
+                        // Maps/another launched app on verified native Samsung DeX.
+                        // launchBounds is an OEM window request, not a guarantee.
+                        val display = DexUtils.resolveDisplay(
+                            this,
+                            window.decorView.display?.displayId ?: Display.DEFAULT_DISPLAY,
+                        )
+                        if (display != null) {
+                            val density = createDisplayContext(display)
+                                .resources.displayMetrics.density
+                            val frame = ExternalAppWindowBoundsRules.initial(
+                                display.mode.physicalWidth,
+                                display.mode.physicalHeight,
+                                density,
+                            )
+                            if (frame == null) {
+                                toast("Không thể xác định khung DeX hợp lệ")
+                                return
+                            }
+                            val options = ActivityOptions.makeBasic()
+                            options.launchDisplayId = display.displayId
+                            options.launchBounds = Rect(
+                                frame.left, frame.top, frame.right, frame.bottom,
+                            )
+                            startActivity(launch, options.toBundle())
+                        } else {
+                            if (DexUtils.isDesktop(this)) {
+                                toast("Không tìm thấy màn DeX hợp lệ để mở đúng khung")
+                                return
+                            }
+                            // Normal phone mode retains the original Android launch.
+                            startActivity(launch)
+                        }
                     } catch (error: RuntimeException) {
                         android.util.Log.e(
                             "UltraCarV2",
                             "QuickBar external app launch failed for target=$target",
                             error,
                         )
-                        toast("Không thể mở ứng dụng: $label")
+                        toast("Không thể mở ứng dụng đúng khung DeX: $label")
                     }
                 }
             }
@@ -601,7 +640,7 @@ class HomeActivity : ComponentActivity() {
             )
         }
         button("CAMERA USB", .08f, .37f, .84f, .065f) {
-            startActivity(Intent(this, UsbCameraActivity::class.java))
+            UsbCameraActivity.toggleFromShortcut(this, requestedCameraDisplayId())
         }
         button("CÀI ĐẶT", .08f, .455f, .84f, .065f) {
             showSettings()
@@ -719,7 +758,7 @@ class HomeActivity : ComponentActivity() {
             outline = false,
             transparent = true,
         ) {
-            startActivity(Intent(this, UsbCameraActivity::class.java))
+            UsbCameraActivity.toggleFromShortcut(this, requestedCameraDisplayId())
         }
         val footer = label("UltraCarHCM V2 • DEVELOPMENT • CHƯA NGHIỆM THU", 9f, 0xffbbbbbb.toInt())
         place(footer, .02f, .972f, .96f, .016f)
@@ -1789,7 +1828,7 @@ class HomeActivity : ComponentActivity() {
                 when(which) {
                     0 -> startActivity(Intent(this, AppearanceActivity::class.java))
                     1 -> startActivity(Intent(this, VehicleActivity::class.java))
-                    2 -> startActivity(Intent(this, UsbCameraActivity::class.java))
+                    2 -> UsbCameraActivity.toggleFromShortcut(this, requestedCameraDisplayId())
                     3 -> {
                         if (!Settings.canDrawOverlays(this)) {
                             launchExternalSettings(
