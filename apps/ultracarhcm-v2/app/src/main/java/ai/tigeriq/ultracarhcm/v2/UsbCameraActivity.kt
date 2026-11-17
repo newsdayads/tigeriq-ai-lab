@@ -201,7 +201,7 @@ class UsbCameraActivity : Activity() {
         }
         updateGuideVisibility()
         visible = WeakReference(this)
-        openCamera()
+        openCameraWithoutPermissionPrompt()
     }
 
     private fun chooseVisualGuideStyle() {
@@ -265,6 +265,23 @@ class UsbCameraActivity : Activity() {
             }
     }
 
+    /**
+     * Merely opening a Camera window must never trigger an unexpected OS
+     * CAMERA permission dialog. On a granted device, preserve V1's automatic
+     * USB UVC startup; otherwise require an explicit user tap on CAM.
+     */
+    private fun openCameraWithoutPermissionPrompt() {
+        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            openCamera()
+        } else {
+            awaitingCameraPermission = false
+            status.text = "Chạm CAM để cấp quyền CAMERA và mở Camera USB UVC"
+            status.setTextColor(Color.WHITE)
+            status.visibility = View.VISIBLE
+            updateCameraButton()
+        }
+    }
+
     private fun openCamera() {
         if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             awaitingCameraPermission = false
@@ -324,7 +341,7 @@ class UsbCameraActivity : Activity() {
         startedVisible = true
         if (resumeCameraOnStart) {
             resumeCameraOnStart = false
-            openCamera()
+            openCameraWithoutPermissionPrompt()
         }
     }
 
