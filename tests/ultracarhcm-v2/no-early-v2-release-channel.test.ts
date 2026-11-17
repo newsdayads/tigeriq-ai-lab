@@ -7,12 +7,18 @@ import { assessFullParityRelease } from '../../apps/ultracarhcm-v2/release/check
 const root = process.cwd();
 const release = JSON.parse(readFileSync(resolve(root, 'apps/ultracarhcm-v2/release/update-channel.json'), 'utf8'));
 const features = JSON.parse(readFileSync(resolve(root, 'tests/ultracarhcm-v2/f01-f22-source-matrix.json'), 'utf8'));
-const latestRealV1 = JSON.parse(readFileSync(resolve(root, 'tests/ultracarhcm-v2/v1-2-31-evidence.json'), 'utf8'));
+const auxiliaryS10V1 = JSON.parse(readFileSync(resolve(root, 'tests/ultracarhcm-v2/v1-2-31-evidence.json'), 'utf8'));
+const officialV1 = JSON.parse(readFileSync(resolve(root, 'apps/ultracarhcm-v1/release/current-release.json'), 'utf8'));
 
 describe('GH-5135 cannot claim an OTA-ready TEST APK before real full-parity acceptance', () => {
-  it('pins the real owner V1.2.31 baseline and never converts source presence into QA', () => {
-    expect(latestRealV1.v1.installedMatchesDriveFile).toBe(true);
-    expect(latestRealV1.v1.sha256).toBe(latestRealV1.v1.installedS10BaseSha256);
+  it('uses owner-accepted V1 Build369 as Golden; S10 Build362 is only auxiliary evidence', () => {
+    expect(officialV1.sha256).toBe('07FA280005D71C0D4E38C085C3077ED01B66497E1E3EB54B0C2ED4D7999F038E');
+    expect(officialV1.versionCode).toBe(369);
+    expect(officialV1.versionName).toBe('1.2.23');
+    expect(auxiliaryS10V1.v1.installedMatchesDriveFile).toBe(true);
+    expect(auxiliaryS10V1.v1.sha256).toBe(auxiliaryS10V1.v1.installedS10BaseSha256);
+    expect(auxiliaryS10V1.v1.embeddedVersionCode).toBe(362);
+    expect(auxiliaryS10V1.v1.sha256).not.toBe(officialV1.sha256);
     expect(features.features).toHaveLength(22);
     expect(features.acceptanceRule).toContain('No row is PASS/ACCEPTED from source evidence alone');
   });
