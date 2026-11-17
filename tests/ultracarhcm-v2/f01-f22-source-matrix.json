@@ -23,9 +23,10 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeLayoutRules.kt",
         "tests/ultracarhcm-v2/qa-secondary-display-image-gate.ps1",
         "tests/ultracarhcm-v2/QA_SECONDARY_DISPLAY_SCREEN_GUARD_20261117.md",
-        "tests/ultracarhcm-v2/qa-secondary-display-image-gate-source.test.ts"
+        "tests/ultracarhcm-v2/qa-secondary-display-image-gate-source.test.ts",
+        "apps/ultracarhcm-v2/app/src/androidTest/java/ai/tigeriq/ultracarhcm/v2/V2AllScreenAuditDeviceTest.kt"
       ],
-      "gap": "Home shell exists and no longer exposes invented RACING/Ultrabot click actions when V1 semantics are unverified. Original six governed media still require authorized private staging and screenshot parity remains unaccepted. On S10 Android 12 simulated displays (not Samsung DeX), 1280x720, 1600x900 and 1920x1080 pass task-affinity + non-flat 2D image gates after a fresh isolated QA launch. One previously reproduced grey screenshot (1 color) and a wrong-size screenshot are correctly rejected. Visual pixel parity with Golden V1 Build369, media rights, real OEM DeX and UVC remain unaccepted.",
+      "gap": "Home shell exists and no longer exposes invented RACING/Ultrabot click actions when V1 semantics are unverified. Original six governed media still require authorized private staging and screenshot parity remains unaccepted. On S10 Android 12 simulated displays (not Samsung DeX), 1280x720, 1600x900 and 1920x1080 pass task-affinity + non-flat 2D image gates after a fresh isolated QA launch. One previously reproduced grey screenshot (1 color) and a wrong-size screenshot are correctly rejected. Visual pixel parity with Golden V1 Build369, media rights, real OEM DeX and UVC remain unaccepted. 2026-11-17 real S10 QA: all 15 declared V2 Activity screens open and render nonflat images (15/15), and combined virtual-secondary-display Android instrumentation passes 46/46; screenshot hashes and full audit at tests/ultracarhcm-v2/ALL_SCREEN_REAL_S10_AUDIT_20261117.md. This is activity-start smoke ONLY, not individual V1 function acceptance or physical DeX/UVC/BT/Gear-R. F group state remains unchanged.",
       "actual": "HomeActivity renders the V2 cockpit shell with governed background/logo/vehicle resource references, clock, settings and shortcut grid. RACING is visual-only and Ultrabot is non-clickable decorative media so V2 does not fabricate actions that are not verified from V1. Independent Canvas road/vehicle fallback prevents flat SPORT art where licensed resources are not present, and the image gate measures and hashes actual secondary-display screenshots after verifying QA Activity placement and rollback.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
@@ -92,9 +93,10 @@
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbCameraActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/CameraDisplayRules.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/CameraDisplayRules.kt",
+        "apps/ultracarhcm-v2/app/src/androidTest/java/ai/tigeriq/ultracarhcm/v2/V2AllScreenAuditDeviceTest.kt"
       ],
-      "gap": "Separate window, manual toggle and display-affinity source exist; real USB video/device behavior and cross-display runtime acceptance remain unaccepted. Camera shortcut now closes/opens the popup itself (rather than only USB preview); external DeX launch bounds use the target-display density. Device DeX/window-placement QA still pending.",
+      "gap": "Separate window, manual toggle and display-affinity source exist; real USB video/device behavior and cross-display runtime acceptance remain unaccepted. Camera shortcut now closes/opens the popup itself (rather than only USB preview); external DeX launch bounds use the target-display density. Device DeX/window-placement QA still pending. 2026-11-17 real S10 QA: all 15 declared V2 Activity screens open and render nonflat images (15/15), and combined virtual-secondary-display Android instrumentation passes 46/46; screenshot hashes and full audit at tests/ultracarhcm-v2/ALL_SCREEN_REAL_S10_AUDIT_20261117.md. This is activity-start smoke ONLY, not individual V1 function acceptance or physical DeX/UVC/BT/Gear-R. F group state remains unchanged.",
       "actual": "UsbCameraActivity keeps same-display shortcut taps as a toggle, but when a camera window exists on another display it requests a dedicated camera task on the requested display and closes the stale window only after the display-specific launch succeeds.",
       "testStatus": "DEVICE_QA_NOT_TESTED",
       "entryPoints": [
@@ -269,9 +271,10 @@
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TelemetryActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/TelemetryRules.kt",
-        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml"
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
+        "apps/ultracarhcm-v2/app/src/androidTest/java/ai/tigeriq/ultracarhcm/v2/V2AllScreenAuditDeviceTest.kt"
       ],
-      "gap": "Real Android battery and foreground GPS diagnostics are implemented in source; weather provider, full V1 telemetry presentation and real-device location acceptance remain open.",
+      "gap": "Real Android battery and foreground GPS diagnostics are implemented in source; weather provider, full V1 telemetry presentation and real-device location acceptance remain open. 2026-11-17 real S10 QA: all 15 declared V2 Activity screens open and render nonflat images (15/15), and combined virtual-secondary-display Android instrumentation passes 46/46; screenshot hashes and full audit at tests/ultracarhcm-v2/ALL_SCREEN_REAL_S10_AUDIT_20261117.md. This is activity-start smoke ONLY, not individual V1 function acceptance or physical DeX/UVC/BT/Gear-R. F group state remains unchanged.",
       "actual": "TelemetryActivity reads sticky Android battery state, requests foreground fine/coarse location permission, shows the freshest last-known GPS/network location and requests one fresh fix from an enabled provider. Weather is explicitly left unconnected until a verified V1/provider contract exists.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
@@ -354,9 +357,10 @@
         "apps/ultracarhcm-v1/release/build-v66-profile-red-test.mjs",
         "tests/ultracar-v66-profile-red.test.mjs",
         "tests/ultracarhcm-v2/profile-v66-subtitle-source.test.ts",
-        "tests/ultracarhcm-v2/vehicle-profile-persistence-source.test.ts"
+        "tests/ultracarhcm-v2/vehicle-profile-persistence-source.test.ts",
+        "apps/ultracarhcm-v2/app/src/androidTest/java/ai/tigeriq/ultracarhcm/v2/V2AllScreenAuditDeviceTest.kt"
       ],
-      "gap": "The verified V1 V66 original Profile-header subtitle behavior is reflected in V2: real installed V2 version/build appears directly under the Profile title in red, with no floating version badge. Driver-name edits from both Profile and Home now require synchronous persistence before UI acknowledgement/rerender. Identity/license backend, registration/extension, remaining exact V1 card styling and real-device Profile acceptance remain unverified and are intentionally not fabricated.",
+      "gap": "The verified V1 V66 original Profile-header subtitle behavior is reflected in V2: real installed V2 version/build appears directly under the Profile title in red, with no floating version badge. Driver-name edits from both Profile and Home now require synchronous persistence before UI acknowledgement/rerender. Identity/license backend, registration/extension, remaining exact V1 card styling and real-device Profile acceptance remain unverified and are intentionally not fabricated. 2026-11-17 real S10 QA: all 15 declared V2 Activity screens open and render nonflat images (15/15), and combined virtual-secondary-display Android instrumentation passes 46/46; screenshot hashes and full audit at tests/ultracarhcm-v2/ALL_SCREEN_REAL_S10_AUDIT_20261117.md. This is activity-start smoke ONLY, not individual V1 function acceptance or physical DeX/UVC/BT/Gear-R. F group state remains unchanged.",
       "actual": "ProfileActivity renders the runtime V2 version/build as the red header subtitle at the original Profile location, keeps version/update actions inside normal cards rather than a floating badge, and edits the same device-local driver display name used by Home. Profile and Home driver-name mutations commit synchronously and surface storage failure. License/registration remains fail-closed until a verified backend contract exists.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
@@ -584,9 +588,10 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileLayoutRules.kt",
-        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml"
+        "apps/ultracarhcm-v2/app/src/main/AndroidManifest.xml",
+        "apps/ultracarhcm-v2/app/src/androidTest/java/ai/tigeriq/ultracarhcm/v2/V2AllScreenAuditDeviceTest.kt"
       ],
-      "gap": "Profile source now reflows one/two/three columns by width for compact phone, landscape/tablet and wide DeX, but exact V1 card styling and real-device clipping acceptance are still open.",
+      "gap": "Profile source now reflows one/two/three columns by width for compact phone, landscape/tablet and wide DeX, but exact V1 card styling and real-device clipping acceptance are still open. 2026-11-17 real S10 QA: all 15 declared V2 Activity screens open and render nonflat images (15/15), and combined virtual-secondary-display Android instrumentation passes 46/46; screenshot hashes and full audit at tests/ultracarhcm-v2/ALL_SCREEN_REAL_S10_AUDIT_20261117.md. This is activity-start smoke ONLY, not individual V1 function acceptance or physical DeX/UVC/BT/Gear-R. F group state remains unchanged.",
       "actual": "ProfileActivity groups local profile, runtime version/update, fail-closed identity/license status, and V2 trip reporting into responsive cards. ProfileLayoutRules uses 1 column below 600dp, 2 columns at 600–959dp and 3 columns at 960dp+; Android recreation on configuration changes rebuilds the layout.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
@@ -609,9 +614,10 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/RecoveryActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/RecoveryRules.kt",
-        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/SavedLayoutShortcutRules.kt"
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/SavedLayoutShortcutRules.kt",
+        "apps/ultracarhcm-v2/app/src/androidTest/java/ai/tigeriq/ultracarhcm/v2/V2AllScreenAuditDeviceTest.kt"
       ],
-      "gap": "Local migration/recovery and schema-v5 backup source now preserve bounded V2 Taxi Meter history plus five stable-ID Home saved-layout shortcut assignments while keeping schemas 1–4 backward readable. Actual signed release provenance, downgrade/rollback execution and real-device recovery acceptance remain open.",
+      "gap": "Local migration/recovery and schema-v5 backup source now preserve bounded V2 Taxi Meter history plus five stable-ID Home saved-layout shortcut assignments while keeping schemas 1–4 backward readable. Actual signed release provenance, downgrade/rollback execution and real-device recovery acceptance remain open. 2026-11-17 real S10 QA: all 15 declared V2 Activity screens open and render nonflat images (15/15), and combined virtual-secondary-display Android instrumentation passes 46/46; screenshot hashes and full audit at tests/ultracarhcm-v2/ALL_SCREEN_REAL_S10_AUDIT_20261117.md. This is activity-start smoke ONLY, not individual V1 function acceptance or physical DeX/UVC/BT/Gear-R. F group state remains unchanged.",
       "actual": "V2 has an independent package, lifecycle/UVC cleanup, versioned Home-state migration and a bounded SAF backup envelope. Schema-v5 restore validates shortcut references against the imported saved-config set before writes and replaces only the V2 shortcut mapping; legacy backups remain readable without inventing shortcut data. RecoveryActivity reads real installed package/version/current signing identity; no installer protections are bypassed.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
