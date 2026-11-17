@@ -68,12 +68,14 @@ describe('GH-5135 fail-closed full-parity release gate (logic test, NOT real acc
     expect(result.blockers).toContain('GOLDEN_V1_1223_BUILD369_IDENTITY_NOT_PINNED');
   });
 
-  it('can pass only a structurally complete hypothetical set; mock input is NOT an APK', () => {
+  it('blocks even a hypothetical complete QA fixture until Golden V1 manifest provenance is reconciled', () => {
     const mock = hypotheticalAcceptedFixture();
     const result = assessFullParityRelease(mock);
-    expect(result.canPublish).toBe(true);
-    expect(result.blockers).toEqual([]);
+    expect(result.canPublish).toBe(false);
+    expect(result.blockers).toContain('GOLDEN_V1_BUILD369_RELEASE_LABEL_VS_EMBEDDED_BUILD362_UNRESOLVED');
     mock.signedApk.sha256 = 'not-a-sha';
-    expect(assessFullParityRelease(mock).canPublish).toBe(false);
+    const invalid = assessFullParityRelease(mock);
+    expect(invalid.canPublish).toBe(false);
+    expect(invalid.blockers).toContain('SIGNED_APK_SHA_MISSING');
   });
 });

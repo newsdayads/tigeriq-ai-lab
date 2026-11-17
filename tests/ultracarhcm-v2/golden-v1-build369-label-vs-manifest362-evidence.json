@@ -1,0 +1,31 @@
+{
+  "schema": "gh5135-v1-golden-release-provenance-conflict-v1",
+  "status": "VERIFIED_UNRESOLVED",
+  "sourceRecord": "apps/ultracarhcm-v1/release/current-release.json",
+  "sourceIssue": 5129,
+  "acceptanceIssue": 5135,
+  "ownerBehaviorAccepted": true,
+  "releaseLabel": {
+    "versionName": "1.2.23",
+    "versionCode": 369
+  },
+  "actualSignedFile": {
+    "location": "PC01 owner-backed Drive backup; path recorded in Issues #5129/#5135",
+    "sizeBytes": 35219958,
+    "sha256": "07FA280005D71C0D4E38C085C3077ED01B66497E1E3EB54B0C2ED4D7999F038E",
+    "embeddedPackageName": "com.tigeriq.dexsplit",
+    "embeddedVersionName": "1.2.16",
+    "embeddedVersionCode": 362
+  },
+  "independentVerification": {
+    "aapt2DumpBadging": "versionCode='362' versionName='1.2.16'",
+    "aaptBinaryManifestXmltree": [
+      "android:versionCode=(type 0x10)0x16a",
+      "android:versionName=\"1.2.16\""
+    ],
+    "sameSourceShaVerifiedOnTemporaryAsciiCopy": true,
+    "temporaryCopyRemoved": true,
+    "pc01EvidenceSha256": "8EDCFA452DCB750F732ABFE6992FDB7D7702FBDAF329BE8D8B64C37F2991784E"
+  },
+  "releasePolicy": "Do not claim Golden Build369 APK metadata was verified, do not silently relabel the owner-accepted V1 binary, and block V2 full-parity release until a separately governed provenance reconciliation."
+}
