@@ -9,7 +9,7 @@ class HomeFallbackVisualRulesTest {
         assertTrue(HomeFallbackVisualRules.ROAD_BOTTOM > 1f)
         for (i in -100..100) {
             val height = HomeFallbackVisualRules.buildingHeight(i)
-            assertTrue("Invalid city silhouette height at $i", height in .05f.. .25f)
+            assertTrue("Invalid city silhouette height at $i", height in 0.05f..0.25f)
         }
     }
 
