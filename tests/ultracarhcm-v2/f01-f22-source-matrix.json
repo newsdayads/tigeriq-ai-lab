@@ -89,7 +89,7 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/UsbUvcController.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/CameraDisplayRules.kt"
       ],
-      "gap": "Separate window, manual toggle and display-affinity source exist; real USB video/device behavior and cross-display runtime acceptance remain unaccepted.",
+      "gap": "Separate window, manual toggle and display-affinity source exist; real USB video/device behavior and cross-display runtime acceptance remain unaccepted. Camera shortcut now closes/opens the popup itself (rather than only USB preview); external DeX launch bounds use the target-display density. Device DeX/window-placement QA still pending.",
       "actual": "UsbCameraActivity keeps same-display shortcut taps as a toggle, but when a camera window exists on another display it requests a dedicated camera task on the requested display and closes the stale window only after the display-specific launch succeeds.",
       "testStatus": "DEVICE_QA_NOT_TESTED",
       "entryPoints": [
@@ -108,7 +108,7 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeLayoutRules.kt",
         "tests/ultracarhcm-v2/dex-narrow-home-source.test.ts"
       ],
-      "gap": "Owner private Drive video IMG_7926.MOV verifies a tall narrow UltraCar panel beside Maps and reverse-camera windows on DeX. V2 now has an evidence-backed narrow HOME panel, but automatic Samsung window sizing/placement, verified vehicle reverse-signal input, guide calibration and real-device acceptance remain open.",
+      "gap": "V2 now has three distinct user-selectable, durable visual guide styles (Sport Racing/Luxury OEM/Minimalist Modern), labelled 0.5m/1.0m/1.5m guide curves, finite steering/warp/progress sanitization and real-device S10 Canvas rendering tests. Source requires actual USB frame AND verified reverseActive before drawing; it never invents a gear-R signal. 2026-11-17 S10 isolated QA: 21/21 instrumentation PASS, including 3 F05 Canvas/persistence gates, evidence SHA C820C2A50B594D844398ED23CF5EAE3DE3A6CA5091E61AA5A856425E3A3621B5. Physical DeX/UVC/gear R, calibration, and exact V1 visual acceptance remain OPEN, so F05 stays PARTIAL_SOURCE.",
       "actual": "HomeActivity switches to a dedicated narrow DeX HOME panel only when its own desktop window is tall/narrow. The panel preserves V2 logo/background/clock/vehicle and bounded Google Maps, Camera USB and Settings actions without claiming control of other app windows. Existing reverse-guide source remains intent-fed and uncalibrated.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
@@ -241,7 +241,7 @@
         "tests/ultracarhcm-v2/quickbar-source.test.ts",
         "tests/ultracarhcm-v2/bottom-camera-action-source.test.ts"
       ],
-      "gap": "Nine assignable/launchable slots exist. The verified V1 bottom action row now preserves saved layouts/new layout/Camera semantics: the third action explicitly opens UsbCameraActivity while Ultrabot remains decorative media behind the transparent Camera action. Quick-slot writes are synchronously committed, malformed state is durably cleared, invalid package IDs are rejected, and an external-app launch race fails visibly instead of crashing Home. Exact V1 icon artwork and real-device Camera/DeX persistence acceptance remain open.",
+      "gap": "Nine assignable/launchable slots exist. The verified V1 bottom action row now preserves saved layouts/new layout/Camera semantics: the third action explicitly opens UsbCameraActivity while Ultrabot remains decorative media behind the transparent Camera action. Quick-slot writes are synchronously committed, malformed state is durably cleared, invalid package IDs are rejected, and an external-app launch race fails visibly instead of crashing Home. Exact V1 icon artwork and real-device Camera/DeX persistence acceptance remain open. Remote accessibility key capture now independently implements user-approved learn/select + hold-to-toggle real Camera popup + short media/volume replay with explicit Android Accessibility consent; source/JUnit and S10 local preference tests PASS. Physical Bluetooth steering remote compatibility and latency are still unaccepted.",
       "actual": "QuickBarGrid renders exactly nine assignable slots; long press assigns/removes presets or validated package targets and click launches package/camera targets. Resolved external app launches are guarded so uninstall/disable/OEM-policy races show an actionable toast instead of crashing Home, with no fabricated install fallback. The Home bottom row includes saved layouts, new layout and an explicit transparent CAMERA action that launches UsbCameraActivity while preserving Ultrabot decorative media. saveQuickSlot commits bounded JSON synchronously before success.",
       "testStatus": "DEVICE_QA_NOT_TESTED",
       "entryPoints": [
