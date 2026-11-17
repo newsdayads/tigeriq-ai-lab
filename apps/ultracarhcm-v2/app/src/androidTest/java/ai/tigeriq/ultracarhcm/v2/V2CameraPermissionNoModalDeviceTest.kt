@@ -35,6 +35,61 @@ class V2CameraPermissionNoModalDeviceTest {
         return views
     }
 
+    @Test fun f04RealHomeCameraButtonLaunchesOnItsActualAndroidDisplay() {
+        assertEquals("ai.tigeriq.ultracarhcm.v2.vqa", app.packageName)
+        assumeTrue(
+            "Unattended QA must not grant a real CAMERA permission",
+            app.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_DENIED,
+        )
+        val monitor = android.app.Instrumentation.ActivityMonitor(
+            UsbCameraActivity::class.java.name, null, false,
+        )
+        instrumentation.addMonitor(monitor)
+        var home: Activity? = null
+        var camera: Activity? = null
+        try {
+            home = instrumentation.startActivitySync(
+                Intent(app, HomeActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK),
+            )
+            instrumentation.waitForIdleSync()
+            val buttons = allViews(home.findViewById(android.R.id.content))
+                .filterIsInstance<TextView>()
+            val cameraButton = buttons.firstOrNull {
+                it.isClickable && (it.contentDescription == "CAMERA" ||
+                    it.contentDescription == "CAMERA USB")
+            }
+            assertNotNull("F04 must expose an actual clickable HOME Camera action", cameraButton)
+            instrumentation.runOnMainSync {
+                assertTrue("F04 Camera button must handle the real click",
+                    cameraButton!!.performClick())
+            }
+            camera = instrumentation.waitForMonitorWithTimeout(monitor, 7000L)
+            assertNotNull("F04 HOME Camera click did not open UsbCameraActivity", camera)
+            instrumentation.waitForIdleSync()
+            assertEquals(
+                "F04 Camera popup launched on a different Android display",
+                home.window.decorView.display?.displayId,
+                camera!!.window.decorView.display?.displayId,
+            )
+            val text = allViews(camera.findViewById(android.R.id.content))
+                .filterIsInstance<TextView>()
+            assertTrue(
+                "F04 missing fail-visible no-grant Camera status after HOME click",
+                text.any { it.text.toString().contains("Chạm CAM để cấp quyền CAMERA") },
+            )
+        } finally {
+            if (camera != null) {
+                instrumentation.runOnMainSync { camera.finish() }
+            }
+            if (home != null) {
+                instrumentation.runOnMainSync { home.finish() }
+            }
+            instrumentation.waitForIdleSync()
+            instrumentation.removeMonitor(monitor)
+        }
+    }
+
     @Test fun f03CameraNoSurprisePermissionPopupUntilExplicitCamTap() {
         assertEquals("ai.tigeriq.ultracarhcm.v2.vqa", app.packageName)
         assumeTrue(
