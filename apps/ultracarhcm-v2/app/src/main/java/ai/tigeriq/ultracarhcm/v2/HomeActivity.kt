@@ -1396,6 +1396,13 @@ class HomeActivity : ComponentActivity() {
             .put("defaultHomeConfiguration", defaultSafe ?: JSONObject.NULL)
             .put("overlayPositions", exportOverlayPositions())
             .put("taxiMeter", exportTaxiMeterBackup())
+            .put(
+                "cameraGuideStyle",
+                GuideStyleRules.parse(
+                    getSharedPreferences(GuideStyleRules.PREFS, Context.MODE_PRIVATE)
+                        .getString(GuideStyleRules.PREF_STYLE, null),
+                ).name,
+            )
             .put("savedLayoutShortcuts", exportSavedLayoutShortcuts(savedConfigs))
     }
 
@@ -1615,6 +1622,17 @@ class HomeActivity : ComponentActivity() {
             safeTaxiHistory = validatedTaxiHistoryForBackup(rawHistory) ?: return false
         }
 
+        // Validate the optional schema-v6 Camera setting BEFORE the first write.
+        // For schemas 1..5 leave the existing V2 camera setting unchanged.
+        val replaceCameraGuideStyle = HomeBackupRules.requiresCameraGuideStyle(backupSchema)
+        val safeCameraGuideStyle: GuideStyle? = if (replaceCameraGuideStyle) {
+            val rawStyle =
+                HomeBackupRules.exactString(root.opt("cameraGuideStyle")) ?: return false
+            GuideStyle.values().firstOrNull { it.name == rawStyle } ?: return false
+        } else {
+            null
+        }
+
         val shortcutPrefsForRestore =
             if (replaceSavedLayoutShortcuts) savedLayoutShortcutPrefs() else null
         val overlayPrefsForRestore =
@@ -1630,13 +1648,25 @@ class HomeActivity : ComponentActivity() {
                 null
             }
 
+        val guidePrefsForRestore =
+            if (replaceCameraGuideStyle) {
+                getSharedPreferences(GuideStyleRules.PREFS, Context.MODE_PRIVATE)
+            } else {
+                null
+            }
+
         val homeSnapshot = preferenceSnapshot(prefs)
         val shortcutSnapshot = shortcutPrefsForRestore?.let(::preferenceSnapshot)
         val overlaySnapshot = overlayPrefsForRestore?.let(::preferenceSnapshot)
         val taxiSnapshot = taxiPrefsForRestore?.let(::preferenceSnapshot)
+        val guideSnapshot = guidePrefsForRestore?.let(::preferenceSnapshot)
 
         fun rollbackRestoreAndFail(): Boolean {
             var rollbackOk = true
+            if (guidePrefsForRestore != null && guideSnapshot != null) {
+                rollbackOk =
+                    restorePreferenceSnapshot(guidePrefsForRestore, guideSnapshot) && rollbackOk
+            }
             if (taxiPrefsForRestore != null && taxiSnapshot != null) {
                 rollbackOk =
                     restorePreferenceSnapshot(taxiPrefsForRestore, taxiSnapshot) && rollbackOk
@@ -1702,6 +1732,11 @@ class HomeActivity : ComponentActivity() {
             else taxiEditor.putString(TaxiMeterRules.KEY_RATE, safeTaxiRate)
             taxiEditor.putString(TaxiMeterRules.KEY_HISTORY, safeTaxiHistory.toString())
             if (!taxiEditor.commit()) return rollbackRestoreAndFail()
+        }
+        if (replaceCameraGuideStyle) {
+            val guideEditor = guidePrefsForRestore!!.edit()
+                .putString(GuideStyleRules.PREF_STYLE, safeCameraGuideStyle!!.name)
+            if (!guideEditor.commit()) return rollbackRestoreAndFail()
         }
         return true
     }
