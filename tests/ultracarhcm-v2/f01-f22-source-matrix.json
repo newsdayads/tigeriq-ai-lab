@@ -18,10 +18,15 @@
       "status": "PARTIAL_SOURCE",
       "sourceEvidence": [
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
-        "tests/ultracarhcm-v2/remaining-local-durability-source.test.ts"
+        "tests/ultracarhcm-v2/remaining-local-durability-source.test.ts",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeFallbackVisuals.kt",
+        "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeLayoutRules.kt",
+        "tests/ultracarhcm-v2/qa-secondary-display-image-gate.ps1",
+        "tests/ultracarhcm-v2/QA_SECONDARY_DISPLAY_SCREEN_GUARD_20261117.md",
+        "tests/ultracarhcm-v2/qa-secondary-display-image-gate-source.test.ts"
       ],
-      "gap": "Home shell exists and no longer exposes invented RACING/Ultrabot click actions when V1 semantics are unverified. Original six governed media still require authorized private staging and screenshot parity remains unaccepted.",
-      "actual": "HomeActivity renders the V2 cockpit shell with governed background/logo/vehicle resource references, clock, settings and shortcut grid. RACING is visual-only and Ultrabot is non-clickable decorative media so V2 does not fabricate actions that are not verified from V1.",
+      "gap": "Home shell exists and no longer exposes invented RACING/Ultrabot click actions when V1 semantics are unverified. Original six governed media still require authorized private staging and screenshot parity remains unaccepted. On S10 Android 12 simulated displays (not Samsung DeX), 1280x720, 1600x900 and 1920x1080 pass task-affinity + non-flat 2D image gates after a fresh isolated QA launch. One previously reproduced grey screenshot (1 color) and a wrong-size screenshot are correctly rejected. Visual pixel parity with Golden V1 Build369, media rights, real OEM DeX and UVC remain unaccepted.",
+      "actual": "HomeActivity renders the V2 cockpit shell with governed background/logo/vehicle resource references, clock, settings and shortcut grid. RACING is visual-only and Ultrabot is non-clickable decorative media so V2 does not fabricate actions that are not verified from V1. Independent Canvas road/vehicle fallback prevents flat SPORT art where licensed resources are not present, and the image gate measures and hashes actual secondary-display screenshots after verifying QA Activity placement and rollback.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
         "HomeActivity.render"
