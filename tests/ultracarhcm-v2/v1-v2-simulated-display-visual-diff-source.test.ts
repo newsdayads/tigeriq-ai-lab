@@ -23,7 +23,7 @@ describe('GH-5135 virtual second-display screenshot gap: original V2 fallback vi
   });
   it('does not claim original V1 art, real camera, GPS or vehicle geometry', () => {
     expect(art).toContain('NOT the original');
-    expect(art).toContain('not the original');
+    expect(art).toContain('original illustrative artwork');
     expect(art).not.toContain('grantCameraPermission');
     expect(art).not.toContain('simulateGearR');
   });
