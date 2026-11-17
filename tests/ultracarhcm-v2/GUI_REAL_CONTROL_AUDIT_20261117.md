@@ -15,3 +15,11 @@
 - Therefore S10 V1 behavior can only serve as an **auxiliary UI reference**, not exact binary Golden acceptance. Do not silently promote either V1 version or V2 parity from source or screenshot similarity.
 
 **Source tests:** `apps/ultracarhcm-v2/app/src/androidTest/java/ai/tigeriq/ultracarhcm/v2/V2FunctionalScreenActionsDeviceTest.kt`.
+
+## Follow-up: F02 + full 53-case regression
+
+- Added a **seventh** real Activity interaction: choose Limo đỏ, confirm model and legacy preference persist; choose Lamborghini trắng, confirm both preference fields update; enter a sample plate and click `LƯU BIỂN SỐ`, then verify the normalized `51K-123.45` appears in persisted QA prefs and rendered UI. Restore the **entire** pre-test QA Home preference snapshot in `finally`. No production V1 or user V2 data accessed or changed.
+- Source revision `e248afc269f32eecb909781bc4345ba7b242a6c6`. Changed **only Android test code/spec**; existing QA app APK SHA unchanged `84D6AFD7F8BA9406F2EE2EDA95FAA6200C96F2F00D5B8653AA769145B5746633`, so only updated isolated AndroidTest APK SHA `FD84A4B1A1F2C3ACDAEEFD362F66C6B9ED7997FAFFC1BD48789F37C57491B842`.
+- Native Gradle/JUnit/AndroidTest compilation: **PASS**, log SHA256 `42BCB9F5FAFA916FBBD3E882A3CE836406DD613C51525E896862104A84749537`.
+- Integrated S10 Android instrumentation: **53/53 PASS**, including F02 through F20 UI actions, full 15-screen smoke and previous camera/backup/DeX-simulation tests. Temporary Android secondary screen ID 27 at 1920×1080/320. Display setting `null` → test → `null`, verified. Full log SHA256 `35A992541806748A01005FF5BBBB8B95100550CC6C6182092BD94A7820A8ACAA`, report SHA256 `B654F4706E1A6719CE5DF7FC6E03AC779059D3670C2E7AC8846976B5BA309225`.
+- Physical native Samsung DeX, USB UVC, Bluetooth steering, gear R, license backend and **Golden V1 feature parity remain NOT ACCEPTED**.
