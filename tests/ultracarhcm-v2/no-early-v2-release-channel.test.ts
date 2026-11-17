@@ -19,6 +19,8 @@ describe('GH-5135 cannot claim an OTA-ready TEST APK before real full-parity acc
     expect(auxiliaryS10V1.v1.sha256).toBe(auxiliaryS10V1.v1.installedS10BaseSha256);
     expect(auxiliaryS10V1.v1.embeddedVersionCode).toBe(362);
     expect(auxiliaryS10V1.v1.sha256).not.toBe(officialV1.sha256);
+    expect(auxiliaryS10V1.canonicalGolden.sha256).toBe(officialV1.sha256);
+    expect(auxiliaryS10V1.v1.baselineRole).toBe('AUXILIARY_S10_UI_ONLY_NOT_GOLDEN');
     expect(features.features).toHaveLength(22);
     expect(features.acceptanceRule).toContain('No row is PASS/ACCEPTED from source evidence alone');
   });
