@@ -280,15 +280,11 @@ class HomeActivity : ComponentActivity() {
         val name = if (night) "v2_road_city_night" else "v2_road_city_day"
         if (optionalImage(name, 0f, 0f, 1f, 1f, ImageView.ScaleType.FIT_XY)) return
 
-        val fallback = View(this)
-        fallback.background = GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            if (night) {
-                intArrayOf(0xff071018.toInt(), 0xff102630.toInt(), 0xff05090d.toInt())
-            } else {
-                intArrayOf(0xff13252d.toInt(), 0xff1d3b47.toInt(), 0xff0b1115.toInt())
-            },
-        )
+        // Original independently drawn road scene; optional licensed media wins.
+        val fallback = RoadCityFallbackView(this, night).apply {
+            contentDescription = "Minh họa đường phố; không phải video hoặc thời tiết thật"
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
         place(fallback, 0f, 0f, 1f, 1f)
     }
 
@@ -313,9 +309,14 @@ class HomeActivity : ComponentActivity() {
         }
         if (optionalImage(name, left, top, width, height)) return
 
-        val title = if (vehicleModel == VehicleRules.MODEL_LIMO_RED) "LIMO" else "SPORT"
-        val fallback = label(title, 20f, Color.WHITE, true)
-        fallback.background = shape(0x55101a20, accent, 18f)
+        // A user-selectable car silhouette, not counterfeit V1 vehicle artwork.
+        val fallback = ParkedVehicleFallbackView(this, vehicleModel).apply {
+            contentDescription = if (vehicleModel == VehicleRules.MODEL_LIMO_RED) {
+                "Minh họa xe Limo đang đỗ"
+            } else {
+                "Minh họa xe thể thao đang đỗ"
+            }
+        }
         place(fallback, left, top, width, height)
     }
 
@@ -677,7 +678,11 @@ class HomeActivity : ComponentActivity() {
             prefs.getString(VehicleRules.PREF_MODEL, null),
             prefs.getBoolean("limo", false),
         )
-        renderVehicleArtwork(vehicleModel, .295f, .458f, .41f, .242f)
+        // Match QuickBar's existing V1 lift without changing its saved slots.
+        val quickBarExpectedTop =
+            ((root.height * .69f - dp(50)).coerceAtLeast(root.height * .56f)) / root.height
+        val carTop = HomeLayoutRules.vehicleTopBeforeQuickBar(quickBarExpectedTop)
+        renderVehicleArtwork(vehicleModel, .295f, carTop, .41f, .225f)
         val plate = prefs.getString(VehicleRules.PREF_LICENSE_PLATE, "")
             ?.takeIf { it.isNotBlank() }
         if (plate != null) {
@@ -685,7 +690,7 @@ class HomeActivity : ComponentActivity() {
                 label(plate, 14f, Color.WHITE, true).apply {
                     background = shape(0xb8101a20.toInt(), radius = 8f)
                 },
-                .375f, .665f, .25f, .034f,
+                .375f, carTop + .184f, .25f, .032f,
             )
         }
 
