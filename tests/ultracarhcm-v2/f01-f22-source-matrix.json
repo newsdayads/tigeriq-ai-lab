@@ -42,9 +42,10 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/VehicleRules.kt",
-        "tests/ultracarhcm-v2/vehicle-profile-persistence-source.test.ts"
+        "tests/ultracarhcm-v2/vehicle-profile-persistence-source.test.ts",
+        "apps/ultracarhcm-v2/app/src/androidTest/java/ai/tigeriq/ultracarhcm/v2/V2FunctionalScreenActionsDeviceTest.kt"
       ],
-      "gap": "Two verified source vehicle choices, local model/color selection and bounded license-plate display are implemented. Vehicle model plus legacy migration flag and license-plate changes now require synchronous persistence success before refreshing or acknowledging the UI. Full V1 branded card styling, moving-state behavior and real-media parity remain open.",
+      "gap": "Two verified source vehicle choices, local model/color selection and bounded license-plate display are implemented. Vehicle model plus legacy migration flag and license-plate changes now require synchronous persistence success before refreshing or acknowledging the UI. Full V1 branded card styling, moving-state behavior and real-media parity remain open. 2026-11-17 real S10 QA: native model selection + legacy Limo flag + normalized license plate save were exercised by actual Activity buttons and persisted preferences; original QA state was restored. Entire Android simulated-secondary-display suite 53/53 PASS, evidence in tests/ultracarhcm-v2/GUI_REAL_CONTROL_AUDIT_20261117.md. Moving vehicle media, exact V1 Golden visual, physical DeX and original brand assets still not accepted.",
       "actual": "VehicleActivity lets the user choose between the two existing source vehicle choices (Limo đỏ and Lamborghini trắng) and store a bounded local license plate. It commits vehicle model plus the legacy limo migration boolean and commits the normalized plate before showing success; Home renders the selected parked vehicle plus the saved plate.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
@@ -224,9 +225,10 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/HomeActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/AppearanceActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/AppearanceRules.kt",
-        "tests/ultracarhcm-v2/appearance-notification-persistence-source.test.ts"
+        "tests/ultracarhcm-v2/appearance-notification-persistence-source.test.ts",
+        "apps/ultracarhcm-v2/app/src/androidTest/java/ai/tigeriq/ultracarhcm/v2/V2FunctionalScreenActionsDeviceTest.kt"
       ],
-      "gap": "Verified day/night backgrounds plus user-selected image/video backgrounds are implemented without broad storage permission. User-visible appearance changes now require synchronous preference persistence; custom-background replacement commits the new URI/kind before releasing the previous persisted URI grant, and clear commits preference removal before releasing the old grant. Exact V1 theme catalog/media parity and real-device video/background acceptance remain open.",
+      "gap": "Verified day/night backgrounds plus user-selected image/video backgrounds are implemented without broad storage permission. User-visible appearance changes now require synchronous preference persistence; custom-background replacement commits the new URI/kind before releasing the previous persisted URI grant, and clear commits preference removal before releasing the old grant. Exact V1 theme catalog/media parity and real-device video/background acceptance remain open. Isolated S10 Android12 QA 2026-11-17 exercised real native controls under .vqa for F09 day/night persisted toggle and exact restore, F15 local notice read/clear plus update installer preflight, F18 backend unavailable identity, F19 summary/CSV action, F20 live permission status. Complete integrated device instrumentation 52/52 PASS, QA report at tests/ultracarhcm-v2/GUI_REAL_CONTROL_AUDIT_20261117.md. This verifies only these UI actions, NOT V1 parity or physical DeX/UVC/Gear-R; status remains unchanged.",
       "actual": "AppearanceActivity commits day/night mode before refreshing status. For a custom image/video it first acquires the new SAF grant, commits the new V2 background state, releases the new grant on commit failure when safe, and only after successful commit releases a different previous grant. Clearing a custom background commits preference removal before releasing the previous URI grant.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
@@ -391,9 +393,10 @@
         "tests/ultracarhcm-v2/appearance-notification-persistence-source.test.ts",
         "tests/ultracarhcm-v2/update-payload-integrity-source.test.ts",
         "tests/ultracarhcm-v2/update-lifecycle-source.test.ts",
-        "tests/ultracarhcm-v2/update-metadata-scalar-source.test.ts"
+        "tests/ultracarhcm-v2/update-metadata-scalar-source.test.ts",
+        "apps/ultracarhcm-v2/app/src/androidTest/java/ai/tigeriq/ultracarhcm/v2/V2FunctionalScreenActionsDeviceTest.kt"
       ],
-      "gap": "Kênh V2 TEST vẫn fail-closed cho tới khi có APK V2 TEST ký số được phát hành. Metadata phải khớp exact schemaVersion=1, channel=ultracarhcm-v2-test và packageName=ai.tigeriq.ultracarhcm.v2 trước khi được render/tải; signed APK tiếp tục phải qua SHA-256 + package + exact versionCode + exact versionName + signer pin/continuity trước Android installer. Async metadata/download work được fenced theo live UpdateActivity generation. Publication signed APK, device installation acceptance, remote push/backend và exact V1 notification parity còn mở.",
+      "gap": "Kênh V2 TEST vẫn fail-closed cho tới khi có APK V2 TEST ký số được phát hành. Metadata phải khớp exact schemaVersion=1, channel=ultracarhcm-v2-test và packageName=ai.tigeriq.ultracarhcm.v2 trước khi được render/tải; signed APK tiếp tục phải qua SHA-256 + package + exact versionCode + exact versionName + signer pin/continuity trước Android installer. Async metadata/download work được fenced theo live UpdateActivity generation. Publication signed APK, device installation acceptance, remote push/backend và exact V1 notification parity còn mở. Isolated S10 Android12 QA 2026-11-17 exercised real native controls under .vqa for F09 day/night persisted toggle and exact restore, F15 local notice read/clear plus update installer preflight, F18 backend unavailable identity, F19 summary/CSV action, F20 live permission status. Complete integrated device instrumentation 52/52 PASS, QA report at tests/ultracarhcm-v2/GUI_REAL_CONTROL_AUDIT_20261117.md. This verifies only these UI actions, NOT V1 parity or physical DeX/UVC/Gear-R; status remains unchanged.",
       "actual": "ProfileActivity tách CẬP NHẬT và THÔNG BÁO. UpdateActivity chỉ nhận canonical V2 TEST metadata khi UpdateRules xác minh strict scalar types và exact schema/channel/package identity; sai hoặc thiếu identity bị từ chối trước render/download. Candidate APK sau đó chỉ đi qua bounded trusted redirect chain, fsync cache, SHA-256/package/exact versionCode/exact versionName/certificate + signer continuity, rồi mới bật Android system installer. Metadata/download callbacks mang operation generation và từ chối stale/destroyed UI handoff; stale verified APK bị xóa.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
@@ -482,9 +485,10 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/AdminLicenseActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/AdminLicenseRules.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt",
-        "tests/ultracarhcm-v2/admin-license-status-source.test.ts"
+        "tests/ultracarhcm-v2/admin-license-status-source.test.ts",
+        "apps/ultracarhcm-v2/app/src/androidTest/java/ai/tigeriq/ultracarhcm/v2/V2FunctionalScreenActionsDeviceTest.kt"
       ],
-      "gap": "A real V2 administrative/license status surface now exists, but it is deliberately read-only and fail-closed because no verified V1/backend contract for customer activation, license extension or device registration is available. Actual backend integration and runtime acceptance remain open.",
+      "gap": "A real V2 administrative/license status surface now exists, but it is deliberately read-only and fail-closed because no verified V1/backend contract for customer activation, license extension or device registration is available. Actual backend integration and runtime acceptance remain open. Isolated S10 Android12 QA 2026-11-17 exercised real native controls under .vqa for F09 day/night persisted toggle and exact restore, F15 local notice read/clear plus update installer preflight, F18 backend unavailable identity, F19 summary/CSV action, F20 live permission status. Complete integrated device instrumentation 52/52 PASS, QA report at tests/ultracarhcm-v2/GUI_REAL_CONTROL_AUDIT_20261117.md. This verifies only these UI actions, NOT V1 parity or physical DeX/UVC/Gear-R; status remains unchanged.",
       "actual": "ProfileActivity opens AdminLicenseActivity, which shows the installed V2 package/version/device model and explicitly reports license backend, customer activation and device registration as unavailable until a verified contract exists. It performs no network call, collects no credential and exposes no activation/registration mutation.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
@@ -507,9 +511,10 @@
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ReportActivity.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ReportRules.kt",
         "apps/ultracarhcm-v2/app/src/main/java/ai/tigeriq/ultracarhcm/v2/ProfileActivity.kt",
-        "tests/ultracarhcm-v2/report-hub-source.test.ts"
+        "tests/ultracarhcm-v2/report-hub-source.test.ts",
+        "apps/ultracarhcm-v2/app/src/androidTest/java/ai/tigeriq/ultracarhcm/v2/V2FunctionalScreenActionsDeviceTest.kt"
       ],
-      "gap": "A dedicated V2 report hub summarizes V2-owned Taxi Meter trip count, distance, duration and recorded revenue and exports CSV through Storage Access Framework. Malformed JSON is fail-visible and synchronously cleared. JSON-valid rows with wrong numeric types, out-of-range rates, invalid timestamps/distance/duration or a fare inconsistent with the canonical calculation are excluded; reads are capped at MAX_HISTORY and the cleaned history is synchronously persisted. Exact V1 XLS/report templates, dashboards and other feature-domain exports remain unverified and are not claimed.",
+      "gap": "A dedicated V2 report hub summarizes V2-owned Taxi Meter trip count, distance, duration and recorded revenue and exports CSV through Storage Access Framework. Malformed JSON is fail-visible and synchronously cleared. JSON-valid rows with wrong numeric types, out-of-range rates, invalid timestamps/distance/duration or a fare inconsistent with the canonical calculation are excluded; reads are capped at MAX_HISTORY and the cleaned history is synchronously persisted. Exact V1 XLS/report templates, dashboards and other feature-domain exports remain unverified and are not claimed. Isolated S10 Android12 QA 2026-11-17 exercised real native controls under .vqa for F09 day/night persisted toggle and exact restore, F15 local notice read/clear plus update installer preflight, F18 backend unavailable identity, F19 summary/CSV action, F20 live permission status. Complete integrated device instrumentation 52/52 PASS, QA report at tests/ultracarhcm-v2/GUI_REAL_CONTROL_AUDIT_20261117.md. This verifies only these UI actions, NOT V1 parity or physical DeX/UVC/Gear-R; status remains unchanged.",
       "actual": "ProfileActivity opens ReportActivity, which reads at most TaxiMeterRules.MAX_HISTORY V2 Taxi Meter rows, uses exact scalar parsing and validPersistedTrip to reject semantically invalid rows, synchronously cleans rejected/excess rows, shows aggregate trip/revenue/distance/time with saturating report totals and exports stable UTF-8 BOM CSV through user-selected SAF. It requests no broad storage permission and exports no credentials or V1 data.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
@@ -544,9 +549,10 @@
         "tests/ultracarhcm-v2/camera-runtime-permission-source.test.ts",
         "tests/ultracarhcm-v2/update-channel-source.test.ts",
         "tests/ultracarhcm-v2/update-payload-integrity-source.test.ts",
-        "tests/ultracarhcm-v2/privacy-external-settings-source.test.ts"
+        "tests/ultracarhcm-v2/privacy-external-settings-source.test.ts",
+        "apps/ultracarhcm-v2/app/src/androidTest/java/ai/tigeriq/ultracarhcm/v2/V2FunctionalScreenActionsDeviceTest.kt"
       ],
-      "gap": "Runtime source có fail-visible CAMERA gate, location/Bluetooth/overlay state và package-install channel dựa trên V1 V69 nhưng hẹp hơn: signed APK phải qua metadata/hash/package/exact versionCode/exact versionName/signer verification trước; FileProvider chỉ lộ cache updates; unknown-sources và Android installer confirmation là bắt buộc. Các đường mở Android app-details/overlay settings từ Privacy và Home đã fail-visible nếu OEM không resolve hoặc từ chối intent. Privacy-policy parity và full real-device validation vẫn chưa nghiệm thu.",
+      "gap": "Runtime source có fail-visible CAMERA gate, location/Bluetooth/overlay state và package-install channel dựa trên V1 V69 nhưng hẹp hơn: signed APK phải qua metadata/hash/package/exact versionCode/exact versionName/signer verification trước; FileProvider chỉ lộ cache updates; unknown-sources và Android installer confirmation là bắt buộc. Các đường mở Android app-details/overlay settings từ Privacy và Home đã fail-visible nếu OEM không resolve hoặc từ chối intent. Privacy-policy parity và full real-device validation vẫn chưa nghiệm thu. Isolated S10 Android12 QA 2026-11-17 exercised real native controls under .vqa for F09 day/night persisted toggle and exact restore, F15 local notice read/clear plus update installer preflight, F18 backend unavailable identity, F19 summary/CSV action, F20 live permission status. Complete integrated device instrumentation 52/52 PASS, QA report at tests/ultracarhcm-v2/GUI_REAL_CONTROL_AUDIT_20261117.md. This verifies only these UI actions, NOT V1 parity or physical DeX/UVC/Gear-R; status remains unchanged.",
       "actual": "UsbCameraActivity chỉ khởi động UVC sau CAMERA runtime grant; PrivacyActivity hiển thị permission state và mở OS settings qua guarded external-intent helper; Home overlay-permission action dùng cùng fail-visible contract thay vì crash khi Settings intent lỗi. UpdateActivity tải candidate vào cache riêng, giới hạn redirect/size, kiểm SHA-256, ZIP/package/exact versionCode/exact versionName, signer pin + signer continuity, rồi dùng FileProvider mở Android system installer. Không broad storage, shell, ADB hay silent install.",
       "testStatus": "SOURCE_ONLY_NOT_ACCEPTED",
       "entryPoints": [
