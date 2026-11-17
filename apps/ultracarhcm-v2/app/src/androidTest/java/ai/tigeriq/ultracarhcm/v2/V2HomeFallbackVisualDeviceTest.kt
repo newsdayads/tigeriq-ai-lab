@@ -53,9 +53,9 @@ class V2HomeFallbackVisualDeviceTest {
         val day = paint(RoadCityFallbackView(context, false))
         assertFalse("Day and night vector art must differ", night.contentEquals(day))
         assertTrue("Fallback must not be a flat placeholder",
-            night.asSequence().step(43).distinct().count() > 40)
+            night.filterIndexed { i, _ -> i % 43 == 0 }.distinct().size > 40)
         assertTrue("Fallback must not be a flat placeholder",
-            day.asSequence().step(43).distinct().count() > 40)
+            day.filterIndexed { i, _ -> i % 43 == 0 }.distinct().size > 40)
     }
 
     @Test fun vehicleSilhouetteExistsForBothUserSelectedModels() {
