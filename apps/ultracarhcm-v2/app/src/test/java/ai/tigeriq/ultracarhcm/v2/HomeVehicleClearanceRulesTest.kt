@@ -4,7 +4,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class HomeVehicleClearanceRulesTest {
-    @Test fun vehicleAndLicensePlateNeverOverlapNineShortcutsAcrossDeXLay​outs() {
+    @Test fun vehicleAndLicensePlateNeverOverlapNineShortcutsAcrossDexLayouts() {
         val barTops = listOf(.56f, .597f, .620f, .690f, .800f)
         for (barTop in barTops) {
             val carTop = HomeLayoutRules.vehicleTopBeforeQuickBar(barTop)
