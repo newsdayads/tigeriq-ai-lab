@@ -9,7 +9,7 @@ import {
 const fullSha = 'A'.repeat(64);
 const evidence = 'B'.repeat(64);
 const cert = 'C'.repeat(64);
-const v1Sha = 'D8B8DE0A454ACB88E911AD11331EFF91884714466EF8B4554807D8D3447F82FC';
+const v1Sha = '07FA280005D71C0D4E38C085C3077ED01B66497E1E3EB54B0C2ED4D7999F038E';
 const accepted = (id: string) => ({
   id, status: 'ACCEPTED', signedApkSha256: fullSha,
   deviceId: 'REAL_DEVICE_WITH_VERIFIABLE_RECEIPT',
@@ -26,7 +26,7 @@ function hypotheticalAcceptedFixture() {
       verifiedV3: true,
     },
     sourceGitSha: 'E'.repeat(64),
-    v1Baseline: { sha256: v1Sha },
+    v1Baseline: { sha256: v1Sha, versionCode: 369, versionName: '1.2.23' },
     features: Object.fromEntries(mandatoryFeatureIds.map(id => [id, accepted(id)])),
     regressions: Object.fromEntries(mandatoryRegressionIds.map(id => [id, accepted(id)])),
     hardware: Object.fromEntries(mandatoryHardwareIds.map(id => [id, accepted(id)])),
@@ -58,6 +58,16 @@ describe('GH-5135 fail-closed full-parity release gate (logic test, NOT real acc
     expect(r.blockers).toContain('F05_MISSING_DEVICE_ACCEPTANCE');
     expect(r.blockers).toContain('DEX_EXTERNAL_MISSING_PHYSICAL_EVIDENCE');
   });
+  it('rejects the mislabeled S10 V1.2.31 internal Build362 as a Golden release substitute', () => {
+    const mock = hypotheticalAcceptedFixture();
+    mock.v1Baseline.sha256 = 'D8B8DE0A454ACB88E911AD11331EFF91884714466EF8B4554807D8D3447F82FC';
+    mock.v1Baseline.versionCode = 362;
+    mock.v1Baseline.versionName = '1.2.16';
+    const result = assessFullParityRelease(mock);
+    expect(result.canPublish).toBe(false);
+    expect(result.blockers).toContain('GOLDEN_V1_1223_BUILD369_IDENTITY_NOT_PINNED');
+  });
+
   it('can pass only a structurally complete hypothetical set; mock input is NOT an APK', () => {
     const mock = hypotheticalAcceptedFixture();
     const result = assessFullParityRelease(mock);

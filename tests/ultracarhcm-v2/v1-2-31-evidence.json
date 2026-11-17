@@ -19,7 +19,8 @@
     "reaEvidenceSha": "D9F73DCD1C7D6044FB678E1C2C74B6DEA0F9F22F43DEEDA8D41DB3F132B511C9",
     "installedS10BaseSha256": "D8B8DE0A454ACB88E911AD11331EFF91884714466EF8B4554807D8D3447F82FC",
     "installedMatchesDriveFile": true,
-    "releaseLabelVersionVerified": false
+    "releaseLabelVersionVerified": false,
+    "baselineRole": "AUXILIARY_S10_UI_ONLY_NOT_GOLDEN"
   },
   "v2": {
     "qaPackage": "ai.tigeriq.ultracarhcm.v2.rqa",
@@ -45,7 +46,9 @@
     "currentV1ExternalLabelMatchesEmbeddedVersion": false,
     "ownerMediaRightsVerified": false,
     "licenseBackendVerified": false,
-    "testReleaseAllowed": false
+    "testReleaseAllowed": false,
+    "canonicalGoldenPinned": true,
+    "s10AuxiliaryCannotReplaceGolden": true
   },
   "findings": [
     {
@@ -84,5 +87,15 @@
       "detail": "V2 source changes shortcut from USB stream toggle to popup close; DeX placement rules added but DeX hardware unavailable.",
       "status": "SOURCE_IMPLEMENTED_DEVICE_QA_PENDING"
     }
-  ]
+  ],
+  "canonicalGolden": {
+    "source": "apps/ultracarhcm-v1/release/current-release.json",
+    "issue": 5129,
+    "versionName": "1.2.23",
+    "versionCode": 369,
+    "sha256": "07FA280005D71C0D4E38C085C3077ED01B66497E1E3EB54B0C2ED4D7999F038E",
+    "ownerAccepted": true,
+    "acceptedHardware": "Samsung Z Fold 2 / DeX",
+    "acceptedDate": "2026-11-15"
+  }
 }

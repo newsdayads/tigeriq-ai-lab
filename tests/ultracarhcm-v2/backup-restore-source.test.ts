@@ -132,7 +132,7 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
     expect(home).toContain('OverlayPositionRules.xKey(displayId)');
     expect(home).toContain('OverlayPositionRules.yKey(displayId)');
     expect(rules).toContain('const val LEGACY_BACKUP_SCHEMA_VERSION = 1');
-    expect(rules).toContain('const val CURRENT_BACKUP_SCHEMA_VERSION = 5');
+    expect(rules).toContain('const val CURRENT_BACKUP_SCHEMA_VERSION = 6');
     expect(rules).toContain('version in LEGACY_BACKUP_SCHEMA_VERSION..CURRENT_BACKUP_SCHEMA_VERSION');
     expect(rules).toContain('fun requiresVehicleState(version: Int): Boolean');
     expect(home).toContain('"vehicleModel"');
@@ -168,6 +168,18 @@ describe('GH-5135 F16 local backup/restore source contract', () => {
       block.indexOf('!safeConfigIds.contains(configId)'),
     );
     expect(block).toContain('if (replaceSavedLayoutShortcuts)');
+  });
+
+  it('schema v6 preserves camera visual-guide style with strict validation and rollback', () => {
+    expect(rules).toContain('fun requiresCameraGuideStyle(version: Int): Boolean');
+    expect(rules).toContain('version >= 6');
+    expect(home).toContain('"cameraGuideStyle"');
+    expect(home).toContain('GuideStyleRules.parse(');
+    expect(home).toContain('HomeBackupRules.requiresCameraGuideStyle(backupSchema)');
+    expect(home).toContain('GuideStyle.values().firstOrNull { it.name == rawStyle } ?: return false');
+    expect(home).toContain('val guideSnapshot = guidePrefsForRestore?.let(::preferenceSnapshot)');
+    expect(home).toContain('restorePreferenceSnapshot(guidePrefsForRestore, guideSnapshot)');
+    expect(home).toContain('if (!guideEditor.commit()) return rollbackRestoreAndFail()');
   });
 
   it('refreshes an active DeX overlay immediately after a successful restore', () => {

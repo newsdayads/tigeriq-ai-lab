@@ -42,13 +42,16 @@ internal object GuideTrackModel {
 
     fun normalize(state: GuideCurveState): GuideCurveState =
         state.copy(
-            steeringDegrees = state.steeringDegrees.coerceIn(-MAX_STEERING_DEGREES, MAX_STEERING_DEGREES),
-            warp = state.warp.coerceIn(0.65f, 1.35f),
+            // Android Canvas must never receive NaN or infinite coordinates.
+            steeringDegrees = (state.steeringDegrees.takeIf { it.isFinite() } ?: 0f)
+                .coerceIn(-MAX_STEERING_DEGREES, MAX_STEERING_DEGREES),
+            warp = (state.warp.takeIf { it.isFinite() } ?: 1f)
+                .coerceIn(0.65f, 1.35f),
         )
 
     fun trackPoint(progress: Float, side: Int, state: GuideCurveState): GuidePoint {
         val normalized = normalize(state)
-        val p = progress.coerceIn(0f, 1f)
+        val p = (progress.takeIf { it.isFinite() } ?: 0f).coerceIn(0f, 1f)
         val sideSign = if (side < 0) -1f else 1f
 
         // Perspective: guide narrows toward the horizon.
@@ -100,6 +103,15 @@ open class GuideTrackView @JvmOverloads constructor(
     internal var curveState: GuideCurveState = GuideCurveState()
         private set
 
+    internal var visualStyle: GuideStyle = GuideStyleRules.DEFAULT
+        private set
+
+    internal fun updateStyle(style: GuideStyle) {
+        if (visualStyle == style) return
+        visualStyle = style
+        invalidate()
+    }
+
     internal fun updateGuide(state: GuideCurveState) {
         val next = GuideTrackModel.normalize(state)
         if (next == curveState) return
@@ -111,15 +123,19 @@ open class GuideTrackView @JvmOverloads constructor(
         super.onDraw(canvas)
         if (!curveState.reverseActive || width <= 0 || height <= 0) return
 
-        drawBoundary(canvas, -1)
-        drawBoundary(canvas, 1)
-        labelPaint.textSize = (height * 0.028f).coerceIn(20f, 42f)
-        drawCrossbar(canvas, GuideTrackModel.distanceMarkers[2], Color.RED)
-        drawCrossbar(canvas, GuideTrackModel.distanceMarkers[1], Color.YELLOW)
-        drawCrossbar(canvas, GuideTrackModel.distanceMarkers[0], Color.GREEN)
+        val palette = GuideStyleRules.palette(visualStyle)
+        val density = resources.displayMetrics.density.takeIf { it.isFinite() && it > 0f } ?: 1f
+        trackPaint.strokeWidth = (palette.boundaryWidthDp * density).coerceAtLeast(1f)
+        crossbarPaint.strokeWidth = (palette.crossbarWidthDp * density).coerceAtLeast(1f)
+        drawBoundary(canvas, -1, palette)
+        drawBoundary(canvas, 1, palette)
+        labelPaint.textSize = ((height * 0.028f).coerceIn(20f, 42f) * palette.labelScale)
+        drawCrossbar(canvas, GuideTrackModel.distanceMarkers[2], palette.nearColor)
+        drawCrossbar(canvas, GuideTrackModel.distanceMarkers[1], palette.middleColor)
+        drawCrossbar(canvas, GuideTrackModel.distanceMarkers[0], palette.farColor)
     }
 
-    private fun drawBoundary(canvas: Canvas, side: Int) {
+    private fun drawBoundary(canvas: Canvas, side: Int, palette: GuidePalette) {
         val path = Path()
         for (step in 0..28) {
             val p = step / 28f
@@ -128,8 +144,8 @@ open class GuideTrackView @JvmOverloads constructor(
             val y = point.y * height
             if (step == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
-        trackPaint.color = Color.WHITE
-        trackPaint.alpha = 225
+        trackPaint.color = palette.boundaryColor
+        trackPaint.alpha = palette.boundaryAlpha
         canvas.drawPath(path, trackPaint)
     }
 
