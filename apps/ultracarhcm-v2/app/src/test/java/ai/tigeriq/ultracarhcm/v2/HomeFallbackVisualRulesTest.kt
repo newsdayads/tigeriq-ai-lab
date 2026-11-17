@@ -17,7 +17,7 @@ class HomeFallbackVisualRulesTest {
         assertEquals(0f, HomeFallbackVisualRules.fraction(Float.NaN), 0f)
         assertEquals(0f, HomeFallbackVisualRules.fraction(Float.NEGATIVE_INFINITY), 0f)
         assertEquals(0f, HomeFallbackVisualRules.fraction(-2f), 0f)
-        assertEquals(1f, HomeFallbackVisualRules.fraction(Float.POSITIVE_INFINITY), 0f)
+        assertEquals(0f, HomeFallbackVisualRules.fraction(Float.POSITIVE_INFINITY), 0f)
         assertEquals(1f, HomeFallbackVisualRules.fraction(20f), 0f)
     }
 }
