@@ -68,9 +68,23 @@ try {
 
 if(-not (Test-Path -LiteralPath $unsigned -PathType Leaf)){throw 'UNSIGNED_RELEASE_APK_MISSING'}
 
-$unsignedVerification=(& $apksigner verify --verbose $unsigned 2>&1) -join [Environment]::NewLine
-$unsignedVerifyExit=$LASTEXITCODE
+# apksigner intentionally emits "DOES NOT VERIFY" to stderr for an unsigned
+# APK. PowerShell's global Stop preference must not misclassify this expected
+# nonzero verifier result as a terminating NativeCommandError.
+$oldErrorActionPreference=$ErrorActionPreference
+try {
+  $ErrorActionPreference='Continue'
+  $unsignedVerification=(& $apksigner verify --verbose $unsigned 2>&1) -join [Environment]::NewLine
+  $unsignedVerifyExit=$LASTEXITCODE
+} finally {
+  $ErrorActionPreference=$oldErrorActionPreference
+}
 if($unsignedVerifyExit -eq 0){throw 'UNSIGNED_BUILD_UNEXPECTEDLY_SIGNED'}
+if($unsignedVerifyExit -ne 1 -or
+  $unsignedVerification -notmatch 'DOES NOT VERIFY' -or
+  $unsignedVerification -notmatch 'Missing META-INF/MANIFEST\.MF'){
+  throw 'UNSIGNED_BUILD_REJECTION_NOT_VERIFIED'
+}
 
 & $zipalign -f 4 $unsigned $tempOutput
 if($LASTEXITCODE -ne 0){throw 'ZIPALIGN_FAILED'}
@@ -83,9 +97,20 @@ try {
   $identityFragment="package: name='$expectedPackage' versionCode='$expectedVersionCode' versionName='$expectedVersionName'"
   if(-not $badging.Contains($identityFragment)){throw 'HANDOFF_APK_IDENTITY_MISMATCH'}
 
-  $alignedVerification=(& $apksigner verify --verbose $tempOutput 2>&1) -join [Environment]::NewLine
-  $alignedVerifyExit=$LASTEXITCODE
+  $oldErrorActionPreference=$ErrorActionPreference
+  try {
+    $ErrorActionPreference='Continue'
+    $alignedVerification=(& $apksigner verify --verbose $tempOutput 2>&1) -join [Environment]::NewLine
+    $alignedVerifyExit=$LASTEXITCODE
+  } finally {
+    $ErrorActionPreference=$oldErrorActionPreference
+  }
   if($alignedVerifyExit -eq 0){throw 'ALIGNED_HANDOFF_UNEXPECTEDLY_SIGNED'}
+  if($alignedVerifyExit -ne 1 -or
+    $alignedVerification -notmatch 'DOES NOT VERIFY' -or
+    $alignedVerification -notmatch 'Missing META-INF/MANIFEST\.MF'){
+    throw 'ALIGNED_UNSIGNED_REJECTION_NOT_VERIFIED'
+  }
 
   Move-Item -LiteralPath $tempOutput -Destination $output
 } finally {
