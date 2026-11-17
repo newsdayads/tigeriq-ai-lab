@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.ui.platform.ComposeView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.*
@@ -89,8 +90,20 @@ class V2HomeFallbackVisualDeviceTest {
             val limoResource = context.resources.getIdentifier(
                 "v2_car_limo_do_parked", "drawable", context.packageName)
             if (sportResource == 0 && limoResource == 0) {
-                assertNotNull("Missing illustrated car in Home",
-                    childOfType(decor, ParkedVehicleFallbackView::class.java))
+                val car = childOfType(decor, ParkedVehicleFallbackView::class.java)
+                val quickBar = childOfType(decor, ComposeView::class.java)
+                assertNotNull("Missing illustrated car in Home", car)
+                assertNotNull("Missing nine-slot QuickBar", quickBar)
+                if (car != null && quickBar != null) {
+                    val carLocation = IntArray(2)
+                    val barLocation = IntArray(2)
+                    car.getLocationOnScreen(carLocation)
+                    quickBar.getLocationOnScreen(barLocation)
+                    assertTrue(
+                        "Real Home vehicle view must end above shortcut controls",
+                        carLocation[1] + car.height <= barLocation[1],
+                    )
+                }
             }
         } finally {
             inst.runOnMainSync { activity.finish() }
