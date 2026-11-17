@@ -1,5 +1,6 @@
 package ai.tigeriq.ultracarhcm.v2
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
@@ -23,8 +25,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 internal data class QuickSlotUi(
     val index: Int,
@@ -76,23 +81,33 @@ internal fun QuickBarGrid(
                                 onLongClick = { onLongClick(slot.index) },
                             ),
                         shape = MaterialTheme.shapes.medium,
-                        tonalElevation = 2.dp,
+                        // V1 cockpit lives on a dark road scene: do not let
+                        // Material3's default bright Surface erase the dashboard.
+                        color = Color(0xD00C2230),
+                        contentColor = Color(0xFFF0FAFF),
+                        border = BorderStroke(1.dp, Color(0x6657C9EC)),
+                        tonalElevation = 0.dp,
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
                             Icon(
                                 imageVector = quickSlotIconVector(slot.icon),
                                 contentDescription = title,
+                                modifier = Modifier.size(18.dp),
+                                tint = Color(0xFF67D7F6),
                             )
                             Text(
                                 text = title,
                                 style = MaterialTheme.typography.labelMedium,
+                                color = Color(0xFFF0FAFF),
+                                fontSize = 11.sp,
                                 maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                     }
