@@ -32,8 +32,13 @@ export function assessFullParityRelease(candidate) {
   if (!isSha(signed.certificateSha256) || signed.verifiedV2 !== true ||
       signed.verifiedV3 !== true) reasons.push('ANDROID_SIGNATURE_V2_V3_NOT_VERIFIED');
   if (!isSha(c.sourceGitSha)) reasons.push('SOURCE_SHA_UNVERIFIED');
-  if (c.v1Baseline?.sha256 !== 'D8B8DE0A454ACB88E911AD11331EFF91884714466EF8B4554807D8D3447F82FC') {
-    reasons.push('CURRENT_V1_1231_APK_SHA_NOT_PINNED');
+  // The official owner-accepted Golden V1 is v1.2.23 Build 369.
+  // An S10 file named v1.2.31 reports 1.2.16/362 internally and cannot
+  // supersede the canonical signed/owner-accepted release by filename alone.
+  if (c.v1Baseline?.sha256 !== '07FA280005D71C0D4E38C085C3077ED01B66497E1E3EB54B0C2ED4D7999F038E' ||
+      c.v1Baseline?.versionCode !== 369 ||
+      c.v1Baseline?.versionName !== '1.2.23') {
+    reasons.push('GOLDEN_V1_1223_BUILD369_IDENTITY_NOT_PINNED');
   }
   const validRecord = (record, id) =>
     objectRecord(record) && record.id === id && record.status === 'ACCEPTED' &&
