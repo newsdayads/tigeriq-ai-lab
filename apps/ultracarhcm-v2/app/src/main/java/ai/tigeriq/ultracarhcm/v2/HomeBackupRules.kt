@@ -3,7 +3,7 @@ package ai.tigeriq.ultracarhcm.v2
 /** Safe local backup envelope for V2-owned state only. */
 internal object HomeBackupRules {
     const val LEGACY_BACKUP_SCHEMA_VERSION = 1
-    const val CURRENT_BACKUP_SCHEMA_VERSION = 5
+    const val CURRENT_BACKUP_SCHEMA_VERSION = 6
     const val MAX_BACKUP_BYTES = 256 * 1024
     const val MAX_OVERLAY_DISPLAYS = 16
     const val MAX_OVERLAY_COORDINATE = 32768
@@ -43,6 +43,11 @@ internal object HomeBackupRules {
 
     fun requiresSavedLayoutShortcuts(version: Int): Boolean =
         version >= 5
+
+    // Schema v6 adds the V2-owned Camera guide style. Restoring old backups
+    // never overwrites the user's newer style.
+    fun requiresCameraGuideStyle(version: Int): Boolean =
+        version >= 6
 
     fun withinSize(byteCount: Int): Boolean =
         byteCount in 1..MAX_BACKUP_BYTES
