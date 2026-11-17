@@ -23,6 +23,14 @@ describe('GH-5135 launch editable external apps on requested native DeX region',
     expect(home).toContain('packageManager.getLaunchIntentForPackage(target)');
     expect(home).toContain('target == QuickSlotRules.CAMERA_TARGET');
   });
+  it('routes every HOME Camera entry through the existing bounded display-affine popup', () => {
+    const calls = home.match(/UsbCameraActivity\\.toggleFromShortcut\\(this, requestedCameraDisplayId\\(\\)\\)/g) || [];
+    expect(calls).toHaveLength(4);
+    expect(home).not.toContain('startActivity(Intent(this, UsbCameraActivity::class.java))');
+    expect(home).toContain('window.decorView.display?.displayId ?: Display.DEFAULT_DISPLAY');
+    expect(home).toContain('DexUtils.resolveDisplay(this, homeDisplay)?.displayId ?: homeDisplay');
+  });
+
   it('bounds right-hand panel without mutating or controlling other app windows', () => {
     expect(bounds).toContain('internal object ExternalAppWindowBoundsRules');
     expect(bounds).toContain('fun initial(');
