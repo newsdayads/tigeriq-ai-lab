@@ -230,9 +230,13 @@ class HomeActivity : ComponentActivity() {
         }
     }
 
-    // DisplayManager APIs work back to minSdk 26; Activity.getDisplay() requires API 30.
-    private fun requestedCameraDisplayId(): Int =
-        DexUtils.resolveDisplay(this, 0)?.displayId ?: 0
+    // Prefer verified Samsung DeX; otherwise preserve this Activity's actual
+    // display ID for isolated virtual-screen QA and normal Android multi-display.
+    // An overlay by itself never certifies native DeX.
+    private fun requestedCameraDisplayId(): Int {
+        val homeDisplay = window.decorView.display?.displayId ?: Display.DEFAULT_DISPLAY
+        return DexUtils.resolveDisplay(this, homeDisplay)?.displayId ?: homeDisplay
+    }
 
     private fun shape(fill: Int, stroke: Int = Color.TRANSPARENT, radius: Float = 16f): GradientDrawable {
         return GradientDrawable().apply {
@@ -473,7 +477,7 @@ class HomeActivity : ComponentActivity() {
         when {
             target.isEmpty() -> toast("Bấm giữ ô để gán ứng dụng")
             target == QuickSlotRules.CAMERA_TARGET ->
-                startActivity(Intent(this, UsbCameraActivity::class.java))
+                UsbCameraActivity.toggleFromShortcut(this, requestedCameraDisplayId())
             else -> {
                 val launch = packageManager.getLaunchIntentForPackage(target)
                 if (launch == null) {
@@ -636,7 +640,7 @@ class HomeActivity : ComponentActivity() {
             )
         }
         button("CAMERA USB", .08f, .37f, .84f, .065f) {
-            startActivity(Intent(this, UsbCameraActivity::class.java))
+            UsbCameraActivity.toggleFromShortcut(this, requestedCameraDisplayId())
         }
         button("CÀI ĐẶT", .08f, .455f, .84f, .065f) {
             showSettings()
@@ -754,7 +758,7 @@ class HomeActivity : ComponentActivity() {
             outline = false,
             transparent = true,
         ) {
-            startActivity(Intent(this, UsbCameraActivity::class.java))
+            UsbCameraActivity.toggleFromShortcut(this, requestedCameraDisplayId())
         }
         val footer = label("UltraCarHCM V2 • DEVELOPMENT • CHƯA NGHIỆM THU", 9f, 0xffbbbbbb.toInt())
         place(footer, .02f, .972f, .96f, .016f)
@@ -1824,7 +1828,7 @@ class HomeActivity : ComponentActivity() {
                 when(which) {
                     0 -> startActivity(Intent(this, AppearanceActivity::class.java))
                     1 -> startActivity(Intent(this, VehicleActivity::class.java))
-                    2 -> startActivity(Intent(this, UsbCameraActivity::class.java))
+                    2 -> UsbCameraActivity.toggleFromShortcut(this, requestedCameraDisplayId())
                     3 -> {
                         if (!Settings.canDrawOverlays(this)) {
                             launchExternalSettings(
