@@ -678,7 +678,11 @@ class HomeActivity : ComponentActivity() {
             prefs.getString(VehicleRules.PREF_MODEL, null),
             prefs.getBoolean("limo", false),
         )
-        renderVehicleArtwork(vehicleModel, .295f, .458f, .41f, .242f)
+        // Match QuickBar's existing V1 lift without changing its saved slots.
+        val quickBarExpectedTop =
+            ((root.height * .69f - dp(50)).coerceAtLeast(root.height * .56f)) / root.height
+        val carTop = HomeLayoutRules.vehicleTopBeforeQuickBar(quickBarExpectedTop)
+        renderVehicleArtwork(vehicleModel, .295f, carTop, .41f, .225f)
         val plate = prefs.getString(VehicleRules.PREF_LICENSE_PLATE, "")
             ?.takeIf { it.isNotBlank() }
         if (plate != null) {
@@ -686,7 +690,7 @@ class HomeActivity : ComponentActivity() {
                 label(plate, 14f, Color.WHITE, true).apply {
                     background = shape(0xb8101a20.toInt(), radius = 8f)
                 },
-                .375f, .665f, .25f, .034f,
+                .375f, carTop + .184f, .25f, .032f,
             )
         }
 
