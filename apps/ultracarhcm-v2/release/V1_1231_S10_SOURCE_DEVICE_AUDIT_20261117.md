@@ -11,7 +11,7 @@
 ## Chứng cứ có thể xác minh
 - `UltraCar_v1.2.31.apk` hiện ở Drive, 35.166.511 byte, SHA256 `D8B8DE0A454ACB88E911AD11331EFF91884714466EF8B4554807D8D3447F82FC`.
 - **APK V1 đang cài trên S10** được trích qua ADB ở chế độ đọc từ `pm path` và có SHA **trùng chính xác** với V1.2.31 trên Drive (không phải V1.2.23). Do đó ảnh V1 chụp thực tế thuộc đúng V1.2.31.
-- AndroidManifest **nhúng trong V1.2.31 trên S10** là `com.tigeriq.dexsplit`, `1.2.16` / `362`. Bản V1 Golden được nghiệm thu thực tế có Build `369`/`1.2.23` và checksum riêng trong `current-release.json`. Phần thay đổi ZIP V1.2.23 → V1.2.31: `classes.dex` thay đổi (tăng 1.896 byte giải nén), 3 `META-INF` old-JAR-signature files không còn. Các asset còn lại không thêm/xóa, không khẳng định tính năng đã tăng theo nhãn.
+- AndroidManifest **nhúng trong V1.2.31 trên S10** là `com.tigeriq.dexsplit`, `1.2.16` / `362`. Bản V1 Golden được nghiệm thu thực tế có Build `369`/`1.2.23` và checksum riêng trong `current-release.json`. So sánh ZIP với một tệp local **chỉ mang tên** V1.2.23 (chưa xác minh trùng SHA Golden): `classes.dex` thay đổi (tăng 1.896 byte giải nén), 3 `META-INF` old-JAR-signature files không còn. Các asset còn lại không thêm/xóa, không khẳng định tính năng đã tăng theo nhãn.
 - Android `apksigner` V1.2.31 PASS v2/v3; chứng chỉ SHA256 `71617043EACE89E5F220EA9168B0A9592808111B0F17EAA219F5E6ECEB569558`.
 - REA 6.9.0 / JADX 0.7.1 đọc V1.2.31 trong thư mục Evidence riêng tư: **9.369 classes, 622 resource entries, 27 manifest components, 18 permissions**. Biên nhận REA SHA `D9F73DCD1C7D6044FB678E1C2C74B6DEA0F9F22F43DEEDA8D41DB3F132B511C9`; KHÔNG đưa APK/decompile/asset độc quyền lên GitHub.
 
