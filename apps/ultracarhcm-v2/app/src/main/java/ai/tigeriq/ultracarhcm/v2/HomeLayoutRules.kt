@@ -9,6 +9,17 @@ internal object HomeLayoutRules {
      * narrow DeX split-window beside Maps / reverse camera. Keep this source
      * rule local to V2 HOME; it must never imply control of another app window.
      */
+    /**
+     * On a 16:9 external screen the three-row QuickBar begins around 0.56–0.69
+     * of the height. Reserve a real vertical gap for the parked car artwork so
+     * the nine editable buttons never mask the car or its license plate.
+     */
+    fun vehicleTopBeforeQuickBar(quickBarTop: Float): Float {
+        val safeBarTop = (quickBarTop.takeIf { it.isFinite() } ?: .56f)
+            .coerceIn(.56f, .80f)
+        return (safeBarTop - .225f - .018f).coerceIn(.28f, .50f)
+    }
+
     fun useNarrowDexPanel(
         widthPx: Int,
         heightPx: Int,
