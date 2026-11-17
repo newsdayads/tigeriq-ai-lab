@@ -16,7 +16,7 @@ describe('GH-5135 F10 visual regression: no opaque white 3x3 QuickBar over night
     expect(compose).toContain('border = BorderStroke(1.dp, Color(0x6657C9EC))');
     expect(compose).toContain('tonalElevation = 0.dp');
     expect(compose).toContain('modifier = Modifier.size(18.dp)');
-    expect(compose).toContain('color = Color(0xFF67D7F6)');
+    expect(compose).toContain('tint = Color(0xFF67D7F6)');
     expect(compose).toContain('overflow = TextOverflow.Ellipsis');
   });
   it('never drops 9 click/long-click callbacks for a cosmetic change', () => {
