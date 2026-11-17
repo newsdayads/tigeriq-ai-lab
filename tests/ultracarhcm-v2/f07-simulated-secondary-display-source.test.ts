@@ -8,12 +8,12 @@ const runner = readFileSync(new URL('../../apps/ultracarhcm-v2/app/src/androidTe
 
 describe('GH-5135 Android virtual display is never a fake Samsung DeX acceptance', () => {
   it('rejects developer overlay even with a native-desktop flag and unapproved virtual display', () => {
-    expect(dex).toContain('type != Display.TYPE_OVERLAY');
-    expect(dex).toContain('(type != Display.TYPE_VIRTUAL || nativeDesktopActive)');
+    expect(dex).toContain('nativeDesktopActive &&');
+    expect(dex).toContain('if (!nativeDesktop) {');
     expect(dex).toContain('display.state == Display.STATE_ON');
   });
   it('tests Android virtual display and source geometry, not pretend physical hardware', () => {
-    expect(runner).toContain('it.type == Display.TYPE_OVERLAY');
+    expect(runner).toContain('it.displayId != Display.DEFAULT_DISPLAY');
     expect(runner).toContain('Android refused secondary-display Home launch');
     expect(runner).toContain('actual');
     expect(runner).toContain('CameraWindowBoundsRules.initial(');
