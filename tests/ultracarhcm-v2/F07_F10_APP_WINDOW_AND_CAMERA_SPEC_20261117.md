@@ -13,3 +13,8 @@ In `HomeActivity.launchQuickSlot`, an external assigned app was launched with `s
 
 ## No unauthorized changes
 No V1 APK/assets read/write during changes; no app signing, Production, OTA, user V2 replacement, preference reset or granting permissions. `main` through PR+CI only.
+
+## Camera entry-point defect discovered during real S10 QA
+Actual Android secondary display #31 was created and HOME launched; ADB tapped the lower-right CAMERA button. `dumpsys activity activities` showed `UsbCameraActivity` **on the intended secondary display** and Android `GrantPermissionsActivity` as the resumed overlay; 1920×1080 screenshot was dark (19 sampled colors) because CAMERA permission had not been granted. No UVC frame was captured, and this is **not visual parity**. The shell cannot directly launch unexported camera Activity (correct Android security boundary); navigation through exported HOME is the valid approach.
+
+**Required repair:** All four HOME Camera entry points (nine-slot `@camera`, narrow DeX panel camera, bottom Camera action, settings Camera) must use the existing `UsbCameraActivity.toggleFromShortcut(this, requestedCameraDisplayId())`, not raw `startActivity(Intent(...))` which loses explicit camera frame bounds. `requestedCameraDisplayId()` prefers verified native DeX external display but preserves the actual HOME Activity display ID for authorized Android virtual-secondary QA; no fake native DeX assertion. Native Samsung multiwindow dimensions are still OEM controlled.
