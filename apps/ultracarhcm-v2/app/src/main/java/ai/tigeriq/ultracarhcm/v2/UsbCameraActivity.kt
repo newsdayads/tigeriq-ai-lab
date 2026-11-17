@@ -2,6 +2,7 @@ package ai.tigeriq.ultracarhcm.v2
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.ActivityOptions
 import android.content.Context
 import android.content.Intent
@@ -19,6 +20,7 @@ import android.view.View
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.TextView
+import android.widget.Toast
 import java.lang.ref.WeakReference
 
 /** Separate USB Host UVC window, not a simulation or Camera2 phone-camera fallback. */
@@ -89,6 +91,9 @@ class UsbCameraActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var openClose: Button
     private lateinit var guide: DynamicGuideView
+    private val guidePrefs by lazy {
+        getSharedPreferences(GuideStyleRules.PREFS, Context.MODE_PRIVATE)
+    }
     private var cameraFrameActive = false
     private var awaitingCameraPermission = false
     private var resumeCameraOnStart = false
@@ -106,11 +111,31 @@ class UsbCameraActivity : Activity() {
         root.addView(texture, FrameLayout.LayoutParams(-1, -1))
 
         guide = DynamicGuideView(this).apply {
+            updateStyle(GuideStyleRules.parse(
+                guidePrefs.getString(GuideStyleRules.PREF_STYLE, null),
+            ))
             contentDescription =
                 "Vạch lùi trực quan; Chưa hiệu chuẩn khoảng cách/góc lái và chưa nghiệm thu trên xe"
         }
         root.addView(guide, FrameLayout.LayoutParams(-1, -1))
         applyReverseGuideIntent(intent)
+
+        val guideStyleButton = Button(this).apply {
+            text = "VẠCH"
+            textSize = 12f
+            contentDescription = "CHỌN KIỂU VẠCH LÙI"
+            setTextColor(Color.WHITE)
+            backgroundTintList = ColorStateList.valueOf(0xAA202C34.toInt())
+            setPadding(0, 0, 0, 0)
+            setOnClickListener { chooseVisualGuideStyle() }
+        }
+        root.addView(
+            guideStyleButton,
+            FrameLayout.LayoutParams(dp(78), dp(44), Gravity.TOP or Gravity.START).apply {
+                leftMargin = dp(10)
+                topMargin = dp(8)
+            },
+        )
 
         status = TextView(this).apply {
             text = "Chưa có khung hình từ USB UVC"
@@ -177,6 +202,31 @@ class UsbCameraActivity : Activity() {
         updateGuideVisibility()
         visible = WeakReference(this)
         openCamera()
+    }
+
+    private fun chooseVisualGuideStyle() {
+        val choices = GuideStyle.values()
+        val currentIndex = choices.indexOf(guide.visualStyle)
+        AlertDialog.Builder(this)
+            .setTitle("Kiểu vạch lùi (chỉ hiển thị, chưa hiệu chuẩn)")
+            .setSingleChoiceItems(
+                choices.map { it.title }.toTypedArray(),
+                currentIndex,
+            ) { dialog, index ->
+                val selected = choices[index]
+                val saved = guidePrefs.edit()
+                    .putString(GuideStyleRules.PREF_STYLE, selected.name)
+                    .commit()
+                if (saved) {
+                    guide.updateStyle(selected)
+                    Toast.makeText(this, "Đã lưu: ${selected.title}", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Không thể lưu kiểu vạch lùi", Toast.LENGTH_SHORT).show()
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton("Hủy", null)
+            .show()
     }
 
     private fun applyReverseGuideIntent(intent: Intent) {
