@@ -7,6 +7,7 @@ import android.content.SharedPreferences
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -87,6 +88,42 @@ class V2FunctionalScreenActionsDeviceTest {
             }
         }
         return edit.commit()
+    }
+
+    @Test fun f02VehicleButtonsAndPlateSaveReallyPersistThenRestore() {
+        guardQaOnly()
+        val prefs = app.getSharedPreferences("ultracar_v2_home", Context.MODE_PRIVATE)
+        val original = prefs.all.toMap()
+        var activity: Activity? = null
+        try {
+            activity = openScreen(VehicleActivity::class.java)
+            performClick(findButton(activity, "CHỌN LIMO ĐỎ"))
+            assertEquals(VehicleRules.MODEL_LIMO_RED,
+                prefs.getString(VehicleRules.PREF_MODEL, null))
+            assertTrue("F02 legacy Limo migration flag not persisted",
+                prefs.getBoolean("limo", false))
+            assertTrue(visibleText(activity).contains(VehicleRules.modelLabel(VehicleRules.MODEL_LIMO_RED)))
+
+            performClick(findButton(activity, "CHỌN LAMBORGHINI TRẮNG"))
+            assertEquals(VehicleRules.MODEL_LAMBORGHINI_WHITE,
+                prefs.getString(VehicleRules.PREF_MODEL, null))
+            assertFalse("F02 legacy migration flag not reset",
+                prefs.getBoolean("limo", true))
+
+            val plate = allViews(root(activity)).filterIsInstance<EditText>().single()
+            instrumentation.runOnMainSync { plate.setText(" 51k-123.45  ") }
+            performClick(findButton(activity, "LƯU BIỂN SỐ"))
+            assertEquals("51K-123.45",
+                prefs.getString(VehicleRules.PREF_LICENSE_PLATE, null))
+            assertTrue("F02 normalized plate not rendered",
+                visibleText(activity).contains("51K-123.45"))
+        } finally {
+            closeScreen(activity)
+            assertTrue("F02 QA vehicle/home preferences were not restored",
+                restorePrefs(prefs, original))
+            assertEquals("F02 original QA vehicle/home snapshot not restored",
+                original, prefs.all)
+        }
     }
 
     @Test fun f09NightModeButtonReallyUpdatesUIAndPersistsThenRestores() {
