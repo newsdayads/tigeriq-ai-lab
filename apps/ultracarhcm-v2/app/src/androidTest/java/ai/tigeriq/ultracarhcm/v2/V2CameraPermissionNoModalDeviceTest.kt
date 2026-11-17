@@ -53,7 +53,7 @@ class V2CameraPermissionNoModalDeviceTest {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK),
             )
             instrumentation.waitForIdleSync()
-            val buttons = allViews(home.findViewById(android.R.id.content))
+            val buttons = allViews(home!!.findViewById(android.R.id.content))
                 .filterIsInstance<TextView>()
             val cameraButton = buttons.firstOrNull {
                 it.isClickable && (it.contentDescription == "CAMERA" ||
@@ -69,10 +69,10 @@ class V2CameraPermissionNoModalDeviceTest {
             instrumentation.waitForIdleSync()
             assertEquals(
                 "F04 Camera popup launched on a different Android display",
-                home.window.decorView.display?.displayId,
+                home!!.window.decorView.display?.displayId,
                 camera!!.window.decorView.display?.displayId,
             )
-            val text = allViews(camera.findViewById(android.R.id.content))
+            val text = allViews(camera!!.findViewById(android.R.id.content))
                 .filterIsInstance<TextView>()
             assertTrue(
                 "F04 missing fail-visible no-grant Camera status after HOME click",
@@ -80,10 +80,12 @@ class V2CameraPermissionNoModalDeviceTest {
             )
         } finally {
             if (camera != null) {
-                instrumentation.runOnMainSync { camera.finish() }
+                val closingCamera = camera
+                instrumentation.runOnMainSync { closingCamera?.finish() }
             }
             if (home != null) {
-                instrumentation.runOnMainSync { home.finish() }
+                val closingHome = home
+                instrumentation.runOnMainSync { closingHome?.finish() }
             }
             instrumentation.waitForIdleSync()
             instrumentation.removeMonitor(monitor)
