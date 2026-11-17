@@ -42,6 +42,18 @@ test('F10 handoff preparer proves unsigned input and aligned output fail closed'
   assert.match(source,/HANDOFF_MANIFEST_ALREADY_EXISTS_NO_OVERWRITE/);
 });
 
+test('F10 unsigned verifier treats expected apksigner stderr as data, never as a signed PASS',()=>{
+  assert.match(source,/\$oldErrorActionPreference=\$ErrorActionPreference/);
+  assert.equal((source.match(/\$ErrorActionPreference='Continue'/g)||[]).length,2);
+  assert.equal((source.match(/\$ErrorActionPreference=\$oldErrorActionPreference/g)||[]).length,2);
+  assert.match(source,/if\(\$unsignedVerifyExit -eq 0\)\{throw 'UNSIGNED_BUILD_UNEXPECTEDLY_SIGNED'\}/);
+  assert.match(source,/if\(\$alignedVerifyExit -eq 0\)\{throw 'ALIGNED_HANDOFF_UNEXPECTEDLY_SIGNED'\}/);
+  assert.match(source,/UNSIGNED_BUILD_REJECTION_NOT_VERIFIED/);
+  assert.match(source,/ALIGNED_UNSIGNED_REJECTION_NOT_VERIFIED/);
+  assert.match(source,/Missing META-INF\/MANIFEST/);
+  assert.doesNotMatch(source,/apksigner\s+sign/i);
+});
+
 test('F10 handoff receipt pins source, artifact digest, identity and signer certificate',()=>{
   for(const expected of [
     "schema='tigeriq.ultracarhcm-v2.unsigned-handoff.v1'",
