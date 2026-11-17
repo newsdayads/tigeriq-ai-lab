@@ -57,7 +57,7 @@ describe('GH-5135 F03/F20 camera runtime permission gate', () => {
     );
     expect(start).toContain('if (resumeCameraOnStart)');
     expect(start).toContain('resumeCameraOnStart = false');
-    expect(start).toContain('openCamera()');
+    expect(start).toContain('openCameraWithoutPermissionPrompt()');
 
     const stop = activity.slice(
       activity.indexOf('override fun onStop()'),
