@@ -24,8 +24,8 @@ describe('GH-5135 V1.0.64 reverse guide source contract', () => {
   it('uses curved perspective geometry instead of the old three static lines', () => {
     expect(guide).toContain('val lateralCurve = steeringRatio * 0.24f * p * p * normalized.warp');
     expect(guide).toContain('val halfWidth = halfWidthBottom + (halfWidthTop - halfWidthBottom) * p');
-    expect(guide).toContain('drawBoundary(canvas, -1)');
-    expect(guide).toContain('drawBoundary(canvas, 1)');
+    expect(guide).toContain('drawBoundary(canvas, -1, palette)');
+    expect(guide).toContain('drawBoundary(canvas, 1, palette)');
     expect(camera).not.toContain('listOf(.43f,.57f,.73f)');
   });
 
