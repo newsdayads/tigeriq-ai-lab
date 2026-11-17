@@ -6,19 +6,20 @@ import android.hardware.display.DisplayManager
 import android.util.Log
 import android.view.Display
 
-/** Display-type guard: Android developer overlays must NEVER be treated as real Samsung DeX. */
-internal object DexDisplayTypeRules {
+/**
+ * Android's Display.getType()/TYPE_OVERLAY are hidden APIs on our compile SDK.
+ * A second display by itself therefore cannot be sufficient DeX evidence.
+ */
+internal object DexDisplayGateRules {
     fun eligibleExternal(
         displayId: Int,
-        type: Int,
         valid: Boolean,
         on: Boolean,
         nativeDesktopActive: Boolean,
     ): Boolean =
-        displayId != Display.DEFAULT_DISPLAY &&
-            valid && on &&
-            type != Display.TYPE_OVERLAY &&
-            (type != Display.TYPE_VIRTUAL || nativeDesktopActive)
+        nativeDesktopActive &&
+            displayId != Display.DEFAULT_DISPLAY &&
+            valid && on
 }
 
 object DexUtils {
@@ -32,43 +33,38 @@ object DexUtils {
             val on = config.javaClass.getField("SEM_DESKTOP_MODE_ENABLED").getInt(null)
             if (field.getInt(config) == on) return true
         } catch (_: ReflectiveOperationException) {
-            // Not Samsung; use real external-display fallback only.
+            // Not Samsung or OEM field unavailable. Do not guess DeX by display count.
         } catch (_: SecurityException) {
-            // OEM reflection unavailable: fail closed for virtual displays.
+            // Hidden OEM state blocked; fail closed rather than infer DeX.
         }
         return false
     }
 
     private fun eligible(display: Display, nativeDesktop: Boolean): Boolean =
-        DexDisplayTypeRules.eligibleExternal(
+        DexDisplayGateRules.eligibleExternal(
             displayId = display.displayId,
-            type = display.type,
             valid = display.isValid,
             on = display.state == Display.STATE_ON,
             nativeDesktopActive = nativeDesktop,
         )
 
-    fun isDesktop(context: Context): Boolean {
-        val nativeDesktop = nativeDesktopActive(context)
-        if (nativeDesktop) return true
-        return (context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager)
-            ?.displays?.any { eligible(it, nativeDesktop) } == true
-    }
+    fun isDesktop(context: Context): Boolean = nativeDesktopActive(context)
 
     fun resolveDisplay(context: Context, activityDisplayId: Int): Display? {
         val manager =
             context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager ?: return null
         val nativeDesktop = nativeDesktopActive(context)
+        if (!nativeDesktop) {
+            Log.i("UltraCarV2", "No verified native DeX mode: activity=$activityDisplayId")
+            return null
+        }
         val activityDisplay = manager.getDisplay(activityDisplayId)
-        // Preserve a real active external DeX display but NEVER a simulated overlay.
         if (activityDisplay != null && eligible(activityDisplay, nativeDesktop)) {
             return activityDisplay
         }
-        // Home may be on the phone while Samsung DeX owns the external display.
-        // Refuse synthetic developer overlays or unrelated app virtual displays.
         val external = manager.displays.firstOrNull { eligible(it, nativeDesktop) }
         if (external != null) return external
-        Log.i("UltraCarV2", "No verified DeX display: activity=$activityDisplayId")
+        Log.i("UltraCarV2", "No active external DeX display: activity=$activityDisplayId")
         return null
     }
 }
