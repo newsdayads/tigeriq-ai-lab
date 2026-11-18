@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.12.2",
+  "checkpoint_id": "2d9e78fcff7c",
+  "session_id": "aca07199-060c-45b3-8df9-088800d77701",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-18T02:44:08.2577191Z",
+  "branch": "chore/ci-retention-3d-all",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/android-worker.yml",
+    ".github/workflows/chrome-controller-package.yml",
+    ".github/workflows/p0-4902-g3-g6-hosted-canary.yml",
+    ".github/workflows/p0-4902-g6-manager-postgres.yml",
+    ".github/workflows/p0-4902-g6-native-version-rollback.yml",
+    ".github/workflows/p0-4902-g6-work-e2e.yml",
+    ".github/workflows/phone-farm-local-ci.yml",
+    ".github/workflows/project-code-map-live.yml",
+    ".github/workflows/rea-real-sandbox-4780.yml",
+    ".github/workflows/ui-autopilot-package.yml",
+    ".github/workflows/ultracar-v1-test-release.yml"
+  ],
+  "agent": "Antigravity",
+  "model": "gemini-4-hydrogen-medium",
+  "turn_id": "d1418f165bff",
+  "redaction": {
+    "replacements": 0,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
