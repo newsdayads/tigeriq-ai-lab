@@ -130,4 +130,4 @@ jobs:
             ${{ runner.temp }}/tigeriq-code-map-query.json
             ${{ runner.temp }}/tigeriq-code-map-symbol.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3

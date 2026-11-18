@@ -121,7 +121,7 @@ jobs:
           name: tigeriq-worker-debug-apk
           path: .ci-artifacts/tigeriq-worker-debug.apk
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 3
       - uses: actions/upload-artifact@v4
         with:
           name: tigeriq-worker-unsigned-release-apk
@@ -130,4 +130,4 @@ jobs:
             .ci-artifacts/apksigner.jar
           if-no-files-found: error
           include-hidden-files: true
-          retention-days: 7
+          retention-days: 3
