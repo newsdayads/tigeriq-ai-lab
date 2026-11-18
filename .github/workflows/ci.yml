@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     name: CI Verify
@@ -107,7 +111,7 @@ jobs:
           name: tigeriq-gh2293-public-demo-${{ github.run_id }}
           path: artifacts/revenue-lab/gh2293-public-demo/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 3
 
   tigeriq-game-s10-node22:
     name: TigerIQ Game S10 Node22
