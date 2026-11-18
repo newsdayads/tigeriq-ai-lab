@@ -1,0 +1,102 @@
+Nắm thông tin đầy đủ và trạng thái mới nhất của App UltraCarHCM V1. No Yapping !
+
+---
+
+Coi lại App nó đang bị dư 1 khúc bên trái và ớt dưới đáy kìa. Chỗ vẽ đường màu đỏ. 
+Mấy bản V1.0.xx không xảy ra tình trạng này. Cửa Sổ nhỏ của App nó tự tràn tới viền Thanh trắng bên trái, sát mép taaskbar dưới đáy. 
+Nên kiểm tra coi lỗi chỗ nào. Không đụng tới các chức năng khác. No Yapping !
+
+---
+
+Làm
+
+---
+
+Vẫn chưa đạt. 
+Nó vẫn bị dư 1 khúc bên trái nè. Rà soát thật kĩ code coi. 
+Phải có nguyên nhân gì đó mới khiến App lỗi nhận diện 1 bên thiếu như vậy. 
+Trước đây không hề có.
+
+---
+
+Ok. Được rồi nha. Lưu bản chuẩn này lại. Lưu trạng thái mới nhất lên hệ thống luôn.
+
+---
+
+Hình như có lệnh khi ghim Dex tự bật UltraCar đúng không ? Nếu có thì chỉnh khoản 15-30s hãy bật lên nhé. Để các ứng dụng khác lên đầy đủ rồi bậy UltraCar sẽ ổn định hơn.
+
+---
+
+Các điểm cần sửa: 
+1. Thanh phím bố cục Popup cho thêm nút thu gọn, bấm vào thu gọn thanh này và có nút bấm trình bày ra lại. Đổi icon 6 chấm đi chuyển thành icon MOVE. Mấy icon cho lớn hơn chút chứ đang nhỏ quá khó nhìn. 
+2. Bỏ cái thanh màu đen dưới Logo UltraCarHCM. 
+3. Số KM cho thêm Border và text-shadow. Để nhìn được số rõ và dễ hơn nhé. 
+4. Tên hiển thị và lời chào cũng thêm bớt và text-shadow. 
+5. Thanh icon dưới căn bị lệch lên trên rồi kìa. Cấu hình căn đều nha. 
+Rồi phân tích thật kĩ yêu cầu của tôi rồi làm cho kĩ nha. No Yapping !
+
+---
+
+Lỗi ko mở đc app. Làm kĩ tí đi.
+
+---
+
+Xem REA có bản cập nhật mới không ? Nếu có thì cập nhật để phân tích APP kĩ hơn. 
+Còn yêu cầu của tôi đưa ra chưa đạt. Backgound đen vẫn còn. 
+Kk chỗ gps chưa được sửa.
+
+---
+
+Sao không tăng phiên bản ? Sao càng làm càng thiếu xót vậy ? No Yapping !
+
+---
+
+Và viền chữ chứ không phải bỏ cái khung border bên này hiểu không ?  
+Cái thanh màu đen dưới Logo cũng chưa xóa đi kìa. 
+Không đạt.
+
+---
+
+1. Hàng Bố cục ở giữa. Căn chưa đều kìa. Trên dưới chưa đều nhau. Căng đều ở giữa. 
+2. Bỏ viền đen Border bên ngoài cùng của hàng 2 và 3
+3. Viền số KM cho màu trắng đi
+
+---
+
+Vẫn chưa căn ở giữa được và chưa bỏ được cái viền (border) màu đen bên ngoài của hàng thứ 2. Hàng Phím tắt bố cục. Hiểu không. No Yapping !
+
+---
+
+Icon lớn hơn cho dễ bấm
+
+---
+
+Dàn icon căng giữa (chiều cao) giữa dàn nút Khởi động và bố cục ở dưới
+
+---
+
+1. App báo lỗi. 
+2. Nút nổi Camera. Bây giờ chuyển hướng thay vì để nổi độc lập trên màn hình thì đưa nó vào cố định ở thanh Bố cục bên trái được không ? Vì thanh đó lúc nào cũng hiện trên màn hình mà. Giờ giống chức năng thêm.
+3. Rồi phân Tích nút T (Dex Shot) của TigerIQ Driver cũng đang nổi trên màn hình. Giờ bạn tích hợp trực tiếp vào App UltraCarHCM V1 của mình luôn. Và bố trí cùng chỗ với nút Camera. Sắp xếp ở thanh bố cục.
+4. Chức năng của nút T và Camera đều phải giữ nguyên. Bao gồm hiệu ứng, trạng thái. 
+Làm trước phần này và xuất bản App mới cho tôi trước.
+
+---
+
+1. Thiết kế nút T không đúng yêu cầu. Icon T bản gốc đã có làm lại chi. 
+2. 2 nút mới thêm cũng phải bỏ góc hơi bầu giống các App còn lại chứ. 
+3. Chức năng nút T giờ thay đổi. Không lệ thuộc vào App TigerIQ Driver nữa mà là độc lập. Khi bấm chụp sẽ tự gửi về Server đọc ảnh AI. Xem kĩ nguyên tắc hay cấu hình mới trên App TigerIQ Driver xem. 
+4. Bây giờ App sử dụng trợ năng thì không mở được App GreenSM. Bắt buộc phải tắt hết trợ năng. 
+5. Mà hiện tại, tôi đang sử dụng nút bấm Bluetooth 2 chức năng hoạt động được là: Bấm giữ Play -> Tắt mở Camera; Bấm Lùi -> Chụp hình màn Dex. 
+6. Giờ bạn phân tích và nghiên cứu xem nếu không dùng trợ năng thì mình phải làm sao để có 2 chức năng đó ? 
+Đưa phương án thực hiện tôi xem khi nào tôi duyệt mới được làm.
+
+---
+
+Kiểm tra toàn bộ dự án tại sao tôi không cho phép sử dụng tốn phí mà giờ lại coi tốpn phí là sao ?
+
+---
+
+/boost 
+Bây giờ xử lý cái này sao ? Loại bỏ hoàn toàn việc tốn phí này đi. Rồi không thanh toán còn sài được gì không ? Hay là phải bỏ tài khoản ? 
+Đồng thời làm luôn App UltraCarHCM V1 đã được phân tích ở trên đi.

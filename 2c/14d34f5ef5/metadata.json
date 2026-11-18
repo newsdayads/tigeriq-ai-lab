@@ -3,7 +3,7 @@
   "checkpoint_id": "2c14d34f5ef5",
   "strategy": "manual-commit",
   "branch": "chore/ci-cost-zero-hygiene",
-  "checkpoints_count": 4,
+  "checkpoints_count": 22,
   "files_touched": [
     ".github/workflows/ci.yml",
     ".github/workflows/revenue-audit-portable.yml",
@@ -33,17 +33,23 @@
       "transcript": "/2c/14d34f5ef5/3/full.jsonl",
       "content_hash": "/2c/14d34f5ef5/3/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/2c/14d34f5ef5/4/metadata.json",
+      "transcript": "/2c/14d34f5ef5/4/full.jsonl",
+      "content_hash": "/2c/14d34f5ef5/4/content_hash.txt",
+      "prompt": "/2c/14d34f5ef5/4/prompt.txt"
     }
   ],
   "redaction": {
-    "replacements": 20,
+    "replacements": 49,
     "layers": {
-      "betterleaks": 0,
+      "betterleaks": 12,
       "connection_string": 0,
       "credential_key": 0,
-      "credential_value": 0,
+      "credential_value": 1,
       "credentialed_uri": 0,
-      "entropy": 20,
+      "entropy": 36,
       "key_context": 0,
       "provider_token": 0,
       "shell_stdin": 0
