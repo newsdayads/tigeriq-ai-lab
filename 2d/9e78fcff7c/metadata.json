@@ -3,7 +3,7 @@
   "checkpoint_id": "2d9e78fcff7c",
   "strategy": "manual-commit",
   "branch": "chore/ci-retention-3d-all",
-  "checkpoints_count": 1,
+  "checkpoints_count": 2,
   "files_touched": [
     ".github/workflows/android-worker.yml",
     ".github/workflows/chrome-controller-package.yml",
@@ -22,6 +22,12 @@
       "metadata": "/2d/9e78fcff7c/0/metadata.json",
       "transcript": "/2d/9e78fcff7c/0/full.jsonl",
       "content_hash": "/2d/9e78fcff7c/0/content_hash.txt",
+      "prompt": ""
+    },
+    {
+      "metadata": "/2d/9e78fcff7c/1/metadata.json",
+      "transcript": "/2d/9e78fcff7c/1/full.jsonl",
+      "content_hash": "/2d/9e78fcff7c/1/content_hash.txt",
       "prompt": ""
     }
   ],
