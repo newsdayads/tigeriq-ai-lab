@@ -143,4 +143,4 @@ jobs:
           name: TigerIQ-Website-Audit-Portable-${{ github.event.pull_request.head.sha || github.sha }}
           path: .portable-artifacts/TigerIQ-Website-Audit-Portable.zip
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 3
