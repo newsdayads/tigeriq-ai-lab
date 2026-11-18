@@ -50,4 +50,4 @@ jobs:
           name: p0-g6-native-version-rollback
           path: p0-g6-native-rollback-evidence/receipt.json
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 3

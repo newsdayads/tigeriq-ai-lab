@@ -42,4 +42,4 @@ jobs:
           name: TigerIQ-UI-Autopilot-Snapshot-${{ github.event.pull_request.number || github.run_number }}
           path: artifact/TigerIQ-UI-Autopilot-Snapshot
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3

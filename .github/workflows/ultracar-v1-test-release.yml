@@ -115,7 +115,7 @@ jobs:
           path: |
             ${{ runner.temp }}/ultracar/*_signed_TEST.apk
             ${{ runner.temp }}/ultracar/*_signed_TEST.apk.sha256
-          retention-days: 7
+          retention-days: 3
           if-no-files-found: error
 
 # The workflow deliberately never publishes Production or claims Drive verification.

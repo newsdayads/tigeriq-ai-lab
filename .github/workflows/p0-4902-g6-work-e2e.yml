@@ -90,7 +90,7 @@ jobs:
           name: p0-g6-work-e2e-${{ github.sha }}
           path: p0-g6-work-evidence/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
       - name: Remove isolated model and verify cleanup
         if: always()
         run: |

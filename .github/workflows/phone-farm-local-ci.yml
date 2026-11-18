@@ -58,7 +58,7 @@ jobs:
         with:
           name: TigerIQ-PhoneFarm-Windows
           path: ${{ runner.temp }}/TigerIQ-PhoneFarm-Windows.zip
-          retention-days: 14
+          retention-days: 3
           if-no-files-found: error
 
   build-bootstrapper:
@@ -89,7 +89,7 @@ jobs:
           path: |
             ${{ runner.temp }}/phonefarm-bootstrapper/TigerIQPhoneFarmBootstrapper.exe
             ${{ runner.temp }}/phonefarm-bootstrapper/TigerIQPhoneFarmBootstrapper.sha256
-          retention-days: 14
+          retention-days: 3
           if-no-files-found: error
 
   release-windows-rc5:
