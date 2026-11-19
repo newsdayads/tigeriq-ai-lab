@@ -5,6 +5,8 @@ import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
 import {fetchCoreSnapshot} from './core-readonly.mjs';
 import {fetchLiveCoreSnapshot} from './core-live-readonly.mjs';
+import {refreshRegistryWorkforce} from '../tigeriq-core/workforce-registry.mjs';
+import {projectAnimalRoster} from './roster-zones.mjs';
 import {createOwnerActions} from './owner-actions.mjs';
 
 const htmlPath = fileURLToPath(new URL('./index.html', import.meta.url));
@@ -34,7 +36,7 @@ function sourceFailure(error, live = false) {
     live ? 'CORE_LIVE_SOURCE_UNAVAILABLE' : 'CORE_SOURCE_UNAVAILABLE';
 }
 
-export function createAnimalCityServer({fetchImpl = fetch, startedAt = new Date().toISOString()} = {}) {
+export function createAnimalCityServer({fetchImpl = fetch, rosterProvider = refreshRegistryWorkforce, startedAt = new Date().toISOString()} = {}) {
   const owner=createOwnerActions({fetchImpl});
   return createServer(async (req, res) => {
     const port = req.socket.localPort;
@@ -54,6 +56,40 @@ export function createAnimalCityServer({fetchImpl = fetch, startedAt = new Date(
     if (route === '/api/owner-objectives') {
       const result=await owner.recentObjectives();
       return send(res,result.status,JSON.stringify(result.body),'application/json; charset=utf-8');
+    }
+
+    // Staff identities come from the existing canonical Registry #335 reader.
+    // This is a read-only visualization, not an employment/dispatch authority.
+    if (route === '/api/roster') {
+      try {
+        const registry = await rosterProvider(false,{fetchImpl});
+        if (!Array.isArray(registry?.workforce) || !registry?.workforceMeta)
+          throw new Error('REGISTRY_UNVERIFIED');
+        const meta=registry.workforceMeta;
+        const readAt=Date.parse(meta.fetchedAt);
+        const registryFresh=meta.stale===false && Number.isFinite(readAt) &&
+          readAt<=Date.now()+10_000 && Date.now()-readAt<120_000;
+        let live=null;
+        try { live=await fetchLiveCoreSnapshot({fetchImpl,attempts:1,timeoutMs:2500}); }
+        catch { /* fail closed to UNKNOWN; retain roster identities */ }
+        const liveVerified=live?.ok===true && live.liveWorkerBindingsVerified===true;
+        const sourceFresh=registryFresh && liveVerified;
+        const presentation=projectAnimalRoster(registry.workforce,{
+          fresh:sourceFresh, workers:sourceFresh?live.workers:[],
+        });
+        return send(res,200,JSON.stringify({
+          ok:true,readOnly:true,source:'GitHub Registry #335 + verified Core live',
+          registryVersion:String(meta.version||''),registryFresh,liveVerified,
+          sourceFresh,total:presentation.staff.length,
+          ceo:presentation.ceo,zones:presentation.zones,staff:presentation.staff,
+          verifiedAt:sourceFresh?new Date(Math.min(readAt,Date.parse(live.verifiedAt))).toISOString():null,
+        }),'application/json; charset=utf-8');
+      } catch {
+        return send(res,503,JSON.stringify({
+          ok:false,readOnly:true,reason:'ANIMAL_ROSTER_SOURCE_UNAVAILABLE',
+          sourceFresh:false,zones:[],staff:[],
+        }),'application/json; charset=utf-8');
+      }
     }
 
     if (route === '/api/rooms') {
