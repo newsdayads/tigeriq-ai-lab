@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-06",
+  "updated": "2026-11-20",
   "entries": [
     {
       "skillId": "document-normalization-ingest",
@@ -87,6 +87,28 @@
           "useCount": 1,
           "measureRef": "docs/skills/canary/4380/evidence.json",
           "evidenceRef": "docs/skills/canary/4380/README.md#domain-skill-packaging"
+        }
+      ]
+    },
+    {
+      "skillId": "product-3d-engineering",
+      "status": "ACTIVE",
+      "attempts": 1,
+      "maxAttempts": 3,
+      "blocker": null,
+      "nextCondition": null,
+      "nextEligibleAt": null,
+      "fixtureRef": "docs/skills/product-3d-engineering/evidence/2026-11-20-pc01-cad-canary.md",
+      "provenanceRef": "docs/skills/product-3d-engineering/SKILL.md",
+      "promotionEligible": false,
+      "evidence": [
+        {
+          "type": "USE_MEASURE",
+          "outcome": "PASS",
+          "at": "2026-11-20",
+          "useCount": 1,
+          "measureRef": "docs/skills/product-3d-engineering/evidence/2026-11-20-pc01-cad-canary.md",
+          "evidenceRef": "docs/skills/product-3d-engineering/evidence/2026-11-20-pc01-cad-canary.md#biên-nhận-pc01"
         }
       ]
     }

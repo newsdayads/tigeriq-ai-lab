@@ -154,10 +154,23 @@ test('Core manager invokes loader and appends matched skill context', () => {
   assert.match(core, /SKILL_CONTEXT_LOADED/);
 });
 
+test('Owner 3D requests route to verified ACTIVE CAD skill without autoloading unrelated skills', () => {
+  const registryPath = join(process.cwd(), 'docs/skills/registry.yaml');
+  const registry = parseSkillRegistry(readFileSync(registryPath, 'utf8'));
+  const cad = registry.skills.find((skill: Entry) => skill.id === 'product-3d-engineering');
+  assert.equal(cad?.state, 'ACTIVE');
+  for (const prompt of ['vẽ 3d', 'thiết kế giá đỡ in 3D', 'sửa STEP và STL']) {
+    const selected = matchAndLoadSkills(prompt, { registryPath });
+    assert.ok(selected.skills.some((skill: Entry) => skill.id === 'product-3d-engineering'),
+      'CAD must load for: ' + prompt + ' / skipped=' + JSON.stringify(selected.skipped));
+    assert.ok(selected.totalChars <= 6000);
+  }
+});
+
 test('all ACTIVE registry skills have canonical contract files and fields', () => {
   const registryPath = join(process.cwd(), 'docs/skills/registry.yaml');
   const registry = parseSkillRegistry(readFileSync(registryPath, 'utf8'));
-  assert.equal(registry.skills.length, 20);
+  assert.equal(registry.skills.length, 21);
   for (const id of ['frontend-engineering','backend-engineering']) {
     assert.equal(registry.skills.find((skill: Entry) => skill.id === id)?.state,'CANDIDATE');
   }
@@ -171,7 +184,7 @@ test('all ACTIVE registry skills have canonical contract files and fields', () =
   }
 
   const active = registry.skills.filter((skill: Entry) => skill.state === 'ACTIVE');
-  assert.equal(active.length, 16);
+  assert.equal(active.length, 17);
   const requiredHeadings = [
     '## Identity',
     '## Trigger',
