@@ -20,3 +20,13 @@
 - Chưa đạt: độc lập rà soát PR, xác minh cắt lớp Bambu Studio, nghiệm thu in vật lý, đánh giá thăng hạng Skill ACTIVE, nghiệm thu liên phiên ChatGPT/Gemini.
 - Skill trạng thái `CANDIDATE` cho tới khi có đầy đủ bằng chứng; không được nói toàn hệ thống đã tự động nhận.
 - `DRIVE_SYNC=NOT_REQUIRED`: thay đổi SKILL/registry trên GitHub không thay đổi Loader.
+
+## Thẩm định phạm vi thực thi khi nâng cấp Skill (20/11/2026)
+- ID Skill nội bộ `product-3d-engineering` — không nạp trực tiếp mã Skill bên ngoài; chỉ tham khảo quy trình và dùng trình CAD được cài riêng.
+- Provenance: `earthtojake/text-to-cad` MIT, `cad==0.11.13`, PyPI wheel sha256 bên trên; không dùng bản `latest`.
+- Cơ chế cài: `python -m venv` + `pip install --only-binary=:all: cad==0.11.13`; không chạy PowerShell installer, không dùng `setup.py` nguồn, không cài plugin vào các host; có tải dependency qua HTTPS từ PyPI.
+- Khả năng: READ tệp tham số/CAD người dùng cho phép; WRITE file bản vẽ trong thư mục thiết kế và cache theo tài khoản; RUN_COMMAND chạy Python mô hình do TigerIQ tạo trên máy PC01; NETWORK tải dependency khi chạy lần đầu (đã tải), loopback viewer; CONFIG_PERMISSION_CHANGE không yêu cầu nâng quyền. Máy chủ CAD có thể chạy mã Python với quyền tài khoản PC01: không dùng đối với file/câu lệnh chưa được thẩm định.
+- Bảo vệ: `cad telemetry off`, `cad plugin update auto off`, gói cài trong venv nên không tự cập nhật, viewer chỉ `127.0.0.1`, không đưa token vào GitHub/Drive. Không phơi cổng, không tự in hay dùng gói ngoài mới.
+- Kiểm thử chức năng: có tệp thực, kích thước và lưới hợp lệ; đây là canary một mẫu. Không suy rộng thành nghiệm thu toàn bộ tính năng FEA, PDF drawing, Bambu Studio hoặc mọi thiết bị.
+- Quy trình kích hoạt: `CANDIDATE → VALIDATED` sau rà phạm vi/giấy phép; `VALIDATED → PROMOTION_READY` theo canary; `ACTIVE` trong registry chỉ có hiệu lực sau PR exact-head CI xanh, hợp nhất và kiểm tra từng bề mặt.
+- `DRIVE_SYNC=NOT_REQUIRED` đối với thay đổi file Skill, registry, queue; nếu sửa Loader thì đồng bộ Drive mirror sau hợp nhất.
