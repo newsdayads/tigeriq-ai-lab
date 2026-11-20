@@ -2,7 +2,7 @@
 
 ## Identity
 - ID: product-3d-engineering
-- Version: 0.3.0
+- Version: 0.4.0
 - State: ACTIVE
 - Target: physical-product-cad
 - Source: GitHub main, `docs/skills/registry.yaml`. Công cụ PC01: `earthtojake/text-to-cad` (MIT), `cad==0.11.13`, cài cách ly; không đồng nghĩa mọi ứng dụng đều đã nạp.
@@ -24,19 +24,19 @@
 4. Kiểm tra mặt cắt, va chạm, dung sai, bề dày, số đo mm và điều kiện gắn/in. Giữ nguồn `.py` để sửa về sau.
 5. Xuất STEP (CAD chỉnh sửa), STL (lưới) và 3MF (mô hình); không suy 3MF đã cắt lớp. Nếu cần bản vẽ kỹ thuật, xuất hình chiếu trước/trên/cạnh, mặt cắt từ **cùng mô hình**.
 6. Kiểm tra STL đóng kín, mặt suy biến, kích thước; ảnh xem trước 4–6 góc lấy từ mô hình thật (không ảnh minh họa tráo đổi).
-7. Nếu có Bambu Studio: kiểm tra cắt lớp, hướng đặt, support, lỗi trước khi gọi `SLICED_VERIFIED`; không tự gửi lệnh in Bambu P1S.
-8. Upload tệp đã nghiệm thu vào Drive TigerIQ 3D; đọc lại mã tệp và `parent_ids` trước khi nói đã lưu.
+7. Với Bambu Lab P1S: dùng Bambu Studio PC01 và preset máy/vật liệu đã kiểm chứng; cắt lớp thực, kiểm tra khay, kích thước, hướng đặt, support, vật liệu, thời gian/khối lượng, log lỗi và file `.gcode.3mf` trước khi báo `SLICED_VERIFIED`. Xem `references/bambu-p1s-print-workflow.md`. Không dùng 3MF mô hình làm 3MF đã slice.
+8. Sau khi Owner duyệt **đúng mẫu in** (máy, file/hash, vật liệu, màu, số lượng), xác minh P1S đang online/sẵn sàng, đường truyền hợp lệ và không có job đang in; chỉ sau đó gửi một lệnh in có khóa chống trùng, kiểm tra phản hồi và mã job. Không tự in khi chưa duyệt; không lặp lệnh nếu phản hồi không rõ.\n9. Upload tệp đã nghiệm thu vào Drive TigerIQ 3D; đọc lại mã tệp và `parent_ids` trước khi nói đã lưu.
 
 ## Tools / Output
 - PC01 `D:\TigerIQ\Tools\text-to-cad-v0.11.13\Scripts\cad.exe`; Python 3.12; không cài lại nếu đã có.
 - Trước mọi lệnh: `DO_NOT_TRACK=1`, `CAD_TELEMETRY=0`, `CAD_UPDATE_CHECK=0`; chỉ chạy server `127.0.0.1`, không phơi Internet, không chia sẻ token.
-- Đầu ra: bảng số đo/giả định, mã nguồn `.py`, file STEP/STL/3MF, ảnh xem trước kỹ thuật, biên nhận kiểm tra lưới, kết quả lưu Drive.
+- Đầu ra: bảng số đo/giả định, mã nguồn `.py`, STEP/STL/3MF, ảnh xem trước, kiểm tra lưới; nếu P1S thì thêm preset, file `.gcode.3mf`, bằng chứng slice, trạng thái duyệt/gửi in, kết quả lưu Drive.
 - Tài liệu chuyên sâu, xử lý hộc cửa gió/biên dạng/giải pháp chống trượt: `references/design-method.md` (đọc khi cần).
 
 ## Acceptance
 - Công cụ CAD PC01 đã kiểm thử dựng bracket 40×20×6 mm, xuất STEP/STL/3MF; STL 124 tam giác, 186 cạnh khép kín, 0 mặt suy biến.
 - Mọi thiết kế mới phải kiểm tra kích thước thực, tính kín, khả năng chế tạo và có bằng chứng file thực trước khi báo đạt.
-- Chỉ báo `PRINT_TESTED` sau khi có nghiệm thu mẫu in vật lý; `SLICED_VERIFIED` sau khi kiểm tra trong phần mềm cắt lớp.
+- Chỉ báo `PRINT_SUBMITTED` khi P1S xác nhận nhận job, `PRINT_TESTED` sau khi có nghiệm thu mẫu in vật lý; `SLICED_VERIFIED` sau khi kiểm tra thực tế file `.gcode.3mf` trong Bambu Studio.
 
 ## Evidence
 - `evidence/2026-11-20-pc01-cad-canary.md`.
@@ -50,7 +50,7 @@
 
 ## Safety
 - Công cụ trên PC01 là gói ngoài, đã khóa `cad==0.11.13`; không cài phiên bản trôi, không chạy script cài tự động.
-- Không sửa quyền, cấu hình bảo mật, tự phát hành dịch vụ, thanh toán, lệnh in, hoặc thay đổi hệ thống ngoài phạm vi đã duyệt.
+- Không sửa quyền, cấu hình bảo mật, tự phát hành dịch vụ, thanh toán hoặc thay đổi hệ thống ngoài phạm vi đã duyệt. Lệnh in P1S là tác vụ tác động vật lý: bắt buộc phê duyệt cụ thể, kiểm tra an toàn và chống gửi trùng.
 - Tài liệu GitHub không thể ép tất cả phiên ChatGPT/Gemini tự cập nhật; mỗi bề mặt cần nạp và có chứng cứ riêng.
 
 ## Non-goals
