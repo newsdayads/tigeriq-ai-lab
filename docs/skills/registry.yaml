@@ -237,9 +237,9 @@ skills:
   - id: product-3d-engineering
     title: Professional 3D Product Engineering and CAD Review
     state: ACTIVE
-    version: 0.3.0
+    version: 0.4.0
     provenance_batch: owner-direct-2026-11-20
     source_log: product-3d-engineering/SKILL.md
     target: physical-product-cad
     triggers: "vẽ 3d thiết kế 3d dựng 3d in 3d CAD STL STEP 3MF bản vẽ kỹ thuật giá đỡ vỏ hộp phụ kiện Bambu P1S build123d text-to-cad"
-    summary: "Verified CAD modeling on PC01 with pinned text-to-cad 0.11.13; STEP STL 3MF, geometry checks and Google Drive routing. Only active in consumers of current GitHub main; no automatic ChatGPT host injection."
+    summary: "PC01 CAD and Bambu Studio P1S workflow: parametric design, STEP/STL/3MF, verified slicing to gcode.3mf, explicit per-job print approval, device readiness and receipt required before direct print; no automatic ChatGPT host injection."
