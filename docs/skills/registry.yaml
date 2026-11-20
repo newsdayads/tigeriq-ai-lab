@@ -1,7 +1,7 @@
 version: 1
 owner_issue: 859
 parent_issue: 822
-updated: 2026-11-12
+updated: 2026-11-20
 source_catalog:
   batch_id: owner-video-lessons-2026-09-18
   source_type: chatgpt_attachment
@@ -237,9 +237,9 @@ skills:
   - id: product-3d-engineering
     title: Professional 3D Product Engineering and CAD Review
     state: CANDIDATE
-    version: 0.1.0
-    provenance_batch: owner-direct-2026-11-12
+    version: 0.2.0
+    provenance_batch: owner-direct-2026-11-20
     source_log: product-3d-engineering/SKILL.md
     target: physical-product-cad
-    triggers: "3d thiết kế sản phẩm in 3D CAD STL STEP 3MF Bambu P1S OpenSCAD Blender kỹ thuật"
-    summary: "CAD-first workflow, measured orthographic drawing, 4–6 verified model views, printability and slicer evidence, safely adapted from pinned external reference skills; not installed on host."
+    triggers: "vẽ 3D thiết kế 3D dựng 3D CAD STL STEP 3MF bản vẽ kỹ thuật giá đỡ vỏ hộp phụ kiện in 3D Bambu P1S build123d text-to-cad"
+    summary: "Parametric CAD workflow with text-to-cad 0.11.13 verified on PC01; exports STEP/STL/3MF; mesh canary PASSED; skill CANDIDATE pending independent review and formal promotion; use on Owner-scoped 3D requests."
