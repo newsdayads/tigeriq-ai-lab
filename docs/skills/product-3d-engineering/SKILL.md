@@ -2,11 +2,11 @@
 
 ## Định danh
 - ID: `product-3d-engineering`
-- Version: `0.1.0`
-- State: `CANDIDATE` — chưa kích hoạt trong TigerIQ Core, ChatGPT hoặc PC01.
+- Version: `0.2.0`
+- State: `CANDIDATE` — tài liệu chưa qua xét duyệt ACTIVE; công cụ CAD 0.11.13 đã cài và kiểm thử thực trên PC01 (20/11/2026), không suy ra ChatGPT/Core tự nạp.
 - Target: physical-product-design / CAD / FDM 3D printing / product visualization.
 - Owner request: 2026-11-12, nạp quy trình thiết kế sản phẩm 3D và thiết kế chuyên nghiệp, có kiểm chứng.
-- Quyền: đọc bản vẽ, dựng bản nháp và phân tích ngoại tuyến trong phạm vi được giao. Không tự cài đặt công cụ, chạy trình cài, điều khiển PC01 hoặc phát hành sản xuất khi chưa qua cổng thực tế.
+- Quyền: thiết kế, xuất và kiểm tra file CAD khi có chỉ đạo Owner; PC01 dùng MCP OAuth với quyền thực tế. Lệnh Owner 20/11/2026 đã cho phép cài thử công cụ CAD 0.11.13. Mọi lần cài mới/đổi phiên bản, phơi cổng mạng, in thật và phát hành sản xuất vẫn qua cổng riêng.
 
 ## Nguồn nghiên cứu (PINNED, chỉ tham khảo quy trình)
 1. CAD/OpenSCAD: `andreahaku/openscad_claude_skill`, `SKILL.md`, Git blob `b47323afb68c2f3847a809359aae4121e5af1512`, repo README tuyên bố MIT. Cần xác minh thông báo bản quyền trước khi sao chép mã.
@@ -19,6 +19,17 @@
 - Thiết kế vật thể thực, phụ kiện ô tô, hộc để đồ, giá đỡ, vỏ bảo vệ, linh kiện cơ khí, vật thể in 3D.
 - Thiết kế từ ảnh thật, phác thảo, tài liệu kích thước; sửa mẫu STL, STEP, 3MF đã có.
 - Dựng hình ảnh sản phẩm nhiều góc; cần đánh giá tính thẩm mỹ nhưng **mô hình CAD là nguồn sự thật về hình học**.
+
+
+## Tích hợp text-to-cad — đã kiểm thử trên PC01 (20/11/2026)
+- Upstream: `https://github.com/earthtojake/text-to-cad` (MIT); PyPI distribution `cad==0.11.13`. Wheel `cad-0.11.13-py3-none-any.whl`, SHA-256 `aa7d30d5deda8c237886355e82a4bc29414686e84fb890a5da5445e44e51bc1a`. Không sử dụng tập lệnh tự tải `install.ps1`, không dùng `latest`, không tự bật cập nhật.
+- Cài cách ly trên PC01: `D:\TigerIQ\Tools\text-to-cad-v0.11.13\Scripts\cad.exe`. Python 3.12, `uv` 0.13.9 nằm trong cùng môi trường. Không đổi PATH hệ thống, không cài plugin đại trà. Truy cập trình xem chỉ tại `127.0.0.1:3245`, không chia sẻ URL có token. Đã `cad telemetry off`, `cad update auto off`, `cad plugin update auto off`.
+- Gọi trong PowerShell qua MCP PC01 (chỉ khi được giao thiết kế): thiết lập `DO_NOT_TRACK=1`, `CAD_TELEMETRY=0`, `CAD_UPDATE_CHECK=0`; kiểm tra `& 'D:\TigerIQ\Tools\text-to-cad-v0.11.13\Scripts\cad.exe' server status`, nếu chưa hoạt động mới chạy `server start`; dùng `cad run <path-to-model.py>` để dựng; xuất `STEP/STL/3MF` từ **cùng một mô hình**, không thay bằng hình AI minh họa. Không chạy server trên `0.0.0.0` hoặc dùng đường hầm công khai.
+- Kích hoạt theo mục tiêu: Khi anh Sơn giao `vẽ 3D`, `thiết kế 3D`, `làm mẫu in 3D`, `sửa STL/3MF/STEP`, `vỏ hộp`, `giá đỡ`, `mô hình cơ khí` hoặc `bản vẽ CAD` cho **vật thể thực**, ưu tiên kỹ năng này và công cụ CAD tham số. Ảnh minh họa 3D đơn thuần không đồng nghĩa bản CAD/in được; nếu chỉ xin hình minh họa thì định tuyến sang công cụ hình ảnh.
+- Đầu ra mặc định cho yêu cầu thiết kế sản phẩm: (1) kích thước mm và các giả định, (2) mã nguồn Python `build123d`/mô hình tham số, (3) STEP, STL, 3MF theo mục tiêu, (4) ảnh xem trước **từ mô hình**, (5) kiểm tra kích thước, tính kín, dung sai, khả năng in, (6) bản vẽ kỹ thuật nếu yêu cầu/thiết kế có số đo sản xuất, (7) lưu thành phẩm đã xác minh vào thư mục `TigerIQ 3D` trên Google Drive theo `docs/3d/GOOGLE_DRIVE_DESTINATION.md`.
+- Không tự phát lệnh in Bambu P1S, không tự cắt lớp rồi tuyên bố đã in, không thay đổi tài khoản/thiết bị, không đưa file hoặc máy chủ ra Internet. File 3MF xuất từ CAD **không tự chứng minh** đã cắt lớp trong Bambu Studio.
+- Bằng chứng canary PC01: `JOB-TIGERIQ-CAD-INSTALL-20261120` và `JOB-TIGERIQ-CAD-SMOKE-RERUN-20261120`; `JOB-TIGERIQ-CAD-MESH-CHECK-20261120`. Mô hình `bracket_smoke` 40×20×6 mm, 124 tam giác STL, 186 cạnh kín, 0 mặt suy biến, đã xuất `STEP/STL/3MF`. Tệp `D:\TigerIQ\Canary\cad-20261120\`. Chưa có bằng chứng nghiệm thu Bambu Studio/in thực hoặc cổng nâng Skill lên ACTIVE.
+- Quy tắc nạp liên phiên: nguồn GitHub `main` sau khi hợp nhất, không suy luận các chat ChatGPT/Gemini tự động nhận Skill hoặc tự có quyền điều khiển PC01. Nếu còn CANDIDATE thì dùng quy trình đã kiểm thử theo nhiệm vụ Owner trong phạm vi cho phép, nhưng **không nói Skill ACTIVE**.
 
 ## Quy trình bắt buộc
 1. **Khôi phục**: lấy ảnh, phác thảo, số đo hiện có và mẫu in lỗi; không hỏi lại dữ liệu đã có. Phân biệt số đo lọt lòng, phủ bì, khe hở, dung sai, và đơn vị mm.
@@ -45,8 +56,8 @@
 - `STATUS`: CANDIDATE, không tự ghi ACTIVE hoặc khẳng định PC01 đã cài nếu không có biên nhận.
 
 ## Bảo mật và triển khai
-- Nạp tài liệu này ở mức **đọc/chỉ dẫn thiết kế**, chưa phải cài chương trình trên host.
-- Tuyệt đối không khởi chạy `git clone`, `pip install`, `npm install`, máy chủ Blender bridge hoặc lệnh shell của upstream chỉ vì đã đọc SKILL.md.
+- Phân biệt tài liệu Skill còn CANDIDATE với bộ công cụ CAD đã cài thực trên PC01; không đồng nhất trạng thái.
+- Không tự khởi chạy `git clone`, `pip install`, `npm install`, máy chủ Blender bridge hoặc lệnh shell của upstream **chỉ vì đọc SKILL.md**. Phạm vi cài PC01 20/11/2026 đã được Owner giao trực tiếp và có biên nhận độc lập.
 - Nếu thực thi trên PC01: kiểm tra kết nối và quyền phiên, theo MCP trước, RDC dự phòng; không vượt quyền, không chiếm tài nguyên writer khác.
 - Không sao chép upstream script khi chưa kiểm tra giấy phép, dependency, network, quyền file, và `external-skill-security-gate`; mọi kiểm thử/đưa vào vận hành phải có bằng chứng riêng.
 - `DRIVE_SYNC=NOT_REQUIRED`: chỉ bổ sung Skill candidate, không thay Loader/điểm khởi động.
