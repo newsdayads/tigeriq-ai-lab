@@ -105,7 +105,7 @@
         {
           "type": "USE_MEASURE",
           "outcome": "PASS",
-          "at": "2026-11-20T04:30:00Z",
+          "at": "2026-11-20",
           "useCount": 1,
           "measureRef": "docs/skills/product-3d-engineering/evidence/2026-11-20-pc01-cad-canary.md",
           "evidenceRef": "docs/skills/product-3d-engineering/evidence/2026-11-20-pc01-cad-canary.md#biên-nhận-pc01"
