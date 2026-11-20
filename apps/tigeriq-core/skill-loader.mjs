@@ -82,7 +82,7 @@ export function loadSkillRegistry(registryPath = DEFAULT_REGISTRY) {
 }
 
 function tokens(value) {
-  return new Set((String(value || '').toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).filter(token => token.length >= 3));
+  return new Set((String(value || '').toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).filter(token => token.length >= 3 || token === '3d' || token === 'vẽ'));
 }
 
 function relevanceScore(objective, skill) {
