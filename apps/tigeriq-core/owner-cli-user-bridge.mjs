@@ -67,16 +67,19 @@ export async function runOwnerCliInUserSession({action,provider,model,prompt,tim
     if(error?.code==='EEXIST')throw failed('OWNER_CLI_BRIDGE_BUSY');
     throw error;
   }
-  let taskStarted=false,completed=false;
+  let taskAttempted=false,completed=false,inputCreated=false;
   try{
     await lock.writeFile(JSON.stringify({requestId,createdAt:request.createdAt}));
     // Never overwrite or delete a previous unknown response.
     try{await fs.access(outputPath);throw failed('OWNER_CLI_BRIDGE_PENDING_RECEIPT');}
     catch(error){if(error?.code!=='ENOENT')throw error;}
     await fs.writeFile(inputPath,JSON.stringify(request),{flag:'wx',mode:0o600});
+    inputCreated=true;
+    // The scheduler may start a task even if its caller gets a transport error.
+    // Mark attempted BEFORE invoking it; uncertain start never unlocks or retries.
+    taskAttempted=true;
     if(startTask)await startTask(taskName);
     else await execFileAsync('schtasks.exe',['/Run','/TN',taskName],{timeout:12000,windowsHide:true});
-    taskStarted=true;
     const deadline=now()+Math.min(MAX_WAIT_MS,Number(timeoutMs)+30000);
     while(now()<deadline){
       try{
@@ -96,9 +99,9 @@ export async function runOwnerCliInUserSession({action,provider,model,prompt,tim
     throw failed('OWNER_CLI_BRIDGE_TIMEOUT_PENDING');
   }finally{
     await lock.close().catch(()=>{});
-    if(completed||!taskStarted){
-      await fs.unlink(inputPath).catch(()=>{});
-      await fs.unlink(outputPath).catch(()=>{});
+    if(completed||!taskAttempted){
+      if(inputCreated)await fs.unlink(inputPath).catch(()=>{});
+      if(completed)await fs.unlink(outputPath).catch(()=>{});
       await fs.unlink(lockPath).catch(()=>{});
     }
   }
