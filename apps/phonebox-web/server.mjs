@@ -78,7 +78,7 @@ function allowedView(path) {
   if (!path.startsWith('/agent/api/')) return false;
   const p = path.slice('/agent/api/'.length);
   const rules = [
-    /^state$/, /^stream$/, /^config$/, /^quotas$/, /^work$/, /^procs$/, /^procs\/(icon|detail)$/,
+    /^state$/, /^stream$/, /^config$/, /^quotas$/, /^work$/, /^work\/conversation$/, /^procs$/, /^procs\/(icon|detail)$/,
     /^apps$/, /^apps\/icon$/, /^shortcuts\/icon$/, /^latency$/, /^calendar$/, /^feeds$/,
     /^photos(?:\/[A-Za-z0-9_-]+)?$/, /^camera$/, /^docker$/, /^ha\/(states|entities)$/,
     /^network\/adapters$/, /^obs$/, /^discord(?:\/img)?$/, /^steam(?:\/avatar)?$/,
