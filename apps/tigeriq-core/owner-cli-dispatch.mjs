@@ -226,6 +226,14 @@ export async function dispatchOwnerCliJob({
   }
 
   const routingInputs = probeResultToRoutingInputs(probe);
+  // The quota probe runs asynchronously. Its observedAt can be a few seconds
+  // *after* the nowMs captured when this job started, so comparing fresh
+  // evidence against that earlier timestamp wrongly rejects every provider.
+  // Never trust a future-dated snapshot beyond the actual local clock.
+  const observedAtMs = Date.parse(String(probe?.observedAt || ''));
+  const selectionNowMs = Number.isFinite(observedAtMs)
+    ? Math.max(nowMs, Math.min(Date.now(), observedAtMs))
+    : nowMs;
   let remainingSnapshots = [...routingInputs.snapshots];
   const failures = [];
   const boundedTimeout = clampTimeout(timeoutMs);
@@ -237,7 +245,7 @@ export async function dispatchOwnerCliJob({
       antigravityModels: routingInputs.antigravityModels,
       codexModels: routingInputs.codexModels,
       auth: routingInputs.auth,
-      nowMs,
+      nowMs: selectionNowMs,
     });
 
     if (!decision.chosen) {
