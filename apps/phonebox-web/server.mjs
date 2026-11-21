@@ -81,7 +81,7 @@ export function redact(value) {
   }
   return value;
 }
-const viewRoutes = new Set(['/api/config', '/api/state', '/api/quotas', '/api/work', '/api/procs', '/api/push', '/api/batteries', '/api/calendar', '/api/controls/state', '/api/feeds', '/api/docker', '/api/apps', '/api/steam', '/api/obs', '/api/discord', '/api/volume', '/api/media/state', '/api/ha/states']);
+const viewRoutes = new Set(['/api/config', '/api/state', '/api/quotas', '/api/work', '/api/procs', '/api/push', '/api/batteries', '/api/calendar', '/api/controls/state', '/api/feeds', '/api/docker', '/api/apps', '/api/steam', '/api/obs', '/api/discord', '/api/media/state', '/api/ha/states']);
 export function viewAllowed(method, urlPath) {
   return method === 'GET' && (viewRoutes.has(urlPath) || urlPath === '/api/procs/detail');
 }
