@@ -1,0 +1,21 @@
+name: PhoneBox Web Security and Compatibility
+on:
+  pull_request:
+    paths:
+      - "apps/phonebox-web/**"
+      - ".github/workflows/phonebox-web.yml"
+  workflow_dispatch:
+jobs:
+  phonebox-web-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Syntax check
+        run: node --check apps/phonebox-web/server.mjs && node --check apps/phonebox-web/server.test.mjs
+      - name: Security and compatibility tests
+        run: node --test apps/phonebox-web/server.test.mjs
