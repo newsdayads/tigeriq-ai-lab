@@ -10,6 +10,11 @@ describe('Owner CLI quota routing: fail closed',()=>{
  it('reads Codex real window minima (not sum)',()=>{expect(codex.remainingFraction).toBeCloseTo(0.13);expect(codex.windows).toHaveLength(2);});
  it('reads Antigravity group specific quotas',()=>{expect(agy).toHaveLength(2);expect(agy[0].remainingFraction).toBe(1);});
  it('uses a live lightweight available model before Codex',()=>{expect(chooseOwnerCodingRoute(args)).toMatchObject({chosen:{provider:'antigravity',model:'gemini-3.8-flash-low'},code:'ELIGIBLE_NOT_DISPATCHED'});});
+ it('prefers a fresher pool with materially more remaining quota',()=>{
+   const lowGemini={...agy[0],remainingFraction:0.06};
+   const decision=chooseOwnerCodingRoute({...args,snapshots:[lowGemini,agy[1],codex]});
+   expect(decision.chosen).toMatchObject({provider:'antigravity',group:'Claude and GPT models',model:'claude-sonnet-5-5-medium'});
+ });
  it('does not infer quota from model availability',()=>{expect(chooseOwnerCodingRoute({...args,snapshots:[]})).toMatchObject({chosen:null,code:'NO_VERIFIED_AUTHORIZED_QUOTA'});});
  it('rejects stale snapshots',()=>{expect(chooseOwnerCodingRoute({...args,nowMs:nowMs+121000}).chosen).toBeNull();});
  it('rejects unverified Antigravity authentication',()=>{expect(chooseOwnerCodingRoute({...args,auth:{antigravity:false,codex:true}}).chosen).toBeNull();});
