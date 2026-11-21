@@ -123,6 +123,35 @@ describe('Owner CLI Core Dispatch E2E & Negative Gates', () => {
     assert.ok(db.events.some((e) => e.type === 'OWNER_CLI_DISPATCH_COMPLETED'));
   });
 
+  it('accepts a verified quota snapshot collected AFTER job start, without accepting future spoofing', async () => {
+    const db = makeFakeDb();
+    const jobStartMs = Date.now() - 6000;
+    const freshProbeAt = new Date(Date.now() - 100).toISOString();
+    const good = await dispatchOwnerCliJob({
+      db,
+      job: { id: 'JOB-CLOCK-SKEW', resourceScope: 'repo:tigeriq:quota-clock' },
+      prompt: 'Clock regression canary',
+      probeQuota: async () => makeProbe({ observedAt: freshProbeAt }),
+      executeCli: async ({ provider }) => ({ output: 'CLOCK_PASS:' + provider }),
+      emitEvent: db.emitEvent,
+      nowMs: jobStartMs,
+    });
+    assert.equal(good.ok, true, 'fresh observation must not be rejected for being later than job start');
+    assert.equal(good.provider, 'antigravity');
+
+    const spoof = await dispatchOwnerCliJob({
+      db,
+      job: { id: 'JOB-CLOCK-FUTURE', resourceScope: 'repo:tigeriq:quota-clock' },
+      prompt: 'Clock spoof negative test',
+      probeQuota: async () => makeProbe({ observedAt: new Date(Date.now() + 300000).toISOString() }),
+      executeCli: async () => ({ output: 'MUST_NOT_RUN' }),
+      emitEvent: db.emitEvent,
+      nowMs: Date.now(),
+    });
+    assert.equal(spoof.ok, false);
+    assert.equal(spoof.code, 'NO_VERIFIED_AUTHORIZED_QUOTA');
+  });
+
   it('prevents duplicate dispatch for same idempotencyKey', async () => {
     const db = makeFakeDb();
     let calls = 0;
