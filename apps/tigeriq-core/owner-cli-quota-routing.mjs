@@ -1,9 +1,9 @@
 // Read-only, source-level decision helper for TigerIQ Core. Never dispatches a job.
 // The trusted Core must verify owner grant, authenticated resource and atomic writer lease.
 const MAX_AGE_MS=120000;
-const safeRatio=n=>Number.isFinite(Number(n))?Math.max(0,Math.min(1,Number(n))):null;
+const safeRatio=n=>n===null||n===undefined||n===''?null:(Number.isFinite(Number(n))?Math.max(0,Math.min(1,Number(n))):null);
 const utc=v=>{const n=Date.parse(String(v||''));return Number.isFinite(n)?n:null;};
-const windowRemaining=w=>w&&Number.isFinite(Number(w.usedPercent))?safeRatio(1-Number(w.usedPercent)/100):null;
+const windowRemaining=w=>w&&w.usedPercent!==null&&w.usedPercent!==undefined&&w.usedPercent!==''&&Number.isFinite(Number(w.usedPercent))?safeRatio(1-Number(w.usedPercent)/100):null;
 
 export function codexQuotaSnapshot(result,{observedAt}={}){
   const source=result?.result??result??{};
