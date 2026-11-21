@@ -1,0 +1,19 @@
+LÀM — NO YAPPING.
+MỤC TIÊU: Hoàn tất điều phối tự động TigerIQ: anh Sơn giao mục tiêu trong ChatGPT thường → Vy tự kiểm tra hạn mức → chọn Codex/Antigravity và mô hình → giao việc → kiểm thử → nghiệm thu.
+NGUỒN CHUẨN
+GitHub: newsdayads/tigeriq-ai-lab, nhánh main.
+[Issue #5744](https://github.com/newsdayads/tigeriq-ai-lab/issues/5744) — công việc cần hoàn tất.
+[PR #5745](https://github.com/newsdayads/tigeriq-ai-lab/pull/5745) — đã hợp nhất, SHA 5f8b51c3a0e2b94241c7d18577def9b82712484a.
+Đọc Loader, 5 Bootstrap, Issue #504, docs/EXECUTION_BOUNDARY.md, docs/PC01_BOUNDED_STANDING_RELEASE_V1.md.
+THỰC HIỆN PHẦN CÒN LẠI
+Audit trạng thái thực tế, quyền ghi, khóa độc quyền và cổng phát hành Core.
+Tích hợp bộ đọc hạn mức và chọn mô hình đã hợp nhất vào Core hiện hữu. Không tạo bộ điều khiển hoặc hàng đợi thứ hai.
+Tự chọn AI theo hạn mức còn lại, độ khó, hiệu năng và chi phí bằng 0. Codex chỉ dùng khi có quyền đúng phạm vi công việc.
+Hoàn thiện bộ giao việc có xác thực, khóa độc quyền, chống trùng, giới hạn thời gian, xử lý lỗi, chuyển AI dự phòng và bằng chứng.
+Kiểm thử đầu-cuối: Owner → Core → AI → kết quả → nghiệm thu. Kiểm thử cả hết hạn mức, mất kết nối, tranh chấp khóa và hoàn tác.
+Tạo nhánh → PR → CI đạt trên đúng mã → hợp nhất main → phát hành PC01 qua cơ chế ký hợp lệ → kiểm tra vận hành thật → cập nhật checklist Issue #5744.
+QUYỀN VÀ GIỚI HẠN
+Anh Sơn đã duyệt FULL AUTO cho phạm vi này. Tự thực hiện các thao tác an toàn đã được phép, không hỏi lại.
+Không vượt UAC, ACL, từ chối xác thực, cổng ký phát hành; không phát sinh chi phí hoặc thay đổi thông tin xác thực. Nếu bắt buộc Owner ký hoặc xác thực trực tiếp, báo đúng thao tác cần thực hiện. Không giả kết quả.
+BẮT ĐẦU NGAY. Không lặp bước đã hoàn tất. Chỉ dừng khi HOÀN TẤT có bằng chứng hoặc BỊ CHẶN THẬT.
+Báo ngắn: KẾT QUẢ → ĐIỂM CHẶN → BƯỚC KẾ TIẾP.

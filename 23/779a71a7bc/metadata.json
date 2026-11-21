@@ -3,7 +3,7 @@
   "checkpoint_id": "23779a71a7bc",
   "strategy": "manual-commit",
   "branch": "feat/gh5744-core-owner-cli-dispatch",
-  "checkpoints_count": 10,
+  "checkpoints_count": 11,
   "files_touched": [
     "apps/tigeriq-core/core.mjs",
     "apps/tigeriq-core/owner-cli-dispatch.mjs",
@@ -17,6 +17,12 @@
       "compact_transcript": "/23/779a71a7bc/0/transcript.jsonl",
       "content_hash": "/23/779a71a7bc/0/content_hash.txt",
       "prompt": "/23/779a71a7bc/0/prompt.txt"
+    },
+    {
+      "metadata": "/23/779a71a7bc/1/metadata.json",
+      "transcript": "/23/779a71a7bc/1/full.jsonl",
+      "content_hash": "/23/779a71a7bc/1/content_hash.txt",
+      "prompt": "/23/779a71a7bc/1/prompt.txt"
     }
   ],
   "token_usage": {
@@ -28,14 +34,14 @@
     "subagent_tokens_complete": true
   },
   "redaction": {
-    "replacements": 437110,
+    "replacements": 437121,
     "layers": {
       "betterleaks": 36,
       "connection_string": 0,
       "credential_key": 0,
-      "credential_value": 13,
+      "credential_value": 19,
       "credentialed_uri": 0,
-      "entropy": 437152,
+      "entropy": 437157,
       "key_context": 0,
       "provider_token": 0,
       "shell_stdin": 0
