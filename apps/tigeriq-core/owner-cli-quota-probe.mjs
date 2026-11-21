@@ -1,3 +1,4 @@
+import {ownerCliNeedsUserSession,runOwnerCliInUserSession} from './owner-cli-user-bridge.mjs';
 // PC01 read-only quota preflight. No credentials, prompts or source files are written.
 // Run on demand through the existing authenticated TigerIQ PC01 MCP/Core surface.
 import {spawn} from 'node:child_process';
@@ -77,6 +78,18 @@ export async function inspectCodex({exe,observedAt=new Date().toISOString(),time
   });
 }
 export async function liveOwnerCliQuotaProbe(){
+  // Core is SYSTEM. Never resolve CLI credentials from the SYSTEM profile
+  // or impersonate the owner. Task Scheduler runs the pre-provisioned
+  // limited, interactive owner worker through an ACL-restricted mailbox.
+  if(ownerCliNeedsUserSession()){
+    try{return await runOwnerCliInUserSession({action:'quota',timeoutMs:30000});}
+    catch(error){
+      const msg=String(error?.message||error).slice(0,180);
+      return {schema:'TIGERIQ_OWNER_AI_QUOTA_V1',observedAt:new Date().toISOString(),
+        antigravity:{authenticated:false,error:msg},
+        codex:{authenticated:false,error:msg}};
+    }
+  }
   const started=new Date().toISOString(),out={schema:'TIGERIQ_OWNER_AI_QUOTA_V1',observedAt:started};
   try{out.antigravity=await inspectAgy({observedAt:started});}catch(err){out.antigravity={authenticated:false,error:String(err.message||'AGY_UNKNOWN')};}
   try{out.codex=await inspectCodex({exe:await locateCodexExe(),observedAt:started});}catch(err){out.codex={authenticated:false,error:String(err.message||'CODEX_UNKNOWN')};}
