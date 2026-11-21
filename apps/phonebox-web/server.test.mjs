@@ -22,6 +22,7 @@ test('read-only API explicitly denies mutations and unsafe GET actions', () => {
   assert.equal(viewAllowed('GET', '/api/procs/detail'), true);
   assert.equal(viewAllowed('POST', '/api/state'), false);
   assert.equal(viewAllowed('GET', '/api/restart'), false);
+  assert.equal(viewAllowed('GET', '/api/volume'), false);
   assert.equal(viewAllowed('GET', '/api/controls/command/volume'), false);
   assert.equal(viewAllowed('GET', '/api/phone/install'), false);
 });
