@@ -22,4 +22,4 @@ jobs:
       - name: Syntax check
         run: node --check apps/phonebox-web/server.mjs
       - name: Gateway security tests
-        run: node --test apps/phonebox-web/server.test.mjs
+        run: node --test apps/phonebox-web/server.test.mjs apps/phonebox-web/server.integration.test.mjs
