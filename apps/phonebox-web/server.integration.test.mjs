@@ -55,9 +55,9 @@ test('two-host HTTP gateway: auth, readonly, settings writes, CSRF and API proxy
   assert.equal(ready, true, 'gateway did not start: ' + stderr);
   assert.equal((await request(view, '/panel/')).status, 303, 'view must require login');
   assert.equal((await request(admin, '/')).status, 303, 'admin must require login');
-  const login = async (port, origin) => {
+  const login = async (port, origin, site = 'same-origin') => {
     const r = await request(port, '/__login', {
-      method: 'POST', headers: { Origin: origin, 'Sec-Fetch-Site': 'same-origin', 'Content-Type': 'application/x-www-form-urlencoded' },
+      method: 'POST', headers: { Origin: origin, 'Sec-Fetch-Site': site, 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ password }).toString()
     });
     assert.equal(r.status, 303);
@@ -66,8 +66,8 @@ test('two-host HTTP gateway: auth, readonly, settings writes, CSRF and API proxy
     assert.match(cookie, /Secure/);
     return cookie.split(';')[0];
   };
-  const viewCookie = await login(view, 'https://pc01.tigeriq.io.vn');
-  const adminCookie = await login(admin, 'https://phonebox.tigeriq.io.vn');
+  const viewCookie = await login(view, 'https://pc01.tigeriq.io.vn', 'same-site');
+  const adminCookie = await login(admin, 'https://phonebox.tigeriq.io.vn', 'same-site');
   assert.equal((await request(view, '/panel/', { headers: { Cookie: viewCookie } })).status, 200);
   const state = await request(view, '/agent/api/state', { headers: { Cookie: viewCookie } });
   assert.equal(state.status, 200);
