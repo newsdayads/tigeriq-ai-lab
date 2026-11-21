@@ -17,6 +17,10 @@ test('admin allows configuration editing, not arbitrary machine control', () => 
 test('admin writes require same-origin', () => {
   const base = { headers: { origin: 'https://phonebox.tigeriq.io.vn', 'sec-fetch-site': 'same-origin' } };
   assert.equal(sameOrigin(base, 'admin'), true);
+  assert.equal(sameOrigin({ headers: { origin: 'https://phonebox.tigeriq.io.vn', 'sec-fetch-site': 'same-site' } }, 'admin'), true, 'iOS Safari same-site request with exact Origin');
+  assert.equal(sameOrigin({ headers: { referer: 'https://phonebox.tigeriq.io.vn/__login', 'sec-fetch-site': 'same-site' } }, 'admin'), true, 'iOS Safari referer fallback');
+  assert.equal(sameOrigin({ headers: { 'sec-fetch-site': 'same-site' } }, 'admin'), false, 'unverified same-site request blocked');
+  assert.equal(sameOrigin({ headers: { origin: 'https://evil.tigeriq.io.vn', 'sec-fetch-site': 'same-site' } }, 'admin'), false, 'sibling subdomain blocked');
   assert.equal(sameOrigin({ headers: { origin: 'https://attacker.invalid', 'sec-fetch-site': 'cross-site' } }, 'admin'), false);
   assert.equal(sameOrigin({ headers: { origin: 'https://pc01.tigeriq.io.vn', 'sec-fetch-site': 'same-site' } }, 'admin'), false);
 });
