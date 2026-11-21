@@ -48,8 +48,15 @@ test('both frontends require login; only view serves original panel', async () =
       assert.equal(auth.status, 303);
       const cookie = auth.headers.get('set-cookie').split(';')[0];
       const page = await fetch(base + '/', { headers: { cookie } });
-      assert.equal(page.status, mode === 'view' ? 200 : 502); // CI has no local PhoneBox agent for the admin proxy.
-      if (mode === 'view') assert.match(await page.text(), /Original PhoneBox Panel/);
+      if (mode === 'view') {
+        assert.equal(page.status, 200);
+        assert.match(await page.text(), /Original PhoneBox Panel/);
+      } else {
+        // With a live PhoneBox agent, admin proxy must render the original settings UI;
+        // CI runners without the agent return a safe 502, not unauthenticated content.
+        assert.ok([200, 502].includes(page.status));
+        if (page.status === 200) assert.match(await page.text(), /PhoneBox Settings/);
+      }
       if (mode === 'view') {
         const action = await fetch(base + '/agent/api/restart', { headers: { cookie } });
         assert.equal(action.status, 405);
