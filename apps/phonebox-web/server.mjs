@@ -71,7 +71,16 @@ function clientKey(req) {
 function sameOrigin(req, role) {
   const origin = req.headers.origin;
   const site = req.headers['sec-fetch-site'];
-  return (!origin || origin === 'https://' + HOSTS[role]) && site !== 'cross-site' && site !== 'same-site';
+  const expected = 'https://' + HOSTS[role];
+  if (site === 'cross-site' || (origin && origin !== expected)) return false;
+  // Safari/WebKit may report "same-site" for a same-host form submission.
+  // Require a verified exact origin (or same-origin Referrer) rather than denying it outright.
+  if (site === 'same-site') {
+    if (origin === expected) return true;
+    try { return new URL(req.headers.referer || '').origin === expected; }
+    catch { return false; }
+  }
+  return true;
 }
 function allowedView(path) {
   if (path === '/favicon.ico' || path === '/panel' || path.startsWith('/panel/')) return true;
