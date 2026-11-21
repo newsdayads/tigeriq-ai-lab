@@ -47,6 +47,7 @@ export async function inspectCodex({exe,observedAt=new Date().toISOString(),time
     const finish=(err)=>{if(settled)return;settled=true;clearTimeout(timer);p.kill();
       if(err){reject(err);return;}
       const quota=codexQuotaSnapshot({result:collected.get(6)},{observedAt});
+      if(collected.get(5)?.account?.type!=='chatgpt'){reject(new Error('CODEX_CHATGPT_AUTH_REQUIRED'));return;}
       if(!quota.quotaKnown){reject(new Error('CODEX_QUOTA_UNKNOWN'));return;}
       const models=(collected.get(7)?.data||[]).map(x=>String(x.model||x.id||'')).filter(Boolean);
       resolve({authenticated:true,observedAt,snapshots:[quota],models});
@@ -59,16 +60,17 @@ export async function inspectCodex({exe,observedAt=new Date().toISOString(),time
       while(pending.includes('\n')){
         const index=pending.indexOf('\n');const line=pending.slice(0,index);pending=pending.slice(index+1);
         let message;try{message=JSON.parse(line);}catch{continue;}
-        if(message.id===6||message.id===7){
+        if(message.id===5||message.id===6||message.id===7){
           if(message.error){finish(new Error('CODEX_READ_FAILED'));return;}
           collected.set(message.id,message.result);
-          if(collected.has(6)&&collected.has(7)){finish();return;}
+          if(collected.has(5)&&collected.has(6)&&collected.has(7)){finish();return;}
         }
       }
     });
     for(const obj of [
       {method:'initialize',id:0,params:{clientInfo:{name:'tigeriq_quota_preflight',title:'TigerIQ Quota Preflight',version:'1.0.0'}}},
       {method:'initialized',params:{}},
+      {method:'account/read',id:5,params:{refreshToken:false}},
       {method:'account/rateLimits/read',id:6},
       {method:'model/list',id:7,params:{limit:100,includeHidden:false}}
     ])p.stdin.write(JSON.stringify(obj)+'\n');
