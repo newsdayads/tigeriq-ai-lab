@@ -25,6 +25,8 @@ describe('PC01 bounded quota preflight',()=>{
       child.stdout=new EventEmitter();child.kill=()=>{};
       child.stdin={write(line){
         const msg=JSON.parse(line);sent.push(msg.method);
+        if(msg.id===5)setImmediate(()=>child.stdout.emit('data',JSON.stringify({id:5,result:{account:{type:'chatgpt'}}})+'\
+'));
         if(msg.id===6)setImmediate(()=>child.stdout.emit('data',JSON.stringify({id:6,result:{rateLimits:{
           primary:{usedPercent:87,resetsAt:1795293985},secondary:{usedPercent:32,resetsAt:1795837621}
         }}})+'\n'));
@@ -35,7 +37,7 @@ describe('PC01 bounded quota preflight',()=>{
     const r=await inspectCodex({exe:'codex.exe',observedAt,spawnFn,timeoutMs:2000});
     expect(r.models).toEqual(['gpt-test-model']);
     expect(r.snapshots[0].remainingFraction).toBeCloseTo(.13);
-    expect(sent).toEqual(['initialize','initialized','account/rateLimits/read','model/list']);
+    expect(sent).toEqual(['initialize','initialized','account/read','account/rateLimits/read','model/list']);
     expect(sent).not.toContain('account/rateLimitResetCredit/consume');
   });
 });
