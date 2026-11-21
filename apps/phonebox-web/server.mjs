@@ -84,7 +84,7 @@ function allowedView(path) {
     /^network\/adapters$/, /^obs$/, /^discord(?:\/img)?$/, /^steam(?:\/avatar)?$/,
     /^batteries$/, /^charge$/, /^spectrum$/, /^art$/, /^push(?:\/[A-Za-z0-9_-]+)?$/,
     /^controls\/(state|listen|radio-logo|obs)$/, /^controls\/radio-directory\/(countries|stations)$/,
-    /^controls\/spotify\/state$/, /^widget\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+$/
+    /^controls\/spotify\/state$/
   ];
   return rules.some(r => r.test(p));
 }
