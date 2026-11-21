@@ -74,6 +74,7 @@ import {readNv07S6NativePreflight,observeNv07S6RuntimeRelease} from './nv07-s6-n
 import {runNv07ApprovedBootstrap,queueNv07ApprovedBootstrap} from './nv07-approved-bootstrap.mjs';
 import { readNv07GatewayCanarySnapshot } from './nv07-gateway-receipt-observer.mjs';
 import { normalizeNvInferenceRequest, publicNvInferenceResult } from './nv-inference-contract.mjs';
+import { dispatchOwnerCliJob, probeOwnerCliQuota } from './owner-cli-dispatch.mjs';
 
 // T04: no operator-authenticated full-stack mode exists yet. A sandbox flag
 // must never fall through to normal Core init/recovery/manager/claim loops.
@@ -2334,6 +2335,34 @@ async function runJob(j) {
       await hotPathStage(j,'DONE');
       return;
     }
+    if(j.kind==='owner_cli_dispatch'){
+      const meta=j.objective_metadata||{};
+      const res=await dispatchOwnerCliJob({
+        db:pool,
+        job:{
+          id:j.id,
+          resourceScope:meta.resourceScope||'',
+          priority:meta.priority||'P1',
+          difficulty:meta.difficulty||'MEDIUM',
+          idempotencyKey:meta.idempotencyKey||undefined,
+          codexGrant:meta.codexGrant||null,
+        },
+        prompt:j.prompt,
+        emitEvent:event,
+        timeoutMs:meta.timeoutMs,
+      });
+      if(res.ok){
+        const emp=res.provider==='codex'?'CODEX':'NV07';
+        await pool.query("update tigeriq_jobs set status='done',employee_id=$2,provider=$3,routing_decision=$4,result=$5,lease_until=null,completed_at=now() where id=$1",[j.id,emp,res.provider||null,JSON.stringify(res),JSON.stringify(res)]);
+        await event('JOB_DONE',{jobId:j.id,objectiveId:j.objective_id,employeeId:emp,provider:res.provider||null,taskKind:'owner_cli_dispatch'});
+        await hotPathStage(j,'DONE');
+      }else{
+        await pool.query("update tigeriq_jobs set status='failed',failure=$2,lease_until=null,completed_at=now() where id=$1",[j.id,JSON.stringify(res)]);
+        await event('JOB_FAILED',{jobId:j.id,objectiveId:j.objective_id,code:res.code||'OWNER_CLI_DISPATCH_FAILED',taskKind:'owner_cli_dispatch'});
+        await hotPathStage(j,'FAILED',{code:res.code||'OWNER_CLI_DISPATCH_FAILED'});
+      }
+      return;
+    }
     const reviewerResourceIds=await reviewerResourceIdsForJob(j);
     const deterministicCampaignVerifier=j.kind==='compiled_campaign';
     const skillObjectiveText=[j.title,j.prompt].filter(Boolean).join('\n');
@@ -4165,6 +4194,43 @@ const server=createServer(async(req,res)=>{
       await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4)',[id,String(b.objective).slice(0,12000),priority,JSON.stringify(metadata)]);
       await event(phases.length?'CAMPAIGN_CREATED':'OBJECTIVE_CREATED',{objectiveId:id,phaseIndex:0,phaseCount:phases.length||1});
       res.writeHead(201,{'content-type':'application/json'});return res.end(JSON.stringify({ok:true,id,campaign:phases.length>0,phaseCount:phases.length||1,currentPhase:0}));
+    }
+    if(req.method==='GET'&&url.pathname==='/api/owner-cli/quota'){
+      if(!auth(req)&&!localSelf(req)){res.writeHead(401,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'unauthorized'}));}
+      const quota=await probeOwnerCliQuota();
+      res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
+      return res.end(JSON.stringify({ok:true,...quota}));
+    }
+    if(req.method==='POST'&&url.pathname==='/api/owner-cli/dispatch'){
+      if(!auth(req)&&!localSelf(req)){res.writeHead(401,{'content-type':'application/json'});return res.end(JSON.stringify({ok:false,error:'unauthorized'}));}
+      const b=await readBody(req);
+      const promptText=String(b.prompt||b.objective||'').trim();
+      const resourceScope=String(b.resourceScope||'').trim();
+      if(!promptText||!resourceScope){
+        res.writeHead(400,{'content-type':'application/json'});
+        return res.end(JSON.stringify({ok:false,error:'PROMPT_AND_RESOURCE_SCOPE_REQUIRED'}));
+      }
+      const priority=String(b.priority||'P1').trim().toUpperCase();
+      if(priority==='P0'){
+        res.writeHead(403,{'content-type':'application/json','cache-control':'no-store'});
+        return res.end(JSON.stringify({ok:false,error:'P0_OWNER_VY_DIRECT_ONLY'}));
+      }
+      const objectiveId=`OBJ-${randomUUID()}`;
+      const jobId=String(b.jobId||`JOB-${randomUUID()}`).trim();
+      const metadata={
+        source:b.source||'owner_cli_api',
+        resourceScope,
+        priority:['P1','P2'].includes(priority)?priority:'P1',
+        difficulty:String(b.difficulty||'MEDIUM').toUpperCase(),
+        idempotencyKey:b.idempotencyKey?String(b.idempotencyKey):`${jobId}:${resourceScope}`,
+        ...(b.codexGrant?{codexGrant:b.codexGrant}:{}),
+        ...(b.timeoutMs?{timeoutMs:Number(b.timeoutMs)}:{}),
+      };
+      await pool.query('insert into tigeriq_objectives(id,objective,priority,metadata) values($1,$2,$3,$4)',[objectiveId,promptText.slice(0,12000),metadata.priority,JSON.stringify(metadata)]);
+      await pool.query("insert into tigeriq_jobs(id,objective_id,title,prompt,capability,kind,status,max_attempts) values($1,$2,$3,$4,'owner_cli','owner_cli_dispatch','queued',1) on conflict(id) do nothing",[jobId,objectiveId,`Owner CLI dispatch ${resourceScope}`.slice(0,200),promptText.slice(0,12000)]);
+      await event('OWNER_CLI_JOB_QUEUED',{objectiveId,jobId,resourceScope,difficulty:metadata.difficulty});
+      res.writeHead(201,{'content-type':'application/json','cache-control':'no-store'});
+      return res.end(JSON.stringify({ok:true,objectiveId,jobId,status:'queued'}));
     }
     res.writeHead(404);res.end('not_found');
   }catch(e){res.writeHead(500,{'content-type':'application/json'});res.end(JSON.stringify({ok:false,error:String(e?.message||e)}));}
