@@ -64,14 +64,18 @@ export function chooseOwnerCodingRoute({
   const quota=(Array.isArray(snapshots)?snapshots:[]).filter(s=>available(s,nowMs));
   const agyCandidates=[];
   if(auth.antigravity===true){
-    for(const model of preference){
+    for(const [preferenceIndex,model] of preference.entries()){
       if(!agyNames.has(model))continue;
       const group=modelGroup(model);
       const s=quota.find(x=>x.provider==='antigravity'&&x.group===group);
-      if(s)agyCandidates.push({provider:'antigravity',model,remainingFraction:s.remainingFraction,group,source:s.source});
+      if(s)agyCandidates.push({provider:'antigravity',model,remainingFraction:s.remainingFraction,group,source:s.source,preferenceIndex});
     }
   }
-  if(agyCandidates.length)return {chosen:agyCandidates[0],code:'ELIGIBLE_NOT_DISPATCHED'};
+  if(agyCandidates.length){
+    agyCandidates.sort((a,b)=>b.remainingFraction-a.remainingFraction||a.preferenceIndex-b.preferenceIndex);
+    const {preferenceIndex,...chosen}=agyCandidates[0];
+    return {chosen,code:'ELIGIBLE_NOT_DISPATCHED'};
+  }
   const grant=job.codexGrant;
   const codexApproved=auth.codex===true&&grant?.approved===true&&grant.jobId===id&&grant.resourceScope===scope;
   if(codexApproved){
