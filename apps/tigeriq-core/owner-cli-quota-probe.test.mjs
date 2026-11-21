@@ -25,9 +25,7 @@ describe('PC01 bounded quota preflight',()=>{
       child.stdout=new EventEmitter();child.kill=()=>{};
       child.stdin={write(line){
         const msg=JSON.parse(line);sent.push(msg.method);
-        if(msg.id===5)setImmediate(()=>child.stdout.emit('data',JSON.stringify({id:5,result:{account:{type:'chatgpt'}}})+'\
-'));
-        if(msg.id===6)setImmediate(()=>child.stdout.emit('data',JSON.stringify({id:6,result:{rateLimits:{
+        if(msg.id===5)setImmediate(()=>child.stdout.emit('data',JSON.stringify({id:5,result:{account:{type:'chatgpt'}}})+'\n'));\n        if(msg.id===6)setImmediate(()=>child.stdout.emit('data',JSON.stringify({id:6,result:{rateLimits:{
           primary:{usedPercent:87,resetsAt:1795293985},secondary:{usedPercent:32,resetsAt:1795837621}
         }}})+'\n'));
         if(msg.id===7)setImmediate(()=>child.stdout.emit('data',JSON.stringify({id:7,result:{data:[{id:'gpt-test-model'}]}})+'\n'));
