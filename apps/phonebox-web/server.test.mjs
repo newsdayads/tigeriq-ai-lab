@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 process.env.PB_NO_LISTEN = '1';
-const { allowedView, allowedAdmin, sameOrigin } = await import('./server.mjs');
+const { allowedView, allowedAdmin, sameOrigin, LOGIN_USER } = await import('./server.mjs');
 
 test('dashboard exposes only read-only agent endpoints and panel', () => {
   for (const path of ['/panel/', '/panel/main.js', '/agent/api/state', '/agent/api/config', '/agent/api/stream', '/agent/api/quotas', '/agent/api/work/conversation']) assert.equal(allowedView(path), true, path);
@@ -23,4 +23,8 @@ test('admin writes require same-origin', () => {
   assert.equal(sameOrigin({ headers: { origin: 'https://evil.tigeriq.io.vn', 'sec-fetch-site': 'same-site' } }, 'admin'), false, 'sibling subdomain blocked');
   assert.equal(sameOrigin({ headers: { origin: 'https://attacker.invalid', 'sec-fetch-site': 'cross-site' } }, 'admin'), false);
   assert.equal(sameOrigin({ headers: { origin: 'https://pc01.tigeriq.io.vn', 'sec-fetch-site': 'same-site' } }, 'admin'), false);
+});
+
+test('PhoneBox Web requires only the app-level Administrator username', () => {
+  assert.equal(LOGIN_USER, 'Administrator');
 });

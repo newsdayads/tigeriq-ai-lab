@@ -12,6 +12,7 @@ const AUTH_FILE = process.env.PB_AUTH_FILE || 'D:\\TigerIQ\\Secrets\\phonebox-we
 const HOSTS = { view: 'pc01.tigeriq.io.vn', admin: 'phonebox.tigeriq.io.vn' };
 const COOKIE = { view: '__Host-pbview', admin: '__Host-pbadmin' };
 const MAX_BODY = 1048576;
+const LOGIN_USER = 'Administrator';
 const TTL_MS = 7 * 86400000;
 const fails = new Map();
 let secrets;
@@ -61,8 +62,8 @@ function respond(res, status, body, type = 'text/plain; charset=utf-8') {
 function loginPage(role, bad = false) {
   const title = role === 'admin' ? 'PhoneBox Settings' : 'PC01 Monitor';
   return '<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
-    '<title>' + title + '</title><style>*{box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;background:#0b1420;color:#e6f4f5;min-height:100dvh;display:grid;place-items:center;margin:0;padding:22px}main{width:min(100%,380px);padding:32px 26px;background:#152331;border:1px solid #304452;border-radius:20px}h1{font-size:23px;margin:0 0 8px}p{color:#94aab8;font-size:13px;margin:0 0 25px}input,button{width:100%;padding:14px;border-radius:10px;font:inherit}input{background:#0b1724;color:white;border:1px solid #45606c}button{margin-top:14px;border:0;background:#2dd4bf;color:#09221d;font-weight:800}small{display:block;margin-top:12px;color:#fda4af}</style>' +
-    '<main><h1>' + title + '</h1><p>TigerIQ · Đăng nhập riêng tư</p><form method="POST" action="/__login"><input type="password" name="password" autocomplete="current-password" placeholder="Mật khẩu" required autofocus maxlength="256"><button type="submit">Đăng nhập</button></form>' +
+    '<title>' + title + '</title><style>*{box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;background:#0b1420;color:#e6f4f5;min-height:100dvh;display:grid;place-items:center;margin:0;padding:22px}main{width:min(100%,380px);padding:32px 26px;background:#152331;border:1px solid #304452;border-radius:20px}h1{font-size:23px;margin:0 0 8px}p{color:#94aab8;font-size:13px;margin:0 0 25px}input,button{width:100%;padding:14px;border-radius:10px;font:inherit}input{background:#0b1724;color:white;border:1px solid #45606c}input + input{margin-top:12px}button{margin-top:14px;border:0;background:#2dd4bf;color:#09221d;font-weight:800}small{display:block;margin-top:12px;color:#fda4af}</style>' +
+    '<main><h1>' + title + '</h1><p>TigerIQ · Đăng nhập riêng tư</p><form method="POST" action="/__login"><input type="text" name="username" autocomplete="username" placeholder="Tên đăng nhập" value="Administrator" required maxlength="64" autocapitalize="none" spellcheck="false"><input type="password" name="password" autocomplete="current-password" placeholder="Mật khẩu" required autofocus maxlength="256"><button type="submit">Đăng nhập</button></form>' +
     (bad ? '<small>Mật khẩu không đúng hoặc tạm khóa do thử quá nhiều.</small>' : '') + '</main></html>';
 }
 function clientKey(req) {
@@ -154,8 +155,10 @@ function start(role, port) {
         body += chunk.toString('utf8');
         if (body.length > 2048) return respond(res, 413, 'Too large');
       }
-      const pass = new URLSearchParams(body).get('password') || '';
-      if (verifyPassword(pass)) {
+      const fields = new URLSearchParams(body);
+      const user = fields.get('username') || '';
+      const pass = fields.get('password') || '';
+      if (user === LOGIN_USER && verifyPassword(pass)) {
         fails.delete(key);
         res.setHeader('Set-Cookie', COOKIE[role] + '=' + token(role) + '; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800');
         res.writeHead(303, { Location: role === 'view' ? '/panel/' : '/' });
@@ -192,7 +195,7 @@ function start(role, port) {
   server.listen(port, '127.0.0.1', () => console.log('PhoneBox ' + role + ' listening on 127.0.0.1:' + port));
   return server;
 }
-export { allowedView, allowedAdmin, sameOrigin };
+export { allowedView, allowedAdmin, sameOrigin, LOGIN_USER };
 if (process.env.PB_NO_LISTEN !== '1') {
   secrets = loadSecrets();
   start('view', VIEW_PORT);

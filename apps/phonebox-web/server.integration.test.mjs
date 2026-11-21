@@ -58,7 +58,7 @@ test('two-host HTTP gateway: auth, readonly, settings writes, CSRF and API proxy
   const login = async (port, origin, site = 'same-origin') => {
     const r = await request(port, '/__login', {
       method: 'POST', headers: { Origin: origin, 'Sec-Fetch-Site': site, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ password }).toString()
+      body: new URLSearchParams({ username: 'Administrator', password }).toString()
     });
     assert.equal(r.status, 303);
     const cookie = r.headers.get('set-cookie');
@@ -66,6 +66,18 @@ test('two-host HTTP gateway: auth, readonly, settings writes, CSRF and API proxy
     assert.match(cookie, /Secure/);
     return cookie.split(';')[0];
   };
+  const invalidUser = await request(view, '/__login', {
+    method: 'POST',
+    headers: { Origin: 'https://pc01.tigeriq.io.vn', 'Sec-Fetch-Site': 'same-site', 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ username: 'another-user', password }).toString()
+  });
+  assert.equal(invalidUser.status, 401, 'correct password must not work for an unapproved username');
+  const noUser = await request(view, '/__login', {
+    method: 'POST',
+    headers: { Origin: 'https://pc01.tigeriq.io.vn', 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ password }).toString()
+  });
+  assert.equal(noUser.status, 401, 'username field is required');
   const viewCookie = await login(view, 'https://pc01.tigeriq.io.vn', 'same-site');
   const adminCookie = await login(admin, 'https://phonebox.tigeriq.io.vn', 'same-site');
   assert.equal((await request(view, '/panel/', { headers: { Cookie: viewCookie } })).status, 200);
