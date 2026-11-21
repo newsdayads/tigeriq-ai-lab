@@ -1,3 +1,4 @@
+import {ownerCliNeedsUserSession,runOwnerCliInUserSession} from './owner-cli-user-bridge.mjs';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
@@ -80,6 +81,10 @@ function spawnBoundedCli(exe, args, { timeoutMs = DEFAULT_TIMEOUT_MS, maxOutput 
 
 export async function defaultExecuteOwnerCli({ provider, model, prompt, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   const boundedMs = clampTimeout(timeoutMs);
+  if(ownerCliNeedsUserSession()){
+    const r=await runOwnerCliInUserSession({action:'execute',provider,model,prompt,timeoutMs:boundedMs});
+    return {output:String(r?.output??r?.text??'')};
+  }
   if (provider === 'antigravity') {
     const timeoutSec = Math.max(5, Math.ceil(boundedMs / 1000));
     const { stdout } = await spawnBoundedCli(
@@ -93,7 +98,7 @@ export async function defaultExecuteOwnerCli({ provider, model, prompt, timeoutM
     const exe = await locateCodexExe();
     const { stdout } = await spawnBoundedCli(
       exe,
-      ['exec', '--model', String(model || ''), String(prompt || '')],
+      ['exec', '--sandbox', 'read-only', '--skip-git-repo-check', '--model', String(model || ''), String(prompt || '')],
       { timeoutMs: boundedMs },
     );
     return { output: stdout };
