@@ -5,7 +5,7 @@ const { allowedView, allowedAdmin, sameOrigin } = await import('./server.mjs');
 
 test('dashboard exposes only read-only agent endpoints and panel', () => {
   for (const path of ['/panel/', '/panel/main.js', '/agent/api/state', '/agent/api/config', '/agent/api/stream', '/agent/api/quotas']) assert.equal(allowedView(path), true, path);
-  for (const path of ['/api/settings', '/agent/api/settings', '/agent/api/approvals', '/agent/api/proxy', '/agent/api/claude/hook', '/agent/api/controls/command/power', '/agent/api/phone/install']) assert.equal(allowedView(path), false, path);
+  for (const path of ['/api/settings', '/agent/api/settings', '/agent/api/approvals', '/agent/api/proxy', '/agent/api/claude/hook', '/agent/api/controls/command/power', '/agent/api/phone/install', '/agent/api/widget/home/command']) assert.equal(allowedView(path), false, path);
 });
 test('admin allows configuration editing, not arbitrary machine control', () => {
   assert.equal(allowedAdmin('/api/settings', 'GET'), true);
