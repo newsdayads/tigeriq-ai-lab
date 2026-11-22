@@ -448,7 +448,13 @@ function mergeEditorWidgetChanges(current, submitted) {
         const previous = structuredClone(old);
         Object.assign(previous, geometry);
         if (SAFE_NEW_WIDGETS.has(old.type)) {
-          previous.options = { ...(previous.options || {}), ...safeVisualOptions(incoming.options) };
+          const idx = Number(incoming.id.slice(('readonly-' + basePage.id + '-').length));
+          const baseline = safeVisualOptions(safePageWidget(old, idx)?.options || {});
+          const updates = safeVisualOptions(incoming.options);
+          const changed = Object.fromEntries(Object.entries(updates)
+            .filter(([k,v]) => JSON.stringify(v) !== JSON.stringify(baseline[k])));
+          if (Object.keys(changed).length)
+            previous.options = { ...(previous.options || {}), ...changed };
         }
         widgets.push(previous);
       } else {
