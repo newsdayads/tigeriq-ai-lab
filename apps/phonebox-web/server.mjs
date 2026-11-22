@@ -683,6 +683,32 @@ function startPrivateTailnet(port) {
   return server;
 }
 
+const GOOGLE_COOKIE='__Host-pbgoogle-admin';
+function googleSession() {
+  const data=Buffer.from(JSON.stringify({
+    role:'google-owner',email:'newsdayads@gmail.com',exp:Date.now()+TTL_MS,
+    id:crypto.randomBytes(16).toString('hex')
+  })).toString('base64url');
+  const sig=crypto.createHmac('sha256',Buffer.from(secrets.sessionSecret,'hex'))
+    .update('phonebox-gis-session.'+data).digest('base64url');
+  return data+'.'+sig;
+}
+function googleAuthenticated(req) {
+  const value=String(req.headers.cookie||'').split(';').map(x=>x.trim())
+    .find(x=>x.startsWith(GOOGLE_COOKIE+'='))?.slice(GOOGLE_COOKIE.length+1)||'';
+  const dot=value.indexOf('.');
+  if(dot<1)return false;
+  const data=value.slice(0,dot),sig=value.slice(dot+1);
+  const expected=crypto.createHmac('sha256',Buffer.from(secrets.sessionSecret,'hex'))
+    .update('phonebox-gis-session.'+data).digest('base64url');
+  if(!equal(sig,expected))return false;
+  try{
+    const parsed=JSON.parse(Buffer.from(data,'base64url').toString('utf8'));
+    return parsed.role==='google-owner'&&parsed.email==='newsdayads@gmail.com'&&
+      Number.isSafeInteger(parsed.exp)&&parsed.exp>Date.now()&&
+      parsed.exp<Date.now()+TTL_MS+60000;
+  }catch{return false}
+}
 function googleConfig() {
   let file = {};
   const path = process.env.PB_GOOGLE_CONFIG_FILE;
@@ -707,18 +733,18 @@ function googleFullNative(req,res,role,path) {
   }
   if (path==='/__auth/google/credential') {
     void googleAuth.credential(req,res,answer => {
-      answer.setHeader('Set-Cookie',COOKIE.admin+'='+token('admin')+
+      answer.setHeader('Set-Cookie',GOOGLE_COOKIE+'='+googleSession()+
         '; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800');
     });
     return true;
   }
   if (path==='/__logout') {
-    if(!authenticated(req,'admin')){respond(res,401,'Login required');return true;}
+    if(!googleAuthenticated(req)){respond(res,401,'Login required');return true;}
     if(req.method!=='POST'||!sameOrigin(req,'admin')){respond(res,403,'Forbidden');return true;}
-    res.setHeader('Set-Cookie',COOKIE.admin+'=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+    res.setHeader('Set-Cookie',GOOGLE_COOKIE+'=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
     res.writeHead(303,{Location:'/__auth/google'});res.end();return true;
   }
-  if (!authenticated(req,'admin')) {
+  if (!googleAuthenticated(req)) {
     if (req.method==='GET'||req.method==='HEAD') {
       res.writeHead(303,{Location:'/__auth/google'});res.end();
     } else respond(res,401,'Login required');
