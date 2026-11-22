@@ -81,6 +81,13 @@ test('Google Identity Services login verifies RS256 JWT, nonce, audience and exa
   const wrongOrigin=fakeRes();
   await auth.credential(credentialReq(buildToken(),'https://evil.invalid'),wrongOrigin,()=>granted++);
   assert.equal(wrongOrigin.statusCode,403);
+  assert.equal(JSON.parse(wrongOrigin.body).code,'G08_ORIGIN');
+  const missingCookie=fakeRes();
+  const reqWithoutCookie=credentialReq(buildToken());
+  reqWithoutCookie.headers.cookie='';
+  await auth.credential(reqWithoutCookie,missingCookie,()=>granted++);
+  assert.equal(missingCookie.statusCode,403);
+  assert.equal(JSON.parse(missingCookie.body).code,'G09_LOGIN_COOKIE');
   const tampered=fakeRes();
   const valid=buildToken();
   await auth.credential(credentialReq(valid.slice(0,-3)+'xyz'),tampered,()=>granted++);
