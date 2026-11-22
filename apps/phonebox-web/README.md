@@ -72,3 +72,14 @@ The existing Google Cloud OAuth Web client already has `https://pc01.tigeriq.io.
 - Production activation flag is ignored by isolated test listeners using nondefault ports; explicitly configured PB_GOOGLE_AUTH or PB_GOOGLE_ENABLE_FILE still support tests.
 
 Acceptance: verify unauthenticated GET redirect to `/__auth/google` for both sites; HTTP 200 Google button, separate cookies, authenticated PC01 panel GET 200 and PC01 command POST HTTP 405; PhoneBox still permits original controls only after Google Owner login. Do not infer real Owner Google sign-in acceptance from a mock JWK test.
+
+
+## Reuse PC01 Google Owner login for full PhoneBox (2026-11-22)
+
+An already-verified `newsdayads@gmail.com` Google Owner session at `pc01.tigeriq.io.vn` can sign into the full original `phonebox.tigeriq.io.vn` without a second Google account popup. The existing PC01 gateway issues a signed, audience-restricted, **single-use 45-second ticket** from the view-side authenticated session. The PhoneBox-side ticket redemption sets the full Owner cookie and redirects to `/#pages`. Failed/replayed/anonymous tickets are rejected. No new Google Cloud, Cloudflare, Tailscale, DNS, Tunnel, database or app is required.
+
+- PhoneBox root redirects through `/__auth/sso` to the PC01-issued one-time ticket. If PC01 has no valid Owner session, it redirects to the existing PhoneBox Google login instead.
+- PhoneBox Google login includes a link to continue with an existing authenticated PC01 session.
+- PC01 remains strictly **read-only**, including during ticket issuance; it never exposes system command APIs or PC secrets.
+- No account/password/token bypass: both sessions require an HMAC-signed cookie originating from an already verified Google Owner ID token. Ticket grants are replay-protected and expire in 45 seconds.
+- Source tests: `server.owner-sso.test.mjs` plus existing test suite. Real Owner-browser SSO is verified separately after release.
