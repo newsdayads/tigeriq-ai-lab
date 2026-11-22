@@ -13,6 +13,9 @@ const HOSTS = { view: 'pc01.tigeriq.io.vn', admin: 'phonebox.tigeriq.io.vn' };
 const COOKIE = { view: '__Host-pbview', admin: '__Host-pbadmin' };
 const MAX_BODY = 1048576;
 const LOGIN_USER = 'Administrator';
+// Temporary owner-requested direct access: display-only, never publish machine controls or secrets.
+// Set PB_PUBLIC_READONLY=0 only after restoring a separately authenticated access policy.
+const PUBLIC_READ_ONLY = process.env.PB_PUBLIC_READONLY !== '0';
 const TTL_MS = 7 * 86400000;
 const fails = new Map();
 let secrets;
@@ -165,6 +168,138 @@ function proxy(req, res, role, path) {
   upstream.on('error', () => { if (!res.headersSent) respond(res, 502, 'PhoneBox agent unavailable'); else res.destroy(); });
   req.pipe(upstream);
 }
+
+const PUBLIC_METRICS = new Set(['cpu', 'gpu', 'ram', 'net', 'cputemp', 'gputemp', 'gpupower', 'down', 'up', 'ping']);
+function finiteNumber(n) { return typeof n === 'number' && Number.isFinite(n) ? n : null; }
+function safePageWidget(w, index) {
+  if (!w || !['clock', 'stat', 'chart', 'meters'].includes(w.type)) return null;
+  const int = (n, fallback, max) => Number.isInteger(n) && n >= 0 && n <= max ? n : fallback;
+  const item = {
+    id: 'public-' + index, type: w.type,
+    x: int(w.x, 0, 12), y: int(w.y, 0, 12),
+    w: int(w.w, 3, 12), h: int(w.h, 2, 12),
+    options: {}
+  };
+  if (w.type === 'clock') item.options = { status: false, weather: false };
+  if (w.type === 'stat' && PUBLIC_METRICS.has(w.options?.metric))
+    item.options = { metric: w.options.metric };
+  if (w.type === 'chart')
+    item.options = { metrics: Array.isArray(w.options?.metrics)
+      ? w.options.metrics.filter(m => PUBLIC_METRICS.has(m)).slice(0, 6) : [] };
+  return item;
+}
+function safePublicConfig(raw) {
+  const c = raw?.config || {};
+  const source = Array.isArray(c.pages) ? c.pages : [];
+  const pages = ['home', 'system'].map(id => {
+    const page = source.find(p => p.id === id);
+    const widgets = (Array.isArray(page?.widgets) ? page.widgets : [])
+      .map(safePageWidget).filter(Boolean);
+    return { id, title: id === 'home' ? 'Home' : 'System',
+      icon: id === 'home' ? 'home' : 'activity',
+      enabled: true, idleSec: 0, widgets };
+  }).filter(p => p.widgets.length);
+  if (!pages.length) pages.push({ id: 'home', title: 'Home', icon: 'home', enabled: true,
+    widgets: [{ id: 'clock-public', type: 'clock', x: 0, y: 0, w: 12, h: 6, options: { status: false, weather: false } }] });
+  return { version: 'public-readonly-1', config: {
+    pages, shortcuts: [], rules: [], cameras: [],
+    display: { language: 'vi', theme: 'default', accent: '#2dd4bf',
+      hour12: false, showSeconds: true, orientation: 'portrait',
+      appearance: { border: true, shadow: false } }
+  }};
+}
+function safePublicState(raw) {
+  const p = raw?.pc || {}, g = p.gpu || {};
+  const disks = Array.isArray(p.disks) ? p.disks.slice(0, 8).map((disk, i) => ({
+    name: 'Disk ' + (i + 1), usedGb: finiteNumber(disk?.usedGb), totalGb: finiteNumber(disk?.totalGb)
+  })) : [];
+  return {
+    ts: Date.now(), host: 'PC01', os: 'windows', cfgVersion: 'public-readonly-1',
+    events: [], evSeq: 0, pc: {
+      cpu: finiteNumber(p.cpu), cpuTemp: finiteNumber(p.cpuTemp),
+      ramUsedGb: finiteNumber(p.ramUsedGb), ramTotalGb: finiteNumber(p.ramTotalGb),
+      gpu: { util: finiteNumber(g.util), temp: finiteNumber(g.temp),
+        power: finiteNumber(g.power), powerLimit: finiteNumber(g.powerLimit) },
+      netDownBps: finiteNumber(p.netDownBps), netUpBps: finiteNumber(p.netUpBps),
+      disks, uptimeSec: finiteNumber(p.uptimeSec)
+    }
+  };
+}
+function readAgentJson(pathname) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    const req = http.get({ ...UPSTREAM, path: pathname, timeout: 6000,
+      headers: { 'X-PhoneBox-Panel': '1' } }, incoming => {
+      if (incoming.statusCode !== 200) {
+        incoming.resume();
+        reject(new Error('UPSTREAM_STATUS')); return;
+      }
+      incoming.on('data', chunk => {
+        total += chunk.length;
+        if (total > 2 * 1024 * 1024) { req.destroy(new Error('UPSTREAM_TOO_BIG')); return; }
+        chunks.push(chunk);
+      });
+      incoming.once('end', () => {
+        try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
+        catch { reject(new Error('UPSTREAM_INVALID_JSON')); }
+      });
+      incoming.once('error', reject);
+    });
+    req.once('timeout', () => req.destroy(new Error('UPSTREAM_TIMEOUT')));
+    req.once('error', reject);
+  });
+}
+function safeText(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
+}
+function publicSettingsHtml(config, state) {
+  const pages = config.config.pages.map(p => '<li><b>' + safeText(p.title) +
+    '</b><span>' + p.widgets.length + ' widget</span></li>').join('');
+  const pc = state.pc || {};
+  const pct = n => n == null ? '—' : Math.round(n) + '%';
+  return '<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>PhoneBox — PC01</title><style>*{box-sizing:border-box}body{margin:0;padding:22px;font-family:system-ui,-apple-system,sans-serif;background:#0b1420;color:#e8f6f7}main{max-width:950px;margin:auto}h1{font-size:clamp(24px,5vw,36px);margin:20px 0 6px}p{color:#a7bdc4;line-height:1.6}a{color:#081c1e;background:#2dd4bf;padding:12px 18px;text-decoration:none;display:inline-block;border-radius:12px;font-weight:700}section{margin:18px 0;background:#172633;border:1px solid #34505d;border-radius:18px;padding:22px}ul{list-style:none;margin:10px 0;padding:0}li{display:flex;justify-content:space-between;gap:12px;padding:13px 2px;border-bottom:1px solid #2a414b}li:last-child{border:0}li span,.muted{color:#9fbdc7}.metric{display:flex;gap:24px;flex-wrap:wrap}.metric b{font-size:28px;display:block}iframe{width:100%;height:560px;border:1px solid #34505d;border-radius:12px;background:#081520}@media(max-width:600px){body{padding:12px}section{padding:16px}iframe{height:440px}}</style>' +
+    '<main><h1>PhoneBox Settings</h1><p>PC01 · Truy cập trực tiếp — xem trạng thái và bố cục hiện tại</p>' +
+    '<p class="muted">Chế độ tạm thời chỉ xem. Chức năng chỉnh sửa và lệnh điều khiển PC01 không được mở công khai.</p>' +
+    '<a href="https://pc01.tigeriq.io.vn/">Xem bảng điều khiển PC01</a>' +
+    '<section><h2>Hệ thống</h2><div class="metric"><div><b>' + pct(pc.cpu) + '</b><span class="muted">CPU</span></div><div><b>' +
+    (pc.ramUsedGb == null || pc.ramTotalGb == null ? '—' : pct(pc.ramUsedGb * 100 / pc.ramTotalGb)) +
+    '</b><span class="muted">RAM</span></div><div><b>' + pct(pc.gpu?.util) +
+    '</b><span class="muted">GPU</span></div></div></section>' +
+    '<section><h2>Bố cục an toàn</h2><ul>' + pages + '</ul></section>' +
+    '<section><h2>Xem trước giao diện gốc</h2><iframe src="/panel/" title="PhoneBox panel preview" loading="lazy"></iframe></section>' +
+    '</main></html>';
+}
+async function publicReadOnly(req, res, role, path) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return respond(res, 405, 'Read-only mode');
+  if (path === '/__login' || path === '/__logout') {
+    res.writeHead(303, { Location: '/' }); return res.end();
+  }
+  if (path === '/panel') { res.writeHead(303, { Location: '/panel/' }); return res.end(); }
+  if (role === 'view' && path === '/') {
+    res.writeHead(303, { Location: '/panel/' }); return res.end();
+  }
+  if (role === 'admin' && path === '/') {
+    try {
+      const [config, state] = await Promise.all([readAgentJson('/api/config'), readAgentJson('/api/state')]);
+      return respond(res, 200, publicSettingsHtml(safePublicConfig(config), safePublicState(state)), 'text/html; charset=utf-8');
+    } catch { return respond(res, 502, 'PhoneBox is temporarily unavailable'); }
+  }
+  if (path === '/agent/api/config') {
+    try { return respond(res, 200, JSON.stringify(safePublicConfig(await readAgentJson('/api/config'))), 'application/json; charset=utf-8'); }
+    catch { return respond(res, 502, '{"error":"upstream"}', 'application/json'); }
+  }
+  if (path === '/agent/api/state') {
+    try { return respond(res, 200, JSON.stringify(safePublicState(await readAgentJson('/api/state'))), 'application/json; charset=utf-8'); }
+    catch { return respond(res, 502, '{"error":"upstream"}', 'application/json'); }
+  }
+  if (path === '/agent/api/stream') return respond(res, 204, '');
+  if (path === '/favicon.ico' || /^\/panel\/[A-Za-z0-9_./-]*$/.test(path) && !path.split('/').includes('..'))
+    return proxy(req, res, role, path);
+  return respond(res, 404, 'Not found');
+}
+
 function start(role, port) {
   const server = http.createServer(async (req, res) => {
     secureHeaders(res);
@@ -173,6 +308,7 @@ function start(role, port) {
     let path;
     try { path = new URL(req.url, 'http://localhost').pathname; } catch { return respond(res, 400, 'Bad path'); }
     if (path === '/healthz' && req.method === 'GET') return respond(res, 200, JSON.stringify({ ok: true, service: 'phonebox-web', role }), 'application/json');
+    if (PUBLIC_READ_ONLY) return publicReadOnly(req, res, role, path);
     if (path === '/__login' && req.method === 'GET') { secureHeaders(res, true); return respond(res, 200, loginPage(role), 'text/html; charset=utf-8'); }
     if (path === '/__login' && req.method === 'POST') {
       secureHeaders(res, true);
@@ -226,7 +362,7 @@ function start(role, port) {
   server.listen(port, '127.0.0.1', () => console.log('PhoneBox ' + role + ' listening on 127.0.0.1:' + port));
   return server;
 }
-export { allowedView, allowedAdmin, sameOrigin, LOGIN_USER, validLoginCsrf, acceptLoginOrigin };
+export { allowedView, allowedAdmin, sameOrigin, LOGIN_USER, validLoginCsrf, acceptLoginOrigin, safePublicConfig, safePublicState, PUBLIC_READ_ONLY };
 if (process.env.PB_NO_LISTEN !== '1') {
   secrets = loadSecrets();
   start('view', VIEW_PORT);

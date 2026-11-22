@@ -32,7 +32,7 @@ test('two-host HTTP gateway: auth, readonly, settings writes, CSRF and API proxy
   });
   await new Promise(resolve => upstream.listen(upstreamPort, '127.0.0.1', resolve));
   const child = spawn(process.execPath, ['apps/phonebox-web/server.mjs'], {
-    env: { ...process.env, PB_VIEW_PORT: String(view), PB_ADMIN_PORT: String(admin), PB_AGENT_PORT: String(upstreamPort), PB_AUTH_FILE: authFile },
+    env: { ...process.env, PB_VIEW_PORT: String(view), PB_ADMIN_PORT: String(admin), PB_AGENT_PORT: String(upstreamPort), PB_AUTH_FILE: authFile, PB_PUBLIC_READONLY: '0' },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   let stderr = '';
