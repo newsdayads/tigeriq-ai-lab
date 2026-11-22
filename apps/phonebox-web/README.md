@@ -18,3 +18,14 @@ The upstream PhoneBox project is by ersinkoc: https://github.com/ersinkoc/phoneb
 ## Setting or changing the PhoneBox Web password
 
 The password is **not** stored in this repository and is not the Windows account password. From an interactive PowerShell session on PC01 under the scheduled-task user's Windows profile, run `powershell -NoProfile -File D:\TigerIQ\Apps\PhoneBoxWeb\set-local-password.ps1`, enter the desired password twice when prompted (hidden), then restart only the scheduled task `TigerIQ PhoneBox Web`. The script rotates the session key, writes a new salted hash atomically, and maintains ACLs. Never print or pass this password in a command-line argument, GitHub issue, or log. The host-side operator must not circumvent a connector's credential-write security denial.
+
+## Temporary no-login public view (Owner direct request 2026-11-22)
+
+`PB_PUBLIC_READONLY=1` is the default for this PC01-hosted build. Both sites open directly without the PhoneBox Web password:
+
+- `pc01.tigeriq.io.vn/` displays the original PhoneBox **panel assets** with only a deliberately sanitized, read-only PC telemetry snapshot (CPU/GPU/RAM/network). Only safe Home/System widgets are provided; no work sessions, private processes, personal notes, media, tokens or private configuration data are exposed.
+- `phonebox.tigeriq.io.vn/` displays a separate **read-only settings summary and panel preview**, NOT the live write-enabled PhoneBox agent settings UI. It does not expose the agent's internal settings API.
+- Both hostnames reject all POST/PUT/PATCH/DELETE (HTTP 405), and every private API GET is denied (HTTP 404). The dashboard's only dynamic public GET routes are sanitized `/agent/api/config` and `/agent/api/state`. The real PhoneBox agent stays exclusively on PC01 loopback.
+- The legacy password mode is retained for a future secured release by explicitly setting `PB_PUBLIC_READONLY=0` on the PC01 task, after owner approval and safeguards. No raw admin settings interface is ever opened publicly without authentication.
+
+Run `node --test apps/phonebox-web/server.test.mjs apps/phonebox-web/server.integration.test.mjs apps/phonebox-web/server.public.test.mjs` before releasing. This approach temporarily defers online editing rather than allowing anyone on the Internet to change PC01 or Note8 settings.
