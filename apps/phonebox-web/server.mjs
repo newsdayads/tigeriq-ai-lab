@@ -613,6 +613,72 @@ async function publicReadOnly(req, res, role, path) {
   return respond(res, 404, 'Not found');
 }
 
+
+// Original PhoneBox desktop API/Settings, tunneled only over private Tailscale Serve.
+// Do not register this port with the PUBLIC Cloudflare wildcard router or enable Funnel.
+const TAILNET_HOST = process.env.PB_TAILNET_HOST || 'pc01.tail35d2f3.ts.net';
+const TAILNET_PUBLIC_PORT = Number(process.env.PB_TAILNET_HTTPS_PORT || 8767);
+const TAILNET_ORIGIN = 'https://' + TAILNET_HOST + ':' + TAILNET_PUBLIC_PORT;
+function privateTailnetHeaders(req) {
+  const incoming = { ...req.headers };
+  const host = String(incoming.host || '').split(':')[0].toLowerCase();
+  if (![TAILNET_HOST, '127.0.0.1', 'localhost'].includes(host)) return null;
+  const origin = incoming.origin || '';
+  const site = incoming['sec-fetch-site'];
+  if (site === 'cross-site' || (origin && origin !== TAILNET_ORIGIN)) return null;
+  // Unlike the public website, this listener accepts all native PhoneBox operations.
+  // It is reachable only through authenticated tailnet networking.
+  if (!['GET','HEAD','OPTIONS'].includes(req.method) &&
+      !((origin === TAILNET_ORIGIN && site !== 'cross-site') || (!origin && site === 'same-origin')))
+    return null;
+  incoming.host = '127.0.0.1:' + UPSTREAM.port;
+  if (origin) incoming.origin = 'http://127.0.0.1:' + UPSTREAM.port;
+  if (incoming.referer) incoming.referer = 'http://127.0.0.1:' + UPSTREAM.port + '/';
+  if (site) incoming['sec-fetch-site'] = 'same-origin';
+  delete incoming['x-forwarded-for'];
+  delete incoming['cf-connecting-ip'];
+  delete incoming['x-forwarded-host'];
+  delete incoming['x-forwarded-proto'];
+  delete incoming['cf-access-jwt-assertion'];
+  delete incoming['proxy-authorization'];
+  delete incoming['proxy-connection'];
+  delete incoming['accept-encoding'];
+  incoming['accept-encoding'] = 'identity';
+  return incoming;
+}
+function startPrivateTailnet(port) {
+  const server = http.createServer((req,res) => {
+    secureHeaders(res);
+    const headers = privateTailnetHeaders(req);
+    if (!headers) return respond(res, 403, 'Tailnet origin required');
+    const p = new URL(req.url, 'http://localhost').pathname;
+    if (p === '/healthz' && req.method === 'GET')
+      return respond(res, 200, '{"ok":true,"scope":"tailnet-private"}', 'application/json');
+    const upstream = http.request({
+      ...UPSTREAM, method: req.method, path: req.url, headers, timeout: 25000
+    }, response => {
+      const resultHeaders = { ...response.headers };
+      delete resultHeaders['transfer-encoding'];
+      delete resultHeaders['server'];
+      if (resultHeaders.location?.startsWith('http://127.0.0.1:' + UPSTREAM.port))
+        resultHeaders.location = resultHeaders.location.slice(('http://127.0.0.1:' + UPSTREAM.port).length) || '/';
+      resultHeaders['cache-control'] = 'no-store';
+      resultHeaders['x-content-type-options'] = 'nosniff';
+      res.writeHead(response.statusCode || 502, resultHeaders);
+      response.pipe(res);
+    });
+    upstream.on('error', () => {
+      if (!res.headersSent) respond(res, 502, 'Local PhoneBox unavailable');
+      else res.destroy();
+    });
+    upstream.on('timeout', () => upstream.destroy(new Error('AGENT_TIMEOUT')));
+    req.pipe(upstream);
+  });
+  server.listen(port, '127.0.0.1', () =>
+    console.log('PhoneBox ORIGINAL full editor (tailnet only) 127.0.0.1:' + port));
+  return server;
+}
+
 function start(role, port) {
   const server = http.createServer(async (req, res) => {
     secureHeaders(res);
@@ -680,4 +746,9 @@ if (process.env.PB_NO_LISTEN !== '1') {
   secrets = loadSecrets();
   start('view', VIEW_PORT);
   start('admin', ADMIN_PORT);
+  // The production PhoneBox task uses default 8924/8925. Test instances with
+  // randomized ports do NOT silently claim this private listener.
+  const privatePort = Number(process.env.PB_PRIVATE_TAILNET_PORT ||
+    (VIEW_PORT === 8924 && ADMIN_PORT === 8925 ? 8936 : 0));
+  if (privatePort) startPrivateTailnet(privatePort);
 }
