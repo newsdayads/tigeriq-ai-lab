@@ -58,13 +58,15 @@ function makeGoogleOAuth(config,{fetchImpl=fetch,jwksUrl=GOOGLE_JWKS}={}){
     if(!cert||!crypto.verify('RSA-SHA256',Buffer.from(content),
       crypto.createPublicKey({key:cert,format:'jwk'}),signature))throw Error('SIGNATURE_INVALID');
     const now=Math.floor(Date.now()/1000);
-    if(!['accounts.google.com','https://accounts.google.com'].includes(claims.iss)||
-      claims.aud!==config.clientId||(claims.azp&&claims.azp!==config.clientId)||
-      typeof claims.sub!=='string'||claims.sub.length<8||
-      !Number.isInteger(claims.exp)||claims.exp<=now||
-      !Number.isInteger(claims.iat)||claims.iat>now+60||claims.iat<now-600||
-      claims.nonce!==nonce||claims.email_verified!==true||
-      String(claims.email||'').trim().toLowerCase()!==OWNER)throw Error('NOT_VERIFIED_OWNER');
+    if(!['accounts.google.com','https://accounts.google.com'].includes(claims.iss))throw Error('G01_ISSUER');
+    if(claims.aud!==config.clientId||(claims.azp&&claims.azp!==config.clientId))throw Error('G02_AUDIENCE');
+    if(typeof claims.sub!=='string'||claims.sub.length<8)throw Error('G03_SUBJECT');
+    if(!Number.isInteger(claims.exp)||claims.exp<=now||
+       !Number.isInteger(claims.iat)||claims.iat>now+60||claims.iat<now-600)
+      throw Error('G04_TOKEN_EXPIRED');
+    if(claims.nonce!==nonce)throw Error('G05_NONCE');
+    if(claims.email_verified!==true)throw Error('G06_EMAIL_NOT_VERIFIED');
+    if(String(claims.email||'').trim().toLowerCase()!==OWNER)throw Error('G07_OTHER_GOOGLE_ACCOUNT');
     return OWNER;
   }
   return {
@@ -81,7 +83,7 @@ function makeGoogleOAuth(config,{fetchImpl=fetch,jwksUrl=GOOGLE_JWKS}={}){
         '<div id="g_id_onload" data-client_id="'+escapeHtml(config.clientId)+'" data-nonce="'+escapeHtml(nonce)+'" data-callback="phoneboxGoogle" data-auto_prompt="false"></div>',
         '<div class="g_id_signin" data-type="standard" data-size="large" data-text="signin_with" data-shape="pill"></div>',
         '<p id="error" role="alert"></p></main>',
-        '<script nonce="'+jsNonce+'">async function phoneboxGoogle(token){try{const r=await fetch("/__auth/google/credential",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({credential:token.credential})});if(!r.ok)throw Error("denied");location.replace("/")}catch{document.getElementById("error").textContent="Tài khoản Google không có quyền truy cập."}}</script>',
+        '<script nonce="'+jsNonce+'">async function phoneboxGoogle(token){try{const r=await fetch("/__auth/google/credential",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({credential:token.credential})});if(!r.ok){const info=await r.json().catch(()=>({}));throw Error(info.code||"G99")}location.replace("/")}catch(e){const code=String(e.message||"G99");document.getElementById("error").textContent=code==="G07_OTHER_GOOGLE_ACCOUNT"?"Hãy chọn đúng tài khoản Google được cấp quyền. ("+code+")":"Đăng nhập chưa thành công ("+code+")."}}</script>',
         '<script src="https://accounts.google.com/gsi/client" async defer></script></html>'
       ].join('');
       res.setHeader('Set-Cookie',COOKIE+'='+payload+'.'+sign(payload,key)+'; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=300');
@@ -111,7 +113,19 @@ function makeGoogleOAuth(config,{fetchImpl=fetch,jwksUrl=GOOGLE_JWKS}={}){
           COOKIE+'=; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=0']);
         res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});
         res.end('{"authorized":true}');
-      }catch{return deny(res,403,'Google Owner identity rejected')}
+      }catch(e){
+        // Safe diagnostic codes only; never log or return Google tokens, email claims,
+        // private keys, signed cookies or external request content.
+        const allowed=new Set(['G01_ISSUER','G02_AUDIENCE','G03_SUBJECT',
+          'G04_TOKEN_EXPIRED','G05_NONCE','G06_EMAIL_NOT_VERIFIED',
+          'G07_OTHER_GOOGLE_ACCOUNT','SIGNATURE_INVALID',
+          'GOOGLE_KEYS_UNAVAILABLE','GOOGLE_KEYS_INVALID','UNKNOWN_GOOGLE_KEY']);
+        const code=allowed.has(String(e?.message))?String(e.message):'G99_UNCLASSIFIED';
+        console.warn('PhoneBox Google auth reject:',expectedOrigin,code);
+        res.writeHead(403,{'Content-Type':'application/json; charset=utf-8',
+          'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
+        res.end(JSON.stringify({error:'Google identity was not accepted',code}));
+      }
     }
   };
 }
