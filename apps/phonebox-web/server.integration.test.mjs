@@ -55,10 +55,20 @@ test('two-host HTTP gateway: auth, readonly, settings writes, CSRF and API proxy
   assert.equal(ready, true, 'gateway did not start: ' + stderr);
   assert.equal((await request(view, '/panel/')).status, 303, 'view must require login');
   assert.equal((await request(admin, '/')).status, 303, 'admin must require login');
+  const csrfFor = async port => {
+    const response = await request(port, '/__login');
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.match(html, /name="csrf" value="[^"]+"/);
+    return html.match(/name="csrf" value="([^"]+)"/)[1];
+  };
   const login = async (port, origin, site = 'same-origin') => {
+    const csrf = await csrfFor(port);
+    const headers = { 'Sec-Fetch-Site': site, 'Content-Type': 'application/x-www-form-urlencoded' };
+    if (origin) headers.Origin = origin;
     const r = await request(port, '/__login', {
-      method: 'POST', headers: { Origin: origin, 'Sec-Fetch-Site': site, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ username: 'Administrator', password }).toString()
+      method: 'POST', headers,
+      body: new URLSearchParams({ username: 'Administrator', password, csrf }).toString()
     });
     assert.equal(r.status, 303);
     const cookie = r.headers.get('set-cookie');
@@ -69,16 +79,29 @@ test('two-host HTTP gateway: auth, readonly, settings writes, CSRF and API proxy
   const invalidUser = await request(view, '/__login', {
     method: 'POST',
     headers: { Origin: 'https://pc01.tigeriq.io.vn', 'Sec-Fetch-Site': 'same-site', 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ username: 'another-user', password }).toString()
+    body: new URLSearchParams({ username: 'another-user', password, csrf: await csrfFor(view) }).toString()
   });
   assert.equal(invalidUser.status, 401, 'correct password must not work for an unapproved username');
   const noUser = await request(view, '/__login', {
     method: 'POST',
     headers: { Origin: 'https://pc01.tigeriq.io.vn', 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ password }).toString()
+    body: new URLSearchParams({ password, csrf: await csrfFor(view) }).toString()
   });
   assert.equal(noUser.status, 401, 'username field is required');
-  const viewCookie = await login(view, 'https://pc01.tigeriq.io.vn', 'same-site');
+  const missingCsrf = await request(admin, '/__login', {
+    method: 'POST', headers: { 'Sec-Fetch-Site': 'same-site', 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ username: 'Administrator', password }).toString()
+  });
+  assert.equal(missingCsrf.status, 403, 'cross-site form without valid CSRF must be denied');
+  assert.match(await missingCsrf.text(), /PhoneBox Settings/, 'denial should show branded form, not blank Forbidden');
+  const invalidSibling = await request(admin, '/__login', {
+    method: 'POST',
+    headers: { Origin: 'https://other.tigeriq.io.vn', 'Sec-Fetch-Site': 'same-site', 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ username: 'Administrator', password, csrf: await csrfFor(admin) }).toString()
+  });
+  assert.equal(invalidSibling.status, 403, 'sibling subdomains remain blocked even with a valid token');
+  // iPhone Safari may omit Origin and Referer because the login response uses no-referrer.
+  const viewCookie = await login(view, null, 'same-site');
   const adminCookie = await login(admin, 'https://phonebox.tigeriq.io.vn', 'same-site');
   assert.equal((await request(view, '/panel/', { headers: { Cookie: viewCookie } })).status, 200);
   const state = await request(view, '/agent/api/state', { headers: { Cookie: viewCookie } });

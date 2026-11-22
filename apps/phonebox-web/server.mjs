@@ -59,11 +59,40 @@ function respond(res, status, body, type = 'text/plain; charset=utf-8') {
   res.writeHead(status, { 'Content-Type': type });
   res.end(body);
 }
+function makeLoginCsrf(role) {
+  const payload = Buffer.from(JSON.stringify({
+    role, issued: Date.now(), nonce: crypto.randomBytes(16).toString('hex')
+  })).toString('base64url');
+  const sig = crypto.createHmac('sha256', Buffer.from(secrets.sessionSecret, 'hex'))
+    .update('phonebox-login.' + payload).digest('base64url');
+  return payload + '.' + sig;
+}
+function validLoginCsrf(value, role) {
+  if (typeof value !== 'string' || value.length > 512) return false;
+  const [payload, signature, extra] = value.split('.');
+  if (!payload || !signature || extra !== undefined) return false;
+  const expected = crypto.createHmac('sha256', Buffer.from(secrets.sessionSecret, 'hex'))
+    .update('phonebox-login.' + payload).digest('base64url');
+  if (!equal(signature, expected)) return false;
+  try {
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    const age = Date.now() - decoded.issued;
+    return decoded.role === role && typeof decoded.nonce === 'string' &&
+      decoded.nonce.length === 32 && Number.isSafeInteger(age) && age >= 0 && age <= 86400000;
+  } catch { return false; }
+}
+function acceptLoginOrigin(req, role, csrf) {
+  if (sameOrigin(req, role)) return true;
+  // Safari can send same-site without Origin/Referer: the login page sets no-referrer.
+  // Only accept this case with a valid HMAC-signed form token.
+  return req.headers['sec-fetch-site'] === 'same-site' &&
+    !req.headers.origin && !req.headers.referer && validLoginCsrf(csrf, role);
+}
 function loginPage(role, bad = false) {
   const title = role === 'admin' ? 'PhoneBox Settings' : 'PC01 Monitor';
   return '<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' +
     '<title>' + title + '</title><style>*{box-sizing:border-box}body{font-family:system-ui,-apple-system,sans-serif;background:#0b1420;color:#e6f4f5;min-height:100dvh;display:grid;place-items:center;margin:0;padding:22px}main{width:min(100%,380px);padding:32px 26px;background:#152331;border:1px solid #304452;border-radius:20px}h1{font-size:23px;margin:0 0 8px}p{color:#94aab8;font-size:13px;margin:0 0 25px}input,button{width:100%;padding:14px;border-radius:10px;font:inherit}input{background:#0b1724;color:white;border:1px solid #45606c}input + input{margin-top:12px}button{margin-top:14px;border:0;background:#2dd4bf;color:#09221d;font-weight:800}small{display:block;margin-top:12px;color:#fda4af}</style>' +
-    '<main><h1>' + title + '</h1><p>TigerIQ · Đăng nhập riêng tư</p><form method="POST" action="/__login"><input type="text" name="username" autocomplete="username" placeholder="Tên đăng nhập" value="Administrator" required maxlength="64" autocapitalize="none" spellcheck="false"><input type="password" name="password" autocomplete="current-password" placeholder="Mật khẩu" required autofocus maxlength="256"><button type="submit">Đăng nhập</button></form>' +
+    '<main><h1>' + title + '</h1><p>TigerIQ · Đăng nhập riêng tư</p><form method="POST" action="/__login"><input type="hidden" name="csrf" value="' + makeLoginCsrf(role) + '"><input type="text" name="username" autocomplete="username" placeholder="Tên đăng nhập" value="Administrator" required maxlength="64" autocapitalize="none" spellcheck="false"><input type="password" name="password" autocomplete="current-password" placeholder="Mật khẩu" required autofocus maxlength="256"><button type="submit">Đăng nhập</button></form>' +
     (bad ? '<small>Mật khẩu không đúng hoặc tạm khóa do thử quá nhiều.</small>' : '') + '</main></html>';
 }
 function clientKey(req) {
@@ -147,7 +176,6 @@ function start(role, port) {
     if (path === '/__login' && req.method === 'GET') { secureHeaders(res, true); return respond(res, 200, loginPage(role), 'text/html; charset=utf-8'); }
     if (path === '/__login' && req.method === 'POST') {
       secureHeaders(res, true);
-      if (!sameOrigin(req, role)) return respond(res, 403, 'Forbidden');
       const key = role + ':' + clientKey(req), entry = fails.get(key) || { count: 0, until: 0 };
       if (entry.until > Date.now()) return respond(res, 429, loginPage(role, true), 'text/html; charset=utf-8');
       let body = '';
@@ -156,6 +184,9 @@ function start(role, port) {
         if (body.length > 2048) return respond(res, 413, 'Too large');
       }
       const fields = new URLSearchParams(body);
+      const csrf = fields.get('csrf');
+      if (!validLoginCsrf(csrf, role) || !acceptLoginOrigin(req, role, csrf))
+        return respond(res, 403, loginPage(role, true), 'text/html; charset=utf-8');
       const user = fields.get('username') || '';
       const pass = fields.get('password') || '';
       if (user === LOGIN_USER && verifyPassword(pass)) {
@@ -195,7 +226,7 @@ function start(role, port) {
   server.listen(port, '127.0.0.1', () => console.log('PhoneBox ' + role + ' listening on 127.0.0.1:' + port));
   return server;
 }
-export { allowedView, allowedAdmin, sameOrigin, LOGIN_USER };
+export { allowedView, allowedAdmin, sameOrigin, LOGIN_USER, validLoginCsrf, acceptLoginOrigin };
 if (process.env.PB_NO_LISTEN !== '1') {
   secrets = loadSecrets();
   start('view', VIEW_PORT);
