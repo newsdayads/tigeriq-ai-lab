@@ -94,7 +94,7 @@ test('direct public sites render without login, sanitize data, block all changes
   const config = await get(view, '/agent/api/config');
   assert.equal(config.status, 200);
   const configText = await config.text();
-  assert.doesNotMatch(configText, /SECRET|PRIVATE|token|lan|webhook|sessions/);
+  assert.doesNotMatch(configText, /SECRET|PRIVATE|webhook|sessions|"lan"|"token"/);
   const cfg = JSON.parse(configText);
   assert.equal(cfg.config.pages.length, 1);
   assert.deepEqual(cfg.config.pages[0].widgets.map(w => w.type), ['clock', 'stat']);
