@@ -125,9 +125,12 @@ test('Full original admin APIs require Google owner session, while public view r
  assert.equal(login.status,200);
  assert.match(await login.text(),/accounts\.google\.com\/gsi\/client/);
  assert.equal((await req(adminPort,'/api/restart',{method:'POST',body:'{}'})).status,401);
- const payload=Buffer.from(JSON.stringify({role:'admin',exp:Date.now()+3600000,id:'123456789abcdef0123456789abcdef0'})).toString('base64url');
- const sig=crypto.createHmac('sha256',Buffer.from(secrets.sessionSecret,'hex')).update(payload).digest('base64url');
- const cookie='__Host-pbadmin='+payload+'.'+sig;
+ const payload=Buffer.from(JSON.stringify({role:'google-owner',email:'newsdayads@gmail.com',exp:Date.now()+3600000,id:'123456789abcdef0123456789abcdef0'})).toString('base64url');
+ const sig=crypto.createHmac('sha256',Buffer.from(secrets.sessionSecret,'hex')).update('phonebox-gis-session.'+payload).digest('base64url');
+ const cookie='__Host-pbgoogle-admin='+payload+'.'+sig;
+ const legacyPayload=Buffer.from(JSON.stringify({role:'admin',exp:Date.now()+3600000,id:'abc0123456789'})).toString('base64url');
+ const legacySig=crypto.createHmac('sha256',Buffer.from(secrets.sessionSecret,'hex')).update(legacyPayload).digest('base64url');
+ assert.equal((await req(adminPort,'/api/settings',{headers:{Cookie:'__Host-pbadmin='+legacyPayload+'.'+legacySig}})).status,303);
  const authHeaders={Cookie:cookie};
  const root=await req(adminPort,'/',{headers:authHeaders});assert.equal(root.status,200);assert.match(await root.text(),/restartBtn/);
  const settings=await req(adminPort,'/api/settings',{headers:authHeaders});assert.equal(settings.status,200);assert.match(await settings.text(),/PRIVATE/);
