@@ -774,6 +774,70 @@ function googleProtectedView(req,res,role,path){
   publicReadOnly(req,res,role,path);
   return true;
 }
+
+// One-time inter-subdomain Google Owner SSO. PC01 monitoring-only cookie can
+// issue an ephemeral same-owner login grant, never a reusable PC control token.
+const SSO_USED=new Map();
+function ssoProof() {
+  const payload=Buffer.from(JSON.stringify({
+    audience:'phonebox.tigeriq.io.vn', issued:Date.now(),
+    nonce:crypto.randomBytes(18).toString('base64url')
+  })).toString('base64url');
+  const sig=crypto.createHmac('sha256',Buffer.from(secrets.sessionSecret,'hex'))
+    .update('phonebox-pc01-owner-sso.'+payload).digest('base64url');
+  return payload+'.'+sig;
+}
+function acceptSsoProof(proof){
+  if(typeof proof!=='string'||proof.length>1400)return false;
+  const dot=proof.indexOf('.');
+  if(dot<1||dot===proof.length-1)return false;
+  const data=proof.slice(0,dot);
+  const signature=proof.slice(dot+1);
+  const expected=crypto.createHmac('sha256',Buffer.from(secrets.sessionSecret,'hex'))
+    .update('phonebox-pc01-owner-sso.'+data).digest('base64url');
+  if(!equal(signature,expected))return false;
+  try {
+    const claims=JSON.parse(Buffer.from(data,'base64url').toString('utf8'));
+    const now=Date.now();
+    if(claims.audience!=='phonebox.tigeriq.io.vn'||
+       !Number.isSafeInteger(claims.issued)||claims.issued>now+10000||
+       claims.issued<now-45000||
+       typeof claims.nonce!=='string'||claims.nonce.length<20)return false;
+    for(const [k,expires] of SSO_USED) if(expires<now)SSO_USED.delete(k);
+    if(SSO_USED.has(claims.nonce))return false;
+    if(SSO_USED.size>1500)return false; // fail closed on replay cache saturation
+    SSO_USED.set(claims.nonce,now+60000);
+    return true;
+  }catch{return false}
+}
+function ownerSsoTransfer(req,res,role,path){
+  if(!GOOGLE_AUTH_ENABLED)return false;
+  if(role==='view'&&path==='/__auth/sso/issue'){
+    if(req.method!=='GET') {respond(res,405,'Method denied');return true;}
+    if(!googleViewAuthenticated(req)){
+      res.writeHead(303,{Location:'https://phonebox.tigeriq.io.vn/__auth/google',
+        'Cache-Control':'no-store'});res.end();return true;
+    }
+    const ticket=ssoProof();
+    res.writeHead(303,{Location:'https://phonebox.tigeriq.io.vn/__auth/sso/complete?ticket='+encodeURIComponent(ticket),
+      'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});res.end();return true;
+  }
+  if(role==='admin'&&path==='/__auth/sso'){
+    if(req.method!=='GET'){respond(res,405,'Method denied');return true;}
+    res.writeHead(303,{Location:'https://pc01.tigeriq.io.vn/__auth/sso/issue',
+      'Cache-Control':'no-store'});res.end();return true;
+  }
+  if(role==='admin'&&path==='/__auth/sso/complete'){
+    if(req.method!=='GET'){respond(res,405,'Method denied');return true;}
+    const ticket=new URL(req.url,'https://phonebox.tigeriq.io.vn').searchParams.get('ticket');
+    if(!acceptSsoProof(ticket)){respond(res,403,'Owner SSO ticket invalid or expired');return true;}
+    res.setHeader('Set-Cookie',GOOGLE_COOKIE+'='+googleSession()+
+      '; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800');
+    res.writeHead(303,{Location:'/#pages','Cache-Control':'no-store',
+      'Referrer-Policy':'no-referrer'});res.end();return true;
+  }
+  return false;
+}
 function googleConfig() {
   let file = {};
   const path = process.env.PB_GOOGLE_CONFIG_FILE;
@@ -811,7 +875,7 @@ function googleFullNative(req,res,role,path) {
   }
   if (!googleAuthenticated(req)) {
     if (req.method==='GET'||req.method==='HEAD') {
-      res.writeHead(303,{Location:'/__auth/google'});res.end();
+      res.writeHead(303,{Location:path==='/'?'/__auth/sso':'/__auth/google'});res.end();
     } else respond(res,401,'Login required');
     return true;
   }
@@ -837,6 +901,7 @@ function start(role, port) {
     let path;
     try { path = new URL(req.url, 'http://localhost').pathname; } catch { return respond(res, 400, 'Bad path'); }
     if (path === '/healthz' && req.method === 'GET') return respond(res, 200, JSON.stringify({ ok: true, service: 'phonebox-web', role }), 'application/json');
+    if (ownerSsoTransfer(req,res,role,path)) return;
     if (googleProtectedView(req,res,role,path)) return;
     if (googleFullNative(req,res,role,path)) return;
     if (PUBLIC_READ_ONLY) return publicReadOnly(req, res, role, path);

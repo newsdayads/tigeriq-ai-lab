@@ -82,7 +82,9 @@ function makeGoogleOAuth(config,{fetchImpl=fetch,jwksUrl=GOOGLE_JWKS}={}){
         '<main><h2>'+escapeHtml(loginTitle)+'</h2><p>'+escapeHtml(loginDescription)+'</p>',
         '<div id="g_id_onload" data-client_id="'+escapeHtml(config.clientId)+'" data-nonce="'+escapeHtml(nonce)+'" data-callback="phoneboxGoogle" data-auto_prompt="false"></div>',
         '<div class="g_id_signin" data-type="standard" data-size="large" data-text="signin_with" data-shape="pill"></div>',
-        '<p id="error" role="alert"></p></main>',
+        '<p id="error" role="alert"></p>',
+        (expectedOrigin===ORIGIN?'<p><a style="color:#93c5fd" href="/__auth/sso">Tiếp tục bằng phiên Google đã đăng nhập trên PC01</a></p>':''),
+        '</main>',
         '<script nonce="'+jsNonce+'">async function phoneboxGoogle(token){try{const r=await fetch("/__auth/google/credential",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({credential:token.credential})});if(!r.ok){const info=await r.json().catch(()=>({}));throw Error(info.code||"G99")}location.replace("/")}catch(e){const code=String(e.message||"G99");document.getElementById("error").textContent=code==="G07_OTHER_GOOGLE_ACCOUNT"?"Tài khoản Google này chưa được cấp quyền ("+code+")":code==="G09_LOGIN_COOKIE"?"Phiên đăng nhập hết hạn. Tải lại trang rồi thử lại ("+code+")":"Đăng nhập chưa thành công ("+code+")."}}</script>',
         '<script src="https://accounts.google.com/gsi/client" async defer></script></html>'
       ].join('');
