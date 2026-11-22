@@ -22,6 +22,7 @@ const PUBLIC_READ_ONLY = process.env.PB_PUBLIC_READONLY !== '0';
 // Enable only after the Google client has the exact authorized JS origin.
 const GOOGLE_AUTH_ENABLED = process.env.PB_GOOGLE_AUTH === '1' ||
   (process.env.PB_GOOGLE_AUTH !== '0' &&
+   (process.env.PB_GOOGLE_ENABLE_FILE || (VIEW_PORT === 8924 && ADMIN_PORT === 8925)) &&
    fs.existsSync(process.env.PB_GOOGLE_ENABLE_FILE ||
      'D:\\TigerIQ\\State\\PhoneBox\\google-owner.enabled'));
 let googleAuth = null;
