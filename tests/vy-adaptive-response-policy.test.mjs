@@ -58,7 +58,7 @@ test('Owner-approved iPhone card is the single V6 presentation baseline across T
   assert.match(v6, /OWNER_IPHONE_SCREENSHOT_20261122_1523/);
   assert.match(v6, /Một thẻ duy nhất cho báo cáo công việc/);
   assert.match(v6, /tối đa một badge trạng thái thật/);
-  assert.match(v6, /Tối đa 3 hàng kết quả quan trọng mặc định/);
+  assert.match(v6, /tối đa 3 hàng kết quả quan trọng mặc định/);
   assert.match(v6, /320–430 CSS px/);
   assert.match(v6, /BCCT.*V5/);
   assert.match(v6, /không thể/);
