@@ -69,6 +69,7 @@ test('Google Identity Services login verifies RS256 JWT, nonce, audience and exa
   const wrongOwner=fakeRes();
   await auth.credential(credentialReq(buildToken({email:'other@example.test'})),wrongOwner,()=>granted++);
   assert.equal(wrongOwner.statusCode,403);
+  assert.equal(JSON.parse(wrongOwner.body).code,'G07_OTHER_GOOGLE_ACCOUNT');
   assert.equal(granted,1);
   const wrongAud=fakeRes();
   await auth.credential(credentialReq(buildToken({aud:'other-client.apps.googleusercontent.com'})),wrongAud,()=>granted++);
@@ -76,6 +77,7 @@ test('Google Identity Services login verifies RS256 JWT, nonce, audience and exa
   const wrongNonce=fakeRes();
   await auth.credential(credentialReq(buildToken({nonce:'spoofed'})),wrongNonce,()=>granted++);
   assert.equal(wrongNonce.statusCode,403);
+  assert.equal(JSON.parse(wrongNonce.body).code,'G05_NONCE');
   const wrongOrigin=fakeRes();
   await auth.credential(credentialReq(buildToken(),'https://evil.invalid'),wrongOrigin,()=>granted++);
   assert.equal(wrongOrigin.statusCode,403);
