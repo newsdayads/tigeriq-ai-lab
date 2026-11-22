@@ -228,12 +228,12 @@ function safePublicState(raw) {
     }
   };
 }
-function readAgentJson(pathname) {
+function readAgentJson(pathname, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let total = 0;
     const req = http.get({ ...UPSTREAM, path: pathname, timeout: 6000,
-      headers: { 'X-PhoneBox-Panel': '1' } }, incoming => {
+      headers: { 'X-PhoneBox-Panel': '1', ...extraHeaders } }, incoming => {
       if (incoming.statusCode !== 200) {
         incoming.resume();
         reject(new Error('UPSTREAM_STATUS')); return;
@@ -494,7 +494,19 @@ async function savePublicWidgets(req, res) {
   try { incoming = JSON.parse(textBody); }
   catch { return respond(res, 400, '{"error":"Bad JSON"}', 'application/json'); }
   try {
-    const current = await readAgentJson('/api/config');
+    // /api/config is intentionally phone-safe (secrets and runnable shortcuts removed).
+    // Never use it as the source of an agent settings write: doing so would erase protected fields.
+    // This private loopback-only read uses the same Fetch-Metadata contract as the desktop Settings UI.
+    // The complete result is kept inside the PC01 process and is NEVER sent to the public browser.
+    const [privateConfig, versionInfo] = await Promise.all([
+      readAgentJson('/api/settings', {
+        'Sec-Fetch-Site': 'same-origin',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Dest': 'empty'
+      }),
+      readAgentJson('/api/config')
+    ]);
+    const current = { version: versionInfo.version, config: privateConfig };
     const version = String(current.version || '');
     const submittedVersion = req.headers['x-config-version'];
     if (!/^\d+$/.test(version) || submittedVersion !== version)
