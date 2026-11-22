@@ -33,3 +33,18 @@ Run `node --test apps/phonebox-web/server.test.mjs apps/phonebox-web/server.inte
 
 
 - For an authorized widget save, the gateway reads the complete current settings **only from local PC01 loopback** using the upstream desktop fetch-metadata contract; it never writes the `/api/config` phone/public snapshot, which intentionally omits private shortcuts and tokens. Only sanitized editor fields are accepted from the browser; the private snapshot is never returned to the Internet.
+
+
+## Private full original PhoneBox UI (Owner request 2026-11-22)
+
+The owner wants exactly the installed PhoneBox Settings at `127.0.0.1:8765`, all widgets and control APIs, with **no separate PhoneBox web login**. PhoneBox upstream's own host/origin anti-forgery gate deliberately returns HTTP 403 when a public hostname is forwarded raw.
+
+A third PC01 **loopback-only** listener runs as part of the existing PhoneBox Web task:
+- `127.0.0.1:8936` (production only; `PB_PRIVATE_TAILNET_PORT` can override). This proxies the **original full upstream UI and its actual APIs** to `127.0.0.1:8765`, rebuilding the upstream loopback Host/Origin after confirming the browser used the exact tailnet origin.
+- Tailscale Serve (NOT Funnel) terminates private HTTPS for `https://pc01.tail35d2f3.ts.net:8767/` and forwards to `http://127.0.0.1:8936`. Other pre-existing Tailscale Serve/Funnel ports are preserved.
+- This third listener must **NEVER** be registered with Cloudflare's public wildcard router, port-forwarded on the firewall, or exposed via Tailscale Funnel. Tailscale network device enrollment and tailnet ACLs form the access boundary. There is **no PhoneBox login page** on this private site.
+- `phonebox.tigeriq.io.vn` remains the publicly reachable **scoped widget editor**, and `pc01.tigeriq.io.vn` remains the read-only public monitor. Neither public hostname exposes raw PC controls or secrets. Do not replace a public route with the private listener.
+- IMPORTANT: tailnet ACLs must restrict which devices can access the PC01 service. Existing tailnet peers should not automatically be assumed to be trusted for arbitrary PC controls.
+- The physical owner's iPhone must have Tailscale installed and connected to the PC01 tailnet to use the private URL. iPhone acceptance is NOT asserted until tested.
+
+Run `node --test apps/phonebox-web/server.test.mjs apps/phonebox-web/server.integration.test.mjs apps/phonebox-web/server.public.test.mjs apps/phonebox-web/server.widget-edit.test.mjs apps/phonebox-web/server.private-tailnet.test.mjs`. Release only via GitHub main exact-source and protected CI. Verify original Settings GET 200, full /api/settings only inside tailnet, website JavaScript, and that public routes still deny system controls.
