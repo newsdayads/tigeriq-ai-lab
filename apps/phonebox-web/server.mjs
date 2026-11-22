@@ -31,6 +31,8 @@ let googleViewAuth = null;
 const PUBLIC_WIDGET_EDIT = PUBLIC_READ_ONLY && process.env.PB_PUBLIC_WIDGET_EDIT !== '0';
 const widgetSaveTimes = new Map();
 const TTL_MS = 7 * 86400000;
+const GOOGLE_VIEW_TTL_MS = 30 * 86400000; // device-persistent monitoring only
+const GOOGLE_VIEW_REFRESH_MS = 7 * 86400000;
 const fails = new Map();
 let secrets;
 
@@ -719,7 +721,7 @@ function googleAuthenticated(req) {
 const GOOGLE_VIEW_COOKIE='__Host-pbgoogle-view';
 function googleViewSession(){
   const data=Buffer.from(JSON.stringify({
-    role:'google-view',email:'newsdayads@gmail.com',exp:Date.now()+TTL_MS,
+    role:'google-view',email:'newsdayads@gmail.com',exp:Date.now()+GOOGLE_VIEW_TTL_MS,
     id:crypto.randomBytes(16).toString('hex')
   })).toString('base64url');
   const sig=crypto.createHmac('sha256',Buffer.from(secrets.sessionSecret,'hex'))
@@ -738,7 +740,7 @@ function googleViewAuthenticated(req) {
   try{
     const p=JSON.parse(Buffer.from(data,'base64url').toString('utf8'));
     return p.role==='google-view'&&p.email==='newsdayads@gmail.com'&&
-      Number.isSafeInteger(p.exp)&&p.exp>Date.now()&&p.exp<Date.now()+TTL_MS+60000;
+      Number.isSafeInteger(p.exp)&&p.exp>Date.now()&&p.exp<Date.now()+GOOGLE_VIEW_TTL_MS+60000;
   }catch{return false}
 }
 function googleProtectedView(req,res,role,path){
@@ -752,7 +754,7 @@ function googleProtectedView(req,res,role,path){
   if(path==='/__auth/google/credential'){
     void googleViewAuth.credential(req,res,r=>{
       r.setHeader('Set-Cookie',GOOGLE_VIEW_COOKIE+'='+googleViewSession()+
-        '; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800');
+        '; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000');
     });
     return true;
   }
@@ -769,6 +771,17 @@ function googleProtectedView(req,res,role,path){
       res.writeHead(303,{Location:'/__auth/google'});res.end();
     } else respond(res,401,'Owner login required');
     return true;
+  }
+  // Renew only the already-verified owner monitoring session when near expiry.
+  if(req.method==='GET' && path==='/panel/') {
+    const value=String(req.headers.cookie||'').split(';').map(x=>x.trim())
+      .find(x=>x.startsWith(GOOGLE_VIEW_COOKIE+'='))?.slice(GOOGLE_VIEW_COOKIE.length+1)||'';
+    try {
+      const data=JSON.parse(Buffer.from(value.split('.')[0],'base64url').toString('utf8'));
+      if(data.exp-Date.now()<GOOGLE_VIEW_REFRESH_MS)
+        res.setHeader('Set-Cookie',GOOGLE_VIEW_COOKIE+'='+googleViewSession()+
+          '; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000');
+    } catch { /* Session signature was checked before this block. */ }
   }
   // Use the *original* PhoneBox /panel/ and its full read-only live data.
   // The previous public mirror rebuilt only home/system widgets, so the user
