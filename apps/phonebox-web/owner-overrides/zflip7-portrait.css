@@ -55,3 +55,36 @@
   .page:has(.w-clock) .grid > .w-stat { order:2; height:130px; min-height:0 !important; }
   .page:has(.w-clock) .grid > .w-github { order:3; grid-column:1 / -1 !important; height:228px; }
 }
+/* Owner Home three-tile row v3: clock (2/4), Codex (1/4), Antigravity (1/4). */
+@media screen and (max-width:700px) and (min-height:541px) and (orientation:portrait) {
+  .page:has(.w-clock) .grid {
+    grid-template-columns: repeat(4,minmax(0,1fr)) !important;
+    gap: 7px !important;
+  }
+  .page:has(.w-clock) .grid > .w-clock {
+    grid-column:span 2 !important; order:0; height:135px !important;
+    padding:6px !important; overflow:hidden;
+  }
+  .page:has(.w-clock) .w-clock .clock { font-size:clamp(30px,8vw,48px) !important; }
+  .page:has(.w-clock) .w-clock .date { font-size:clamp(9px,2.6vw,12px); }
+  .page:has(.w-clock) .w-clock .status { font-size:10px; }
+  .page:has(.w-clock) .w-clock .wx { margin-top:3px; }
+  .page:has(.w-clock) .w-clock .wx-meta { font-size:10px; }
+  .page:has(.w-clock) .grid > .w-quotaring {
+    order:1; grid-column:span 1 !important; height:135px !important;
+    padding:3px 2px !important; gap:1px; min-width:0; overflow:hidden;
+  }
+  .page:has(.w-clock) .w-quotaring .g-dial { height:76px !important; max-width:100%; }
+  .page:has(.w-clock) .w-quotaring .g-val { font-size:clamp(17px,4.5vw,23px) !important; }
+  .page:has(.w-clock) .w-quotaring .g-label {
+    font-size:10px !important; line-height:1.12; letter-spacing:0 !important;
+    text-overflow:ellipsis; max-width:100%; overflow:hidden;
+  }
+  .page:has(.w-clock) .w-quotaring .g-sub { display:none !important; }
+  .page:has(.w-clock) .grid > .w-stat {
+    order:2; grid-column:span 2 !important; height:125px;
+  }
+  .page:has(.w-clock) .grid > .w-github {
+    order:3; grid-column:1 / -1 !important;
+  }
+}
