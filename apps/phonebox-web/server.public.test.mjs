@@ -104,8 +104,10 @@ test('direct public sites render without login, sanitize data, block all changes
   const adminHtml = await adminPage.text();
   assert.match(adminHtml, /UPSTREAM_ORIGINAL_SETTINGS/, 'must serve real upstream settings, not custom replacement');
   assert.match(adminHtml, /PhoneBox gốc trên PC01/);
-  assert.match(adminHtml, /Chế độ chỉ xem/);
+  assert.match(adminHtml, /Sửa và lưu bố cục widget trực tiếp/);
   assert.match(adminHtml, /tigeriq-readonly-style/);
+  assert.doesNotMatch(adminHtml, /#save,#revert/);
+
   assert.doesNotMatch(adminHtml, /SECRET|PRIVATE|name="password"/);
   const originalSettingsResponse = await get(admin, '/api/settings');
   assert.equal(originalSettingsResponse.status, 200, 'original editor must receive sanitized settings data');

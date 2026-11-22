@@ -16,6 +16,9 @@ const LOGIN_USER = 'Administrator';
 // Temporary owner-requested direct access: display-only, never publish machine controls or secrets.
 // Set PB_PUBLIC_READONLY=0 only after restoring a separately authenticated access policy.
 const PUBLIC_READ_ONLY = process.env.PB_PUBLIC_READONLY !== '0';
+// User-requested login-free widget editor, without exposing PC controls or other agent settings.
+const PUBLIC_WIDGET_EDIT = PUBLIC_READ_ONLY && process.env.PB_PUBLIC_WIDGET_EDIT !== '0';
+const widgetSaveTimes = new Map();
 const TTL_MS = 7 * 86400000;
 const fails = new Map();
 let secrets;
@@ -322,11 +325,11 @@ function originalSettingsReadOnlyHtml(html) {
   if (!/<html\b/i.test(html) || !/<body\b/i.test(html)) throw new Error('UPSTREAM_NOT_HTML');
   // Serve the installed upstream settings UI, with only a read-only notice and disabled write buttons.
   const extraCss = '<style id="tigeriq-readonly-style">' +
-    '#save,#revert,#openPhone,#restartBtn,#updTop,#updApply,#updCheck,#lanPair,#lanRegen,#installApp{display:none!important}' +
+    '#openPhone,#restartBtn,#updTop,#updApply,#updCheck,#lanPair,#lanRegen,#installApp{display:none!important}' +
     '#tigeriq-readonly{padding:9px 16px;text-align:center;background:#193435;color:#d2faf4;' +
     'border-bottom:1px solid #2dd4bf;font:600 13px system-ui,sans-serif}' +
     '</style>';
-  const banner = '<div id="tigeriq-readonly" role="status">PhoneBox gốc trên PC01 · Chế độ chỉ xem — chỉnh sửa tại 127.0.0.1:8765</div>';
+  const banner = '<div id="tigeriq-readonly" role="status">PhoneBox gốc trên PC01 · Sửa và lưu bố cục widget trực tiếp · Các lệnh điều khiển hệ thống vẫn bị khóa</div>';
   return html.replace(/<\/head>/i, extraCss + '</head>')
     .replace(/<body([^>]*)>/i, (_, attrs) => '<body' + attrs + '>' + banner);
 }
@@ -372,7 +375,171 @@ function publicSettingsHtml(config, state) {
     '<section><h2>Xem trước giao diện gốc</h2><iframe src="/panel/" title="PhoneBox panel preview" loading="lazy"></iframe></section>' +
     '</main></html>';
 }
+
+// Anonymous public scope is intentionally limited to *presentation* widgets.
+// Never proxy raw public settings writes to the PC agent.
+const SAFE_NEW_WIDGETS = new Set([
+  'clock', 'stat', 'chart', 'meters', 'media', 'forecast', 'worldclock', 'calendar'
+]);
+const SAFE_VISUAL_OPTIONS = new Set([
+  'metric', 'metrics', 'label', 'title', 'format', 'variant', 'mode', 'layout',
+  'fontSize', 'font', 'size', 'scale', 'align', 'alignment', 'color', 'accent',
+  'opacity', 'radius', 'border', 'shadow', 'showDate', 'showSeconds', 'hour12',
+  'decimals', 'precision', 'smooth', 'showGrid', 'showTitle', 'showLegend',
+  'showIcon', 'compact', 'historySec', 'unit', 'units', 'dateFormat', 'timeFormat',
+  'timeZone', 'timezone'
+]);
+const SAFE_METRIC_TYPES = PUBLIC_METRICS;
+function safeVisualOptions(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
+  const result = {};
+  for (const [k, v] of Object.entries(input)) {
+    if (!SAFE_VISUAL_OPTIONS.has(k)) continue;
+    if (k === 'metric' && typeof v === 'string' && SAFE_METRIC_TYPES.has(v)) { result[k] = v; continue; }
+    if (k === 'metrics' && Array.isArray(v)) {
+      result[k] = v.filter(x => typeof x === 'string' && SAFE_METRIC_TYPES.has(x)).slice(0, 6);
+      continue;
+    }
+    if (k === 'metric' || k === 'metrics') continue;
+    if (typeof v === 'boolean') { result[k] = v; continue; }
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 7200) { result[k] = v; continue; }
+    if (typeof v === 'string' && v.length <= 64 &&
+        /^[\p{L}\p{N}\s#.:,()/_+\-]*$/u.test(v)) result[k] = v;
+  }
+  return result;
+}
+function validatedGeometry(w) {
+  const x = w?.x, y = w?.y, width = w?.w, height = w?.h;
+  if (![x,y,width,height].every(Number.isInteger) ||
+      x < 0 || y < 0 || width < 1 || height < 1 ||
+      x + width > 12 || y + height > 6) throw new Error('INVALID_WIDGET_GEOMETRY');
+  return { x, y, w: width, h: height };
+}
+function mergeEditorWidgetChanges(current, submitted) {
+  if (!submitted || typeof submitted !== 'object' || Array.isArray(submitted) ||
+      !Array.isArray(submitted.pages) || submitted.pages.length > 9) throw new Error('INVALID_LAYOUT');
+  const newIds = new Set();
+  const currentPages = Array.isArray(current?.pages) ? current.pages : [];
+  const visiblePages = currentPages.filter(p => Object.hasOwn(ORIGINAL_PAGE_NAMES, p?.id));
+  if (visiblePages.length !== submitted.pages.length) throw new Error('PAGE_SET_CHANGED');
+  const submittedPages = new Map();
+  for (const page of submitted.pages) {
+    if (!page || !Object.hasOwn(ORIGINAL_PAGE_NAMES, page.id) ||
+        submittedPages.has(page.id) || !Array.isArray(page.widgets) ||
+        page.widgets.length > 35) throw new Error('PAGE_INVALID');
+    submittedPages.set(page.id, page);
+  }
+  if (visiblePages.some(p => !submittedPages.has(p.id))) throw new Error('PAGE_SET_CHANGED');
+  const out = structuredClone(current);
+  out.pages = currentPages.map((basePage) => {
+    if (!submittedPages.has(basePage.id)) return basePage;
+    const page = submittedPages.get(basePage.id);
+    const originalWidgets = Array.isArray(basePage.widgets) ? basePage.widgets : [];
+    const visibleWidgets = originalWidgets.filter(w => EDITOR_WIDGET_TYPES.has(w?.type)).slice(0, 30);
+    const known = new Map(visibleWidgets.map((w, i) => ['readonly-' + basePage.id + '-' + i, w]));
+    const widgets = [];
+    for (const incoming of page.widgets) {
+      if (!incoming || typeof incoming !== 'object') throw new Error('WIDGET_INVALID');
+      const geometry = validatedGeometry(incoming);
+      const old = known.get(incoming.id);
+      if (old) {
+        if (old.type !== incoming.type || newIds.has(incoming.id)) throw new Error('WIDGET_TYPE_CHANGED');
+        newIds.add(incoming.id);
+        const previous = structuredClone(old);
+        Object.assign(previous, geometry);
+        if (SAFE_NEW_WIDGETS.has(old.type)) {
+          const idx = Number(incoming.id.slice(('readonly-' + basePage.id + '-').length));
+          const baseline = safeVisualOptions(safePageWidget(old, idx)?.options || {});
+          const updates = safeVisualOptions(incoming.options);
+          const changed = Object.fromEntries(Object.entries(updates)
+            .filter(([k,v]) => JSON.stringify(v) !== JSON.stringify(baseline[k])));
+          if (Object.keys(changed).length)
+            previous.options = { ...(previous.options || {}), ...changed };
+        }
+        widgets.push(previous);
+      } else {
+        if (typeof incoming.id === 'string' && incoming.id.startsWith('readonly-')) throw new Error('UNRECOGNIZED_WIDGET');
+        if (!SAFE_NEW_WIDGETS.has(incoming.type)) throw new Error('UNSAFE_NEW_WIDGET');
+        if (widgets.length >= 35) throw new Error('WIDGET_LIMIT');
+        widgets.push({
+          id: crypto.randomUUID().slice(0, 12), type: incoming.type,
+          ...geometry, options: safeVisualOptions(incoming.options)
+        });
+      }
+    }
+    // Unknown plugin-specific widgets remain untouched rather than silently deleted.
+    for (const w of originalWidgets) if (!EDITOR_WIDGET_TYPES.has(w?.type)) widgets.push(w);
+    return { ...basePage, widgets, enabled: page.enabled !== false };
+  });
+  return out;
+}
+async function savePublicWidgets(req, res) {
+  const origin = req.headers.origin;
+  const site = req.headers['sec-fetch-site'];
+  if (site === 'cross-site' || (origin && origin !== 'https://' + HOSTS.admin) ||
+      (!origin && site !== 'same-origin')) return respond(res, 403, 'Origin denied');
+  if (!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || ''))
+    return respond(res, 415, '{"error":"JSON required"}', 'application/json');
+  if (Number(req.headers['content-length'] || 0) > MAX_BODY)
+    return respond(res, 413, '{"error":"Too large"}', 'application/json');
+  const key = clientKey(req);
+  if ((widgetSaveTimes.get(key) || 0) > Date.now())
+    return respond(res, 429, '{"error":"Try again shortly"}', 'application/json');
+  let textBody = '';
+  for await (const chunk of req) {
+    textBody += chunk.toString('utf8');
+    if (textBody.length > MAX_BODY) return respond(res, 413, '{"error":"Too large"}', 'application/json');
+  }
+  let incoming;
+  try { incoming = JSON.parse(textBody); }
+  catch { return respond(res, 400, '{"error":"Bad JSON"}', 'application/json'); }
+  try {
+    const current = await readAgentJson('/api/config');
+    const version = String(current.version || '');
+    const submittedVersion = req.headers['x-config-version'];
+    if (!/^\d+$/.test(version) || submittedVersion !== version)
+      return respond(res, 409, '{"error":"Reload the latest settings before saving"}', 'application/json');
+    const next = mergeEditorWidgetChanges(current.config, incoming);
+    const raw = Buffer.from(JSON.stringify(next), 'utf8');
+    if (raw.length > 2 * 1024 * 1024) throw new Error('SAVED_CONFIG_TOO_LARGE');
+    const writeResult = await new Promise((resolve, reject) => {
+      const request = http.request({
+        ...UPSTREAM, path: '/api/settings', method: 'PUT', timeout: 20000,
+        headers: {
+          'Content-Type': 'application/json', 'Content-Length': raw.length,
+          'X-Config-Version': version, 'Origin': 'http://127.0.0.1:' + UPSTREAM.port,
+          'Sec-Fetch-Site': 'same-origin'
+        }
+      }, response => {
+        const chunks = []; let length = 0;
+        response.on('data', part => {
+          length += part.length;
+          if (length > 65536) { request.destroy(new Error('SAVE_RESPONSE_TOO_LARGE')); return; }
+          chunks.push(part);
+        });
+        response.on('end', () => resolve({ status: response.statusCode, payload: Buffer.concat(chunks).toString('utf8') }));
+        response.on('error', reject);
+      });
+      request.on('timeout', () => request.destroy(new Error('SAVE_TIMEOUT')));
+      request.on('error', reject);
+      request.end(raw);
+    });
+    if (writeResult.status === 409)
+      return respond(res, 409, '{"error":"Settings changed; reload first"}', 'application/json');
+    if (writeResult.status !== 200)
+      return respond(res, 422, '{"error":"Layout could not be saved"}', 'application/json');
+    widgetSaveTimes.set(key, Date.now() + 1500);
+    let versionAfter = '';
+    try { versionAfter = String(JSON.parse(writeResult.payload).version || ''); } catch {}
+    return respond(res, 200, JSON.stringify({ version: versionAfter, saved: 'widgets-only' }), 'application/json');
+  } catch {
+    return respond(res, 400, '{"error":"Invalid widget layout or settings changed"}', 'application/json');
+  }
+}
+
 async function publicReadOnly(req, res, role, path) {
+  if (role === 'admin' && path === '/api/settings' && req.method === 'PUT' && PUBLIC_WIDGET_EDIT)
+    return savePublicWidgets(req, res);
   if (req.method !== 'GET' && req.method !== 'HEAD') return respond(res, 405, 'Read-only mode');
   if (path === '/__login' || path === '/__logout') {
     res.writeHead(303, { Location: '/' }); return res.end();
@@ -386,9 +553,10 @@ async function publicReadOnly(req, res, role, path) {
     catch { return respond(res, 502, 'PhoneBox is temporarily unavailable'); }
   }
   if (role === 'admin' && path === '/api/settings') {
-    try { return respond(res, 200,
-      JSON.stringify(safePublicEditorSettings(await readAgentJson('/api/config'))),
-      'application/json; charset=utf-8'); }
+    try { const origin = await readAgentJson('/api/config');
+      if (typeof origin.version === 'string' && /^\d+$/.test(origin.version))
+        res.setHeader('X-Config-Version', origin.version);
+      return respond(res, 200, JSON.stringify(safePublicEditorSettings(origin)), 'application/json; charset=utf-8'); }
     catch { return respond(res, 502, '{"error":"upstream"}', 'application/json'); }
   }
   if (role === 'admin' && path === '/api/catalog') return proxy(req, res, role, path);
@@ -495,7 +663,7 @@ function start(role, port) {
   server.listen(port, '127.0.0.1', () => console.log('PhoneBox ' + role + ' listening on 127.0.0.1:' + port));
   return server;
 }
-export { allowedView, allowedAdmin, sameOrigin, LOGIN_USER, validLoginCsrf, acceptLoginOrigin, safePublicConfig, safePublicState, PUBLIC_READ_ONLY, safePublicEditorSettings, safeSettingsInfo, originalSettingsReadOnlyHtml };
+export { allowedView, allowedAdmin, sameOrigin, LOGIN_USER, validLoginCsrf, acceptLoginOrigin, safePublicConfig, safePublicState, PUBLIC_READ_ONLY, safePublicEditorSettings, safeSettingsInfo, originalSettingsReadOnlyHtml, PUBLIC_WIDGET_EDIT, mergeEditorWidgetChanges };
 if (process.env.PB_NO_LISTEN !== '1') {
   secrets = loadSecrets();
   start('view', VIEW_PORT);
