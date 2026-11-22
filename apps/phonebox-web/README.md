@@ -83,3 +83,16 @@ An already-verified `newsdayads@gmail.com` Google Owner session at `pc01.tigeriq
 - PC01 remains strictly **read-only**, including during ticket issuance; it never exposes system command APIs or PC secrets.
 - No account/password/token bypass: both sessions require an HMAC-signed cookie originating from an already verified Google Owner ID token. Ticket grants are replay-protected and expire in 45 seconds.
 - Source tests: `server.owner-sso.test.mjs` plus existing test suite. Real Owner-browser SSO is verified separately after release.
+
+
+
+## PC01 — exact PhoneBox Live Preview as the monitoring page
+
+Owner request (2026-11-22): `pc01.tigeriq.io.vn` should display **only** the original PhoneBox panel already used by the `Xem trước trực tiếp` button in Settings; **no new monitor UI** and no manually recreated widget list.
+
+- Existing authenticated Google Owner PC01 root continues to redirect to `/panel/`, which serves the **original upstream** PhoneBox `/panel/` HTML/CSS/JS. This is the exact same original panel component used by Settings' preview iframe `../panel/?preview=1`; the standalone panel without `preview=1` displays the **saved layout** automatically, so no cross-domain unsaved settings need to be copied.
+- The logged-in PC01 monitoring host now forwards original GET `/agent/api/config`, `/agent/api/state` and `/agent/api/stream` to PC01-local PhoneBox; this preserves **all original saved pages and widget types** plus live values instead of the earlier sanitized two-page home/system reconstruction. Other asset and data requests retain the strict existing view allowlist.
+- **Read-only remains enforced** for all PC01 POST/PUT/DELETE and administrative control APIs, even for Google Owner; full PC controls live only at `phonebox.tigeriq.io.vn` after Owner sign-in.
+- No new page design, separate service, new DNS, Tunnel, Cloudflare Access or additional authentication. No changes to PhoneBox agent, Android/Note8 or saved widgets.
+- Unsaved changes visible only within PhoneBox Settings' embedded preview require pressing **Lưu** to appear on the standalone PC01 monitor. No new rendering is invented.
+- Regression test checks that a third page and its media widget remain available to PC01 Owner, not filtered down to two pages. Real Chrome/mobile acceptance should verify layout and live data.
