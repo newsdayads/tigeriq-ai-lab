@@ -53,7 +53,21 @@ test('direct public sites render without login, sanitize data, block all changes
       media: { title: 'PRIVATE_TRACK' },
       work: { conversations: [{ title: 'SECRET_CONVERSATION' }] }
     }));
+    if (req.url.startsWith('/api/info')) return res.end(JSON.stringify({
+      version: '0.9.27', adb: 'C:\\SECRET_PATH\\adb.exe',
+      connected: true, via: 'USB', devices: ['PRIVATE_SERIAL'],
+      configPath: 'C:\\SECRET_PATH\\config.json', logPath: 'PRIVATE_LOG'
+    }));
+    if (req.url.startsWith('/api/lan')) return res.end(JSON.stringify({
+      configured: true, active: true, port: 8766, hosts: ['PRIVATE_LAN_IP'],
+      fingerprint: 'SECRET_PIN'
+    }));
+    if (req.url.startsWith('/api/catalog')) return res.end(JSON.stringify({
+      cols: 12, rows: 6, widgets: [{ type: 'clock', name: 'Clock' }],
+      templates: []
+    }));
     res.setHeader('Content-Type', 'text/html');
+    if (req.url === '/') return res.end('<!doctype html><html><head><title>PhoneBox</title></head><body><div id="pageTabs">UPSTREAM_ORIGINAL_SETTINGS</div></body></html>');
     res.end('<html><title>Original PhoneBox UI</title>static-original-panel</html>');
   });
   await new Promise(resolve => upstream.listen(origin, '127.0.0.1', resolve));
@@ -88,9 +102,33 @@ test('direct public sites render without login, sanitize data, block all changes
   const adminPage = await get(admin, '/');
   assert.equal(adminPage.status, 200);
   const adminHtml = await adminPage.text();
-  assert.match(adminHtml, /PhoneBox Settings/);
-  assert.match(adminHtml, /Chế độ tạm thời chỉ xem/);
+  assert.match(adminHtml, /UPSTREAM_ORIGINAL_SETTINGS/, 'must serve real upstream settings, not custom replacement');
+  assert.match(adminHtml, /PhoneBox gốc trên PC01/);
+  assert.match(adminHtml, /Chế độ chỉ xem/);
+  assert.match(adminHtml, /tigeriq-readonly-style/);
   assert.doesNotMatch(adminHtml, /SECRET|PRIVATE|name="password"/);
+  const originalSettingsResponse = await get(admin, '/api/settings');
+  assert.equal(originalSettingsResponse.status, 200, 'original editor must receive sanitized settings data');
+  const editorText = await originalSettingsResponse.text();
+  assert.doesNotMatch(editorText, /SECRET|PRIVATE|webhookToken.*[A-Za-z0-9]{18}|PRIVATE_PROJECT_TITLE/);
+  const editor = JSON.parse(editorText);
+  assert.equal(editor.pages.length, 1, 'unknown private pages must not leak');
+  assert.equal(editor.pages[0].title, 'Home');
+  assert.equal(editor.pages[0].widgets.length, 3);
+  assert.deepEqual(editor.pages[0].widgets[2].options, {}, 'session metadata must be stripped');
+  assert.equal(editor.lan.token, '');
+  assert.equal(editor.lan.webhookToken, '');
+  const infoResponse = await get(admin, '/api/info');
+  assert.equal(infoResponse.status, 200);
+  const infoText = await infoResponse.text();
+  assert.doesNotMatch(infoText, /SECRET|PRIVATE/);
+  assert.equal(JSON.parse(infoText).via, 'USB');
+  const lanResponse = await get(admin, '/api/lan');
+  assert.equal(lanResponse.status, 200);
+  const lanText = await lanResponse.text();
+  assert.doesNotMatch(lanText, /SECRET|PRIVATE/);
+  assert.deepEqual(JSON.parse(lanText).hosts, []);
+  assert.equal((await get(admin, '/api/catalog')).status, 200);
   const config = await get(view, '/agent/api/config');
   assert.equal(config.status, 200);
   const configText = await config.text();
@@ -109,8 +147,12 @@ test('direct public sites render without login, sanitize data, block all changes
   for (const p of [view, admin]) {
     assert.equal((await get(p, '/__login')).status, 303, 'login must redirect to front page');
     assert.equal((await get(p, '/agent/api/stream')).status, 204);
-    for (const path of ['/api/settings', '/api/info', '/api/config', '/agent/api/quotas', '/agent/api/work']) {
+    for (const path of ['/api/config', '/agent/api/quotas', '/agent/api/work', '/api/restart', '/api/controls/state']) {
       assert.equal((await get(p, path)).status, 404, 'private path leaked: ' + path);
+    }
+    if (p === view) {
+      assert.equal((await get(p, '/api/settings')).status, 404);
+      assert.equal((await get(p, '/api/info')).status, 404);
     }
     for (const path of ['/api/settings', '/api/controls/command/restart', '/agent/api/controls/command/power', '/__login']) {
       assert.equal((await get(p, path, { method: 'POST', body: '{}' })).status, 405,

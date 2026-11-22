@@ -250,6 +250,107 @@ function readAgentJson(pathname) {
     req.once('error', reject);
   });
 }
+
+const ORIGINAL_PAGE_NAMES = Object.freeze({
+  home: ['Home', '🏠'], ai: ['AI quotas', '✳'],
+  work: ['Sessions', '▣'], system: ['System', '▥'],
+  procs: ['Processes', '⚙'], deck: ['Shortcuts', '☷'],
+  music: ['Music', '♫'], focus: ['Focus', '◷'], world: ['World', '◎']
+});
+const EDITOR_WIDGET_TYPES = new Set([
+  'clock', 'media', 'stat', 'quotas', 'sessions', 'github',
+  'chart', 'meters', 'processes', 'shortcuts', 'forecast',
+  'pomodoro', 'note', 'worldclock', 'calendar'
+]);
+function safePublicEditorSettings(raw) {
+  const config = raw?.config || {};
+  const source = Array.isArray(config.pages) ? config.pages : [];
+  const pages = source.filter(page => Object.hasOwn(ORIGINAL_PAGE_NAMES, page?.id)).map(page => ({
+    id: page.id,
+    title: ORIGINAL_PAGE_NAMES[page.id][0],
+    icon: ORIGINAL_PAGE_NAMES[page.id][1],
+    enabled: page.enabled !== false,
+    idleSec: 0,
+    widgets: (Array.isArray(page.widgets) ? page.widgets : [])
+      .filter(w => EDITOR_WIDGET_TYPES.has(w?.type)).slice(0, 30)
+      .map((w, i) => {
+        const scrubbed = safePageWidget(w, i) || {
+          id: 'readonly-' + page.id + '-' + i,
+          type: w.type,
+          x: Number.isInteger(w.x) && w.x >= 0 && w.x < 12 ? w.x : 0,
+          y: Number.isInteger(w.y) && w.y >= 0 && w.y < 6 ? w.y : 0,
+          w: Number.isInteger(w.w) && w.w > 0 && w.w <= 12 ? w.w : 2,
+          h: Number.isInteger(w.h) && w.h > 0 && w.h <= 6 ? w.h : 2,
+          options: {}
+        };
+        return { ...scrubbed, id: 'readonly-' + page.id + '-' + i,
+          appearance: {}, options: scrubbed.options || {} };
+      })
+  }));
+  if (!pages.length) pages.push({
+    id: 'home', title: 'Home', icon: '⌂', enabled: true, idleSec: 0,
+    widgets: [{ id: 'readonly-clock', type: 'clock', x: 0, y: 0,
+      w: 12, h: 5, options: {}, appearance: {} }]
+  });
+  return {
+    pages, shortcuts: [], rules: [], phones: [], calendars: [], feeds: [],
+    cameras: { sources: [], ffmpeg: '' }, console: { profiles: [] },
+    lan: { enabled: true, port: 8766, token: '', webhookToken: '' },
+    weather: { unit: 'celsius' }, photos: { source: 'folder', folder: '' },
+    ping: { adapters: [] }, night: { enabled: false },
+    updates: { auto: false, repo: 'ersinkoc/phonebox' },
+    claude: { phoneApprovals: false },
+    opencode: { phoneApprovals: false, sessions: false },
+    cursor: {}, antigravity: {}, charge: { enabled: false },
+    homeAssistant: {}, obs: {}, discord: {}, steam: { enabled: false },
+    codexBar: { providers: [], rotate: false },
+    display: { language: 'vi', orientation: 'landscape', theme: 'default',
+      accent: '#2dd4bf', showSeconds: true, hour12: false }
+  };
+}
+function safeSettingsInfo(info) {
+  return {
+    version: typeof info?.version === 'string' && /^[0-9.]+$/.test(info.version) ? info.version : '0.9',
+    os: 'windows', configPath: 'PC01 (local)', logPath: 'PC01 (local)',
+    adb: info?.adb ? 'ADB kết nối nội bộ' : null,
+    connected: info?.connected === true,
+    via: info?.via === 'USB' ? 'USB' : info?.via === 'Wi-Fi' ? 'Wi-Fi' : null,
+    devices: [], appMissing: [], usbProblem: null, webviewProblem: null
+  };
+}
+function originalSettingsReadOnlyHtml(html) {
+  if (!/<html\b/i.test(html) || !/<body\b/i.test(html)) throw new Error('UPSTREAM_NOT_HTML');
+  // Serve the installed upstream settings UI, with only a read-only notice and disabled write buttons.
+  const extraCss = '<style id="tigeriq-readonly-style">' +
+    '#save,#revert,#openPhone,#restartBtn,#updTop,#updApply,#updCheck,#lanPair,#lanRegen,#installApp{display:none!important}' +
+    '#tigeriq-readonly{padding:9px 16px;text-align:center;background:#193435;color:#d2faf4;' +
+    'border-bottom:1px solid #2dd4bf;font:600 13px system-ui,sans-serif}' +
+    '</style>';
+  const banner = '<div id="tigeriq-readonly" role="status">PhoneBox gốc trên PC01 · Chế độ chỉ xem — chỉnh sửa tại 127.0.0.1:8765</div>';
+  return html.replace(/<\/head>/i, extraCss + '</head>')
+    .replace(/<body([^>]*)>/i, (_, attrs) => '<body' + attrs + '>' + banner);
+}
+function readAgentText(pathname) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    const req = http.get({ ...UPSTREAM, path: pathname, timeout: 7000 }, response => {
+      if (response.statusCode !== 200) {
+        response.resume(); reject(new Error('UPSTREAM_HTML_STATUS')); return;
+      }
+      response.on('data', piece => {
+        total += piece.length;
+        if (total > 1024 * 1024) { req.destroy(new Error('HTML_TOO_LARGE')); return; }
+        chunks.push(piece);
+      });
+      response.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+      response.on('error', reject);
+    });
+    req.on('timeout', () => req.destroy(new Error('HTML_TIMEOUT')));
+    req.on('error', reject);
+  });
+}
+
 function safeText(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 }
@@ -281,10 +382,42 @@ async function publicReadOnly(req, res, role, path) {
     res.writeHead(303, { Location: '/panel/' }); return res.end();
   }
   if (role === 'admin' && path === '/') {
-    try {
-      const [config, state] = await Promise.all([readAgentJson('/api/config'), readAgentJson('/api/state')]);
-      return respond(res, 200, publicSettingsHtml(safePublicConfig(config), safePublicState(state)), 'text/html; charset=utf-8');
-    } catch { return respond(res, 502, 'PhoneBox is temporarily unavailable'); }
+    try { return respond(res, 200, originalSettingsReadOnlyHtml(await readAgentText('/')), 'text/html; charset=utf-8'); }
+    catch { return respond(res, 502, 'PhoneBox is temporarily unavailable'); }
+  }
+  if (role === 'admin' && path === '/api/settings') {
+    try { return respond(res, 200,
+      JSON.stringify(safePublicEditorSettings(await readAgentJson('/api/config'))),
+      'application/json; charset=utf-8'); }
+    catch { return respond(res, 502, '{"error":"upstream"}', 'application/json'); }
+  }
+  if (role === 'admin' && path === '/api/catalog') return proxy(req, res, role, path);
+  if (role === 'admin' && path === '/api/info') {
+    try { return respond(res, 200,
+      JSON.stringify(safeSettingsInfo(await readAgentJson('/api/info'))),
+      'application/json; charset=utf-8'); }
+    catch { return respond(res, 502, '{"error":"upstream"}', 'application/json'); }
+  }
+  if (role === 'admin' && path === '/api/lan') {
+    try { const lan = await readAgentJson('/api/lan');
+      return respond(res, 200, JSON.stringify({configured:!!lan.configured,
+        active:!!lan.active,port:8766,restartNeeded:!!lan.restartNeeded,
+        hosts:[]}), 'application/json; charset=utf-8'); }
+    catch { return respond(res, 502, '{"error":"upstream"}', 'application/json'); }
+  }
+  if (role === 'admin' && path === '/api/update')
+    return respond(res, 200, JSON.stringify({installed:true,auto:false,status:{
+      agentVersion:'0.9',appVersion:null,agentUpdate:false,appUpdate:false,
+      latest:null,lastCheck:null,state:'idle',error:null}}), 'application/json; charset=utf-8');
+  if (role === 'admin' && ['/api/phones','/api/network/adapters'].includes(path))
+    return respond(res, 200, '[]', 'application/json; charset=utf-8');
+  if (role === 'admin' && ['/api/claude/hook','/api/codex/hook'].includes(path))
+    return respond(res, 200, '{"installed":false}', 'application/json; charset=utf-8');
+  if (role === 'admin' && path === '/api/push')
+    return respond(res, 200, '{"items":{}}', 'application/json; charset=utf-8');
+  if (role === 'admin' && path === '/api/state') {
+    try { return respond(res, 200, JSON.stringify(safePublicState(await readAgentJson('/api/state'))), 'application/json; charset=utf-8'); }
+    catch { return respond(res, 502, '{"error":"upstream"}', 'application/json'); }
   }
   if (path === '/agent/api/config') {
     try { return respond(res, 200, JSON.stringify(safePublicConfig(await readAgentJson('/api/config'))), 'application/json; charset=utf-8'); }
@@ -362,7 +495,7 @@ function start(role, port) {
   server.listen(port, '127.0.0.1', () => console.log('PhoneBox ' + role + ' listening on 127.0.0.1:' + port));
   return server;
 }
-export { allowedView, allowedAdmin, sameOrigin, LOGIN_USER, validLoginCsrf, acceptLoginOrigin, safePublicConfig, safePublicState, PUBLIC_READ_ONLY };
+export { allowedView, allowedAdmin, sameOrigin, LOGIN_USER, validLoginCsrf, acceptLoginOrigin, safePublicConfig, safePublicState, PUBLIC_READ_ONLY, safePublicEditorSettings, safeSettingsInfo, originalSettingsReadOnlyHtml };
 if (process.env.PB_NO_LISTEN !== '1') {
   secrets = loadSecrets();
   start('view', VIEW_PORT);
