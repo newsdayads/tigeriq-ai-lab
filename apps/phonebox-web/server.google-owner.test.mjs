@@ -142,14 +142,16 @@ test('Full original admin APIs require Google owner session, while public view r
  assert.equal(action.status,200);assert.equal(executed,1);
  assert.equal((await req(viewPort,'/api/restart',{method:'POST',body:'{}'})).status,405);
 });
-test('Google mode configured without credentials fails closed, never exposes PC control', {timeout:20000},async t=>{
+test('Google mode enabled by private local switch fails closed without valid client ID', {timeout:20000},async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'phonebox-google-missing-'));
  const admin=await port(),view=await port(),agent=await port();
  await fs.writeFile(path.join(dir,'auth.json'),JSON.stringify({
    salt:'11'.repeat(24),hash:'22'.repeat(32),sessionSecret:'33'.repeat(48)
  }));
+ const flag=path.join(dir,'google-owner.enabled');
+ await fs.writeFile(flag,'enable on PC01 only');
  const child=spawn(process.execPath,['apps/phonebox-web/server.mjs'],{
-  env:{...process.env,PB_GOOGLE_AUTH:'1',PB_VIEW_PORT:String(view),PB_ADMIN_PORT:String(admin),
+  env:{...process.env,PB_GOOGLE_ENABLE_FILE:flag,PB_GOOGLE_AUTH:'',PB_VIEW_PORT:String(view),PB_ADMIN_PORT:String(admin),
     PB_AGENT_PORT:String(agent),PB_AUTH_FILE:path.join(dir,'auth.json'),PB_GOOGLE_CONFIG_FILE:'',
     PB_GOOGLE_CLIENT_ID:'invalid-client'},
   stdio:['ignore','pipe','pipe']
