@@ -21,4 +21,15 @@
     background: rgba(6,8,11,.76); backdrop-filter: blur(8px); }
   #ptitle { max-width: calc(100vw - 22px); }
   .card { border-radius: 12px; }
+} 
+/* Owner Home ordering v2 — layout only, no upstream widget configuration changes. */
+@media screen and (max-width:650px) and (max-height:540px) and (min-aspect-ratio:.82) {
+  .page:has(.w-clock) .grid > .w-clock { order:0; grid-column:1 / -1 !important; height:125px; }
+  .page:has(.w-clock) .grid > .w-quotaring { order:1; grid-column:auto !important; height:180px; min-height:0 !important; }
+  .page:has(.w-clock) .grid > .w-quotaring .g-dial { height:min(100px,56cqw); }
+  .page:has(.w-clock) .grid > .w-quotaring .g-val { font-size:clamp(24px,7vw,34px); }
+  .page:has(.w-clock) .grid > .w-quotaring .g-label { font-size:12px; letter-spacing:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+  .page:has(.w-clock) .grid > .w-quotaring .g-sub { font-size:11px; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+  .page:has(.w-clock) .grid > .w-stat { order:2; height:130px; min-height:0 !important; }
+  .page:has(.w-clock) .grid > .w-github { order:3; grid-column:1 / -1 !important; height:228px; }
 }
