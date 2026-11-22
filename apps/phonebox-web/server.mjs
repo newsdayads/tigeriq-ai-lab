@@ -18,7 +18,12 @@ const LOGIN_USER = 'Administrator';
 // Set PB_PUBLIC_READONLY=0 only after restoring a separately authenticated access policy.
 const PUBLIC_READ_ONLY = process.env.PB_PUBLIC_READONLY !== '0';
 // Owner-approved Google OAuth mode. It supersedes public readonly ONLY when explicitly enabled.
-const GOOGLE_AUTH_ENABLED = process.env.PB_GOOGLE_AUTH === '1';
+// Optional local enable switch avoids changing or elevating the existing Windows task.
+// Enable only after the Google client has the exact authorized JS origin.
+const GOOGLE_AUTH_ENABLED = process.env.PB_GOOGLE_AUTH === '1' ||
+  (process.env.PB_GOOGLE_AUTH !== '0' &&
+   fs.existsSync(process.env.PB_GOOGLE_ENABLE_FILE ||
+     'D:\\TigerIQ\\State\\PhoneBox\\google-owner.enabled'));
 let googleAuth = null;
 // User-requested login-free widget editor, without exposing PC controls or other agent settings.
 const PUBLIC_WIDGET_EDIT = PUBLIC_READ_ONLY && process.env.PB_PUBLIC_WIDGET_EDIT !== '0';
