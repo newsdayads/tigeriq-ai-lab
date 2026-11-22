@@ -99,8 +99,14 @@ test('full local PhoneBox UI and all API methods work via private tailnet only; 
   const original=await full.json();
   assert.equal(original.lan.token,'SECRET_PRIVATE_WIFI_KEY');
   assert.equal(original.shortcuts[0].cmd,'PRIVATE_RUN_COMMAND');
-  const blockedWrongHost=await request(privatePort,'/',{headers:{Host:'phonebox.tigeriq.io.vn'}});
-  assert.equal(blockedWrongHost.status,403);
+  const blockedWrongHost = await new Promise((resolve,reject) => {
+    const q=http.get({hostname:'127.0.0.1',port:privatePort,path:'/',
+      headers:{host:'phonebox.tigeriq.io.vn'}},res=>{
+        res.resume();res.on('end',()=>resolve(res.statusCode));
+      });
+    q.on('error',reject);
+  });
+  assert.equal(blockedWrongHost,403);
   const blockedCrossSite=await request(privatePort,'/api/settings',{headers:{...privateHeaders,'Sec-Fetch-Site':'cross-site'}});
   assert.equal(blockedCrossSite.status,403);
   const blockedBadOrigin=await request(privatePort,'/api/settings',{
