@@ -688,9 +688,10 @@ function googleConfig() {
   const path = process.env.PB_GOOGLE_CONFIG_FILE;
   if (path) file = JSON.parse(fs.readFileSync(path, 'utf8'));
   return {
-    clientId: String(process.env.PB_GOOGLE_CLIENT_ID || file.clientId || ''),
-    clientSecret: String(process.env.PB_GOOGLE_CLIENT_SECRET || file.clientSecret || ''),
-    redirectUri: String(process.env.PB_GOOGLE_REDIRECT_URI || file.redirectUri || ''),
+    // The Google OAuth Web Client ID is public; the only private authentication secret
+    // is our local PhoneBox session HMAC key. The client must allow this JS origin.
+    clientId: String(process.env.PB_GOOGLE_CLIENT_ID || file.clientId ||
+      '832918518381-sveiabkajbo6vbi45v86tqtolc6j8m2n.apps.googleusercontent.com'),
     ownerEmail: 'newsdayads@gmail.com',
     sessionKey: secrets.sessionSecret
   };
@@ -704,8 +705,8 @@ function googleFullNative(req,res,role,path) {
   if (req.method==='GET' && path==='/__auth/google') {
     googleAuth.login(req,res); return true;
   }
-  if (req.method==='GET' && path==='/__auth/google/callback') {
-    void googleAuth.callback(req,res,answer => {
+  if (path==='/__auth/google/credential') {
+    void googleAuth.credential(req,res,answer => {
       answer.setHeader('Set-Cookie',COOKIE.admin+'='+token('admin')+
         '; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800');
     });
