@@ -26,6 +26,7 @@ test('public no-login widget edits save only UI layout; never overwrite PC01 sec
   }));
   let version = 1001;
   let saves = 0;
+  let privateSettingsReads = 0;
   let config = {
     lan:{enabled:true,port:8766,token:'PRIVATE_LAN_TOKEN'},
     shortcuts:[{kind:'run',command:'PRIVATE_COMMAND'}],
@@ -43,12 +44,31 @@ test('public no-login widget edits save only UI layout; never overwrite PC01 sec
   const upstream = http.createServer(async (req,res) => {
     if(req.url === '/api/config' && req.method==='GET') {
       res.setHeader('Content-Type','application/json');
-      return res.end(JSON.stringify({version:String(version),config}));
+      const publicConfig = structuredClone(config);
+      // Mimic PhoneBox AgentConfig.ToPublic(): deliberately omits PC secrets and command details.
+      delete publicConfig.lan.token;
+      publicConfig.shortcuts = publicConfig.shortcuts.map(s => ({ kind: s.kind }));
+      return res.end(JSON.stringify({version:String(version),config:publicConfig}));
+    }
+    if(req.url === '/api/settings' && req.method==='GET') {
+      if(req.headers['sec-fetch-site'] !== 'same-origin' ||
+         req.headers['sec-fetch-mode'] !== 'cors' ||
+         req.headers['sec-fetch-dest'] !== 'empty') {
+        res.writeHead(403);return res.end('Forbidden');
+      }
+      privateSettingsReads++;
+      res.setHeader('Content-Type','application/json');
+      res.setHeader('X-Config-Version',String(version));
+      return res.end(JSON.stringify(config));
     }
     if(req.url === '/api/settings' && req.method==='PUT') {
       const parts=[];for await(const c of req)parts.push(c);
       if(req.headers['x-config-version'] !== String(version)) {res.writeHead(409);return res.end('{}');}
-      config=JSON.parse(Buffer.concat(parts).toString('utf8'));
+      const proposed=JSON.parse(Buffer.concat(parts).toString('utf8'));
+      if(proposed.lan?.token !== config.lan.token || proposed.shortcuts?.[0]?.command !== config.shortcuts?.[0]?.command) {
+        res.writeHead(400);return res.end('{"error":"PRIVATE_FIELDS_LOST"}');
+      }
+      config=proposed;
       saves++;
       version++;
       res.setHeader('Content-Type','application/json');
@@ -120,6 +140,7 @@ test('public no-login widget edits save only UI layout; never overwrite PC01 sec
   const save=await request(admin,'/api/settings',{method:'PUT',headers,body});
   assert.equal(save.status,200,await save.text());
   assert.equal(saves,1);
+  assert.equal(privateSettingsReads >= 1,true,'the gateway must read private local settings before writing');
   assert.equal(config.lan.token,'PRIVATE_LAN_TOKEN');
   assert.deepEqual(config.shortcuts,[{kind:'run',command:'PRIVATE_COMMAND'}]);
   assert.deepEqual(config.rules,[{id:'private-rule',enabled:true}]);
