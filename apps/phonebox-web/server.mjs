@@ -754,7 +754,7 @@ function googleProtectedView(req,res,role,path){
   if(path==='/__auth/google/credential'){
     void googleViewAuth.credential(req,res,r=>{
       r.setHeader('Set-Cookie',GOOGLE_VIEW_COOKIE+'='+googleViewSession()+
-        '; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000');
+        '; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000');
     });
     return true;
   }
@@ -780,7 +780,7 @@ function googleProtectedView(req,res,role,path){
       const data=JSON.parse(Buffer.from(value.split('.')[0],'base64url').toString('utf8'));
       if(data.exp-Date.now()<GOOGLE_VIEW_REFRESH_MS)
         res.setHeader('Set-Cookie',GOOGLE_VIEW_COOKIE+'='+googleViewSession()+
-          '; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000');
+          '; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=2592000');
     } catch { /* Session signature was checked before this block. */ }
   }
   // Use the *original* PhoneBox /panel/ and its full read-only live data.
