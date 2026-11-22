@@ -30,3 +30,6 @@ With `PB_PUBLIC_READONLY=1` and `PB_PUBLIC_WIDGET_EDIT=1` (both default), the or
 - The installed PhoneBox agent remains private at `127.0.0.1:8765`, and original Note8 connectivity is unaffected.
 
 Run `node --test apps/phonebox-web/server.test.mjs apps/phonebox-web/server.integration.test.mjs apps/phonebox-web/server.public.test.mjs apps/phonebox-web/server.widget-edit.test.mjs`. Apply only after exact-head checks, merge/readback, SHA-verified PC01 release, and both-site HTTPS acceptance. The real iPhone browser must be verified separately.
+
+
+- For an authorized widget save, the gateway reads the complete current settings **only from local PC01 loopback** using the upstream desktop fetch-metadata contract; it never writes the `/api/config` phone/public snapshot, which intentionally omits private shortcuts and tokens. Only sanitized editor fields are accepted from the browser; the private snapshot is never returned to the Internet.
