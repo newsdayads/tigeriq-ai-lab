@@ -60,3 +60,15 @@ The original PhoneBox agent stays private at `127.0.0.1:8765`. The existing publ
 - Activation after the Google OAuth Web client origin is accepted: create the private local file `D:\\TigerIQ\\State\\PhoneBox\\google-owner.enabled` on PC01 and restart the existing `TigerIQ PhoneBox Web` scheduled task. This avoids changing the scheduled task's arguments or requiring administrator elevation. `PB_GOOGLE_AUTH=1` is also supported; `PB_GOOGLE_AUTH=0` disables the file-based mode. Check browser Google auth end-to-end before claiming production done. If explicitly enabled but identity is unconfigured, admin returns **503** and denies operations; it NEVER falls back to anonymous full access.
 - Do **not** enable Google mode before Google Cloud authorized origin has been confirmed and rollout/rollback checkpoint is available. Anonymous public widget edits remain as before until then.
 - Regression: `node --test apps/phonebox-web/server.test.mjs apps/phonebox-web/server.integration.test.mjs apps/phonebox-web/server.public.test.mjs apps/phonebox-web/server.widget-edit.test.mjs apps/phonebox-web/server.private-tailnet.test.mjs apps/phonebox-web/server.google-owner.test.mjs`. Verify stale password sessions do not confer Google Owner access.
+
+
+## PC01 monitor Google Owner login (2026-11-22)
+
+The existing Google Cloud OAuth Web client already has `https://pc01.tigeriq.io.vn` and `https://phonebox.tigeriq.io.vn` in its Authorized JavaScript origins, without removing previous origins. With the existing PC01 private `google-owner.enabled` flag enabled, both sites use the **same Google verified Owner identity** but separate, host-only, role-bound session cookies.
+
+- `phonebox.tigeriq.io.vn`: full original native PhoneBox after login; contains native control APIs.
+- `pc01.tigeriq.io.vn`: login required for **monitoring only**; data stays sanitized and all POST/PUT/DELETE commands remain blocked, including owner sessions.
+- Login uses the same public Google Web Client ID and RS256 verified identity `newsdayads@gmail.com`; no Google client secret, Cloudflare Access, Tailscale, DNS or new HTTP service. Default system command restrictions remain unchanged for PC01 monitoring.
+- Production activation flag is ignored by isolated test listeners using nondefault ports; explicitly configured PB_GOOGLE_AUTH or PB_GOOGLE_ENABLE_FILE still support tests.
+
+Acceptance: verify unauthenticated GET redirect to `/__auth/google` for both sites; HTTP 200 Google button, separate cookies, authenticated PC01 panel GET 200 and PC01 command POST HTTP 405; PhoneBox still permits original controls only after Google Owner login. Do not infer real Owner Google sign-in acceptance from a mock JWK test.

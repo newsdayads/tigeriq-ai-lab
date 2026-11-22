@@ -34,6 +34,13 @@ function makeGoogleOAuth(config,{fetchImpl=fetch,jwksUrl=GOOGLE_JWKS}={}){
   if(!/^[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(config?.clientId||'')||
      config?.ownerEmail!==OWNER||!(/^[a-f0-9]{64,}$/.test(config.sessionKey||'')))
     throw Error('PHONEBOX_GOOGLE_AUTH_NOT_CONFIGURED');
+  const expectedOrigin=config.origin||ORIGIN;
+  if(![ORIGIN,'https://pc01.tigeriq.io.vn'].includes(expectedOrigin))
+    throw Error('INVALID_GOOGLE_OWNER_ORIGIN');
+  const loginTitle=expectedOrigin===ORIGIN?'PhoneBox — PC01':'PC01 — Theo dõi';
+  const loginDescription=expectedOrigin===ORIGIN?
+    'Đăng nhập bằng newsdayads@gmail.com để điều khiển PhoneBox gốc.':
+    'Đăng nhập bằng newsdayads@gmail.com để xem trạng thái PC01.';
   const key=Buffer.from(config.sessionKey,'hex');
   let cache={keys:[],expires:0};
   async function jwks(force=false){
@@ -68,9 +75,9 @@ function makeGoogleOAuth(config,{fetchImpl=fetch,jwksUrl=GOOGLE_JWKS}={}){
       const jsNonce=crypto.randomBytes(18).toString('base64url');
       const body=[
         '<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
-        '<title>PhoneBox — Google Owner</title>',
+        '<title>'+escapeHtml(loginTitle)+' — Google Owner</title>',
         '<style>body{font:16px system-ui;background:#101a2d;color:#fff;min-height:90vh;display:grid;place-items:center}main{max-width:400px;padding:28px;border:1px solid #384966;border-radius:14px;text-align:center}p{color:#d3dce9}#error{color:#fecaca}</style>',
-        '<main><h2>PhoneBox — PC01</h2><p>Đăng nhập bằng newsdayads@gmail.com để điều khiển PhoneBox gốc.</p>',
+        '<main><h2>'+escapeHtml(loginTitle)+'</h2><p>'+escapeHtml(loginDescription)+'</p>',
         '<div id="g_id_onload" data-client_id="'+escapeHtml(config.clientId)+'" data-nonce="'+escapeHtml(nonce)+'" data-callback="phoneboxGoogle" data-auto_prompt="false"></div>',
         '<div class="g_id_signin" data-type="standard" data-size="large" data-text="signin_with" data-shape="pill"></div>',
         '<p id="error" role="alert"></p></main>',
@@ -84,7 +91,7 @@ function makeGoogleOAuth(config,{fetchImpl=fetch,jwksUrl=GOOGLE_JWKS}={}){
       res.end(body);
     },
     async credential(req,res,setAdminSession){
-      if(req.method!=='POST'||req.headers.origin!==ORIGIN||
+      if(req.method!=='POST'||req.headers.origin!==expectedOrigin||
          req.headers['sec-fetch-site']==='cross-site')return deny(res,403,'Invalid owner origin');
       if(!String(req.headers['content-type']||'').startsWith('application/json'))
         return deny(res,415,'Expected JSON');
