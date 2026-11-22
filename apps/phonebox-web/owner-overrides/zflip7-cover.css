@@ -66,3 +66,40 @@
     order:3; grid-column:1 / -1 !important;
   }
 }
+/* Owner System triple-chart row v4: CPU | GPU | Download/Upload/Ping, then memory. */
+@media screen and (max-width:650px) and (max-height:540px) and (min-aspect-ratio:.82) {
+  .page[data-id="system"] .grid {
+    grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+    grid-auto-rows:auto !important; gap:6px !important;
+  }
+  .page[data-id="system"] .grid > .w-chart {
+    grid-column:span 1 !important; grid-area:auto !important;
+    height:148px !important; min-height:0 !important;
+    padding:6px 5px 0 !important; order:0;
+  }
+  .page[data-id="system"] .grid > .w-meters {
+    grid-column:1 / -1 !important; grid-area:auto !important;
+    order:1; height:168px !important; min-height:0 !important;
+    padding:7px 9px !important;
+  }
+  .page[data-id="system"] .w-chart .s-head {
+    display:block; min-width:0; overflow:hidden;
+  }
+  .page[data-id="system"] .w-chart .s-label {
+    display:block; font-size:9px !important; letter-spacing:0 !important;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .page[data-id="system"] .w-chart .s-main {
+    display:flex; flex-wrap:wrap; gap:1px 3px;
+    max-height:34px; overflow:hidden;
+  }
+  .page[data-id="system"] .w-chart .s-main b { font-size:12px !important; }
+  .page[data-id="system"] .w-chart .s-main small,
+  .page[data-id="system"] .w-chart .s-main .multi {
+    font-size:9px !important; margin-right:2px !important;
+  }
+  .page[data-id="system"] .w-chart canvas {
+    width:calc(100% + 10px) !important; margin:2px -5px 0 !important;
+    min-height:0 !important;
+  }
+}
