@@ -8,6 +8,27 @@ NO_SECOND_CONTROL_PLANE=true | NO_NEW_QUEUE=true
 ## MỤC TIÊU
 Mọi phản hồi Owner-facing và bề mặt TigerIQ sở hữu trình bày ngắn, trực quan, nhấn mạnh KẾT QUẢ → BLOCKER → NEXT. Trả lời 1–3 dòng nếu đơn giản; không ép thẻ cho chào hỏi hoặc câu thông thường. Khi có công việc/hành động: một thẻ gọn, bằng chứng rõ, tối đa 1–3 nút mặc định; chỉ mở chi tiết khi chạm. Đọc tốt trên iPhone, tránh tràn ngang.
 
+## OWNER 22/11/2026 — MẪU THẺ ĐƯỢC DUYỆT CHO TOÀN TIGERIQ AI LAB
+
+OWNER_DIRECT=true | APPROVED_VISUAL_REFERENCE=OWNER_IPHONE_SCREENSHOT_20261122_1523 | SCOPE=ALL_VY_OWNER_FACING_REPORTS_IN_TIGERIQ_AI_LAB | PRIORITY=V6_PRESENTATION_ADDENDUM | NO_SECOND_POLICY=true
+
+**Mục tiêu:** Chuẩn hóa **phong cách trình bày câu trả lời và báo cáo trong ChatGPT/TigerIQ AI Lab** giống thẻ TigerIQ DeX Shot Owner vừa xác nhận bằng ảnh: gọn, hiện đại, dễ đọc trên iPhone. Đây là **một điều khoản bổ sung của V6**, KHÔNG sửa CSS/native UI của mọi App/Web hoặc branding riêng của từng sản phẩm.
+
+**Khung mẫu đã duyệt — chọn những phần có ý nghĩa, không tạo nội dung giả:**
+1. **Một thẻ duy nhất cho báo cáo công việc/triển khai:** viền trung tính mảnh, bo góc mềm, nền theo light/dark theme hiện hành, padding/gap thoáng vừa phải. Không chèn nhiều thẻ cạnh nhau, không tô màu cả nền kết luận, không tạo dashboard dài cho câu hỏi ngắn. Không ép title chung “DeX Shot”; **thương hiệu/tên nhiệm vụ thay theo đúng dự án**.
+2. **Hàng header:** icon VECTOR Lucide liên quan đúng nhiệm vụ + tên ứng dụng/dự án, từ khóa phân biệt có thể dùng accent xanh ngọc phù hợp thương hiệu, và **tối đa một badge trạng thái thật** nằm cùng hàng khi hợp màn hình. Không dùng emoji thay icon hoặc badge trang trí. Khi badge không có thông tin khác biệt thì bỏ.
+3. **Dòng metadata tách biệt khi thực sự có số liệu:** ví dụ Web và APK ở **hai hàng độc lập**, icon `globe` và `smartphone` nếu nhiệm vụ liên quan cả hai; tình trạng build/Drive/OTA/đang cài phải phân biệt. Với tác vụ khác, thay bằng đúng 1–2 dòng tài nguyên/nguồn hoặc **bỏ hẳn** nếu không có; không bịa version, SHA, tiến độ. Giữ dòng metadata ngắn và không nhân đôi ở checklist.
+4. **Phân cách nhẹ:** một divider trung tính giữa metadata và kết quả nếu giúp quét nhanh; không chèn dày đặc. Thân thẻ có **tối đa 3 hàng kết quả quan trọng mặc định**, mỗi hàng icon Lucide `circle-check` / `circle-alert` / `circle-x` / `loader-circle` theo **bằng chứng thật**, chữ trái, dòng gói tự nhiên, nhấn đậm đúng thông tin then chốt. Nếu yêu cầu là báo cáo chi tiết theo hợp đồng BCCT, giữ đủ phần BCCT V5, có thể có cấu trúc mở rộng — **không cắt mất thông tin bắt buộc** vì giới hạn 3 hàng này.
+5. **Kết luận và nguồn:** ở cuối **cùng thẻ**, nêu XONG/CHƯA XONG theo *toàn mục tiêu* trước khi nhận xét từng phần; nếu còn cổng, nêu 1 câu blocker + bước tiếp theo thật. Link nguồn GitHub/Drive được mở trực tiếp, không chèn link giả hoặc hứa mở được khi chưa xác minh. Số SHA dài để trong nguồn, chỉ hiển thị rút gọn trong thẻ nếu cần.
+6. **Điện thoại:** ưu tiên một cột, cỡ chữ nhất quán, có xuống dòng, không tràn ngang/cắt badge/link ở màn 320–430 CSS px; icon thẳng hàng với phần đầu đoạn văn, khoảng cách hợp lý và tương phản tốt cả light/dark. Kiểm bằng ảnh phản hồi thật khi có, không đoán màu/số dòng sẽ hiển thị giống hệt trên mọi client.
+7. **Ngữ cảnh linh hoạt:** hỏi đáp một câu, lời chào, giải thích đơn giản không bắt buộc thẻ hoặc checklist; có thể dùng một dòng tiếng Việt. Báo cáo, trạng thái, kết quả build/phát hành, bàn giao và checklist mặc định dùng thẻ. **Prompt copy** vẫn tuân thủ hợp đồng **một khung Copy**; **BCCT** vẫn giữ bố cục **V5**. Bài viết/tài liệu/ảnh do Owner yêu cầu có quy chuẩn riêng, không áp thẻ báo cáo lên nội dung tác phẩm.
+8. **Nút tương tác:** không tự thêm nút khi không có hành động thật. Chỉ dùng Link mở nguồn hoặc action thực nếu hỗ trợ, quyền hợp lệ, có callback; không dựng nút 'DUYỆT/LÀM NGAY' giả. Không dựng progress% khi không có x/y mốc nghiệm thu.
+9. **Không có DIL/Lucide:** dùng chữ thuần Việt ngắn gọn, không dùng Markdown bullet cho checklist/trạng thái, không giả vector bằng emoji. Không viết cú pháp giao diện như văn bản cho người dùng.
+
+**Kiểm tra trước mỗi báo cáo:** đúng dự án/nguồn?; số phiên bản/URL có biên nhận?; icon Lucide thật?; badge đúng trạng thái?; không có emoji / dấu chấm đầu dòng?; một thẻ gọn?; đủ kết quả/giới hạn/next?; không mâu thuẫn cổng nghiệm thu? Nếu không có chứng cứ trạng thái, ghi **CHƯA XÁC MINH**.
+
+**Phạm vi áp dụng xuyên chat:** GitHub `main` + Loader trỏ V6 là **nguồn quy tắc được lưu**, **không phải bằng chứng** native ChatGPT/Gemini, chat đã mở, chat mới hay mọi app đã tự cập nhật. Chỉ tuyên bố mỗi bề mặt đã áp dụng sau khi phiên đó thực sự nạp nguồn và có kiểm thử giao diện thật. Web/PC01/Core cần thay đổi runtime riêng và thẩm quyền riêng nếu Owner yêu cầu. Không tự sửa sản phẩm để mô phỏng ảnh chụp câu trả lời.
+
 ## BỘ MÀU VÀ BIỂU TƯỢNG
 - Xanh lá success / check-circle: HOÀN TẤT, chỉ khi đủ nghiệm thu có bằng chứng.
 - Xanh dương info / activity: ĐANG XỬ LÝ, chỉ khi có lease + receipt + heartbeat mới.
