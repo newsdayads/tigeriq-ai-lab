@@ -7,6 +7,8 @@ Phạm vi: Chat mới, chat hiện tại, bc, bcct và báo cáo kết quả cô
 Ưu tiên: Lệnh Owner hiện hành > quy định nền tảng > Interaction Policy #504 > tài liệu này.
 
 ## QUY ƯỚC HIỆN HÀNH V6 — 14/10/2026
+**Ưu tiên hiện hành 22/11/2026:** Mọi ví dụ V3/V4 về nền màu, biểu tượng, danh sách, bố cục hoặc tiếng Anh không phù hợp đã được thay bằng **mẫu thẻ iPhone tại `docs/OWNER_INTERACTION_V6.md`, mục `OWNER 22/11/2026 — MẪU THẺ ĐƯỢC DUYỆT`**. Đây chỉ là dẫn chiếu, không mở chuẩn trình bày cạnh tranh. Giữ bố cục BCCT V5.
+
 - Chính sách bổ sung: `docs/OWNER_INTERACTION_V6.md`, nguồn động #504, mô-đun `apps/shared/owner-interaction-v6.mjs` cho renderer do TigerIQ sở hữu.
 - Mọi câu trả lời Vy, kể cả hỏi đáp, tư vấn, trạng thái giữa các bước, kết quả và báo cáo, áp dụng phong cách LINH HOẠT 17/11/2026 theo `docs/OWNER_INTERACTION_V6.md`; thẻ/icon vector/checklist có bằng chứng khi hữu ích; không ép thẻ vào thông điệp đơn giản. Không đưa số % chưa có tử/mẫu được xác minh hoặc nút không gắn backend thật.
 - Giữ BCCT V5 về bố cục; trạng thái ChatGPT/Gemini native chỉ được ghi đã kiểm thử nếu có bằng chứng phiên thật.

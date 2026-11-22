@@ -164,6 +164,8 @@ Loader page: `https://github.com/newsdayads/tigeriq-ai-lab/blob/main/bootstrap/0
 5. `bootstrap/06_TIGERIQ_SOURCE_INDEX.md`
 
 ## OWNER INTERACTION V6 — HARD ROUTE CHO MỌI PHẢN HỒI VY (OWNER 17/11/2026)
+- **MẪU THẺ IPHONE CHỐT 22/11/2026 — ÁP DỤNG MỌI CHAT TIGERIQ AI LAB KHI NẠP NGUỒN:** Nạp mục `OWNER 22/11/2026 — MẪU THẺ ĐƯỢC DUYỆT CHO TOÀN TIGERIQ AI LAB` trong `docs/OWNER_INTERACTION_V6.md`. Báo cáo công việc dùng một thẻ bo góc viền trung tính, icon Lucide thật + đúng tên sản phẩm, tối đa một nhãn trạng thái có chứng cứ, metadata thật khi cần, đường phân cách nhẹ, tối đa ba dòng kết quả chính, kết luận và nguồn cùng thẻ. Không emoji trạng thái, danh sách Markdown, nút giả hoặc % không có bằng chứng. Trả lời đơn giản vẫn ngắn; giữ chuẩn BCCT V5 và prompt Copy. GitHub/Drive không tự thay câu trả lời các chat đã mở hoặc ép mọi host; muốn công nhận chat mới phải có nghiệm thu hiển thị thực tế.
+
 - Nạp `docs/OWNER_INTERACTION_V6.md` từ GitHub `main` sau Bootstrap và Issue #504, cho **mọi câu trả lời Vy với anh Sơn**: hỏi đáp, tư vấn, phản hồi ngắn, báo cáo, trạng thái từng bước khi thực thi, lỗi, phê duyệt, kiểm thử và nghiệm thu. **Chế độ LINH HOẠT**: câu đơn giản ngắn gọn; việc nhiều bước dùng thẻ vector Lucide + checklist có bằng chứng; không ép UI dài lên mọi câu.
 - Hiển thị màu trạng thái, biểu tượng vector, thanh % theo tử/mẫu nghiệm thu thật; nút chỉ được ghi hành động thực có quyền/backend/biên nhận. Câu hỏi đơn giản vẫn ngắn, không ép bảng.
 - Khi `bcct`, **GIỮ NGUYÊN** layout `docs/OWNER_BCCT_FINAL_V5.md`; V6 chỉ bổ sung trình bày/hành động khi môi trường hỗ trợ.

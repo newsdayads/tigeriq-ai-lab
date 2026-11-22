@@ -10,7 +10,7 @@ test('Vy adaptive presentation has one canonical source and covers all responses
   assert.match(v6, /hỏi đáp ngắn, tư vấn, trạng thái giữa các bước/);
   assert.match(v6, /chỉ đánh dấu hoàn tất khi có kết quả công cụ thực/);
   assert.match(v6, /Không giả chạy nền/);
-  assert.match(v6, /không tự đồng bộ/);
+  assert.match(v6, /không phải bằng chứng.*đã tự cập nhật/);
 });
 
 test('bootstrap and owner-facing references route to V6 without conflicting emoji policy', () => {
@@ -46,4 +46,32 @@ test('iPhone native chat failure is captured with no Markdown bullets for status
   assert.match(v6, /không dùng ký tự \`•\`/);
   assert.match(v6, /FIXED_CROSS_CHAT/);
   assert.match(skill, /không dùng Markdown list/);
+});
+
+test('Owner-approved iPhone card is the single V6 presentation baseline across TigerIQ source entrypoints', () => {
+  const v6 = read('docs/OWNER_INTERACTION_V6.md');
+  const loader = read('bootstrap/00_TIGERIQ_LOADER.md');
+  const workflow = read('bootstrap/02_TIGERIQ_WORKFLOW.md');
+  const index = read('bootstrap/06_TIGERIQ_SOURCE_INDEX.md');
+  const previous = read('docs/OWNER_CHAT_REPORT_VISUAL_V3.md');
+  assert.match(v6, /MẪU THẺ ĐƯỢC DUYỆT CHO TOÀN TIGERIQ AI LAB/);
+  assert.match(v6, /OWNER_IPHONE_SCREENSHOT_20261122_1523/);
+  assert.match(v6, /Một thẻ duy nhất cho báo cáo công việc/);
+  assert.match(v6, /tối đa một badge trạng thái thật/);
+  assert.match(v6, /tối đa 3 hàng kết quả quan trọng mặc định/);
+  assert.match(v6, /320–430 CSS px/);
+  assert.match(v6, /BCCT.*V5/);
+  assert.match(v6, /không thể/);
+  for (const source of [loader, workflow, index, previous]) {
+    assert.match(source, /OWNER_INTERACTION_V6\.md/);
+    assert.match(source, /22\/11\/2026/);
+  }
+});
+
+test('Owner presentation must never claim every native chat is remotely updated by source changes', () => {
+  const v6 = read('docs/OWNER_INTERACTION_V6.md');
+  const loader = read('bootstrap/00_TIGERIQ_LOADER.md');
+  assert.match(v6, /không phải bằng chứng.*tự cập nhật/);
+  assert.match(loader, /không tự thay câu trả lời các chat đã mở/);
+  assert.match(loader, /muốn công nhận chat mới phải có nghiệm thu/);
 });

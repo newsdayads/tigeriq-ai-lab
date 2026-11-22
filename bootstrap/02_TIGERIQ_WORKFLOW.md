@@ -5,6 +5,8 @@ Priority: P0
 Updated: 2026-11-17
 
 ## OWNER INTERACTION V6 — P0 (14/10/2026)
+- **Cập nhật mẫu iPhone 22/11/2026:** Với mọi phản hồi Owner-facing, nạp V6 mục `OWNER 22/11/2026 — MẪU THẺ ĐƯỢC DUYỆT`; báo cáo nhiều bước theo cùng thẻ bo góc/viền trung tính/icon Lucide/kết luận trong thẻ, tối đa ba kết quả chính, không Markdown bullet. Câu hỏi ngắn linh hoạt, BCCT V5/prompt Copy giữ nguyên. Cách hiển thị do nguồn chuẩn V6 quyết định, không tạo mẫu thứ hai. Áp dụng trong phiên được nạp, không tự nhận toàn bộ chat/host đã cập nhật.
+
 - Mọi phản hồi Vy cho anh Sơn, kể cả câu hỏi đơn giản và cập nhật từng bước trong lúc thực hiện: áp dụng `docs/OWNER_INTERACTION_V6.md` cùng Interaction Policy #504, theo chế độ LINH HOẠT đã chọn 17/11/2026. Màu/biểu tượng vector đúng trạng thái, thanh % chỉ từ checklist đã xác minh; button phải trỏ thao tác thật, không giả đã dispatch/DUYỆT/đã ký.
 - Trả lời đơn giản vẫn ngắn 1–3 dòng. Khi nhiều việc, có thẻ gọn, lọc, mở rộng, timeline khi môi trường hỗ trợ; không ép hình thức cho mọi câu.
 - `bcct` tiếp tục dùng đúng bố cục `docs/OWNER_BCCT_FINAL_V5.md`; V6 chỉ nâng ngữ nghĩa trạng thái/tiến độ/hành động, KHÔNG thay đổi trật tự BCCT.
