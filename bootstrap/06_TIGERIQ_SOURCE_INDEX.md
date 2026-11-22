@@ -4,6 +4,8 @@ Status: Source Architecture
 Updated: 2026-11-17
 
 ## 1. Mục tiêu
+**Khóa định dạng Owner 22/11/2026:** Tất cả phiên ChatGPT Plus/Go và Gemini khi nạp nguồn chuẩn phải ưu tiên `docs/OWNER_INTERACTION_V6.md` mục `OWNER 22/11/2026 — MẪU THẺ ĐƯỢC DUYỆT CHO TOÀN TIGERIQ AI LAB`. Đây là cùng chính sách V6, không tách mẫu riêng cho từng tài khoản/ứng dụng. Host đã mở, chat khác và renderer native chỉ tính đạt sau canary thực tế; không giả tự đồng bộ.
+
 Đồng nhất ChatGPT Plus, ChatGPT Go và Gemini Pro về một entry point nguồn duy nhất, tránh duy trì 3 bộ file thủ công và tránh lệch phiên bản. Authority canonical của TigerIQ nằm trên GitHub, **ngoại trừ App Chrome đã được tách LOCAL-only trên PC01**; các tài khoản AI chỉ giữ/trỏ tới Loader.
 
 ## 2. Single Source Entry Point
