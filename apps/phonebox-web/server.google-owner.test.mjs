@@ -112,7 +112,12 @@ test('Full original admin APIs require Google owner session, while public view r
    }
    if(req.url==='/api/restart'&&req.method==='POST'){executed++;return res.end('executed')}
    if(req.url==='/api/state'){res.setHeader('Content-Type','application/json');return res.end('{"pc":{"cpu":5}}')}
-   if(req.url==='/api/config'){res.setHeader('Content-Type','application/json');return res.end('{"version":"2","config":{"pages":[]}}')}
+   if(req.url==='/api/config'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({
+     version:'2',config:{pages:[
+       {id:'home',title:'Home',widgets:[{type:'clock'}]},
+       {id:'system',title:'System',widgets:[{type:'stat',options:{metric:'cpu'}}]},
+       {id:'third',title:'Live native third page',widgets:[{type:'media'}]}
+     ]}}))}
    if(req.url==='/panel/'){res.setHeader('Content-Type','text/html');return res.end('<html><body>phone</body></html>')}
    res.writeHead(404);res.end('unknown');
  });
@@ -176,6 +181,12 @@ test('Full original admin APIs require Google owner session, while public view r
  const renderedView=await req(viewPort,'/panel/',{headers:viewHeaders});
  assert.equal(renderedView.status,200);
  assert.match(await renderedView.text(),/phone/);
+ const originalConfig=await req(viewPort,'/agent/api/config',{headers:viewHeaders});
+ assert.equal(originalConfig.status,200);
+ const originalPages=(await originalConfig.json()).config.pages;
+ assert.equal(originalPages.length,3,'all original pages must be present, not a reduced home/system mirror');
+ assert.equal(originalPages[2].title,'Live native third page');
+ assert.equal(originalPages[2].widgets[0].type,'media');
  const monitored=await req(viewPort,'/agent/api/state',{headers:viewHeaders});
  assert.equal(monitored.status,200);
  assert.match(await monitored.text(),/cpu/);
