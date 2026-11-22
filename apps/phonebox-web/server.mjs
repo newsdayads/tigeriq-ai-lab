@@ -420,7 +420,8 @@ function mergeEditorWidgetChanges(current, submitted) {
       !Array.isArray(submitted.pages) || submitted.pages.length > 9) throw new Error('INVALID_LAYOUT');
   const newIds = new Set();
   const currentPages = Array.isArray(current?.pages) ? current.pages : [];
-  if (currentPages.length !== submitted.pages.length) throw new Error('PAGE_SET_CHANGED');
+  const visiblePages = currentPages.filter(p => Object.hasOwn(ORIGINAL_PAGE_NAMES, p?.id));
+  if (visiblePages.length !== submitted.pages.length) throw new Error('PAGE_SET_CHANGED');
   const submittedPages = new Map();
   for (const page of submitted.pages) {
     if (!page || !Object.hasOwn(ORIGINAL_PAGE_NAMES, page.id) ||
@@ -428,9 +429,10 @@ function mergeEditorWidgetChanges(current, submitted) {
         page.widgets.length > 35) throw new Error('PAGE_INVALID');
     submittedPages.set(page.id, page);
   }
-  if (currentPages.some(p => !submittedPages.has(p.id))) throw new Error('PAGE_SET_CHANGED');
+  if (visiblePages.some(p => !submittedPages.has(p.id))) throw new Error('PAGE_SET_CHANGED');
   const out = structuredClone(current);
   out.pages = currentPages.map((basePage) => {
+    if (!submittedPages.has(basePage.id)) return basePage;
     const page = submittedPages.get(basePage.id);
     const originalWidgets = Array.isArray(basePage.widgets) ? basePage.widgets : [];
     const visibleWidgets = originalWidgets.filter(w => EDITOR_WIDGET_TYPES.has(w?.type)).slice(0, 30);
@@ -546,7 +548,7 @@ async function publicReadOnly(req, res, role, path) {
   }
   if (role === 'admin' && path === '/api/settings') {
     try { const origin = await readAgentJson('/api/config');
-      if (typeof origin.version === 'string' && /^\\d+$/.test(origin.version))
+      if (typeof origin.version === 'string' && /^\d+$/.test(origin.version))
         res.setHeader('X-Config-Version', origin.version);
       return respond(res, 200, JSON.stringify(safePublicEditorSettings(origin)), 'application/json; charset=utf-8'); }
     catch { return respond(res, 502, '{"error":"upstream"}', 'application/json'); }
