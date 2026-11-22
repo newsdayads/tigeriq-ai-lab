@@ -770,7 +770,14 @@ function googleProtectedView(req,res,role,path){
     } else respond(res,401,'Owner login required');
     return true;
   }
-  // View remains strictly read-only even after Google Owner authentication.
+  // Use the *original* PhoneBox /panel/ and its full read-only live data.
+  // The previous public mirror rebuilt only home/system widgets, so the user
+  // could not see the same 9 pages as PhoneBox Settings' Live Preview.
+  // Never proxy non-GET methods or raw local PC admin/settings endpoints here.
+  if((req.method==='GET'||req.method==='HEAD') && 
+     (path==='/agent/api/config'||path==='/agent/api/state'||path==='/agent/api/stream'))
+    return proxy(req,res,role,path),true;
+  // All other panel assets / allowed read APIs retain the existing allowlist.
   publicReadOnly(req,res,role,path);
   return true;
 }
