@@ -4,6 +4,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { URLSearchParams } from 'node:url';
+import { makeGoogleOAuth } from './google-oauth.mjs';
 
 const VIEW_PORT = Number(process.env.PB_VIEW_PORT || 8924);
 const ADMIN_PORT = Number(process.env.PB_ADMIN_PORT || 8925);
@@ -16,6 +17,9 @@ const LOGIN_USER = 'Administrator';
 // Temporary owner-requested direct access: display-only, never publish machine controls or secrets.
 // Set PB_PUBLIC_READONLY=0 only after restoring a separately authenticated access policy.
 const PUBLIC_READ_ONLY = process.env.PB_PUBLIC_READONLY !== '0';
+// Owner-approved Google OAuth mode. It supersedes public readonly ONLY when explicitly enabled.
+const GOOGLE_AUTH_ENABLED = process.env.PB_GOOGLE_AUTH === '1';
+let googleAuth = null;
 // User-requested login-free widget editor, without exposing PC controls or other agent settings.
 const PUBLIC_WIDGET_EDIT = PUBLIC_READ_ONLY && process.env.PB_PUBLIC_WIDGET_EDIT !== '0';
 const widgetSaveTimes = new Map();
@@ -679,6 +683,87 @@ function startPrivateTailnet(port) {
   return server;
 }
 
+const GOOGLE_COOKIE='__Host-pbgoogle-admin';
+function googleSession() {
+  const data=Buffer.from(JSON.stringify({
+    role:'google-owner',email:'newsdayads@gmail.com',exp:Date.now()+TTL_MS,
+    id:crypto.randomBytes(16).toString('hex')
+  })).toString('base64url');
+  const sig=crypto.createHmac('sha256',Buffer.from(secrets.sessionSecret,'hex'))
+    .update('phonebox-gis-session.'+data).digest('base64url');
+  return data+'.'+sig;
+}
+function googleAuthenticated(req) {
+  const value=String(req.headers.cookie||'').split(';').map(x=>x.trim())
+    .find(x=>x.startsWith(GOOGLE_COOKIE+'='))?.slice(GOOGLE_COOKIE.length+1)||'';
+  const dot=value.indexOf('.');
+  if(dot<1)return false;
+  const data=value.slice(0,dot),sig=value.slice(dot+1);
+  const expected=crypto.createHmac('sha256',Buffer.from(secrets.sessionSecret,'hex'))
+    .update('phonebox-gis-session.'+data).digest('base64url');
+  if(!equal(sig,expected))return false;
+  try{
+    const parsed=JSON.parse(Buffer.from(data,'base64url').toString('utf8'));
+    return parsed.role==='google-owner'&&parsed.email==='newsdayads@gmail.com'&&
+      Number.isSafeInteger(parsed.exp)&&parsed.exp>Date.now()&&
+      parsed.exp<Date.now()+TTL_MS+60000;
+  }catch{return false}
+}
+function googleConfig() {
+  let file = {};
+  const path = process.env.PB_GOOGLE_CONFIG_FILE;
+  if (path) file = JSON.parse(fs.readFileSync(path, 'utf8'));
+  return {
+    // The Google OAuth Web Client ID is public; the only private authentication secret
+    // is our local PhoneBox session HMAC key. The client must allow this JS origin.
+    clientId: String(process.env.PB_GOOGLE_CLIENT_ID || file.clientId ||
+      '832918518381-sveiabkajbo6vbi45v86tqtolc6j8m2n.apps.googleusercontent.com'),
+    ownerEmail: 'newsdayads@gmail.com',
+    sessionKey: secrets.sessionSecret
+  };
+}
+function googleFullNative(req,res,role,path) {
+  if (role!=='admin') return false;
+  if (!GOOGLE_AUTH_ENABLED) return false;
+  if (!googleAuth) {
+    respond(res,503,'Owner Google authentication is not configured'); return true;
+  }
+  if (req.method==='GET' && path==='/__auth/google') {
+    googleAuth.login(req,res); return true;
+  }
+  if (path==='/__auth/google/credential') {
+    void googleAuth.credential(req,res,answer => {
+      answer.setHeader('Set-Cookie',GOOGLE_COOKIE+'='+googleSession()+
+        '; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800');
+    });
+    return true;
+  }
+  if (path==='/__logout') {
+    if(!googleAuthenticated(req)){respond(res,401,'Login required');return true;}
+    if(req.method!=='POST'||!sameOrigin(req,'admin')){respond(res,403,'Forbidden');return true;}
+    res.setHeader('Set-Cookie',GOOGLE_COOKIE+'=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+    res.writeHead(303,{Location:'/__auth/google'});res.end();return true;
+  }
+  if (!googleAuthenticated(req)) {
+    if (req.method==='GET'||req.method==='HEAD') {
+      res.writeHead(303,{Location:'/__auth/google'});res.end();
+    } else respond(res,401,'Login required');
+    return true;
+  }
+  if(!['GET','HEAD','OPTIONS'].includes(req.method)&&!sameOrigin(req,'admin')){
+    respond(res,403,'Owner origin denied');return true;
+  }
+  if(Number(req.headers['content-length']||0)>25*1024*1024){
+    respond(res,413,'Body too large');return true;
+  }
+  if(path==='/__login') {
+    res.writeHead(303,{Location:'/'});res.end();return true;
+  }
+  // Full upstream native UI/API. No redacted mirror or command allowlist after Google owner login.
+  proxy(req,res,role,path);
+  return true;
+}
+
 function start(role, port) {
   const server = http.createServer(async (req, res) => {
     secureHeaders(res);
@@ -687,6 +772,7 @@ function start(role, port) {
     let path;
     try { path = new URL(req.url, 'http://localhost').pathname; } catch { return respond(res, 400, 'Bad path'); }
     if (path === '/healthz' && req.method === 'GET') return respond(res, 200, JSON.stringify({ ok: true, service: 'phonebox-web', role }), 'application/json');
+    if (googleFullNative(req,res,role,path)) return;
     if (PUBLIC_READ_ONLY) return publicReadOnly(req, res, role, path);
     if (path === '/__login' && req.method === 'GET') { secureHeaders(res, true); return respond(res, 200, loginPage(role), 'text/html; charset=utf-8'); }
     if (path === '/__login' && req.method === 'POST') {
@@ -744,6 +830,10 @@ function start(role, port) {
 export { allowedView, allowedAdmin, sameOrigin, LOGIN_USER, validLoginCsrf, acceptLoginOrigin, safePublicConfig, safePublicState, PUBLIC_READ_ONLY, safePublicEditorSettings, safeSettingsInfo, originalSettingsReadOnlyHtml, PUBLIC_WIDGET_EDIT, mergeEditorWidgetChanges };
 if (process.env.PB_NO_LISTEN !== '1') {
   secrets = loadSecrets();
+  if (GOOGLE_AUTH_ENABLED) {
+    try { googleAuth = makeGoogleOAuth(googleConfig()); }
+    catch (error) { console.error('PhoneBox Owner OAuth fail-closed:',error.message); }
+  }
   start('view', VIEW_PORT);
   start('admin', ADMIN_PORT);
   // The production PhoneBox task uses default 8924/8925. Test instances with

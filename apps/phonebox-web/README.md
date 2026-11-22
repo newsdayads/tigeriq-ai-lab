@@ -48,3 +48,15 @@ A third PC01 **loopback-only** listener runs as part of the existing PhoneBox We
 - The physical owner's iPhone must have Tailscale installed and connected to the PC01 tailnet to use the private URL. iPhone acceptance is NOT asserted until tested.
 
 Run `node --test apps/phonebox-web/server.test.mjs apps/phonebox-web/server.integration.test.mjs apps/phonebox-web/server.public.test.mjs apps/phonebox-web/server.widget-edit.test.mjs apps/phonebox-web/server.private-tailnet.test.mjs`. Release only via GitHub main exact-source and protected CI. Verify original Settings GET 200, full /api/settings only inside tailnet, website JavaScript, and that public routes still deny system controls.
+
+
+## Owner Google Sign-In → Full original PhoneBox on one public subdomain
+
+The original PhoneBox agent stays private at `127.0.0.1:8765`. The existing public wildcard route `phonebox.tigeriq.io.vn → PC01 router → 127.0.0.1:8925` stays unchanged. After **verified** Google Owner sign-in, the current PhoneBox Web gateway proxies the complete original Settings UI/assets and native APIs, without any widget/command allowlist. PC01 monitoring at `pc01.tigeriq.io.vn` remains GET-only.
+
+- Google identity: **only** `newsdayads@gmail.com`, with verified email and audience matching the OAuth client. The server verifies Google-signed RS256 ID tokens with public Google JWKs, requires an HMAC-signed short-lived nonce, and issues a separate Secure/HttpOnly/SameSite=Strict Owner session cookie. No secret or tokens are returned to the public browser.
+- Use the existing Google Cloud project `tigeriq-driver`, OAuth Web client `832918518381-sveiabkajbo6vbi45v86tqtolc6j8m2n.apps.googleusercontent.com` (public client ID). **Before enabling production**, add `https://phonebox.tigeriq.io.vn` to **Authorized JavaScript origins**. Do not remove existing origins: `https://driver.tigeriq.io.vn` and `https://pc01.tail35d2f3.ts.net:8443`.
+- Google Identity Services needs **no new client secret**, no Cloudflare Access enrollment, no Tailscale on owner iPhone, no new DNS, no new Tunnel, and no Vercel deploy.
+- Enable `PB_GOOGLE_AUTH=1` on the existing persistent PC01 PhoneBox Web scheduled task (or its approved launcher), restart it, check browser Google auth end-to-end. If explicitly enabled but identity is unconfigured, admin returns **503** and denies operations; it NEVER falls back to anonymous full access.
+- Do **not** enable Google mode before Google Cloud authorized origin has been confirmed and rollout/rollback checkpoint is available. Anonymous public widget edits remain as before until then.
+- Regression: `node --test apps/phonebox-web/server.test.mjs apps/phonebox-web/server.integration.test.mjs apps/phonebox-web/server.public.test.mjs apps/phonebox-web/server.widget-edit.test.mjs apps/phonebox-web/server.private-tailnet.test.mjs apps/phonebox-web/server.google-owner.test.mjs`. Verify stale password sessions do not confer Google Owner access.
