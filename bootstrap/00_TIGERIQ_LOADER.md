@@ -268,3 +268,8 @@ STATE=DIRECT_CHAT_PRE_SEND_VALIDATOR_V3
 
 ## Fail-safe
 Nếu GitHub connector đã được kết nối nhưng một raw URL trả 404, phải thử lại bằng GitHub connector theo repo/branch/path trước khi kết luận SOURCE_UNAVAILABLE. Chỉ khi canonical path vẫn không đọc được mới fail closed; không fallback sang bản `(1)/(2)`, timestamped copy, file cũ trong Drive hay memory.
+## OWNER 2026-11-17 — IPHONE CANARY FAILED / PRE-SEND VISUAL GATE
+- Kết quả chat mới iPhone 05:41: FAIL vì phản hồi `vy` còn Markdown bullet `•`. Quy định source trước đó không phải nghiệm thu giao diện. Nguồn chuẩn: `docs/OWNER_INTERACTION_V6.md` mục `SỬA LỖI CANARY IPHONE` và Issue #504.
+- Trước MỌI phản hồi khởi động, tiến độ, báo cáo, kết quả, lỗi hoặc checklist: dùng các hàng DIL icon Lucide vector khi bề mặt có hỗ trợ; KHÔNG dùng Markdown bullet (`-`, `*`, `+`, `1.`) hay ký tự `•` để dựng checklist. Nếu không hỗ trợ DIL: dùng đoạn chữ thuần, không giả biểu tượng.
+- Với lệnh `vy`: một thẻ gọn chứa Nguồn / Skill / Công việc / PC01, icon thật và trạng thái có bằng chứng. Không ép UI cho câu hỏi một dòng. Không gọi các nút `•••` hệ thống là lỗi có thể sửa bằng GitHub.
+- Kiểm thử source/CI, kiểm thử giao diện chat hiện tại, canary chat mới iPhone và nghiệm thu Gemini là các cổng RIÊNG. Không khẳng định toàn bộ chat tự đồng bộ.

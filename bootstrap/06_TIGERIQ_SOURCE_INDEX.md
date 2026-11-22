@@ -134,3 +134,8 @@ Tối thiểu trên mỗi nền tảng/tài khoản có thể kiểm tra:
 6. Command không đăng ký/disabled fail closed.
 7. Câu hỏi trạng thái trả đúng `CURRENT_STATE.md` hiện hành.
 8. `LÀM APP CHROME` và alias `APP CHROME`/`APPCHROME`/`AC` phải resolve sang lane LOCAL-only, không tạo Work Order/PR/deploy GitHub cho App Chrome.
+
+## OWNER 2026-11-17 — GIAO DIỆN VY / NGHIỆM THU XUYÊN PHIÊN
+- Canonical UI: `docs/OWNER_INTERACTION_V6.md` + Issue #504. Tất cả các nguồn Loader, Workflow, Skill và bản Drive/Gemini là điểm nạp hoặc bản đồng bộ, không tạo luật UI thứ hai.
+- Khi phản hồi `vy`, báo cáo, tiến độ, checklist: không dùng Markdown bullet hoặc ký tự `•`; ưu tiên thẻ/hàng vector DIL thực sự; fallback chữ thuần. Trước gửi kiểm tra lại.
+- iPhone canary 05:41 17/11/2026 = FAIL. Merge + CI chỉ xác minh source; không thay bằng nghiệm thu chat mới.
