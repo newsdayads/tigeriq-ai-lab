@@ -140,7 +140,40 @@ test('Full original admin APIs require Google owner session, while public view r
  const action=await req(adminPort,'/api/restart',{method:'POST',
   headers:{...authHeaders,Origin:ORIGIN,'Sec-Fetch-Site':'same-origin'},body:'{}'});
  assert.equal(action.status,200);assert.equal(executed,1);
- assert.equal((await req(viewPort,'/api/restart',{method:'POST',body:'{}'})).status,405);
+ // Both public hosts require Google Owner; the monitor never grants command access.
+ assert.equal((await req(viewPort,'/')).status,303);
+ const viewLogin=await req(viewPort,'/__auth/google');
+ assert.equal(viewLogin.status,200);
+ assert.match(await viewLogin.text(),/PC01 — Theo dõi/);
+ const credentialGate=await req(viewPort,'/__auth/google/credential',{
+   method:'POST',headers:{Origin:'https://attacker.invalid','Content-Type':'application/json'},body:'{}'
+ });
+ assert.equal(credentialGate.status,403);
+ assert.equal((await req(viewPort,'/agent/api/state')).status,303);
+ assert.equal((await req(viewPort,'/api/restart',{method:'POST',body:'{}'})).status,401);
+ // An admin cookie from phonebox.tigeriq.io.vn is never a PC01 monitor session.
+ assert.equal((await req(viewPort,'/panel/',{headers:authHeaders})).status,303);
+ const viewData=Buffer.from(JSON.stringify({
+    role:'google-view',email:'newsdayads@gmail.com',exp:Date.now()+3600000,
+    id:'1234view567890abcdef01234567890'
+ })).toString('base64url');
+ const viewSig=crypto.createHmac('sha256',Buffer.from(secrets.sessionSecret,'hex'))
+   .update('phonebox-gis-view-session.'+viewData).digest('base64url');
+ const viewCookie='__Host-pbgoogle-view='+viewData+'.'+viewSig;
+ const viewHeaders={Cookie:viewCookie};
+ const rootView=await req(viewPort,'/',{headers:viewHeaders});
+ assert.equal(rootView.status,303);
+ assert.equal(rootView.headers.get('location'),'/panel/');
+ const renderedView=await req(viewPort,'/panel/',{headers:viewHeaders});
+ assert.equal(renderedView.status,200);
+ assert.match(await renderedView.text(),/phone/);
+ const monitored=await req(viewPort,'/agent/api/state',{headers:viewHeaders});
+ assert.equal(monitored.status,200);
+ assert.match(await monitored.text(),/cpu/);
+ assert.equal((await req(viewPort,'/api/restart',{
+   method:'POST',headers:{...viewHeaders,Origin:'https://pc01.tigeriq.io.vn'},body:'{}'
+ })).status,405);
+ assert.equal(executed,1);
 });
 test('Google mode enabled by private local switch fails closed without valid client ID', {timeout:20000},async t=>{
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'phonebox-google-missing-'));
