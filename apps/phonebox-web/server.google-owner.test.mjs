@@ -122,8 +122,8 @@ test('Full original admin APIs require Google owner session, while public view r
  assert.equal(ok,true,errors);
  assert.equal((await req(adminPort,'/')).status,303);
  const login=await req(adminPort,'/__auth/google');
- assert.equal(login.status,303);
- assert.equal(new URL(login.headers.get('location')).host,'accounts.google.com');
+ assert.equal(login.status,200);
+ assert.match(await login.text(),/accounts\.google\.com\/gsi\/client/);
  assert.equal((await req(adminPort,'/api/restart',{method:'POST',body:'{}'})).status,401);
  const payload=Buffer.from(JSON.stringify({role:'admin',exp:Date.now()+3600000,id:'123456789abcdef0123456789abcdef0'})).toString('base64url');
  const sig=crypto.createHmac('sha256',Buffer.from(secrets.sessionSecret,'hex')).update(payload).digest('base64url');
