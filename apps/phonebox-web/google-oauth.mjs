@@ -1,120 +1,111 @@
-// PhoneBox Owner Google OAuth (server-side authorization code + PKCE).
-// Self-hosted on PC01. The admin role is never granted based only on a browser email.
 import crypto from 'node:crypto';
-
-const GOOGLE_AUTHORIZE='https://accounts.google.com/o/oauth2/v2/auth';
-const GOOGLE_TOKEN='https://oauth2.googleapis.com/token';
-const GOOGLE_USERINFO='https://openidconnect.googleapis.com/v1/userinfo';
-const STATE_COOKIE='__Host-pbgoogle-state';
-const GOOGLE_STATE_MAX_SECONDS=600;
+const ORIGIN='https://phonebox.tigeriq.io.vn';
+const COOKIE='__Host-pbgoogle-nonce';
+const GOOGLE_JWKS='https://www.googleapis.com/oauth2/v3/certs';
 const OWNER='newsdayads@gmail.com';
-
-function strictEqual(a,b) {
-  const x=Buffer.from(String(a||'')),y=Buffer.from(String(b||''));
-  return x.length>0 && x.length===y.length && crypto.timingSafeEqual(x,y);
-}
-function findCookie(req,name) {
-  for(const part of String(req.headers.cookie||'').split(';')) {
-    const s=part.trim();
-    if(s.startsWith(name+'='))return s.slice(name.length+1);
-  }
-  return '';
-}
-function cookie(value,maxAge) {
-  return STATE_COOKIE+'='+value+'; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age='+maxAge;
-}
-function sign(payload,key) {
-  return crypto.createHmac('sha256',key).update('phonebox-google:'+payload).digest('base64url');
-}
-function stateCookie(payload,key) {return payload+'.'+sign(payload,key);}
-function readState(req,key) {
-  const value=findCookie(req,STATE_COOKIE);
-  const dot=value.indexOf('.');
+function equal(a,b){const x=Buffer.from(String(a||'')),y=Buffer.from(String(b||''));return x.length>0&&x.length===y.length&&crypto.timingSafeEqual(x,y)}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function cookieValue(req,name){return String(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith(name+'='))?.slice(name.length+1)||''}
+function sign(payload,key){return crypto.createHmac('sha256',key).update('phonebox-gis:'+payload).digest('base64url')}
+function validatedNonce(req,key){
+  const cookie=cookieValue(req,COOKIE),dot=cookie.indexOf('.');
   if(dot<1)return null;
-  const payload=value.slice(0,dot),signature=value.slice(dot+1);
-  if(!strictEqual(signature,sign(payload,key)))return null;
-  try {
-    const parsed=JSON.parse(Buffer.from(payload,'base64url').toString('utf8'));
-    if(typeof parsed.state!=='string'||typeof parsed.verifier!=='string'||
-       !Number.isInteger(parsed.issued)||parsed.issued>Date.now()+30000||
-       parsed.issued<Date.now()-GOOGLE_STATE_MAX_SECONDS*1000)return null;
-    return parsed;
-  }catch{return null;}
+  const payload=cookie.slice(0,dot);
+  if(!equal(cookie.slice(dot+1),sign(payload,key)))return null;
+  try{const data=JSON.parse(Buffer.from(payload,'base64url').toString('utf8'));
+    return typeof data.nonce==='string'&&data.nonce.length>=24&&Number.isInteger(data.issued)&&
+      data.issued<Date.now()+30000&&data.issued>Date.now()-300000?data.nonce:null;
+  }catch{return null}
 }
-function localRedirect(res,target) {
-  res.writeHead(303,{'Location':target,'Cache-Control':'no-store'});
-  res.end();
+function deny(res,code,message){
+  res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
+  res.end(JSON.stringify({error:message}));
 }
-function configured(config) {
-  return Boolean(config?.clientId?.endsWith('.apps.googleusercontent.com') &&
-    typeof config.clientSecret==='string' && config.clientSecret.length>=8 &&
-    config.redirectUri==='https://phonebox.tigeriq.io.vn/__auth/google/callback' &&
-    config.ownerEmail===OWNER &&
-    /^[a-f0-9]{64,}$/.test(config.sessionKey));
+function jwtParts(idToken){
+  if(typeof idToken!=='string'||idToken.length>16384||idToken.length<200)throw Error('INVALID_JWT_LENGTH');
+  const p=idToken.split('.');
+  if(p.length!==3)throw Error('INVALID_JWT_PARTS');
+  const header=JSON.parse(Buffer.from(p[0],'base64url').toString('utf8'));
+  const claims=JSON.parse(Buffer.from(p[1],'base64url').toString('utf8'));
+  if(header.alg!=='RS256'||typeof header.kid!=='string')throw Error('JWT_ALGORITHM_DENIED');
+  return {header,claims,content:p[0]+'.'+p[1],signature:Buffer.from(p[2],'base64url')};
 }
-function sendError(res,status,reason) {
-  res.writeHead(status,{'Content-Type':'text/plain; charset=utf-8',
-    'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
-  res.end(reason);
-}
-function makeGoogleOAuth(config,{fetchImpl=fetch,
-  authorizeEndpoint=GOOGLE_AUTHORIZE,
-  tokenEndpoint=GOOGLE_TOKEN,
-  userEndpoint=GOOGLE_USERINFO}={}) {
-  if(!configured(config)) throw new Error('PHONEBOX_GOOGLE_AUTH_NOT_CONFIGURED');
+function makeGoogleOAuth(config,{fetchImpl=fetch,jwksUrl=GOOGLE_JWKS}={}){
+  if(!/^[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(config?.clientId||'')||
+     config?.ownerEmail!==OWNER||!(/^[a-f0-9]{64,}$/.test(config.sessionKey||'')))
+    throw Error('PHONEBOX_GOOGLE_AUTH_NOT_CONFIGURED');
   const key=Buffer.from(config.sessionKey,'hex');
+  let cache={keys:[],expires:0};
+  async function jwks(force=false){
+    if(!force&&Date.now()<cache.expires&&cache.keys.length)return cache.keys;
+    const r=await fetchImpl(jwksUrl,{signal:AbortSignal.timeout(9000)});
+    if(!r.ok)throw Error('GOOGLE_KEYS_UNAVAILABLE');
+    const body=await r.json();
+    if(!Array.isArray(body.keys)||!body.keys.length)throw Error('GOOGLE_KEYS_INVALID');
+    cache={keys:body.keys,expires:Date.now()+3600000};return cache.keys;
+  }
+  async function verify(jwt,nonce){
+    const {header,claims,content,signature}=jwtParts(jwt);
+    let cert=(await jwks()).find(k=>k.kid===header.kid&&k.kty==='RSA');
+    if(!cert)cert=(await jwks(true)).find(k=>k.kid===header.kid&&k.kty==='RSA');
+    if(!cert||!crypto.verify('RSA-SHA256',Buffer.from(content),
+      crypto.createPublicKey({key:cert,format:'jwk'}),signature))throw Error('SIGNATURE_INVALID');
+    const now=Math.floor(Date.now()/1000);
+    if(!['accounts.google.com','https://accounts.google.com'].includes(claims.iss)||
+      claims.aud!==config.clientId||(claims.azp&&claims.azp!==config.clientId)||
+      typeof claims.sub!=='string'||claims.sub.length<8||
+      !Number.isInteger(claims.exp)||claims.exp<=now||
+      !Number.isInteger(claims.iat)||claims.iat>now+60||claims.iat<now-600||
+      claims.nonce!==nonce||claims.email_verified!==true||
+      String(claims.email||'').trim().toLowerCase()!==OWNER)throw Error('NOT_VERIFIED_OWNER');
+    return OWNER;
+  }
   return {
     configured:true,
     login(req,res){
-      const state=crypto.randomBytes(24).toString('base64url');
-      const verifier=crypto.randomBytes(32).toString('base64url');
-      const challenge=crypto.createHash('sha256').update(verifier).digest('base64url');
-      const payload=Buffer.from(JSON.stringify({state,verifier,issued:Date.now()})).toString('base64url');
-      const url=new URL(authorizeEndpoint);
-      url.search=new URLSearchParams({
-        client_id:config.clientId,redirect_uri:config.redirectUri,
-        response_type:'code',scope:'openid email',state,
-        code_challenge:challenge,code_challenge_method:'S256',
-        prompt:'select_account',access_type:'online'
-      }).toString();
-      res.setHeader('Set-Cookie',cookie(stateCookie(payload,key),GOOGLE_STATE_MAX_SECONDS));
-      localRedirect(res,url.toString());
+      const nonce=crypto.randomBytes(22).toString('base64url');
+      const payload=Buffer.from(JSON.stringify({nonce,issued:Date.now()})).toString('base64url');
+      const jsNonce=crypto.randomBytes(18).toString('base64url');
+      const body=[
+        '<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">',
+        '<title>PhoneBox — Google Owner</title>',
+        '<style>body{font:16px system-ui;background:#101a2d;color:#fff;min-height:90vh;display:grid;place-items:center}main{max-width:400px;padding:28px;border:1px solid #384966;border-radius:14px;text-align:center}p{color:#d3dce9}#error{color:#fecaca}</style>',
+        '<main><h2>PhoneBox — PC01</h2><p>Đăng nhập bằng newsdayads@gmail.com để điều khiển PhoneBox gốc.</p>',
+        '<div id="g_id_onload" data-client_id="'+escapeHtml(config.clientId)+'" data-nonce="'+escapeHtml(nonce)+'" data-callback="phoneboxGoogle" data-auto_prompt="false"></div>',
+        '<div class="g_id_signin" data-type="standard" data-size="large" data-text="signin_with" data-shape="pill"></div>',
+        '<p id="error" role="alert"></p></main>',
+        '<script nonce="'+jsNonce+'">async function phoneboxGoogle(token){try{const r=await fetch("/__auth/google/credential",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({credential:token.credential})});if(!r.ok)throw Error("denied");location.replace("/")}catch{document.getElementById("error").textContent="Tài khoản Google không có quyền truy cập."}}</script>',
+        '<script src="https://accounts.google.com/gsi/client" async defer></script></html>'
+      ].join('');
+      res.setHeader('Set-Cookie',COOKIE+'='+payload+'.'+sign(payload,key)+'; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=300');
+      res.setHeader('Content-Security-Policy',
+        "default-src 'none'; script-src 'nonce-"+jsNonce+"' https://accounts.google.com; frame-src https://accounts.google.com; connect-src 'self' https://accounts.google.com; style-src 'unsafe-inline' https://accounts.google.com; img-src 'self' data: https://*.googleusercontent.com; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+      res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});
+      res.end(body);
     },
-    async callback(req,res,setAdminSession){
-      res.setHeader('Set-Cookie',cookie('',0));
-      const query=new URL(req.url,'https://phonebox.tigeriq.io.vn').searchParams;
-      const state=readState(req,key);
-      const code=query.get('code');
-      if(!state||!strictEqual(state.state,query.get('state'))||
-         typeof code!=='string'||code.length<8||code.length>4096)
-        return sendError(res,403,'Google authentication state invalid');
+    async credential(req,res,setAdminSession){
+      if(req.method!=='POST'||req.headers.origin!==ORIGIN||
+         req.headers['sec-fetch-site']==='cross-site')return deny(res,403,'Invalid owner origin');
+      if(!String(req.headers['content-type']||'').startsWith('application/json'))
+        return deny(res,415,'Expected JSON');
+      const nonce=validatedNonce(req,key);
+      if(!nonce)return deny(res,403,'Login session expired');
       try{
-        const tokenResponse=await fetchImpl(tokenEndpoint,{
-          method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
-          body:new URLSearchParams({
-            grant_type:'authorization_code',code,client_id:config.clientId,
-            client_secret:config.clientSecret,redirect_uri:config.redirectUri,
-            code_verifier:state.verifier
-          }),signal:AbortSignal.timeout(10000)
-        });
-        if(!tokenResponse.ok)throw Error('TOKEN_EXCHANGE_DENIED');
-        const tokens=await tokenResponse.json();
-        const accessToken=String(tokens.access_token||'');
-        if(accessToken.length<12)throw Error('ACCESS_TOKEN_MISSING');
-        const userResponse=await fetchImpl(userEndpoint,{
-          headers:{Authorization:'Bearer '+accessToken},signal:AbortSignal.timeout(10000)
-        });
-        if(!userResponse.ok)throw Error('GOOGLE_USERINFO_DENIED');
-        const identity=await userResponse.json();
-        if(String(identity.email||'').trim().toLowerCase()!==OWNER||
-           identity.email_verified!==true)throw Error('NOT_OWNER');
-        // No email, OAuth code, access token or credential appears in the cookie.
+        let body='';
+        for await(const part of req){
+          body+=Buffer.from(part).toString('utf8');
+          if(body.length>18000)return deny(res,413,'Too large');
+        }
+        const json=JSON.parse(body);
+        await verify(json.credential,nonce);
         setAdminSession(res);
-        return localRedirect(res,'/');
-      }catch {
-        return sendError(res,403,'Google Owner authentication failed');
-      }
+        const prev=res.getHeader('Set-Cookie');
+        res.setHeader('Set-Cookie',[...(Array.isArray(prev)?prev:[prev].filter(Boolean)),
+          COOKIE+'=; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=0']);
+        res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});
+        res.end('{"authorized":true}');
+      }catch{return deny(res,403,'Google Owner identity rejected')}
     }
   };
 }
-export {makeGoogleOAuth,configured as googleOAuthConfigured};
+export {makeGoogleOAuth};
