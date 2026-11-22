@@ -10,7 +10,7 @@ test('Vy adaptive presentation has one canonical source and covers all responses
   assert.match(v6, /hỏi đáp ngắn, tư vấn, trạng thái giữa các bước/);
   assert.match(v6, /chỉ đánh dấu hoàn tất khi có kết quả công cụ thực/);
   assert.match(v6, /Không giả chạy nền/);
-  assert.match(v6, /không tự đồng bộ/);
+  assert.match(v6, /không phải bằng chứng.*đã tự cập nhật/);
 });
 
 test('bootstrap and owner-facing references route to V6 without conflicting emoji policy', () => {
