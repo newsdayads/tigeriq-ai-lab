@@ -83,7 +83,7 @@ function makeGoogleOAuth(config,{fetchImpl=fetch,jwksUrl=GOOGLE_JWKS}={}){
         '<div id="g_id_onload" data-client_id="'+escapeHtml(config.clientId)+'" data-nonce="'+escapeHtml(nonce)+'" data-callback="phoneboxGoogle" data-auto_prompt="false"></div>',
         '<div class="g_id_signin" data-type="standard" data-size="large" data-text="signin_with" data-shape="pill"></div>',
         '<p id="error" role="alert"></p></main>',
-        '<script nonce="'+jsNonce+'">async function phoneboxGoogle(token){try{const r=await fetch("/__auth/google/credential",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({credential:token.credential})});if(!r.ok){const info=await r.json().catch(()=>({}));throw Error(info.code||"G99")}location.replace("/")}catch(e){const code=String(e.message||"G99");document.getElementById("error").textContent=code==="G07_OTHER_GOOGLE_ACCOUNT"?"Hãy chọn đúng tài khoản Google được cấp quyền. ("+code+")":"Đăng nhập chưa thành công ("+code+")."}}</script>',
+        '<script nonce="'+jsNonce+'">async function phoneboxGoogle(token){try{const r=await fetch("/__auth/google/credential",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({credential:token.credential})});if(!r.ok){const info=await r.json().catch(()=>({}));throw Error(info.code||"G99")}location.replace("/")}catch(e){const code=String(e.message||"G99");document.getElementById("error").textContent=code==="G07_OTHER_GOOGLE_ACCOUNT"?"Tài khoản Google này chưa được cấp quyền ("+code+")":code==="G09_LOGIN_COOKIE"?"Phiên đăng nhập hết hạn. Tải lại trang rồi thử lại ("+code+")":"Đăng nhập chưa thành công ("+code+")."}}</script>',
         '<script src="https://accounts.google.com/gsi/client" async defer></script></html>'
       ].join('');
       res.setHeader('Set-Cookie',COOKIE+'='+payload+'.'+sign(payload,key)+'; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=300');
@@ -93,12 +93,19 @@ function makeGoogleOAuth(config,{fetchImpl=fetch,jwksUrl=GOOGLE_JWKS}={}){
       res.end(body);
     },
     async credential(req,res,setAdminSession){
+      function rejectEarly(status,code){
+        console.warn('PhoneBox Google auth reject:',expectedOrigin,code);
+        res.writeHead(status,{'Content-Type':'application/json; charset=utf-8',
+          'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
+        res.end(JSON.stringify({error:'Google sign-in request not accepted',code}));
+      }
       if(req.method!=='POST'||req.headers.origin!==expectedOrigin||
-         req.headers['sec-fetch-site']==='cross-site')return deny(res,403,'Invalid owner origin');
+         req.headers['sec-fetch-site']==='cross-site')
+        return rejectEarly(403,'G08_ORIGIN');
       if(!String(req.headers['content-type']||'').startsWith('application/json'))
-        return deny(res,415,'Expected JSON');
+        return rejectEarly(415,'G10_CONTENT_TYPE');
       const nonce=validatedNonce(req,key);
-      if(!nonce)return deny(res,403,'Login session expired');
+      if(!nonce)return rejectEarly(403,'G09_LOGIN_COOKIE');
       try{
         let body='';
         for await(const part of req){
