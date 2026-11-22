@@ -25,54 +25,65 @@ function fakeRes(){
     writeHead(code,headers){this.statusCode=code;for(const [k,v] of Object.entries(headers||{}))this.setHeader(k,v)},
     end(value){this.body=value}};
 }
-test('Google Owner login uses PKCE, signed state and verifies the exact verified email',async()=>{
-  const calls=[];
+test('Google Identity Services login verifies RS256 JWT, nonce, audience and exact verified owner',async()=>{
+  const {publicKey,privateKey}=crypto.generateKeyPairSync('rsa',{modulusLength:2048});
+  const jwk={...publicKey.export({format:'jwk'}),kid:'unit-2026',alg:'RS256',use:'sig'};
+  let requests=0;
   const auth=makeGoogleOAuth(cfg,{
-    fetchImpl:async(url,opt)=>{
-      calls.push({url:String(url),headers:opt.headers,body:String(opt.body||'')});
-      if(String(url).includes('/token'))return {ok:true,json:async()=>({access_token:'unit-access-token-0123456789012345'})};
-      return {ok:true,json:async()=>({email:'newsdayads@gmail.com',email_verified:true})};
-    },
-    authorizeEndpoint:'https://accounts.google.com/o/oauth2/v2/auth',
-    tokenEndpoint:'https://oauth.local/token',
-    userEndpoint:'https://oauth.local/userinfo'
+    fetchImpl:async()=>{requests++;return {ok:true,json:async()=>({keys:[jwk]})}},
+    jwksUrl:'https://google.example.invalid/keys'
   });
   const first=fakeRes();
   auth.login({headers:{}},first);
-  assert.equal(first.statusCode,303);
-  const authorize=new URL(first.headers.location);
-  assert.equal(authorize.hostname,'accounts.google.com');
-  assert.equal(authorize.searchParams.get('client_id'),cfg.clientId);
-  assert.equal(authorize.searchParams.get('code_challenge_method'),'S256');
-  assert.equal(authorize.searchParams.get('redirect_uri'),cfg.redirectUri);
-  const loginCookie=first.headers['set-cookie'].split(';')[0];
-  assert.match(loginCookie,/^__Host-pbgoogle-state=/);
-  const bad=fakeRes();
-  await auth.callback({url:'/__auth/google/callback?state=INVALID&code=good-code-test',
-    headers:{cookie:loginCookie}},bad,()=>{throw Error('NEVER')});
-  assert.equal(bad.statusCode,403);
-  assert.equal(calls.length,0);
-  const good=fakeRes();
-  let ownerSession=false;
-  const expected=authorize.searchParams.get('state');
-  await auth.callback({url:'/__auth/google/callback?state='+expected+'&code=good-code-test',
-    headers:{cookie:loginCookie}},good,()=>{ownerSession=true});
-  assert.equal(good.statusCode,303);
-  assert.equal(good.headers.location,'/');
-  assert.equal(ownerSession,true);
-  assert.equal(calls.length,2);
-  assert.match(calls[0].body,/code_verifier=/);
-  assert.ok(!JSON.stringify(good.headers).includes('unit-access-token'));
-  const attacker=makeGoogleOAuth(cfg,{fetchImpl:async(u)=>{
-    if(String(u).includes('/token'))return {ok:true,json:async()=>({access_token:'unit-access-token-0123456789'})};
-    return {ok:true,json:async()=>({email:'other@gmail.com',email_verified:true})};
-  },tokenEndpoint:'https://oauth.local/token',userEndpoint:'https://oauth.local/userinfo'});
-  const denied=fakeRes();
-  let granted=false;
-  await attacker.callback({url:'/__auth/google/callback?state='+expected+'&code=good-code-test',
-    headers:{cookie:loginCookie}},denied,()=>{granted=true});
-  assert.equal(denied.statusCode,403);
-  assert.equal(granted,false);
+  assert.equal(first.statusCode,200);
+  assert.match(first.body,/accounts\.google\.com\/gsi\/client/);
+  assert.match(first.body,/newsdayads@gmail\.com/);
+  const nonce=first.body.match(/data-nonce="([^"]+)"/)?.[1];
+  assert.ok(nonce);
+  const ownerCookie=first.headers['set-cookie'].split(';')[0];
+  const buildToken=(overrides={})=>{
+    const header=Buffer.from(JSON.stringify({alg:'RS256',kid:jwk.kid})).toString('base64url');
+    const now=Math.floor(Date.now()/1000);
+    const payload=Buffer.from(JSON.stringify({
+      iss:'https://accounts.google.com',aud:cfg.clientId,sub:'109876543212345678900',
+      email:'newsdayads@gmail.com',email_verified:true,nonce,
+      exp:now+3600,iat:now,...overrides
+    })).toString('base64url');
+    const content=header+'.'+payload;
+    const signature=crypto.sign('RSA-SHA256',Buffer.from(content),privateKey).toString('base64url');
+    return content+'.'+signature;
+  };
+  const credentialReq=(credential, origin=ORIGIN)=>({
+    method:'POST',
+    url:'/__auth/google/credential',
+    headers:{cookie:ownerCookie,origin,'content-type':'application/json',
+      'sec-fetch-site':'same-origin'},
+    async *[Symbol.asyncIterator](){yield Buffer.from(JSON.stringify({credential}))}
+  });
+  let granted=0;
+  const ok=fakeRes();
+  await auth.credential(credentialReq(buildToken()),ok,()=>{granted++});
+  assert.equal(ok.statusCode,200);
+  assert.equal(granted,1);
+  assert.equal(requests,1);
+  const wrongOwner=fakeRes();
+  await auth.credential(credentialReq(buildToken({email:'other@example.test'})),wrongOwner,()=>granted++);
+  assert.equal(wrongOwner.statusCode,403);
+  assert.equal(granted,1);
+  const wrongAud=fakeRes();
+  await auth.credential(credentialReq(buildToken({aud:'other-client.apps.googleusercontent.com'})),wrongAud,()=>granted++);
+  assert.equal(wrongAud.statusCode,403);
+  const wrongNonce=fakeRes();
+  await auth.credential(credentialReq(buildToken({nonce:'spoofed'})),wrongNonce,()=>granted++);
+  assert.equal(wrongNonce.statusCode,403);
+  const wrongOrigin=fakeRes();
+  await auth.credential(credentialReq(buildToken(),'https://evil.invalid'),wrongOrigin,()=>granted++);
+  assert.equal(wrongOrigin.statusCode,403);
+  const tampered=fakeRes();
+  const valid=buildToken();
+  await auth.credential(credentialReq(valid.slice(0,-3)+'xyz'),tampered,()=>granted++);
+  assert.equal(tampered.statusCode,403);
+  assert.equal(granted,1);
 });
 async function port(){const s=net.createServer();await new Promise(ok=>s.listen(0,'127.0.0.1',ok));const p=s.address().port;await new Promise(ok=>s.close(ok));return p;}
 test('Full original admin APIs require Google owner session, while public view remains read-only', {timeout:30000},async t=>{
@@ -136,7 +147,8 @@ test('Google mode configured without credentials fails closed, never exposes PC 
  }));
  const child=spawn(process.execPath,['apps/phonebox-web/server.mjs'],{
   env:{...process.env,PB_GOOGLE_AUTH:'1',PB_VIEW_PORT:String(view),PB_ADMIN_PORT:String(admin),
-    PB_AGENT_PORT:String(agent),PB_AUTH_FILE:path.join(dir,'auth.json'),PB_GOOGLE_CONFIG_FILE:''},
+    PB_AGENT_PORT:String(agent),PB_AUTH_FILE:path.join(dir,'auth.json'),PB_GOOGLE_CONFIG_FILE:'',
+    PB_GOOGLE_CLIENT_ID:'invalid-client'},
   stdio:['ignore','pipe','pipe']
  });
  t.after(async()=>{child.kill();await fs.rm(dir,{recursive:true,force:true})});
