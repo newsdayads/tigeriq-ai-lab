@@ -1,3 +1,12 @@
+<!-- OWNER_MOBILE_NO_TAILSCALE_20261122 -->
+## P0 — MOBILE PHONE: NO TAILSCALE; HTTPS DOMAIN GATEWAY (OWNER 22/11/2026)
+OWNER_DIRECT=true | SCOPE=ALL_TIGERIQ_PROJECTS | MOBILE_VPN_REQUIRED=false
+- TUYỆT ĐỐI KHÔNG yêu cầu/cài Tailscale hoặc VPN/tailnet client trên điện thoại người dùng để chạy App TigerIQ, kể cả PhoneBox trên Z Flip.
+- Điện thoại kết nối dịch vụ online qua domain HTTPS và gateway trung gian được xác thực, ví dụ `*.tigeriq.io.vn` → PC01 Cloudflare Tunnel; không công khai API điều khiển PC01 hoặc agent gốc thiếu bảo vệ.
+- Tailscale ở máy chủ/PC01 có thể giữ nguyên. Phải kiểm thử giao thức App gốc với gateway trước khi khẳng định hỗ trợ, hoặc xây adapter Android/web wrapper an toàn theo đúng quyền.
+- Đọc quy tắc chi tiết `docs/MOBILE_NO_TAILSCALE_DOMAIN_GATEWAY.md` trước mọi đề xuất kiến trúc kết nối App trên điện thoại.
+<!-- /OWNER_MOBILE_NO_TAILSCALE_20261122 -->
+
 # TIGERIQ — UNIFIED SOURCE LOADER
 Version: 2.0
 Status: Bootstrap Entry Point
