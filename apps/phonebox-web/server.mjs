@@ -25,6 +25,7 @@ const GOOGLE_AUTH_ENABLED = process.env.PB_GOOGLE_AUTH === '1' ||
    fs.existsSync(process.env.PB_GOOGLE_ENABLE_FILE ||
      'D:\\TigerIQ\\State\\PhoneBox\\google-owner.enabled'));
 let googleAuth = null;
+let googleViewAuth = null;
 // User-requested login-free widget editor, without exposing PC controls or other agent settings.
 const PUBLIC_WIDGET_EDIT = PUBLIC_READ_ONLY && process.env.PB_PUBLIC_WIDGET_EDIT !== '0';
 const widgetSaveTimes = new Map();
@@ -714,6 +715,64 @@ function googleAuthenticated(req) {
       parsed.exp<Date.now()+TTL_MS+60000;
   }catch{return false}
 }
+const GOOGLE_VIEW_COOKIE='__Host-pbgoogle-view';
+function googleViewSession(){
+  const data=Buffer.from(JSON.stringify({
+    role:'google-view',email:'newsdayads@gmail.com',exp:Date.now()+TTL_MS,
+    id:crypto.randomBytes(16).toString('hex')
+  })).toString('base64url');
+  const sig=crypto.createHmac('sha256',Buffer.from(secrets.sessionSecret,'hex'))
+    .update('phonebox-gis-view-session.'+data).digest('base64url');
+  return data+'.'+sig;
+}
+function googleViewAuthenticated(req) {
+  const value=String(req.headers.cookie||'').split(';').map(x=>x.trim())
+    .find(x=>x.startsWith(GOOGLE_VIEW_COOKIE+'='))?.slice(GOOGLE_VIEW_COOKIE.length+1)||'';
+  const dot=value.indexOf('.');
+  if(dot<1)return false;
+  const data=value.slice(0,dot),sig=value.slice(dot+1);
+  const expected=crypto.createHmac('sha256',Buffer.from(secrets.sessionSecret,'hex'))
+    .update('phonebox-gis-view-session.'+data).digest('base64url');
+  if(!equal(sig,expected))return false;
+  try{
+    const p=JSON.parse(Buffer.from(data,'base64url').toString('utf8'));
+    return p.role==='google-view'&&p.email==='newsdayads@gmail.com'&&
+      Number.isSafeInteger(p.exp)&&p.exp>Date.now()&&p.exp<Date.now()+TTL_MS+60000;
+  }catch{return false}
+}
+function googleProtectedView(req,res,role,path){
+  if(role!=='view'||!GOOGLE_AUTH_ENABLED)return false;
+  if(!googleViewAuth){
+    respond(res,503,'PC01 Owner Google authentication not configured');return true;
+  }
+  if(path==='/__auth/google'&&req.method==='GET'){
+    googleViewAuth.login(req,res);return true;
+  }
+  if(path==='/__auth/google/credential'){
+    void googleViewAuth.credential(req,res,r=>{
+      r.setHeader('Set-Cookie',GOOGLE_VIEW_COOKIE+'='+googleViewSession()+
+        '; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800');
+    });
+    return true;
+  }
+  if(path==='/__logout'){
+    if(req.method!=='POST'||!sameOrigin(req,'view')){
+      respond(res,403,'Origin denied');return true;
+    }
+    res.setHeader('Set-Cookie',GOOGLE_VIEW_COOKIE+
+      '=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+    res.writeHead(303,{Location:'/__auth/google'});res.end();return true;
+  }
+  if(!googleViewAuthenticated(req)){
+    if(req.method==='GET'||req.method==='HEAD'){
+      res.writeHead(303,{Location:'/__auth/google'});res.end();
+    } else respond(res,401,'Owner login required');
+    return true;
+  }
+  // View remains strictly read-only even after Google Owner authentication.
+  publicReadOnly(req,res,role,path);
+  return true;
+}
 function googleConfig() {
   let file = {};
   const path = process.env.PB_GOOGLE_CONFIG_FILE;
@@ -777,6 +836,7 @@ function start(role, port) {
     let path;
     try { path = new URL(req.url, 'http://localhost').pathname; } catch { return respond(res, 400, 'Bad path'); }
     if (path === '/healthz' && req.method === 'GET') return respond(res, 200, JSON.stringify({ ok: true, service: 'phonebox-web', role }), 'application/json');
+    if (googleProtectedView(req,res,role,path)) return;
     if (googleFullNative(req,res,role,path)) return;
     if (PUBLIC_READ_ONLY) return publicReadOnly(req, res, role, path);
     if (path === '/__login' && req.method === 'GET') { secureHeaders(res, true); return respond(res, 200, loginPage(role), 'text/html; charset=utf-8'); }
@@ -838,6 +898,10 @@ if (process.env.PB_NO_LISTEN !== '1') {
   if (GOOGLE_AUTH_ENABLED) {
     try { googleAuth = makeGoogleOAuth(googleConfig()); }
     catch (error) { console.error('PhoneBox Owner OAuth fail-closed:',error.message); }
+    try { googleViewAuth = makeGoogleOAuth({
+      ...googleConfig(),origin:'https://pc01.tigeriq.io.vn'
+    }); }
+    catch (error) { console.error('PC01 Owner OAuth fail-closed:',error.message); }
   }
   start('view', VIEW_PORT);
   start('admin', ADMIN_PORT);
