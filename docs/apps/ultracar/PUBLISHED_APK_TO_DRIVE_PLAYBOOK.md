@@ -1,5 +1,9 @@
 # UltraCarHCM — Published APK → new TEST APK → Google Drive (verified lane)
 
+## 2026-10-30 — CHECKPOINT V68 PHÁT HÀNH THÀNH CÔNG / KHÔNG HỎI LẠI
+
+Đã xác minh PC01 signed V68 Build 309 (SHA256 `874219C14C48B7F0D92B36D89F55D68C3FEBCBC318373C367602DD7F0FE1E919`), apksigner v2/v3 PASS, chứng chỉ cũ, Drive metadata file ID `1XgXJc1X3ZF1r26ASNnNYcj9HGU6wPt3z`, [TEST APK](https://drive.google.com/file/d/1XgXJc1X3ZF1r26ASNnNYcj9HGU6wPt3z/view). Owner `FULL_AUTO_TEST_RELEASE=APPROVED` còn hiệu lực cho UltraCar V1 TEST, **không hỏi lại quyền cũ**. Cấu hình cố định trên PC01: `sign_latest.cmd` + manifest version/SHA + signer/sync hiện hữu; không tạo đường thứ hai. **Không tuyên bố unattended/full-auto đã kiểm thử**: mỗi bản mới vẫn phải cung cấp manifest đúng và thực thi bước ký khi host cho phép; không vượt bảo mật. Z Fold 2 UI QA chưa PASS; Production giữ nguyên. Xem [runbook hiện hành](WORKFLOW_APK_RELEASE.md) để tránh trạng thái V68 chưa ký của checkpoint cũ.
+
 ## 2026-10-30 — MỐC KIỂM CHỨNG PC01: FIX CỨNG RUNNER KÝ + DRIVE (ưu tiên hiện hành)
 
 - Đã cập nhật tại PC01 **hai script có sẵn** `D:\TigerIQ\Tools\sign_latest.ps1` và `sync_latest_ultracar_to_drive.ps1`, giữ nguyên `sign_latest.cmd` và Scheduled Task. **Khác hướng dẫn lịch sử:** không tìm `*_aligned_TEST.apk` mới nhất, không hard-pin V65; đầu vào/đầu ra và SHA-256 phải khớp `D:\TigerIQ\Tools\ultracar_test_release.json` được duyệt cho phiên bản TEST.

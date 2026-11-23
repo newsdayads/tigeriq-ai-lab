@@ -1,5 +1,18 @@
 # UltraCarHCM — APK build, release TEST, QA, backup (Owner-locked)
 
+## 2026-10-30 — V68 ĐÃ KÝ, ĐÃ XUẤT DRIVE: CHUẨN CHO CÁC BẢN TEST TIẾP THEO
+
+**Owner authorization persists:** `FULL_AUTO_TEST_RELEASE=APPROVED` cho UltraCarHCM V1 TEST, theo quyết định trong Loader/GitHub #5129. **Không hỏi lại** phê duyệt sửa, build, ký và xuất Drive TEST trong phạm vi đã cấp. Không tự nâng Production hoặc bỏ qua cổng quyền/bảo mật từ nền tảng.
+
+**Biên nhận đã nghiệm thu phát hành TEST V68 (không phải nghiệm thu giao diện ứng dụng):**
+- PC01, package `com.tigeriq.dexsplit`, `versionCode=309`, `versionName=TigerIQ_HCM_v1.0.68`; signed APK `UltraCar_v1.0.68_309_RealFix_signed_TEST.apk`, 35.170.717 bytes; SHA-256 `874219C14C48B7F0D92B36D89F55D68C3FEBCBC318373C367602DD7F0FE1E919`.
+- `apksigner verify` EXIT 0, v2/v3 TRUE, signer SHA-256 `71617043eace89e5f220ea9168b0a9592808111b0f17eaa219f5e6eceb569558`. Sign receipt cùng hash.
+- Existing `TigerIQ_UltraCar_Sync_Drive` task EXIT 0, `SYNC_PASS`. Google Drive API xác minh file ID `1XgXJc1X3ZF1r26ASNnNYcj9HGU6wPt3z`, tên `UltraCar_v1.0.68_TEST.apk`, dung lượng 35.170.717, folder ID `1QTOWvtgrdGIml15J55LttcyKa7rLkdva`. [Bản TEST V68](https://drive.google.com/file/d/1XgXJc1X3ZF1r26ASNnNYcj9HGU6wPt3z/view). Cloud-bytes SHA chưa kiểm độc lập; Z Fold 2/DeX UI/drag/Camera vẫn chờ Owner QA; Production không đổi.
+
+**Cấu hình dùng lại, không tạo đường phát hành thứ hai:** PC01 giữ khóa ký tại chỗ; entrypoint `D:\TigerIQ\Tools\sign_latest.cmd`, hai script signer/sync hiện hữu đọc duy nhất `D:\TigerIQ\Tools\ultracar_test_release.json`, kiểm tra input SHA256, package, version, chứng chỉ, biên nhận và chống ghi đè. Sang V69+ chỉ đổi manifest tương ứng APK mới, không viết lại signer hoặc yêu cầu Owner cấp lại quyền TEST. **Chưa có trigger ký hoàn toàn tự động đã kiểm thử**: có thể vẫn cần người thực hiện lệnh hiện hữu khi hành động ký bị giới hạn bởi cổng hệ thống; đừng khẳng định không cần lệnh thủ công nếu chưa có biên nhận unattended release. Không dùng công cụ/route khác để né một lệnh ký bị host từ chối.
+
+**Source of truth:** [Issue #5129 — biên nhận V68 ký+Drive](https://github.com/newsdayads/tigeriq-ai-lab/issues/5129#issuecomment-6523890783).
+
 ## 2026-10-30 — QUY TRÌNH KÝ TEST HIỆN HÀNH (ghi đè ví dụ cũ)
 
 - PC01 đã sửa **hai script hiện có**, không tạo runner/task thứ hai: `D:\TigerIQ\Tools\sign_latest.ps1` và `sync_latest_ultracar_to_drive.ps1`. `sign_latest.cmd` vẫn là entrypoint cũ. Thay vì tự chọn APK mới nhất hoặc khóa V65, cả hai đọc `D:\TigerIQ\Tools\ultracar_test_release.json` với tên input, SHA-256 đã căn chỉnh, package, versionCode/versionName, tên signed và tên Drive chính xác.
