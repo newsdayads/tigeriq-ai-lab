@@ -22,3 +22,8 @@ Version: 1.0
 
 ## Baseline date
 2026-08-29
+
+## Owner 2026-11-23 — lưu trữ TigerIQ trên PC01 ở ổ D
+- Toàn bộ tệp dự án và dữ liệu vận hành TigerIQ trên PC01 phải nằm trong cấu trúc rõ ràng dưới `D:\TigerIQ`; không tạo mới hoặc tiếp tục phụ thuộc vận hành vào `F:\TigerIQ`.
+- Phạm vi gồm dữ liệu, ảnh, mô hình AI, cơ sở dữ liệu, nhật ký, bản sao lưu, cấu hình và bản cài dự án. Đối chiếu quy trình chuyển bảo toàn tại `docs/PC01_STORAGE_LAYOUT.md`.
+- Đây là nguyên tắc lưu trữ do Owner yêu cầu, không phải bằng chứng hệ thống đã chuyển xong. Mọi chuyển đổi phải kiểm chứng phụ thuộc, bảo toàn dữ liệu, đổi cấu hình, kiểm tra vận hành và có biên nhận; giữ nguyên cổng quyền/bảo mật.
