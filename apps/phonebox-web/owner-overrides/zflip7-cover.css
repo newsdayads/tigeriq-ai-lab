@@ -103,3 +103,15 @@
     min-height:0 !important;
   }
 }
+/* Owner System meter width fix v5: override PhoneBox inline gridArea and legacy auto reset. */
+@media screen and (max-width:650px) and (max-height:540px) and (min-aspect-ratio:.82) {
+  .page[data-id="system"] .grid > .w-chart {
+    grid-area:auto / auto / auto / span 1 !important;
+  }
+  .page[data-id="system"] .grid > .w-meters {
+    grid-area:auto / 1 / auto / -1 !important;
+    width:100% !important;
+    justify-self:stretch !important;
+    box-sizing:border-box !important;
+  }
+}
