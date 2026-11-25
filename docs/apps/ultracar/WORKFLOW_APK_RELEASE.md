@@ -1,5 +1,9 @@
 # UltraCarHCM — APK build, release TEST, QA, backup (Owner-locked)
 
+## 2026-11-25 — Kiểm thử Android trên máy ảo PC01 trước
+Áp dụng chuẩn [Bootstrap Workflow](../../../bootstrap/02_TIGERIQ_WORKFLOW.md#kiểm-thử-android--ưu-tiên-apkstart-pc01-owner-25112026) và [GH-5772](https://github.com/newsdayads/tigeriq-ai-lab/issues/5772): ApkStart Android 14, 1920x1080/160dpi, ADB `-P 5044 -s emulator-5560`. Dùng trước cho cài đặt, khởi động, kiểm tra lỗi, giao diện, ảnh/log và cửa sổ Android phổ thông. Không thay cổng nghiệm thu Z Fold 2/Samsung DeX, USB/UVC, Bluetooth/remote và phần cứng thật. Không đổi bản đã phát hành trong nhiệm vụ này.
+**Bất nhất gói phát hành đang cần đối soát:** 25/11/2026, `version.json` ghi 1.2.23/369, SHA-256 07FA280005D71C0D4E38C085C3077ED01B66497E1E3EB54B0C2ED4D7999F038E; APK tải từ apk-dist khớp hash nhưng `aapt dump badging` và guest cùng báo 1.2.16/362. Không nghiệm thu phiên bản 369 từ gói này, không tự sửa metadata hoặc production. Biên nhận JOB-MCP-8368875f-4cb6-4f84-94d7-4546ffabc6f6. Kết quả cài/mở APK là chứng cứ năng lực máy ảo, không phải QA phiên bản 369.
+
 ## 2026-10-30 — QUY TRÌNH KÝ TEST HIỆN HÀNH (ghi đè ví dụ cũ)
 
 - PC01 đã sửa **hai script hiện có**, không tạo runner/task thứ hai: `D:\TigerIQ\Tools\sign_latest.ps1` và `sync_latest_ultracar_to_drive.ps1`. `sign_latest.cmd` vẫn là entrypoint cũ. Thay vì tự chọn APK mới nhất hoặc khóa V65, cả hai đọc `D:\TigerIQ\Tools\ultracar_test_release.json` với tên input, SHA-256 đã căn chỉnh, package, versionCode/versionName, tên signed và tên Drive chính xác.
