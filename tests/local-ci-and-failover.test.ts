@@ -87,17 +87,37 @@ describe('Local CI Gate & Zero-Drop AI Failover', () => {
     'scripts/tigeriq-core/pc01-release-preflight.mjs',
     'scripts/tigeriq-core/bootstrap-watchdog.ps1',
     'scripts/tigeriq-core/install-core-updater.ps1',
+    'apps/tigeriq-core/pc01-standing-release.mjs',
+    'apps/tigeriq-core/pc01-release-approval.mjs',
+    'apps/tigeriq-core/github-actions-oidc.mjs',
     'tests/pc01-standing-release.test.mjs',
   ])('requires PowerShell and release regression suites for %s', (path) => {
     const cmd = scopedTestCommand([path]);
-    expect(cmd).toBe('pwsh -NoLogo -NoProfile -NonInteractive -Command "exit 0" && npm run typecheck && npx vitest run tests/pc01-release-preflight.test.mjs tests/pc01-updater-release-gate.test.mjs tests/pc01-release-guard-e2e.test.mjs && npm run build');
+    expect(cmd).toBe('pwsh -NoLogo -NoProfile -NonInteractive -Command "exit 0" && npm run typecheck && npx vitest run tests/pc01-release-preflight.test.mjs tests/pc01-updater-release-gate.test.mjs tests/pc01-release-guard-e2e.test.mjs tests/pc01-standing-release.test.mjs && npm run build');
   });
 
   it('deduplicates mixed release and coding tests; leaves unrelated paths unchanged', () => {
     const cmd = scopedTestCommand(['scripts/tigeriq-core/update-core-runtime.ps1', 'scripts/tigeriq-core/pc01-release-guard.ps1', 'apps/tigeriq-coding-lane/local-ci-gate.mjs']);
     expect(cmd.match(/tests\/pc01-release-guard-e2e\.test\.mjs/g)).toHaveLength(1);
     expect(cmd).toContain('tests/local-ci-and-failover.test.ts');
+    expect(cmd.match(/tests\/pc01-standing-release\.test\.mjs/g)).toHaveLength(1);
     expect(scopedTestCommand(['docs/example.md'])).toBe('npm run typecheck && npm run build');
+  });
+
+  it.each(['apps/tigeriq-coding-lane/local-ci-gate.mjs','tests/local-ci-and-failover.test.ts'])('runs all release checks when the CI selector changes: %s', path => {
+    const cmd = scopedTestCommand([path]);
+    expect(cmd).toContain('pwsh -NoLogo -NoProfile -NonInteractive');
+    expect(cmd).toContain('tests/pc01-standing-release.test.mjs');
+    expect(cmd).toContain('tests/pc01-release-guard-e2e.test.mjs');
+    expect(cmd).toContain('tests/local-ci-and-failover.test.ts');
+    withGitFixture((cwd, head) => {
+      const receipt = runLocalCiGate({ cwd, sourceHeadSha: head, changedPaths: [path], runner: command => {
+        if (command.includes('tests/pc01-standing-release.test.mjs')) throw new Error('STANDING_RELEASE_REGRESSION');
+        return 'PASS';
+      } });
+      expect(receipt.pass).toBe(false);
+      expect(receipt.checkRuns[0].conclusion).toBe('failure');
+    });
   });
 
   it('records independent exact-head queue hygiene success in default CI', () => {
