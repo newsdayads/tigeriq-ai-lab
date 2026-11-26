@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
-import { GITHUB_MATERIALIZE_BATCH_DEFAULT, GITHUB_RECONCILE_INTERVAL_MS, MAX_SAME_REVISION_FALLBACK_REARMS, buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, declaredBlockedBySpec, materializeGithubIssues, parseExecutableIssue, parsePcOperatorDirectAction, reconcileSatisfiedDeclaredBlockers, reconcileSupersededActiveGithubObjective, githubObjectiveEncodedSourceRevision, githubActiveObjectiveSourceIsSuperseded, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, sameRevisionFallbackRearmDecision, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
+import { GITHUB_MATERIALIZE_BATCH_DEFAULT, GITHUB_RECONCILE_INTERVAL_MS, MAX_SAME_REVISION_FALLBACK_REARMS, buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, declaredBlockedBySpec, materializeGithubIssues, parseExecutableIssue, parsePcOperatorDirectAction, reconcileSatisfiedDeclaredBlockers, reconcileSupersededActiveGithubObjective, githubObjectiveEncodedSourceRevision, githubActiveObjectiveSourceIsSuperseded, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, sameRevisionFallbackRearmDecision, syncGithubOutcomes, workOrderDedupIdentity } from '../apps/tigeriq-core/github-intake.mjs';
 import { parseOpenWorkIssue } from '../api/live-status.mjs';
 
 test('isZeroCost checks label correctly', () => {
@@ -65,12 +65,13 @@ function coreBacklogPool(options={}){
       const active=objectives.filter(o=>o.metadata?.source==='github'&&o.status==='active');
       return {rowCount:active.length,rows:active.map(o=>({id:o.id,status:o.status,metadata:o.metadata}))};
     }
-    if(q.includes("update tigeriq_objectives o")&&q.includes("GITHUB_SOURCE_REVISION")){
-      throw new Error('UNEXPECTED_TEST_QUERY_MARKER');
-    }
     if(q.includes("update tigeriq_objectives o")&&q.includes("SUPERSEDED_BY_NEW_GITHUB_SOURCE_REVISION")){
       const row=objectives.find(o=>o.id===params[0]&&o.status==='active');
       if(!row)return {rowCount:0,rows:[]};
+      options.beforeSupersedeUpdate?.(row);
+      if(String(row.metadata?.sourceRevision||'')!==params[1]||
+         String(row.metadata?.managerAwaitingAcceptanceRevision||'')!==params[3]||
+         row.metadata?.source!=='github'||String(row.metadata?.issueNumber||'')!==params[4])return {rowCount:0,rows:[]};
       const liveJob=jobs.some(j=>j.objective_id===row.id&&!['done','failed','cancelled'].includes(j.status));
       const currentJob=jobs.some(j=>j.objective_id===row.id&&j.current_resource===true);
       const activeLease=jobs.some(j=>j.objective_id===row.id&&j.active_shared_lease===true);
@@ -275,6 +276,20 @@ test('current encoded revision is not falsely superseded and live stale work rem
   const stale={...currentRow,id:'OBJ-GH-5144-R111111111111-20261023102543',metadata:{...currentRow.metadata,managerAwaitingAcceptanceRevision:'111111111111'}};
   const pool=coreBacklogPool(); pool.objectives.push(stale); pool.jobs.push({id:'JOB-LIVE',objective_id:stale.id,status:'running'});
   const decision=await reconcileSupersededActiveGithubObjective({pool,spec,activeRows:pool.objectives});
+  assert.deepStrictEqual(decision,{released:false,reason:'ACTIVE_WORK_OR_RACE'});
+  assert.equal(pool.objectives[0].status,'active');
+});
+
+test('orphan retirement rejects metadata refreshed concurrently after the stale-row read',async()=>{
+  const spec={number:5144,sourceRevision:'abcdef123456'};
+  const row={id:'OBJ-GH-5144-R111111111111-20261023102543',status:'active',metadata:{
+    source:'github',issueNumber:5144,sourceRevision:'111111111111',managerAwaitingAcceptanceRevision:'111111111111'
+  }};
+  const pool=coreBacklogPool({beforeSupersedeUpdate:stored=>{
+    stored.metadata={...stored.metadata,sourceRevision:spec.sourceRevision,managerAwaitingAcceptanceRevision:spec.sourceRevision};
+  }});
+  pool.objectives.push(row);
+  const decision=await reconcileSupersededActiveGithubObjective({pool,spec,activeRows:[structuredClone(row)]});
   assert.deepStrictEqual(decision,{released:false,reason:'ACTIVE_WORK_OR_RACE'});
   assert.equal(pool.objectives[0].status,'active');
 });
