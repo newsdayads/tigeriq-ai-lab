@@ -201,3 +201,83 @@ export function activeRoleClaim(comments=[],nowMs=Date.now()){
   }
   return active&&active.leaseUntilMs>nowMs?active:null;
 }
+
+export const QUOTA_FAILOVER_CHAINS = Object.freeze({
+  coding: ['NV02', 'NV09', 'NV06'],
+  review: ['NV03', 'NV04', 'NV09'],
+  research: ['NV04', 'NV03', 'NV08'],
+  api_doctor: ['NV10', 'NV08'],
+  general: ['NV02', 'NV09', 'NV08', 'NV06'],
+});
+
+export const QUOTA_OR_BLOCK_REASONS = Object.freeze([
+  'BLOCKED_SUSPICIOUS_ACTIVITY',
+  'BLOCKED_RATE_LIMIT',
+  'BLOCKED_CAPTCHA',
+  'BLOCKED_REAUTH',
+  'RATE_LIMITED',
+  'RECOVERY_EXHAUSTED',
+  'WAIT_KEY',
+  'STALLED',
+  'ERROR',
+  'OFFLINE',
+]);
+
+/**
+ * Resolve the next healthy AI worker in the failover chain when the current worker
+ * hits a quota limit, rate limit, or UI block.
+ */
+export function resolveQuotaFailoverChain({
+  capability = 'coding',
+  failedWorker = '',
+  unavailableWorkers = [],
+  workerStates = {},
+} = {}) {
+  const cap = String(capability || 'general').trim().toLowerCase();
+  const chain = QUOTA_FAILOVER_CHAINS[cap] || QUOTA_FAILOVER_CHAINS.general;
+  const blocked = new Set([
+    employee(failedWorker),
+    ...(Array.isArray(unavailableWorkers) ? unavailableWorkers.map(employee) : []),
+  ].filter(Boolean));
+  for (const [id, st] of Object.entries(workerStates || {})) {
+    const upper = String(st?.status || st || '').toUpperCase();
+    if (QUOTA_OR_BLOCK_REASONS.includes(upper)) blocked.add(employee(id));
+  }
+  const nextWorker = chain.find((id) => !blocked.has(id)) || null;
+  return {
+    capability: cap,
+    chain,
+    failedWorker: employee(failedWorker) || null,
+    nextWorker,
+    exhausted: nextWorker === null,
+  };
+}
+
+/**
+ * Create a durable handoff checkpoint so work in progress can resume on another AI
+ * without losing branch, commit, completed steps, or remaining instructions.
+ */
+export function createHandoffCheckpoint({
+  jobId = '',
+  branch = '',
+  commitSha = '',
+  failedWorker = '',
+  failureReason = '',
+  nextWorker = '',
+  completedSteps = [],
+  remainingPrompt = '',
+  now = new Date().toISOString(),
+} = {}) {
+  return {
+    schema: 'TIGERIQ_AI_HANDOFF_CHECKPOINT_V1',
+    jobId: String(jobId || ''),
+    branch: String(branch || ''),
+    commitSha: String(commitSha || ''),
+    failedWorker: employee(failedWorker) || null,
+    failureReason: String(failureReason || 'QUOTA_OR_BLOCK'),
+    nextWorker: employee(nextWorker) || null,
+    completedSteps: Array.isArray(completedSteps) ? [...completedSteps] : [],
+    remainingPrompt: String(remainingPrompt || ''),
+    handoffAt: String(now),
+  };
+}

@@ -1,5 +1,5 @@
 import {describe,it,expect,vi} from 'vitest';
-import {readFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import {enrichGithubPushPayload,compareChangedPaths} from '../scripts/tigeriq-core/enrich-github-push-event.mjs';
 import {githubContinuousVerifyTrigger} from '../apps/tigeriq-core/continuous-verify.mjs';
 
@@ -72,19 +72,10 @@ describe('GH-5169 real signed GitHub main push delivery',()=>{
       .rejects.toThrow('GITHUB_PUSH_COMPARE_UNAVAILABLE');
   });
 
-  it('only dispatches canonical main push, retaining signed OIDC and a bounded local receipt',()=>{
-    const workflow=readFileSync(new URL('../.github/workflows/tigeriq-core-event-dispatch.yml',import.meta.url),'utf8');
+  it('removes GitHub Actions push workflow and retains continuous-verify endpoint in core',()=>{
     const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
-    expect(workflow).toContain('  push:\n    branches: [main]');
-    expect(workflow).toContain("if: github.event_name == 'push'");
-    expect(workflow).toContain('persist-credentials: false');
-    expect(workflow).toContain('enrich-github-push-event.mjs');
-    expect(workflow).toContain('--data-binary "@$payload"');
-    expect(workflow).toContain('audience=tigeriq-core');
-    expect(workflow).not.toMatch(/TIGERIQ_CORE_TOKEN|WEBHOOK_SECRET/);
+    expect(existsSync(new URL('../.github/workflows/tigeriq-core-event-dispatch.yml',import.meta.url))).toBe(false);
     expect(core).toContain("url.pathname==='/api/continuous-verify-evidence'");
-    expect(core).toContain("data->>'key'=$1 order by seq desc limit 12");
-    expect(core).toContain("eventName==='push'");
     expect(core).toContain('GITHUB_EVENT_RECEIVED');
   });
 });

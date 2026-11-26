@@ -3,7 +3,7 @@ import {
   STANDING_POLICY_PATH,validateStandingActivation,classifyStandingReleaseFiles,
   validateStandingReleaseEvidence,acceptPc01StandingWorkflowRelease,
 } from '../apps/tigeriq-core/pc01-standing-release.mjs';
-import {readFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import {githubContinuousVerifyTrigger} from '../apps/tigeriq-core/continuous-verify.mjs';
 
 const old='1'.repeat(40),next='2'.repeat(40),blob='a'.repeat(40);
@@ -105,15 +105,11 @@ it('unactivated machine refuses without a network call or filesystem mutation',a
 });
 it('source integration cannot treat merge or current GH owner connection as activation',()=>{
   const source=readFileSync(new URL('../apps/tigeriq-core/pc01-standing-release.mjs',import.meta.url),'utf8');
-  const workflow=readFileSync(new URL('../.github/workflows/tigeriq-core-event-dispatch.yml',import.meta.url),'utf8');
   const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
   expect(source).toContain('TIGERIQ_PC01_STANDING_ENABLE_V1');
   expect(source).toContain('if(!policy)deny(');
   expect(source).toContain('ANOTHER_WRITER_OR_STALE_LOCK');
-  // Preserve the independently signed issue/comment bridge already installed on PC01.
-  expect(workflow).toContain('  issue_comment:');
-  expect(workflow).toContain('  issues:');
-  expect(workflow).not.toContain('  workflow_run:');
+  expect(existsSync(new URL('../.github/workflows/tigeriq-core-event-dispatch.yml',import.meta.url))).toBe(false);
   expect(core).toContain('acceptPc01StandingWorkflowRelease');
   expect(core).toContain('enablePc01StandingRelease');
 });

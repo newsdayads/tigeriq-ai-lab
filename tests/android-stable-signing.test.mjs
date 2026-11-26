@@ -1,8 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const gradle = readFileSync(new URL('../apps/android-worker/app/build.gradle.kts', import.meta.url), 'utf8');
-const workflow = readFileSync(new URL('../.github/workflows/android-worker.yml', import.meta.url), 'utf8');
 const provision = readFileSync(new URL('../scripts/pc-worker/provision-android-signing.ps1', import.meta.url), 'utf8');
 
 describe('WO-037 Android stable signing', () => {
@@ -16,13 +15,8 @@ describe('WO-037 Android stable signing', () => {
     expect(gradle).not.toMatch(/keyPassword\s*=\s*"[^"$]/);
   });
 
-  it('keeps TigerIQ signing secrets out of CI and proves certificate reuse only with a disposable key', () => {
-    expect(workflow).toContain('TIGERIQ_STABLE_SIGNING_NOT_CONFIGURED');
-    expect(workflow).toContain('app-release-unsigned.apk');
-    expect(workflow).toContain('CI_ONLY_NOT_TIGERIQ_PRIVATE_KEY');
-    expect(workflow).toContain('test "$first" = "$second"');
-    expect(workflow).toContain('STABLE_SIGNING_CERTIFICATE_REUSE_PASS');
-    expect(workflow).not.toContain('F:\\TigerIQ\\Secrets');
+  it('removes cloud GitHub Actions workflows in favor of PC01 Local CI', () => {
+    expect(existsSync(new URL('../.github/workflows/android-worker.yml', import.meta.url))).toBe(false);
   });
 
   it('recovers only the established canonical identity and never generates a replacement key', () => {
