@@ -874,6 +874,25 @@ describe('P0 GH-5417: native PC Operator test runner and Work Order diagnostics'
     expect(r).toMatchObject({found:true,source:'CORE_OPEN_WORK_PROJECTION',data:row,leaseVerified:false,acceptanceVerified:false});
     expect(fetchImpl.mock.calls.map(c=>c[0])).toEqual(['http://127.0.0.1:8795/api/status','http://127.0.0.1:8795/api/health-live-work']);
   });
+  it('uses a separate bounded 20s deadline for the slow projection without retrying', async () => {
+    const timeout=vi.spyOn(AbortSignal,'timeout');
+    try {
+      const f=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ok:true,objectives:[]})))
+        .mockRejectedValueOnce(new DOMException('deadline','TimeoutError'));
+      expect(await pcOperatorWorkOrderLookup('GH-5615',f)).toMatchObject({found:false,status:503,reason:'CORE_WORK_PROJECTION_TIMEOUT'});
+      expect(timeout.mock.calls.map(c=>c[0])).toEqual([5000,20000]);
+      expect(f).toHaveBeenCalledTimes(2);
+      expect(f.mock.calls[1][1].redirect).toBe('error');
+    } finally { timeout.mockRestore(); }
+  });
+  it('distinguishes projection body deadline from malformed JSON', async () => {
+    const status=()=>new Response(JSON.stringify({ok:true,objectives:[]}));
+    const f=vi.fn().mockResolvedValueOnce(status())
+      .mockResolvedValueOnce({ok:true,json:async()=>{throw new DOMException('deadline','TimeoutError');}});
+    expect(await pcOperatorWorkOrderLookup('GH-5615',f)).toMatchObject({found:false,status:503,reason:'CORE_WORK_PROJECTION_TIMEOUT'});
+    const malformed=vi.fn().mockResolvedValueOnce(status()).mockResolvedValueOnce(new Response('not json'));
+    expect(await pcOperatorWorkOrderLookup('GH-5615',malformed)).toMatchObject({found:false,status:502,reason:'CORE_WORK_PROJECTION_INVALID_JSON'});
+  });
   it('does not bypass a denied status route', async () => {
     const f=vi.fn().mockResolvedValue(new Response('denied',{status:403}));
     expect(await pcOperatorWorkOrderLookup('GH-5615',f)).toMatchObject({found:false,status:403});
