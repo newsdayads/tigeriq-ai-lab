@@ -167,8 +167,6 @@ const LIVE_PROJECT_MAP = Object.freeze({
  'tigeriq-workflow-lab': ['TigerIQ AI', 'Workflow Lab'],
  'tigeriq-app-chrome': ['TigerIQ AI', 'App Chrome'],
  'tigeriq-news': ['TigerIQ News / Media', null],
- 'paperclip-vnext': ['Paperclip vNext', null],
- 'revenue-lab': ['Revenue Lab', null],
  'tigeriq-driver': ['TigerIQ Driver', null],
  'dexcam-personal': ['DeXCam Personal', 'DeXCam Personal'],
  'tigeriq-dexcam-personal': ['DeXCam Personal', 'DeXCam Personal'],

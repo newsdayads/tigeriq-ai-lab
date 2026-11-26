@@ -157,7 +157,7 @@ export function buildRoleFallbackPrompt(workerId){
     'Core does not select backlog for this worker.',
     'Command 02: active CURRENT_WORK_ORDER plus checkpoint means resume; terminal/no-current means local GitHub self-pull exactly one eligible P1-P5 item for NV02.',
     'Before any NV02 local claim, validate Work Order Lifecycle V2 for every new or opted-in card: steps, current/next, ETA/time status, nonfabricated evidence, and allowed action scope; if invalid, park as CONTRACT_INVALID rather than self-claim.',
-    'Use NV02_LOCAL_GITHUB_SELF_PULL=P1_P5_ONLY with lease, evidence, release, then continue to the next eligible item.',
+    'Use NV02_LOCAL_GITHUB_SELF_PULL=P1_P5_ONLY with lease, PC01 Local CI Gate (0d, no GitHub Actions), handoff checkpoint to NV09 on quota/block, then continue to the next eligible item.',
     'P0 remains Owner-only and App Chrome remains a separate Owner-controlled scope.',
   ].join(' ');
 }
@@ -200,4 +200,84 @@ export function activeRoleClaim(comments=[],nowMs=Date.now()){
     }
   }
   return active&&active.leaseUntilMs>nowMs?active:null;
+}
+
+export const QUOTA_FAILOVER_CHAINS = Object.freeze({
+  coding: ['NV02', 'NV09', 'NV06'],
+  review: ['NV03', 'NV04', 'NV09'],
+  research: ['NV04', 'NV03', 'NV08'],
+  api_doctor: ['NV10', 'NV08'],
+  general: ['NV02', 'NV09', 'NV08', 'NV06'],
+});
+
+export const QUOTA_OR_BLOCK_REASONS = Object.freeze([
+  'BLOCKED_SUSPICIOUS_ACTIVITY',
+  'BLOCKED_RATE_LIMIT',
+  'BLOCKED_CAPTCHA',
+  'BLOCKED_REAUTH',
+  'RATE_LIMITED',
+  'RECOVERY_EXHAUSTED',
+  'WAIT_KEY',
+  'STALLED',
+  'ERROR',
+  'OFFLINE',
+]);
+
+/**
+ * Resolve the next healthy AI worker in the failover chain when the current worker
+ * hits a quota limit, rate limit, or UI block.
+ */
+export function resolveQuotaFailoverChain({
+  capability = 'coding',
+  failedWorker = '',
+  unavailableWorkers = [],
+  workerStates = {},
+} = {}) {
+  const cap = String(capability || 'general').trim().toLowerCase();
+  const chain = QUOTA_FAILOVER_CHAINS[cap] || QUOTA_FAILOVER_CHAINS.general;
+  const blocked = new Set([
+    employee(failedWorker),
+    ...(Array.isArray(unavailableWorkers) ? unavailableWorkers.map(employee) : []),
+  ].filter(Boolean));
+  for (const [id, st] of Object.entries(workerStates || {})) {
+    const upper = String(st?.status || st || '').toUpperCase();
+    if (QUOTA_OR_BLOCK_REASONS.includes(upper)) blocked.add(employee(id));
+  }
+  const nextWorker = chain.find((id) => !blocked.has(id)) || null;
+  return {
+    capability: cap,
+    chain,
+    failedWorker: employee(failedWorker) || null,
+    nextWorker,
+    exhausted: nextWorker === null,
+  };
+}
+
+/**
+ * Create a durable handoff checkpoint so work in progress can resume on another AI
+ * without losing branch, commit, completed steps, or remaining instructions.
+ */
+export function createHandoffCheckpoint({
+  jobId = '',
+  branch = '',
+  commitSha = '',
+  failedWorker = '',
+  failureReason = '',
+  nextWorker = '',
+  completedSteps = [],
+  remainingPrompt = '',
+  now = new Date().toISOString(),
+} = {}) {
+  return {
+    schema: 'TIGERIQ_AI_HANDOFF_CHECKPOINT_V1',
+    jobId: String(jobId || ''),
+    branch: String(branch || ''),
+    commitSha: String(commitSha || ''),
+    failedWorker: employee(failedWorker) || null,
+    failureReason: String(failureReason || 'QUOTA_OR_BLOCK'),
+    nextWorker: employee(nextWorker) || null,
+    completedSteps: Array.isArray(completedSteps) ? [...completedSteps] : [],
+    remainingPrompt: String(remainingPrompt || ''),
+    handoffAt: String(now),
+  };
 }

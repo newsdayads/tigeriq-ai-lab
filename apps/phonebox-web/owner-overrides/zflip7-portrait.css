@@ -1,0 +1,90 @@
+/* TigerIQ personal overlay v1 — portrait mobile. Loaded AFTER upstream style.css; upstream repo stays untouched. */
+@media screen and (max-width:700px) and (min-height:541px) and (orientation:portrait) {
+  :root { --pad-l:10px; --pad-r:10px; }
+  #pager { height:100dvh; }
+  .page { height:100dvh; overflow-y:auto; overflow-x:hidden; padding:10px 10px max(45px, env(safe-area-inset-bottom)) !important;
+    overscroll-behavior-y:contain; -webkit-overflow-scrolling:touch; touch-action:pan-x pan-y; }
+  .page .grid { display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+    grid-template-rows:none !important; grid-auto-flow:row !important; grid-auto-rows:auto !important;
+    align-content:start !important; gap:9px !important; min-height:0 !important; height:auto !important; }
+  .page .grid > .w { grid-area:auto !important; min-height:0 !important; height:146px; width:100%;
+    min-width:0; overflow:hidden; border-radius:14px; }
+  .page .grid > .w-clock, .page .grid > .w-weather { height:118px; }
+  .page .grid > .w-clock .clock { font-size:clamp(28px,11vw,50px); }
+  .page .grid > .w-stat { height:130px; }
+  .page .grid > .w-stat .t-val b { font-size:clamp(24px,7vw,34px); }
+  .page .grid > .w-gauge, .page .grid > .w-pomodoro { height:172px; }
+  .page .grid > .w-gauge .g-dial { height:min(99px,55cqw); }
+  .page .grid > .w-gauge .g-val { font-size:clamp(24px,7vw,34px); }
+  .page .grid > .w-gauge .g-label { font-size:12px; letter-spacing:0; }
+  .page .grid > .w-chart { grid-column:1 / -1 !important; height:214px; }
+  .page .grid > .w-chart canvas { width:calc(100% + 24px); height:auto; }
+  .page .grid > .w-meters { grid-column:1 / -1 !important; height:206px; }
+  .page .grid > .w-github { grid-column:1 / -1 !important; height:232px; overflow:hidden; }
+  .page .grid > .w-sessions { grid-column:1 / -1 !important; height:220px; }
+  .page .grid > .w-quotas { grid-column:1 / -1 !important; height:auto !important; min-height:0 !important; overflow:visible; }
+  .page .grid > .w-quotas .q-grid { display:flex; flex-direction:column; height:auto !important; gap:9px; }
+  .page .grid > .w-quotas .q-card { height:auto; min-height:160px; padding:10px 12px; overflow:hidden; }
+  .page .grid > .w-quotas .q-rings { flex:initial; min-height:105px; gap:5px; }
+  .page .grid > .w-quotas .q-dial { width:clamp(64px,20vw,90px); }
+  .page .grid > .w-quotas .q-pct { font-size:22px; }
+  .page .grid > .w-quotas .q-label { font-size:11px; white-space:normal; line-height:1.2; }
+  .page .grid > .w-quotas .q-reset, .page .grid > .w-quotas .q-pace { overflow:hidden; text-overflow:ellipsis; }
+  .page .grid > .w-quotas .q-head { gap:6px; }
+  .page .grid > .w-quotas .q-foot { margin-top:5px; }
+  .page .grid > .w-quotas .q-details { max-height:98px; overflow:auto; }
+  .page .grid > .w-quotas .q-card:has(.q-ov-hero) { min-height:125px; }
+  .page .grid > .w:has(.session-grid), .page .grid > .w:has(.disks),
+  .page .grid > .w:has(.gh-list) { grid-column:1 / -1 !important; }
+  .page .grid > .w:has(.session-grid) { height:215px; }
+  .page .grid > .w:has(.disks) { height:192px; }
+  .page .grid > .w-github .gh-pr { height:21px; }
+  .page .grid > .w .w-title, .page .grid > .w .s-label { letter-spacing:.055em; }
+  .page .grid > .w .s-head { flex-wrap:wrap; gap:4px; }
+  #dots { bottom:max(8px,env(safe-area-inset-bottom)); background:rgba(6,8,11,.82);
+    border-radius:999px; padding:5px 10px; backdrop-filter:blur(8px); }
+} 
+/* Owner Home ordering v2 — layout only, no upstream widget configuration changes. */
+@media screen and (max-width:700px) and (min-height:541px) and (orientation:portrait) {
+  .page:has(.w-clock) .grid > .w-clock { order:0; grid-column:1 / -1 !important; height:125px; }
+  .page:has(.w-clock) .grid > .w-quotaring { order:1; grid-column:auto !important; height:180px; min-height:0 !important; }
+  .page:has(.w-clock) .grid > .w-quotaring .g-dial { height:min(100px,56cqw); }
+  .page:has(.w-clock) .grid > .w-quotaring .g-val { font-size:clamp(24px,7vw,34px); }
+  .page:has(.w-clock) .grid > .w-quotaring .g-label { font-size:12px; letter-spacing:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+  .page:has(.w-clock) .grid > .w-quotaring .g-sub { font-size:11px; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+  .page:has(.w-clock) .grid > .w-stat { order:2; height:130px; min-height:0 !important; }
+  .page:has(.w-clock) .grid > .w-github { order:3; grid-column:1 / -1 !important; height:228px; }
+}
+/* Owner Home three-tile row v3: clock (2/4), Codex (1/4), Antigravity (1/4). */
+@media screen and (max-width:700px) and (min-height:541px) and (orientation:portrait) {
+  .page:has(.w-clock) .grid {
+    grid-template-columns: repeat(4,minmax(0,1fr)) !important;
+    gap: 7px !important;
+  }
+  .page:has(.w-clock) .grid > .w-clock {
+    grid-column:span 2 !important; order:0; height:135px !important;
+    padding:6px !important; overflow:hidden;
+  }
+  .page:has(.w-clock) .w-clock .clock { font-size:clamp(30px,8vw,48px) !important; }
+  .page:has(.w-clock) .w-clock .date { font-size:clamp(9px,2.6vw,12px); }
+  .page:has(.w-clock) .w-clock .status { font-size:10px; }
+  .page:has(.w-clock) .w-clock .wx { margin-top:3px; }
+  .page:has(.w-clock) .w-clock .wx-meta { font-size:10px; }
+  .page:has(.w-clock) .grid > .w-quotaring {
+    order:1; grid-column:span 1 !important; height:135px !important;
+    padding:3px 2px !important; gap:1px; min-width:0; overflow:hidden;
+  }
+  .page:has(.w-clock) .w-quotaring .g-dial { height:76px !important; max-width:100%; }
+  .page:has(.w-clock) .w-quotaring .g-val { font-size:clamp(17px,4.5vw,23px) !important; }
+  .page:has(.w-clock) .w-quotaring .g-label {
+    font-size:10px !important; line-height:1.12; letter-spacing:0 !important;
+    text-overflow:ellipsis; max-width:100%; overflow:hidden;
+  }
+  .page:has(.w-clock) .w-quotaring .g-sub { display:none !important; }
+  .page:has(.w-clock) .grid > .w-stat {
+    order:2; grid-column:span 2 !important; height:125px;
+  }
+  .page:has(.w-clock) .grid > .w-github {
+    order:3; grid-column:1 / -1 !important;
+  }
+}

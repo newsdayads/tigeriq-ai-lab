@@ -18,8 +18,6 @@ Owner approval: 2026-10-04. Canonical implementation Work Order: #3730.
 Bảy nhóm cấp cao, **không đổi danh tính Project/Job hiện có**:
 1. TigerIQ AI — nền tảng `tigeriq-platform`, `tigeriq-mobile-worker`, `tigeriq-live`, `tigeriq-workflow-lab`, `tigeriq-app-chrome`.
 2. TigerIQ News / Media — `tigeriq-news`.
-3. Paperclip vNext — `paperclip-vnext`.
-4. Revenue Lab — `revenue-lab`.
 5. TigerIQ Driver — `tigeriq-driver` (gồm DeX Shot, repo riêng `newsdayads/drivetrack`).
 6. DeXCam Personal — `dexcam-personal` (UltraCarVN, khác DeX Shot).
 7. TigerIQ Coin — `tigeriq-coin` (4 repo mã khai thác, mặc định không vận hành).

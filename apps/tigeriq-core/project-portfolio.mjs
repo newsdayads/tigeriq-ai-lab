@@ -6,8 +6,6 @@ const PROJECTS = Object.freeze([
   { id: 'tigeriq-workflow-lab', name: 'Workflow Lab', order: 40, kind: 'project', groupId: 'tigeriq-ai' },
   { id: 'tigeriq-app-chrome', name: 'App Chrome', order: 50, kind: 'project', groupId: 'tigeriq-ai' },
   { id: 'tigeriq-news', name: 'TigerIQ News', order: 60, kind: 'project', groupId: 'tigeriq-news' },
-  { id: 'paperclip-vnext', name: 'Paperclip vNext', order: 70, kind: 'project', groupId: 'paperclip-vnext' },
-  { id: 'revenue-lab', name: 'Revenue Lab', order: 80, kind: 'project', groupId: 'revenue-lab' },
   { id: 'tigeriq-driver', name: 'TigerIQ Driver', order: 90, kind: 'project', groupId: 'tigeriq-driver' },
   { id: 'tigeriq-camera', name: 'TigerIQ Camera', order: 95, kind: 'project', groupId: 'dexcam-personal' },
   { id: 'dexcam-personal', name: 'DeXCam Personal', order: 100, kind: 'project', groupId: 'dexcam-personal' },
@@ -44,7 +42,6 @@ const PROJECT_ALIASES = new Map([
 export const CANONICAL_PORTFOLIO_GROUPS = Object.freeze([
   { id: 'tigeriq-ai', name: 'TigerIQ AI', order: 10, childIds: ['tigeriq-platform','tigeriq-mobile-worker','tigeriq-live','tigeriq-workflow-lab','tigeriq-app-chrome'] },
   { id: 'tigeriq-news', name: 'TigerIQ News / Media', order: 20, childIds: ['tigeriq-news'] },
-  { id: 'revenue-lab', name: 'Revenue Lab', order: 40, childIds: ['revenue-lab'] },
   { id: 'tigeriq-driver', name: 'TigerIQ Driver', order: 50, childIds: ['tigeriq-driver'] },
   { id: 'dexcam-personal', name: 'DeXCam Personal', order: 60, childIds: ['dexcam-personal', 'tigeriq-camera'] },
   { id: 'tigeriq-coin', name: 'TigerIQ Coin', order: 70, childIds: ['tigeriq-coin'] },
@@ -116,8 +113,6 @@ export function classifyProject(row = {}, issue = null) {
   // Only an explicit PROJECT_ID/PROJECT_NAME metadata field may override the title.
   const text = title;
   if (/\bTIGERIQ[ _-](?:NEWS|MEDIA)\b/i.test(text)) return PROJECT_BY_ID.get('tigeriq-news');
-  if (/\bPAPERCLIP\b/i.test(text)) return PROJECT_BY_ID.get('paperclip-vnext');
-  if (/\bREVENUE[ _-]LAB\b|\bAPIFY\b/i.test(text)) return PROJECT_BY_ID.get('revenue-lab');
   if (/\bANDROID\b|MOBILE[_ -]?WORKER|\bZ[ _-]?FLIP\b|\bTIQ[ _-]?WORKER\b/i.test(text)) return PROJECT_BY_ID.get('tigeriq-mobile-worker');
   if (/\bTIGERIQ[ _-]LIVE\b|\[(?:LIVE)\]|COMMAND[ _-]?CENTER/i.test(text)) return PROJECT_BY_ID.get('tigeriq-live');
   return PROJECT_BY_ID.get('tigeriq-platform');
@@ -162,14 +157,6 @@ function legacyWorkPackage(project, row = {}, issue = null) {
 
   if (project.id === 'tigeriq-news') {
     return { id: 'news-current', name: 'TigerIQ News hiện hành', order: 100 };
-  }
-
-  if (project.id === 'paperclip-vnext') {
-    return { id: 'paperclip-shadow', name: 'Shadow evaluation', order: 100 };
-  }
-
-  if (project.id === 'revenue-lab') {
-    return { id: 'revenue-apify-audit', name: 'Apify Website Audit', order: 100 };
   }
 
   if (project.id === 'tigeriq-live') {

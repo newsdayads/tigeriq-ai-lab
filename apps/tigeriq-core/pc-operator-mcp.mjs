@@ -286,15 +286,71 @@ export function pcOperatorTestRunSpec(testPath, {
 }
 
 export async function pcOperatorWorkOrderResponse(res, workOrder) {
-  // Core may answer 404 "not_found" as plain text; never JSON.parse it.
-  if (res.status === 404) return { workOrder: workOrder || null, found: false, status: 404, reason: 'WORK_ORDER_NOT_FOUND' };
-  if (!res.ok) return { workOrder: workOrder || null, found: false, status: res.status, reason: 'CORE_WORK_ORDER_HTTP_ERROR' };
+  // /api/status is the Core runtime snapshot. It is NOT the canonical GitHub
+  // issue store, and its bounded objectives list cannot prove source absence.
+  const key = typeof workOrder === 'string' ? workOrder.trim() || null : null;
+  if (res.status === 404) return { workOrder: key, found: false, status: 404, reason: 'CORE_STATUS_ROUTE_NOT_FOUND' };
+  if (!res.ok) return { workOrder: key, found: false, status: res.status, reason: 'CORE_WORK_ORDER_HTTP_ERROR' };
   try {
     const data = await res.json();
-    return { workOrder: workOrder || null, found: true, data };
+    if (!data || data.ok !== true) return { workOrder: key, found: false, status: res.status, reason: 'CORE_STATUS_UNHEALTHY' };
+    if (!key || data.workOrderId === key) return { workOrder: key, found: true, data };
+    const issueNumber = key.match(/^(?:GH-|#)?([1-9]\d{0,7})$/i)?.[1] || '';
+    const objectives = (Array.isArray(data.objectives) ? data.objectives : []).filter((objective) => {
+      const meta = objective?.metadata || {};
+      if (issueNumber) return meta.source === 'github' && String(meta.issueNumber || '') === issueNumber;
+      return String(objective?.id || '') === key || String(meta.workOrderId || '') === key;
+    }).slice(0, 5).map((objective) => ({
+      id: objective.id, status: objective.status,
+      issueNumber: objective.metadata?.issueNumber || null,
+      issueUrl: objective.metadata?.issueUrl || null,
+      resourceScope: objective.metadata?.resourceScope || null,
+    }));
+    return {
+      workOrder: key, found: objectives.length > 0, status: 200,
+      source: 'CORE_STATUS_BOUNDED_SNAPSHOT', objectives,
+      ...(objectives.length ? {} : { reason: 'NOT_VISIBLE_IN_CORE_SNAPSHOT' }),
+    };
   } catch {
-    return { workOrder: workOrder || null, found: false, status: res.status, reason: 'CORE_WORK_ORDER_INVALID_JSON' };
+    return { workOrder: key, found: false, status: res.status, reason: 'CORE_WORK_ORDER_INVALID_JSON' };
   }
+}
+
+// The bounded runtime objectives and current open-work projection are distinct.
+// A projection match is visibility only; it never establishes job ownership or acceptance.
+export async function pcOperatorWorkOrderLookup(workOrder, fetchImpl = fetch, now = () => Date.now()) {
+  const res = await fetchImpl('http://127.0.0.1:8795/api/status', { signal: AbortSignal.timeout(5000), redirect: 'error' });
+  const result = await pcOperatorWorkOrderResponse(res, workOrder);
+  const numberText = /^(?:GH-|#)?([1-9]\d{0,7})$/i.exec(String(workOrder ?? '').trim())?.[1];
+  if (!numberText || result.reason !== 'NOT_VISIBLE_IN_CORE_SNAPSHOT') return result;
+  const number = Number(numberText);
+  const fail = (status, reason) => ({ workOrder: result.workOrder, found: false, status, reason });
+  // This projection composes the local bridge and multiple GitHub reads.
+  // Its cold path exceeded the 5s status deadline on PC01. Keep one bounded
+  // request (no retry storm), with a separate deadline and explicit timeout.
+  const projectionSignal = AbortSignal.timeout(20000);
+  let projected;
+  try {
+    projected = await fetchImpl('http://127.0.0.1:8795/api/health-live-work', { signal: projectionSignal, redirect: 'error' });
+  } catch (error) {
+    return fail(503, projectionSignal.aborted || error?.name === 'TimeoutError' ? 'CORE_WORK_PROJECTION_TIMEOUT' : 'CORE_WORK_PROJECTION_UNAVAILABLE');
+  }
+  if (!projected.ok) return fail(projected.status, 'CORE_WORK_PROJECTION_HTTP_ERROR');
+  let data;
+  try { data = await projected.json(); } catch (error) {
+    if (projectionSignal.aborted || error?.name === 'TimeoutError') return fail(503, 'CORE_WORK_PROJECTION_TIMEOUT');
+    return fail(502, 'CORE_WORK_PROJECTION_INVALID_JSON');
+  }
+  const projection = data?.projection;
+  if (data?.ok !== true || !Array.isArray(projection?.openWork)) return fail(503, 'CORE_WORK_PROJECTION_UNAVAILABLE');
+  const generated = Date.parse(String(projection.generatedAt || ''));
+  if (!Number.isFinite(generated) || Math.abs(now() - generated) > 120000 || projection.stale === true || projection.workProjection?.stale === true) return fail(503, 'CORE_WORK_PROJECTION_STALE');
+  const rows = projection.openWork.filter(row => Number(row?.number) === number);
+  if (!rows.length) return fail(404, 'WORK_ORDER_NOT_VISIBLE_IN_OPEN_PROJECTION');
+  if (rows.length !== 1) return fail(409, 'CORE_WORK_PROJECTION_AMBIGUOUS');
+  const row = rows[0];
+  if (row.url !== 'https://github.com/newsdayads/tigeriq-ai-lab/issues/' + number || typeof row.title !== 'string' || !row.title.trim()) return fail(502, 'CORE_WORK_PROJECTION_SOURCE_INVALID');
+  return { ...result, found: true, source: 'CORE_OPEN_WORK_PROJECTION', reason: undefined, data: { number, title: row.title, status: String(row.status ?? ''), jobId: String(row.jobId ?? ''), url: row.url }, generatedAt: projection.generatedAt, leaseVerified: false, acceptanceVerified: false };
 }
 
 const PC_OPERATOR_ADMIN_VERIFY_TASK = 'TigerIQ PC Operator Admin Verify';
@@ -1063,9 +1119,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
       workOrder: z.string().optional().describe('Mã Work Order (ví dụ: WO-060)'),
     },
     async ({ workOrder }) => {
-      const url = workOrder ? `http://127.0.0.1:8795/api/work-order?id=${encodeURIComponent(workOrder)}` : 'http://127.0.0.1:8795/api/status';
-      const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-      return pcOperatorWorkOrderResponse(res, workOrder);
+      return pcOperatorWorkOrderLookup(workOrder);
     }
   );
 }

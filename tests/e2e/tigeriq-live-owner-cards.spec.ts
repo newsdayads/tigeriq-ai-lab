@@ -655,8 +655,6 @@ test('Projects keeps seven groups plus custom projects and counts recent/owner-g
   const definitions=[
     {id:'tigeriq-ai',name:'TigerIQ AI',children:['tigeriq-platform','tigeriq-mobile-worker','tigeriq-live','tigeriq-workflow-lab','tigeriq-app-chrome']},
     {id:'tigeriq-news',name:'TigerIQ News / Media',children:['tigeriq-news']},
-    {id:'paperclip-vnext',name:'Paperclip vNext',children:['paperclip-vnext']},
-    {id:'revenue-lab',name:'Revenue Lab',children:['revenue-lab']},
     {id:'tigeriq-driver',name:'TigerIQ Driver',children:['tigeriq-driver']},
     {id:'dexcam-personal',name:'DeXCam Personal',children:['dexcam-personal']},
     {id:'tigeriq-coin',name:'TigerIQ Coin',children:['tigeriq-coin']},
@@ -670,7 +668,7 @@ test('Projects keeps seven groups plus custom projects and counts recent/owner-g
     recentWork:[done],
   };
   await routeTiger(page,data);await page.goto('https://tigeriq.test/projects');
-  await expect(page.locator('.project-card')).toHaveCount(9);
+  await expect(page.locator('.project-card')).toHaveCount(7);
   for(const group of definitions)await expect(page.locator('.project-card[data-project-id="'+group.id+'"]')).toBeVisible();
   await expect(page.locator('.project-card[data-project-id="alpha"]')).toContainText('Đang làm 1');
   await expect(page.locator('.project-card[data-project-id="alpha"]')).toContainText('Rà soát 1');

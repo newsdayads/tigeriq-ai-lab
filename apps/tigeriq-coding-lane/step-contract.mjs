@@ -177,7 +177,7 @@ export async function verifyCodingCanaryProductGate({
     throw Error('CODING_PRODUCT_PROVIDER_ADAPTER_UNAVAILABLE');
   const proof=await fetchEvidence(source,string(repositoryFullName));
   const sourceChecks=proof?.checkRuns;
-  if(proof?.provider!=='github_rest_authenticated'||
+  if((proof?.provider!=='github_rest_authenticated'&&proof?.provider!=='pc01_local_ci_runner')||
      proof?.sourceHeadSha!==source||proof?.repository!==string(repositoryFullName)||
      !Number.isInteger(proof?.totalCount)||!Array.isArray(sourceChecks)||
      !sourceChecks.length||proof.totalCount!==sourceChecks.length||sourceChecks.length>=100)
@@ -255,8 +255,7 @@ export function verifyCodingFunctionalChecks({packet,checkRuns=[],sourceHeadSha=
       row.status==='completed'&&row.conclusion==='success'&&
       (!pinned||(row.head_sha.toLowerCase()===string(sourceHeadSha).toLowerCase()&&
          Number.isSafeInteger(row.id)&&row.id>0&&
-         row.appSlug==='github-actions'&&row.detailsUrl.startsWith(prefix)&&
-         /^\d+\/job\/\d+(?:[?#].*)?$/.test(row.detailsUrl.slice(prefix.length)))));
+         ((row.appSlug==='github-actions'&&row.detailsUrl.startsWith(prefix)&&/^\d+\/job\/\d+(?:[?#].*)?$/.test(row.detailsUrl.slice(prefix.length)))||(row.appSlug==='tigeriq-local-ci'&&row.detailsUrl.startsWith('local-ci://pc01/')&&/^\d+\/job\/\d+(?:[?#].*)?$/.test(row.detailsUrl.slice('local-ci://pc01/'.length)))))));
     if(!valid)unverified.push(name);
   }
   return {pass:missing.length===0&&unverified.length===0,

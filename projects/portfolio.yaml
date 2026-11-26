@@ -11,10 +11,6 @@ groups:
     name: TigerIQ News / Media
     order: 20
     children: [tigeriq-news]
-  - id: revenue-lab
-    name: Revenue Lab
-    order: 40
-    children: [revenue-lab]
   - id: tigeriq-driver
     name: TigerIQ Driver
     order: 50
