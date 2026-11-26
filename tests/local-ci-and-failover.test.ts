@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { runLocalCiGate, LOCAL_CI_SCHEMA } from '../apps/tigeriq-coding-lane/local-ci-gate.mjs';
 import { verifyCodingFunctionalChecks, CODING_STEP_PACKET_VERSION } from '../apps/tigeriq-coding-lane/step-contract.mjs';
 import { resolveQuotaFailoverChain, createHandoffCheckpoint } from '../apps/tigeriq-core/work-routing-policy.mjs';
+import { parseCodingIssue } from '../apps/tigeriq-core/github-coding-intake.mjs';
 
 describe('Local CI Gate & Zero-Drop AI Failover', () => {
   it('has completely removed .github/workflows', () => {
@@ -51,5 +52,17 @@ describe('Local CI Gate & Zero-Drop AI Failover', () => {
     expect(cp.schema).toBe('TIGERIQ_AI_HANDOFF_CHECKPOINT_V1');
     expect(cp.nextWorker).toBe('NV09');
     expect(cp.completedSteps).toEqual(['spec', 'edit']);
+  });
+
+  it('accepts OWNER_DIRECT auto-resume P1-P5 issues without requiring 12 legacy flags', () => {
+    const parsed = parseCodingIssue({
+      number: 5611,
+      state: 'open',
+      title: '[P1][TIGERIQ NEWS][EDITORIAL V2] Auto resume test',
+      html_url: 'https://github.com/newsdayads/tigeriq-ai-lab/issues/5611',
+      body: 'OWNER_DIRECT=true\nRESUME_POLICY=CONDITIONAL_AUTO_AFTER_VERIFIED_CORE_RECOVERY\n',
+    });
+    expect(parsed).not.toBeNull();
+    expect(parsed.number).toBe(5611);
   });
 });
