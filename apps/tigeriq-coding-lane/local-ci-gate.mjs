@@ -2,8 +2,10 @@ import { createHash, randomInt } from 'node:crypto';
 import { execSync, execFileSync } from 'node:child_process';
 
 export const LOCAL_CI_SCHEMA = 'TIGERIQ_LOCAL_CI_RECEIPT_V1';
+export const QUEUE_HYGIENE_COMMAND = Object.freeze({ name: 'Queue Hygiene Verify', command: 'node --check api/control.mjs && node scripts/verify_queue_hygiene.mjs && node scripts/verify_work_board_ui.mjs' });
 export const DEFAULT_LOCAL_CI_COMMANDS = Object.freeze([
   { name: 'CI Verify', command: 'npm run typecheck && npm run build' },
+  QUEUE_HYGIENE_COMMAND,
 ]);
 
 export function scopedTestCommand(changedPaths = []) {
@@ -71,7 +73,7 @@ export function runLocalCiGate({
   assertLocalCiSource(cwd, head);
   const cmds = Array.isArray(commands) && commands.length
     ? commands
-    : [{ name: 'CI Verify', command: scopedTestCommand(changedPaths) }];
+    : [{ name: 'CI Verify', command: scopedTestCommand(changedPaths) }, QUEUE_HYGIENE_COMMAND];
   const runId = Date.now();
   const checkRuns = [];
   const logs = [];
