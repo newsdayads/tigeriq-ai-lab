@@ -14,7 +14,6 @@ import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent} from '../sha
 import {rankCandidates} from '../tigeriq-core/smart-router.mjs';
 import {loadRequiredCodingSkills,assertCodingSkillProof,requiredCodingSkillIdsForDeliverable} from './coding-skill-policy.mjs';
 import {withAtomicCodingSourceClaim} from './atomic-source-claim.mjs';
-import {runLocalCiGate} from './local-ci-gate.mjs';
 import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature,codingMaterialSourceRevision,codingSourceRevisionPaths,codingUnverifiedLegacyHistoryDecision,verifyCodingCanaryProductGate} from './step-contract.mjs';
 
 // Candidate code only: this flag is OFF unless an explicitly scoped isolated canary enables it.
@@ -1185,7 +1184,29 @@ async function createBranch(name,sha,repository=SOURCE_REPOSITORY){
 async function writeFile(branch,change,mutationAuth={},repository=SOURCE_REPOSITORY){assertExecutionPlaneMutationPaths([change.path],mutationAuth);const old=await readRepoFile(change.path,branch,repository);if(old.sha&&old.content===String(change.content??'')){const e=new Error(`CODING_COMPACT_EDIT_NO_SOURCE_CHANGE:${change.path}`);e.code='CODING_COMPACT_EDIT_NO_SOURCE_CHANGE';throw e}assertSafeFileChange({path:change.path,before:old.sha?old.content:null,after:change.content,isNew:!old.sha});const body={message:`TigerIQ ${change.path}`,content:Buffer.from(change.content,'utf8').toString('base64'),branch};if(old.sha)body.sha=old.sha;return ghRepo(repository,`/contents/${change.path.split('/').map(encodeURIComponent).join('/')}`,{method:'PUT',body:JSON.stringify(body)})}
 async function openPr(branch,title,body,repository=SOURCE_REPOSITORY,{canary=false}={}){return ghRepo(repository,'/pulls',{method:'POST',body:JSON.stringify({title,head:branch,base:'main',body,draft:canary,maintainer_can_modify:true})})}
 async function headSha(branch,repository=SOURCE_REPOSITORY){return (await ghRepo(repository,`/git/ref/heads/${encodeURIComponent(branch)}`)).object.sha}
-async function waitGates(branch,prNumber,repository=SOURCE_REPOSITORY,timeoutMs=20*60*1000){const deadline=Date.now()+timeoutMs;while(Date.now()<deadline){assertPrOpenState(await ghRepo(repository,`/pulls/${prNumber}`));const sha=await headSha(branch,repository);const x=await ghRepo(repository,`/commits/${sha}/check-runs?per_page=100`);const g=checkRepositoryGateState(x.check_runs||[],repository);if(g.state==='passed')return {sha,...g};if(g.state==='failed'){const e=Object.assign(new Error('CI_GATES_FAILED'),{code:'CI_GATES_FAILED',detail:g});throw e}await sleep(15000)}const e=new Error('CI_GATES_TIMEOUT');e.code='CI_GATES_TIMEOUT';throw e}
+export async function assertCodingCiExecutorAvailable({repository=SOURCE_REPOSITORY,checkRuns,sha,localOnly=String(process.env.TIGERIQ_LOCAL_CI_ONLY||'true').toLowerCase()!=='false',readWorkflows=()=>ghRepo(repository,'/contents/.github/workflows?ref='+encodeURIComponent(sha))}={}){
+  if(!localOnly||repository?.isSource!==true||!Array.isArray(checkRuns)||checkRuns.length!==0)return;
+  if(!/^[a-f0-9]{40}$/.test(String(sha||'')))throw new Error('LOCAL_CI_INVALID_HEAD_SHA');
+  let absent=false;
+  try{const workflows=await readWorkflows();absent=Array.isArray(workflows)&&workflows.length===0;}
+  catch(error){if(Number(error?.status)!==404)throw error;absent=true;}
+  if(absent)throw Object.assign(new Error('LOCAL_CI_ISOLATED_EXECUTOR_REQUIRED'),{code:'LOCAL_CI_ISOLATED_EXECUTOR_REQUIRED',detail:{repository:repository.fullName,sha,workflowsAbsent:true}});
+}
+async function waitGates(branch,prNumber,repository=SOURCE_REPOSITORY,timeoutMs=20*60*1000){
+  const deadline=Date.now()+timeoutMs;
+  while(Date.now()<deadline){
+    assertPrOpenState(await ghRepo(repository,`/pulls/${prNumber}`));
+    const sha=await headSha(branch,repository);
+    const x=await ghRepo(repository,`/commits/${sha}/check-runs?per_page=100`);
+    if(!Array.isArray(x?.check_runs))throw new Error('CI_CHECK_RUNS_UNVERIFIED');
+    const g=checkRepositoryGateState(x.check_runs,repository);
+    if(g.state==='passed')return {sha,...g};
+    if(g.state==='failed')throw Object.assign(new Error('CI_GATES_FAILED'),{code:'CI_GATES_FAILED',detail:g});
+    await assertCodingCiExecutorAvailable({repository,checkRuns:x.check_runs,sha});
+    await sleep(15000);
+  }
+  throw Object.assign(new Error('CI_GATES_TIMEOUT'),{code:'CI_GATES_TIMEOUT'});
+}
 async function mergePr(number,sha,title='',repository=SOURCE_REPOSITORY){return ghRepo(repository,`/pulls/${number}/merge`,{method:'PUT',body:JSON.stringify({sha,merge_method:'squash',commit_title:codingMergeCommitTitle(number,title)})})}
 
 function reviewLine(value,max=1000){return String(value??'').replace(/[\r\n]+/g,' ').trim().slice(0,max)}
@@ -2190,11 +2211,9 @@ async function runJob(j){
           throw Error('CODING_PRODUCT_REPOSITORY_DRIFT');
         // Never accept a caller-supplied check run; this is an authenticated
         // GitHub REST read performed by the execution plane on pinned SHA.
-        const raw=await ghRepo(targetRepository,`/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`).catch(()=>({total_count:0,check_runs:[]}));
-        if((!raw?.total_count||!Array.isArray(raw?.check_runs)||raw.check_runs.length===0)&&String(process.env.TIGERIQ_LOCAL_CI_ONLY||'true').toLowerCase()!=='false'){
-          const local=runLocalCiGate({sourceHeadSha:sha,changedPaths:[...actual]});
-          return {provider:'pc01_local_ci_runner',sourceHeadSha:sha,repository:repositoryFullName,totalCount:local.checkRuns.length,checkRuns:local.checkRuns};
-        }
+        const raw=await ghRepo(targetRepository,`/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`);
+        if(!Array.isArray(raw?.check_runs))throw new Error('CODING_DOMAIN_CHECKS_UNVERIFIED');
+        await assertCodingCiExecutorAvailable({repository:targetRepository,checkRuns:raw.check_runs,sha});
         return {provider:'github_rest_authenticated',sourceHeadSha:sha,
           repository:repositoryFullName,totalCount:raw?.total_count,
           checkRuns:raw?.check_runs};
