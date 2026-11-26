@@ -1,4 +1,19 @@
-# TiG — nhân vật 3D dùng chung TigerIQ
+# TiG — hệ nhân vật mô-đun dùng chung TigerIQ
+
+## Phạm vi hiện hành — 26/11/2026
+Nguồn quyết định: [#5779 - Hệ nhân vật 2.5D mô-đun kiểu game — Master, chuyển động, phụ kiện](https://github.com/newsdayads/tigeriq-ai-lab/issues/5779).
+DELIVERY_MODE=2.5D_MODULAR_GAME_PIPELINE | 3D_PAUSED=true | A1=NOT_ACCEPTED | DONE=false
+
+- Dùng một nguồn nhân vật 2.5D có thể chỉnh từng bộ phận, chuyển động và phụ kiện; không thay GOLDEN, Driver, APK/OTA hoặc Production. Tuyến 3D bên dưới là lịch sử, không phải chỉ thị thực thi hiện hành.
+- M1: ảnh alpha/ORA theo part ID ổn định; tách vùng nhìn thấy và vùng phục dựng, pose đứng/gesture/grip/ngồi. M2: cây khớp, pivot, giới hạn, biến dạng, socket, lớp che khuất và tiếp xúc chân/tay. M3: clip có version, keyframe, easing, mask, blend, contact; 24fps là mục tiêu authoring, không phải kết quả thiết bị.
+- M4: tổ hợp hành động, pilot idle/capture/success trước mở rộng. M5: phụ kiện và outfit tương thích cùng rig; M6: tách mapping nghiệp vụ khỏi animation, giữ 13 state và ưu tiên Driver. M7: editor, xuất PNG/WebP, manifest hash/version/license và kiểm tra đọc lại.
+- A1: hình ảnh HQ, tư thế ngồi, sọc, vùng khuất và tách khớp đầy đủ; không thay thế bằng kiểm thử pixel. A2: rig và 3 pilot đạt kỹ thuật lẫn hình ảnh trước mở rộng. A3: 13 chuyển động + 13 ảnh ECO, drive riêng. A4: bộ nguồn chỉnh sửa, 26 asset, Studio, manifest và QA đọc lại. A5: kiểm thiết bị thật và tích hợp ứng viên theo quyền riêng.
+- Bằng chứng kỹ thuật hiện có: [20 lớp phụ kiện đầu](https://github.com/newsdayads/tigeriq-ai-lab/issues/5779) và [19 lớp raster tư thế ngồi](https://github.com/newsdayads/tigeriq-ai-lab/issues/5779#issuecomment-7198240158). Gói 19 lớp khớp RGBA, 12 vùng phân tách; chưa phục dựng vùng khuất, chưa đạt HQ. [Thử vector](https://github.com/newsdayads/tigeriq-ai-lab/issues/5779#issuecomment-7198118162) không đạt hình ảnh. Không đánh dấu A1 hoặc T25-02/03 hoàn tất.
+- Cho phép tự hợp nhất PR nguồn khi các kiểm thử bắt buộc trên đúng SHA đều thành công và cổng sản phẩm áp dụng đã đạt. Không coi kiểm thử cục bộ, danh sách CI rỗng, hoặc PR hợp nhất là nghiệm thu A1–A5. Không mở hàng đợi/dispatch cũ, không tạo nguồn cạnh tranh.
+
+## Lịch sử tuyến 3D — TẠM DỪNG
+Các điều khoản sau được giữ để đối chiếu lịch sử, chỉ áp dụng nếu Owner mở lại tuyến 3D và cập nhật quyết định chuẩn.
+
 Ngày 26/11/2026. Điều phối: [#5779 - Xây dựng nhân vật 3D modular dùng chung toàn TigerIQ](https://github.com/newsdayads/tigeriq-ai-lab/issues/5779). Phạm vi tài nguyên nhân vật, không thay thế quy tắc Driver, không khôi phục Animal City.
 
 ## Một nguồn thiết kế
