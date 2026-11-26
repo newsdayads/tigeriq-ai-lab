@@ -9,6 +9,23 @@ export const DEFAULT_LOCAL_CI_COMMANDS = Object.freeze([
 export function scopedTestCommand(changedPaths = []) {
   const paths = (Array.isArray(changedPaths) ? changedPaths : []).map((p) => String(p || '').toLowerCase());
   const suites = new Set();
+  const releasePaths = new Set([
+    'scripts/tigeriq-core/update-core-runtime.ps1',
+    'scripts/tigeriq-core/pc01-release-guard.ps1',
+    'scripts/tigeriq-core/pc01-release-preflight.mjs',
+    'scripts/tigeriq-core/bootstrap-watchdog.ps1',
+    'scripts/tigeriq-core/install-core-updater.ps1',
+    'tests/pc01-release-preflight.test.mjs',
+    'tests/pc01-updater-release-gate.test.mjs',
+    'tests/pc01-release-guard-e2e.test.mjs',
+    'tests/pc01-standing-release.test.mjs',
+  ]);
+  const releaseChecks = paths.some(p => releasePaths.has(p));
+  if (releaseChecks) {
+    suites.add('tests/pc01-release-preflight.test.mjs');
+    suites.add('tests/pc01-updater-release-gate.test.mjs');
+    suites.add('tests/pc01-release-guard-e2e.test.mjs');
+  }
   for (const p of paths) {
     if (p.includes('phonebox') || p.includes('phone-farm') || p.includes('pc-operator-mcp')) suites.add('tests/pc-operator-mcp.test.mjs');
     if (p.includes('coding-lane')) suites.add('tests/local-ci-and-failover.test.ts');
@@ -17,7 +34,9 @@ export function scopedTestCommand(changedPaths = []) {
     if (p.includes('project-portfolio') || p.includes('portfolio.yaml')) suites.add('tests/project-portfolio.test.mjs');
   }
   if (!suites.size) return 'npm run typecheck && npm run build';
-  return `npm run typecheck && npx vitest run ${[...suites].join(' ')} && npm run build`;
+  // The release suite skips live guard checks when pwsh is absent. Refuse a green CI in that case.
+  const preflight = releaseChecks ? 'pwsh -NoLogo -NoProfile -NonInteractive -Command "exit 0" && ' : '';
+  return `${preflight}npm run typecheck && npx vitest run ${[...suites].join(' ')} && npm run build`;
 }
 
 /** Reject a claimed head unless the tracked checkout is exactly that commit. */
