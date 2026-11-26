@@ -67,7 +67,7 @@ function normalizedProjects(data){
 // Seven Owner-approved top-level groups; work counts come only from API snapshot.
 function renderGroups(data){
   const groups=Array.isArray(data?.portfolioGroups)?data.portfolioGroups:[];
-  if(groups.length!==7)return false;
+  if(groups.length!==5)return false;
   const grid=$('projectGrid');grid.replaceChildren();
   const actual=new Map(normalizedProjects(data).map(p=>[p.id,p])), grouped=new Set();
   for(const group of groups){

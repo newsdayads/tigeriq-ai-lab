@@ -89,11 +89,9 @@ describe('TigerIQ LIVE project portfolio', () => {
     const rows = annotatePortfolioRows([
       { number: 3730, title: '[P1][TIGERIQ LIVE] Project hierarchy', workKind: 'WORK', status: 'REVIEW' },
       { number: 3081, title: '[P1][AUTO-RCA][REVIEW] Repair REVIEW_INDEPENDENCE', workKind: 'WORK', status: 'BLOCKED' },
-      { number: 2054, title: '[P4][PAPERCLIP][SHADOW] TigerIQ AI Lab vNext', workKind: 'WORK', status: 'WAITING' },
-      { number: 2293, title: '[P5][DEFERRED][REVENUE LAB] PoC Apify Website Audit', workKind: 'WORK', status: 'WAITING' },
     ]);
-    expect(rows.map((row) => row.status)).toEqual(['REVIEW','BLOCKED','WAITING','WAITING']);
-    expect(new Set(rows.map((row) => row.projectId))).toEqual(new Set(['tigeriq-live','tigeriq-platform','paperclip-vnext','revenue-lab']));
+    expect(rows.map((row) => row.status)).toEqual(['REVIEW','BLOCKED']);
+    expect(new Set(rows.map((row) => row.projectId))).toEqual(new Set(['tigeriq-live','tigeriq-platform']));
     expect(rows[0].projectName).toBe('TigerIQ Live');
     expect(rows[0].workstreamName).toBe('Giao diện Owner');
     expect(rows[1].projectName).toBe('Nền tảng TigerIQ');
@@ -175,11 +173,11 @@ describe('TigerIQ LIVE project portfolio', () => {
   });
   it('defines seven Owner-approved portfolio groups and five independent TigerIQ AI components', () => {
     expect(CANONICAL_PORTFOLIO_GROUPS.map(group => group.name)).toEqual([
-      'TigerIQ AI','TigerIQ News / Media','Paperclip vNext','Revenue Lab',
+      'TigerIQ AI','TigerIQ News / Media',
       'TigerIQ Driver','DeXCam Personal','TigerIQ Coin'
     ]);
     const groups = buildPortfolioGroups([]);
-    expect(groups).toHaveLength(7);
+    expect(groups).toHaveLength(5);
     expect(groups[0].projects.map(p => p.name)).toEqual([
       'Nền tảng TigerIQ','TigerIQ Mobile Worker','TigerIQ Live','Workflow Lab','App Chrome'
     ]);
@@ -220,7 +218,7 @@ describe('TigerIQ LIVE project portfolio', () => {
       { number: 7002, title: '[WORKFLOW LAB] Portfolio', workKind: 'WORK', status: 'WAITING' },
     ]);
     const groups = buildPortfolioGroups(buildProjectPortfolio(rows));
-    expect(groups).toHaveLength(7);
+    expect(groups).toHaveLength(5);
     expect(groups.find(g => g.id === 'tigeriq-driver').projects[0].counts.blocked).toBe(1);
     expect(groups.find(g => g.id === 'tigeriq-ai').projects.find(p => p.id === 'tigeriq-workflow-lab').counts.waiting).toBe(1);
     expect(groups.find(g => g.id === 'tigeriq-coin').projects[0].presentInWorkSnapshot).toBe(false);
@@ -286,7 +284,7 @@ describe('TigerIQ LIVE project portfolio', () => {
         recentWork: [done],
       };
       vm.runInContext('render(data)', context);
-      expect(grid.children).toHaveLength(8);
+      expect(grid.children).toHaveLength(6);
       const alpha = grid.children.find(card => card.dataset.projectId === 'alpha-lab');
       expect(alpha.innerHTML).toContain('Alpha &lt;Lab&gt;');
       expect(alpha.innerHTML).toContain('Đang làm 1');
