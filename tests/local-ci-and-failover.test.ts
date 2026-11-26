@@ -1,10 +1,28 @@
 // @ts-nocheck
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { runLocalCiGate, LOCAL_CI_SCHEMA } from '../apps/tigeriq-coding-lane/local-ci-gate.mjs';
 import { verifyCodingFunctionalChecks, CODING_STEP_PACKET_VERSION } from '../apps/tigeriq-coding-lane/step-contract.mjs';
 import { resolveQuotaFailoverChain, createHandoffCheckpoint } from '../apps/tigeriq-core/work-routing-policy.mjs';
 import { parseCodingIssue } from '../apps/tigeriq-core/github-coding-intake.mjs';
+
+function withGitFixture(fn) {
+  const cwd = mkdtempSync(join(tmpdir(), 'tigeriq-ci-'));
+  const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore','pipe','pipe'] }).trim();
+  try {
+    git('init', '-q');
+    git('config', 'user.name', 'CI Fixture');
+    git('config', 'user.email', 'ci-fixture@example.invalid');
+    git('config', 'commit.gpgsign', 'false');
+    writeFileSync(join(cwd, 'tracked.txt'), 'fixture');
+    git('add', 'tracked.txt');
+    git('commit', '-qm', 'fixture');
+    return fn(cwd, git('rev-parse', 'HEAD'));
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
+}
 
 describe('Local CI Gate & Zero-Drop AI Failover', () => {
   it('has completely removed .github/workflows', () => {
@@ -13,14 +31,14 @@ describe('Local CI Gate & Zero-Drop AI Failover', () => {
 
   it('runs the MCP regression suite for direct MCP changes', () => {
     const calls = [];
-    runLocalCiGate({ sourceHeadSha: 'a'.repeat(40), changedPaths: ['apps/tigeriq-core/pc-operator-mcp.mjs'], runner: (cmd) => { calls.push(cmd); return 'PASS'; } });
+    withGitFixture((cwd, head) => runLocalCiGate({ cwd, sourceHeadSha: head, changedPaths: ['apps/tigeriq-core/pc-operator-mcp.mjs'], runner: (cmd) => { calls.push(cmd); return 'PASS'; } }));
     expect(calls).toEqual(['npm run typecheck && npx vitest run tests/pc-operator-mcp.test.mjs && npm run build']);
   });
 
   it('produces an exact-head Local CI receipt accepted by verifyCodingFunctionalChecks', () => {
-    const head = 'a'.repeat(40);
+    withGitFixture((cwd, head) => {
     const receipt = runLocalCiGate({
-      sourceHeadSha: head,
+      cwd, sourceHeadSha: head,
       commands: [{ name: 'CI Verify', command: 'echo ok' }],
       runner: () => 'PASS',
     });
@@ -34,6 +52,31 @@ describe('Local CI Gate & Zero-Drop AI Failover', () => {
       repositoryFullName: 'newsdayads/tigeriq-ai-lab',
     });
     expect(verified).toEqual({ pass: true, code: 'CODING_FUNCTIONAL_CHECKS_PASSED', missing: [] });
+    });
+  });
+
+  it('rejects wrong HEAD before executing CI', () => {
+    withGitFixture((cwd) => {
+      let ran = false;
+      expect(() => runLocalCiGate({ cwd, sourceHeadSha: '0'.repeat(40), runner: () => { ran = true; } })).toThrow('LOCAL_CI_HEAD_MISMATCH');
+      expect(ran).toBe(false);
+    });
+  });
+
+  it('rejects dirty tracked source before executing CI', () => {
+    withGitFixture((cwd, head) => {
+      writeFileSync(join(cwd, 'tracked.txt'), 'changed');
+      expect(() => runLocalCiGate({ cwd, sourceHeadSha: head, runner: () => 'PASS' })).toThrow('LOCAL_CI_TRACKED_SOURCE_DIRTY');
+    });
+  });
+
+  it('rejects a source change during CI instead of emitting PASS', () => {
+    withGitFixture((cwd, head) => {
+      expect(() => runLocalCiGate({ cwd, sourceHeadSha: head, runner: () => {
+        writeFileSync(join(cwd, 'tracked.txt'), 'changed during test');
+        return 'PASS';
+      } })).toThrow('LOCAL_CI_TRACKED_SOURCE_DIRTY');
+    });
   });
 
   it('fails over from blocked/rate-limited NV02 to NV09 Ollama with handoff checkpoint', () => {
