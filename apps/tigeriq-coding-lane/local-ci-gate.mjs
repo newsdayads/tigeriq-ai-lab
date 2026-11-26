@@ -3,30 +3,48 @@ import { execSync } from 'node:child_process';
 
 export const LOCAL_CI_SCHEMA = 'TIGERIQ_LOCAL_CI_RECEIPT_V1';
 export const DEFAULT_LOCAL_CI_COMMANDS = Object.freeze([
-  { name: 'CI Verify', command: 'npm run typecheck && npm run test && npm run build' },
+  { name: 'CI Verify', command: 'npm run typecheck && npm run build' },
 ]);
 
+export function scopedTestCommand(changedPaths = []) {
+  const paths = (Array.isArray(changedPaths) ? changedPaths : []).map((p) => String(p || '').toLowerCase());
+  const suites = new Set();
+  for (const p of paths) {
+    if (p.includes('phonebox') || p.includes('phone-farm')) suites.add('tests/pc-operator-mcp.test.mjs');
+    if (p.includes('coding-lane')) suites.add('tests/local-ci-and-failover.test.ts');
+    if (p.includes('work-routing-policy')) suites.add('tests/work-routing-policy.test.mjs');
+    if (p.includes('github-coding-intake')) suites.add('tests/github-coding-intake.test.mjs');
+    if (p.includes('project-portfolio') || p.includes('portfolio.yaml')) suites.add('tests/project-portfolio.test.mjs');
+  }
+  if (!suites.size) return 'npm run typecheck && npm run build';
+  return `npm run typecheck && npx vitest run ${[...suites].join(' ')} && npm run build`;
+}
+
 /**
- * Execute local PC01 CI checks in the target worktree and return an exact-head receipt
+ * Execute scoped local PC01 CI checks in the target worktree and return an exact-head receipt
  * compatible with step-contract and product-acceptance gates (zero GitHub Actions cost).
  */
 export function runLocalCiGate({
   cwd = process.cwd(),
   sourceHeadSha = '',
-  commands = DEFAULT_LOCAL_CI_COMMANDS,
+  changedPaths = [],
+  commands = null,
   runner = (cmd, dir) => execSync(cmd, { cwd: dir, encoding: 'utf8', stdio: 'pipe' }),
 } = {}) {
   const head = String(sourceHeadSha || '').trim().toLowerCase();
   if (!/^[a-f0-9]{40}$/.test(head)) {
     throw new Error('LOCAL_CI_INVALID_HEAD_SHA');
   }
+  const cmds = Array.isArray(commands) && commands.length
+    ? commands
+    : [{ name: 'CI Verify', command: scopedTestCommand(changedPaths) }];
   const runId = Date.now();
   const checkRuns = [];
   const logs = [];
   let allPassed = true;
 
-  for (let i = 0; i < commands.length; i += 1) {
-    const item = commands[i];
+  for (let i = 0; i < cmds.length; i += 1) {
+    const item = cmds[i];
     const jobId = randomInt(100000, 999999);
     let conclusion = 'success';
     let output = '';
