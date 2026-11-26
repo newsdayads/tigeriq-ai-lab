@@ -3,6 +3,8 @@ import argparse
 import hashlib
 import io
 import json
+import struct
+import zlib
 from pathlib import Path
 from zipfile import ZipFile
 from xml.etree import ElementTree
@@ -18,6 +20,28 @@ def names(z):
     require(len(entries) == len(set(entries)), 'duplicate archive entries')
     require(z.testzip() is None, 'ZIP CRC failure')
     return set(entries)
+
+
+def png_size(data):
+    require(data[:8] == b"\x89PNG\r\n\x1a\n", 'invalid PNG signature')
+    offset, dimensions, seen_idat = 8, None, False
+    while offset + 12 <= len(data):
+        length, kind = struct.unpack_from('>I4s', data, offset)
+        end = offset + 12 + length
+        require(end <= len(data), 'truncated PNG chunk')
+        payload = data[offset + 8:end - 4]
+        require(zlib.crc32(kind + payload) == struct.unpack_from('>I', data, end - 4)[0], 'PNG CRC failure')
+        if offset == 8:
+            require(kind == b'IHDR' and length == 13, 'missing PNG IHDR')
+            dimensions = struct.unpack_from('>II', payload)
+            require(all(dimensions), 'invalid PNG dimensions')
+        if kind == b'IDAT':
+            seen_idat = True
+        if kind == b'IEND':
+            require(length == 0 and end == len(data) and seen_idat, 'invalid PNG ending')
+            return dimensions
+        offset = end
+    raise ValueError('missing PNG IEND')
 
 
 def audit(path):
@@ -42,6 +66,9 @@ def audit(path):
             require(len(ids) >= 2 and len(ids) == len(set(ids)), 'missing or duplicate layer IDs')
             require(all(l.attrib['src'] in inner for l in layers), 'missing layer asset')
             require('mergedimage.png' in inner, 'missing composite')
+            require(png_size(ora.read('mergedimage.png')) == (width, height), 'composite canvas mismatch')
+            for layer in layers:
+                png_size(ora.read(layer.attrib['src']))
         qa = json.loads(z.read('qa.json'))
         require(isinstance(qa, dict), 'invalid QA receipt')
         for key in ('ora_layers', 'output_layers'):
