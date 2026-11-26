@@ -11,6 +11,12 @@ describe('Local CI Gate & Zero-Drop AI Failover', () => {
     expect(existsSync(new URL('../.github/workflows', import.meta.url))).toBe(false);
   });
 
+  it('runs the MCP regression suite for direct MCP changes', () => {
+    const calls = [];
+    runLocalCiGate({ sourceHeadSha: 'a'.repeat(40), changedPaths: ['apps/tigeriq-core/pc-operator-mcp.mjs'], runner: (cmd) => { calls.push(cmd); return 'PASS'; } });
+    expect(calls).toEqual(['npm run typecheck && npx vitest run tests/pc-operator-mcp.test.mjs && npm run build']);
+  });
+
   it('produces an exact-head Local CI receipt accepted by verifyCodingFunctionalChecks', () => {
     const head = 'a'.repeat(40);
     const receipt = runLocalCiGate({
