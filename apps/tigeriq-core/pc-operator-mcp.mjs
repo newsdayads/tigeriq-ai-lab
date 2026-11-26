@@ -22,7 +22,6 @@ export const PC_OPERATOR_ROOTS = Object.freeze([
   'D:\\TigerIQ',
   'D:\\OpenClaw',
   'D:\\TigerIQ-OpenClaw',
-  'D:\\TigerIQ-Paperclip-Lab',
 ]);
 
 const DEFAULT_ROOT = PC_OPERATOR_ROOTS[0];
@@ -42,10 +41,6 @@ const DENIED_PATH_FRAGMENTS = [
 const LOCAL_ONLY_BOUNDARY = 'D:\\TigerIQ\\Apps\\ChromeController\\LocalOnly';
 
 export const PC_OPERATOR_MCP_TOOLS = Object.freeze([
-  // Paperclip Lab Tools (Protected & Gated)
-  'paperclip_lab_preflight',
-  'paperclip_lab_health',
-  'paperclip_lab_broker_install',
   // Files & Directories
   'file_read',
   'file_write',
@@ -76,7 +71,6 @@ export const PC_OPERATOR_MCP_TOOLS = Object.freeze([
   'work_order_status',
 ]);
 
-const LAB_SCOPE = 'TIGERIQ_PAPERCLIP_LAB_PC01_EXISTING_SANDBOX_20261018';
 const NV06_RESOURCE_ID = 'res:openclaw:operator-local:default:pc01';
 const GENERAL_OPERATOR_SCOPE = 'TIGERIQ_PC_OPERATOR_MCP_AUTHENTICATED_MUTATION';
 const MUTATING_GENERAL_TOOLS = new Set([
@@ -101,55 +95,6 @@ function allowMcpMutation(headers = {}, secret = '') {
   const a = Buffer.from(String(headers.authorization || '').replace(/^Bearer\s+/i, ''));
   const b = Buffer.from(String(secret || ''));
   return b.length >= 32 && a.length === b.length && timingSafeEqual(a, b);
-}
-
-function nativeOk(action, receipt) {
-  if (receipt?.ok !== true || receipt?.data?.ok === false) return false;
-  if (action === 'paperclip_lab_preflight') {
-    // R01 is not a Docker availability check: require real live loopback,
-    // inspected pinned image, existing root, and successful read-only probes.
-    const data = receipt.data;
-    return data?.rootPresent === true
-      && data?.docker?.ok === true
-      && data?.container?.attempted === true
-      && data?.container?.present === true
-      && data?.container?.running === true
-      // R01 accepts a digest-only container reference; immutable digest
-      // identity is verified by R02 health against release.json.
-      && (data?.container?.imagePinMatch === true
-        || /^ghcr\.io\/paperclipai\/paperclip@sha256:[a-f0-9]{64}$/.test(String(data?.container?.imageRef || '')))
-      && data?.container?.port3210LoopbackBinding === true
-      && data?.port3210?.reachable === true
-      && data?.pinned?.release === 'v2026.916.1'
-      && data?.pinned?.image === 'ghcr.io/paperclipai/paperclip:2026.916.1';
-  }
-  if (action === 'paperclip_lab_health') {
-    // Runtime health alone cannot complete R02 without broker/heartbeat review.
-    // The actual native health shape has ok/container/database/http fields;
-    // partial DOCKER_UNAVAILABLE diagnostics cannot satisfy this predicate.
-    const data = receipt.data;
-    return data?.ok === true
-      && data?.container?.identityOk === true
-      && data?.container?.portBindingOk === true
-      && data?.database?.present === true
-      && data?.database?.running === true
-      && String(data?.database?.healthStatus || '').toLowerCase() === 'healthy'
-      && data?.http?.appOk === true
-      && data?.port?.reachable === true
-      // R02 checklist includes an independently observed, fresh broker
-      // heartbeat; a green HTTP/DB response alone cannot close this step.
-      && data?.broker?.ready === true
-      && data?.broker?.version === '1.7-openai-device-auth'
-      && Number.isInteger(data?.broker?.sessionId)
-      && data.broker.sessionId > 0
-      && data?.broker?.wslKeepaliveRunning === true
-      && data?.broker?.sourceVerified === true
-      && Number.isFinite(data?.broker?.ageMs)
-      && data.broker.ageMs >= 0
-      && data.broker.ageMs <= 15000;
-  }
-  return receipt.data?.installed === true && receipt.data?.r07SourceVerified === true
-    && typeof receipt.data?.dockerVersion === 'string' && receipt.data.dockerVersion.length > 0;
 }
 
 function mcpReply(value) {
@@ -420,8 +365,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
   verifiedPrincipal = null, issuerUrl, resourceUrl,
 } = {}) {
   // The gateway's bearer is a server-side authorization gate, not a ChatGPT
-  // "allow all actions" preference. Never expose host files/shell/UI to a
-  // caller that can only reach the legacy unauthenticated Paperclip read tools.
+  // "allow all actions" preference. Never expose host files/shell/UI without authorization.
   const authorizedTools = {
     tool(name, description, schema, handler) {
       server.tool(name, description, schema, async (args = {}) => {
@@ -493,102 +437,6 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
       });
     },
   };
-  // 1. Paperclip Lab Tools (Exact backward-compatible & gated lease logic)
-  for (const [action, description, targetStepId] of [
-    ['paperclip_lab_preflight', 'Paperclip Lab read-only preflight.', 'R01'],
-    ['paperclip_lab_health', 'Paperclip Lab read-only health.', 'R02'],
-    ['paperclip_lab_broker_install', 'Install Paperclip broker through an exclusive NV06 Core lease.', 'R07'],
-  ]) {
-    server.tool(action, description, {}, async () => {
-      if (verifiedPrincipal) {
-        const decision = authorizeVerifiedTool({ verifiedPrincipal, toolName: action, issuerUrl, resourceUrl });
-        if (!decision.ok) return mcpReply({
-          ok: false, action, reason: decision.reason, missing: decision.missing || [],
-        });
-      }
-      const jobId = 'JOB-MCP-' + randomUUID();
-      const common = {
-        jobId,
-        workOrderId: 2054,
-        resourceScope: LAB_SCOPE,
-        action,
-        targetStepId,
-        completedStepId: null,
-        executionSurface: 'MCP_PC01_DIRECT',
-      };
-
-      if (action !== 'paperclip_lab_broker_install') {
-        try {
-          const receipt = await executePcActionImpl({ action });
-          const ok = nativeOk(action, receipt);
-          return mcpReply({ ...common, ok, completedStepId: ok ? targetStepId : null, receipt, reason: ok ? null : 'NATIVE_RECEIPT_NOT_ACCEPTED' });
-        } catch (error) {
-          return mcpReply({ ...common, ok: false, reason: 'PC_OPERATOR_READ_ERROR', error: String(error?.message || error) });
-        }
-      }
-
-      if (!allowMutation) return mcpReply({ ...common, ok: false, reason: 'MCP_EXISTING_AUTH_REQUIRED' });
-      const db = leaseDb === undefined ? existingCoreLeaseDb() : leaseDb;
-      if (!db) return mcpReply({ ...common, ok: false, reason: 'MCP_CORE_SHARED_LEASE_DB_UNAVAILABLE' });
-
-      let lease = null, timer = null, leaseLost = false, receipt = null;
-      let reason = null, leaseReleased = false;
-      try {
-        lease = await leaseApi.acquire(db, {
-          employeeId: 'NV06',
-          resourceId: NV06_RESOURCE_ID,
-          workId: jobId,
-          role: 'operator',
-          lane: 'mcp_pc_operator',
-          ttlMs: 600000,
-          metadata: { workOrderId: 2054, resourceScope: LAB_SCOPE, action, targetStepId },
-        });
-        if (!lease) reason = 'NV06_SHARED_LEASE_BUSY';
-        else if (!lease.lease_token || lease.resource_id !== NV06_RESOURCE_ID || lease.work_id !== jobId
-          || new Date(lease.lease_until).getTime() <= now() + 30000) {
-          reason = 'NV06_SHARED_LEASE_INVALID';
-        } else if (!(await leaseApi.heartbeat(db, { resourceId: lease.resource_id, leaseToken: lease.lease_token, ttlMs: 600000 }))) {
-          reason = 'NV06_SHARED_LEASE_NOT_FENCED';
-        } else {
-          timer = setInterval(() => {
-            void leaseApi.heartbeat(db, { resourceId: lease.resource_id, leaseToken: lease.lease_token, ttlMs: 600000 })
-              .then((ok) => { if (!ok) leaseLost = true; })
-              .catch(() => { leaseLost = true; });
-          }, 30000);
-          timer.unref?.();
-          receipt = await executePcActionImpl({ action });
-          const stillOwned = await leaseApi.heartbeat(db, { resourceId: lease.resource_id, leaseToken: lease.lease_token, ttlMs: 600000 });
-          if (leaseLost || !stillOwned) reason = 'NV06_SHARED_LEASE_LOST';
-          else if (!nativeOk(action, receipt)) reason = 'NATIVE_BROKER_INSTALL_NOT_ACCEPTED';
-        }
-      } catch {
-        reason = 'NV06_INSTALL_OR_LEASE_ERROR';
-      } finally {
-        if (timer) clearInterval(timer);
-        if (lease?.lease_token) {
-          try {
-            leaseReleased = await leaseApi.release(db, { resourceId: lease.resource_id, leaseToken: lease.lease_token });
-          } catch {
-            leaseReleased = false;
-          }
-          if (!leaseReleased) reason = 'NV06_SHARED_LEASE_RELEASE_UNVERIFIED';
-        }
-      }
-      const accepted = !reason && leaseReleased && nativeOk(action, receipt);
-      return mcpReply({
-        ...common,
-        ok: accepted,
-        // R07 installation alone does not prove restart persistence and deduplication.
-        completedStepId: null,
-        reason,
-        leaseVerified: Boolean(lease?.lease_token),
-        leaseReleased,
-        leaseWorkId: lease?.work_id || null,
-        receipt,
-      });
-    });
-  }
-
   // 2. file_read
   wrapTool(
     authorizedTools,
@@ -1096,7 +944,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
     'log_read',
     'Đọc log từ thư mục Logs trên PC01.',
     {
-      logName: z.string().describe('Tên tệp log (ví dụ: core.log, supervisor.log, paperclip-lab.log)'),
+      logName: z.string().describe('Tên tệp log (ví dụ: core.log, supervisor.log, operator.log)'),
       lines: z.number().optional().describe('Số dòng cuối cần đọc (mặc định 100, tối đa 500)'),
     },
     async ({ logName, lines = 100 }) => {
