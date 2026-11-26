@@ -1,0 +1,20 @@
+name: TiG A1 package audit
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/tig-a1-package-audit.py'
+      - 'tests/test_tig_a1_package_audit.py'
+      - '.github/workflows/tig-a1-audit.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Run technical package and release guard tests
+        run: python3 -m unittest discover -s tests -p test_tig_a1_package_audit.py -v
