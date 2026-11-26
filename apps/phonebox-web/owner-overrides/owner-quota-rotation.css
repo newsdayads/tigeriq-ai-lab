@@ -59,3 +59,29 @@
   .page[data-id="system"] .w-chart .s-label { white-space:normal !important; overflow:visible !important; text-overflow:clip !important; }
   .page[data-id="system"] .grid > .w-chart { min-height:170px !important; height:auto !important; }
 }
+
+/* iPhone compact landscape: symmetric safe-area gutters, no page-width changes. */
+@media screen and (orientation:landscape) and (max-height:500px) and (max-width:1000px) {
+  #pager > .page {
+    padding-left:max(var(--pad-l),var(--pad-r));
+    padding-right:max(var(--pad-l),var(--pad-r));
+  }
+}
+
+/* Preserve all text and keep each card's content reachable. */
+.page .w .w-title { white-space:normal; overflow-wrap:anywhere; overflow:visible; flex-shrink:0; flex-wrap:wrap; }
+.page .w-github, .page .w-sessions, .page .w-processes, .page .w-forecast { overflow-y:auto !important; overscroll-behavior-y:contain; }
+.page .w-github .gh-list { flex:0 0 auto; min-height:0; overflow:visible; }
+.page .w-sessions .empty { height:auto; min-height:40px; flex-shrink:0; }
+.page .w-media .art-ph { font-size:clamp(12px,12cqw,34px); }
+.page .w-github .gh-bell { white-space:normal; overflow-wrap:anywhere; }
+@media screen and (max-width:700px) {
+ .page .grid > .w-processes { min-height:200px; }
+ .page .grid > .w-forecast { min-height:160px; }
+}
+
+.page .w-sessions .s-list { grid-template-columns:repeat(auto-fill,minmax(min(100%,165px),1fr)); }
+.page .w-processes .seg { flex-wrap:wrap; min-width:0; max-width:100%; }
+.page .w-processes .seg button { flex:1 1 auto; min-width:0; white-space:normal; overflow-wrap:anywhere; padding-inline:8px; }
+.page .w-github .w-head { flex-wrap:wrap; }
+.page .w-github .gh-bell { max-width:100%; min-width:0; }
