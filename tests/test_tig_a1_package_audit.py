@@ -19,10 +19,10 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
-def png(w, h):
+def png(w, h, idat=None):
     def chunk(kind, data):
         return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
-    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)) + chunk(b'IDAT', zlib.compress((b'\0' * (1 + w * 4)) * h)) + chunk(b'IEND', b'')
+    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)) + chunk(b'IDAT', zlib.compress((b'\0' * (1 + w * 4)) * h) if idat is None else idat) + chunk(b'IEND', b'')
 
 
 class PackageTests(unittest.TestCase):
@@ -73,6 +73,22 @@ class PackageTests(unittest.TestCase):
     def test_truncated_png_rejected(self):
         with self.assertRaisesRegex(ValueError, 'PNG IEND'):
             self.run_fixture(layer=png(1, 1)[:-12])
+
+    def test_invalid_idat_rejected_with_valid_crc_and_hash(self):
+        with self.assertRaisesRegex(ValueError, 'PNG IDAT stream'):
+            self.run_fixture(layer=png(1, 1, b'not-zlib'))
+
+    def test_wrong_decoded_size_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'PNG decoded size'):
+            self.run_fixture(layer=png(1, 1, zlib.compress(b'\0' * 6)))
+
+    def test_invalid_row_filter_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'PNG row filter'):
+            self.run_fixture(layer=png(1, 1, zlib.compress(b'\x05' + b'\0' * 4)))
+
+    def test_trailing_compressed_data_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'PNG decoded size'):
+            self.run_fixture(layer=png(1, 1, zlib.compress(b'\0' * 5) + b'extra'))
 
     def test_wrong_composite_size(self):
         with self.assertRaisesRegex(ValueError, 'canvas mismatch'):
