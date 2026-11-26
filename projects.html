@@ -1,10 +1,10 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="vi">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#07111f">
-<title>TigerIQ Live · Dự án</title>
+<title>TigerIQ Live Â· Dá»± Ã¡n</title>
 <style>
 :root{font-family:"Segoe UI Variable Text","Segoe UI",Arial,sans-serif;--bg:#07111f;--panel:#0b1829;--line:#203953;--text:#f2f7fd;--muted:#91a4ba;--blue:#58a6ff;--green:#46d48f;--amber:#efb85c;--red:#ff747e}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}body{background:radial-gradient(circle at 90% -12%,#173b6e 0,transparent 36%),linear-gradient(180deg,#081322,#060d17)}
@@ -20,21 +20,21 @@ a{color:inherit;text-decoration:none}.wrap{width:min(1180px,100%);margin:auto;pa
 </head>
 <body>
 <main class="wrap">
-<header class="top"><div class="brand"><h1>TigerIQ Live · Dự án</h1><p>Danh mục dự án và các nhánh việc từ dữ liệu hiện hành</p></div><a class="health" href="/index" aria-label="API Health">Health</a></header>
-<nav class="nav" aria-label="Điều hướng TigerIQ Live"><a href="/command-center">Công việc</a><a class="active" href="/projects">Dự án</a></nav>
-<div id="status" class="status">ĐANG CẬP NHẬT</div>
-<section id="projectGrid" class="project-grid" aria-label="Danh sách dự án"></section>
+<header class="top"><div class="brand"><h1>TigerIQ Live Â· Dá»± Ã¡n</h1><p>Danh má»¥c dá»± Ã¡n vÃ  cÃ¡c nhÃ¡nh viá»‡c tá»« dá»¯ liá»‡u hiá»‡n hÃ nh</p></div><a class="health" href="/index" aria-label="API Health">Health</a></header>
+<nav class="nav" aria-label="Äiá»u hÆ°á»›ng TigerIQ Live"><a href="/command-center">CÃ´ng viá»‡c</a><a class="active" href="/projects">Dá»± Ã¡n</a></nav>
+<div id="status" class="status">ÄANG Cáº¬P NHáº¬T</div>
+<section id="projectGrid" class="project-grid" aria-label="Danh sÃ¡ch dá»± Ã¡n"></section>
 </main>
-<nav class="mobile-nav" aria-label="Điều hướng mobile"><a href="/command-center">Công việc</a><a class="active" href="/projects">Dự án</a></nav>
+<nav class="mobile-nav" aria-label="Äiá»u hÆ°á»›ng mobile"><a href="/command-center">CÃ´ng viá»‡c</a><a class="active" href="/projects">Dá»± Ã¡n</a></nav>
 <script>
 const $=id=>document.getElementById(id);
 const esc=v=>{const d=document.createElement('div');d.textContent=String(v??'');return d.innerHTML};
 function statusBucket(value=''){
   const s=String(value||'').toUpperCase();
-  if(s.includes('ĐANG XỬ LÝ')||s==='WORKING')return 'working';
-  if(s.includes('RÀ SOÁT')||s==='REVIEW'||s==='VERIFY')return 'review';
-  if(s.includes('BỊ CHẶN')||s==='BLOCKED'||s==='OWNER_GATE')return 'blocked';
-  if(s.includes('HOÀN TẤT')||s==='DONE')return 'done';
+  if(s.includes('ÄANG Xá»¬ LÃ')||s==='WORKING')return 'working';
+  if(s.includes('RÃ€ SOÃT')||s==='REVIEW'||s==='VERIFY')return 'review';
+  if(s.includes('Bá»Š CHáº¶N')||s==='BLOCKED'||s==='OWNER_GATE')return 'blocked';
+  if(s.includes('HOÃ€N Táº¤T')||s==='DONE')return 'done';
   return 'waiting';
 }
 function allRows(data){
@@ -67,7 +67,7 @@ function normalizedProjects(data){
 // Seven Owner-approved top-level groups; work counts come only from API snapshot.
 function renderGroups(data){
   const groups=Array.isArray(data?.portfolioGroups)?data.portfolioGroups:[];
-  if(groups.length!==7)return false;
+  if(groups.length!==5)return false;
   const grid=$('projectGrid');grid.replaceChildren();
   const actual=new Map(normalizedProjects(data).map(p=>[p.id,p])), grouped=new Set();
   for(const group of groups){
@@ -80,13 +80,13 @@ function renderGroups(data){
     for(const p of children)for(const key of Object.keys(sum))sum[key]+=Number(p?.counts?.[key]||0);
     const card=document.createElement('article');card.className='project-card';card.dataset.projectId=String(group.id||'');
     const parts=children.flatMap((p,i)=>{
-      if(group.id==='tigeriq-ai')return ['<div class="stream" data-project-id="'+esc(p.id)+'"><b>1.'+(i+1)+' · '+esc(p.name)+'</b><small>Đang làm '+Number(p?.counts?.working||0)+' · Bị chặn '+Number(p?.counts?.blocked||0)+' · Chờ '+Number(p?.counts?.waiting||0)+'</small></div>'];
+      if(group.id==='tigeriq-ai')return ['<div class="stream" data-project-id="'+esc(p.id)+'"><b>1.'+(i+1)+' Â· '+esc(p.name)+'</b><small>Äang lÃ m '+Number(p?.counts?.working||0)+' Â· Bá»‹ cháº·n '+Number(p?.counts?.blocked||0)+' Â· Chá» '+Number(p?.counts?.waiting||0)+'</small></div>'];
       const streams=Array.isArray(p?.workstreams)?p.workstreams:[];
-      if(streams.length)return streams.map(s=>'<div class="stream" data-workstream-id="'+esc(s.id)+'"><b>'+esc(s.name)+'</b><small>'+Number(s.itemCount||0)+' công việc trong nguồn</small></div>');
-      return ['<div class="stream"><b>Chưa có công việc được xác minh</b></div>'];
+      if(streams.length)return streams.map(s=>'<div class="stream" data-workstream-id="'+esc(s.id)+'"><b>'+esc(s.name)+'</b><small>'+Number(s.itemCount||0)+' cÃ´ng viá»‡c trong nguá»“n</small></div>');
+      return ['<div class="stream"><b>ChÆ°a cÃ³ cÃ´ng viá»‡c Ä‘Æ°á»£c xÃ¡c minh</b></div>'];
     });
-    card.innerHTML='<div class="project-head"><h2>'+esc(group.name)+'</h2><span class="kind">DỰ ÁN CHÍNH</span></div>'
-      +'<div class="stats"><span class="stat working">Đang làm '+sum.working+'</span><span class="stat review">Rà soát '+sum.review+'</span><span class="stat blocked">Bị chặn '+sum.blocked+'</span><span class="stat">Chờ '+sum.waiting+'</span><span class="stat">Xong '+sum.done+'</span></div>'
+    card.innerHTML='<div class="project-head"><h2>'+esc(group.name)+'</h2><span class="kind">Dá»° ÃN CHÃNH</span></div>'
+      +'<div class="stats"><span class="stat working">Äang lÃ m '+sum.working+'</span><span class="stat review">RÃ  soÃ¡t '+sum.review+'</span><span class="stat blocked">Bá»‹ cháº·n '+sum.blocked+'</span><span class="stat">Chá» '+sum.waiting+'</span><span class="stat">Xong '+sum.done+'</span></div>'
       +'<div class="streams">'+parts.join('')+'</div>';
     grid.append(card);
   }
@@ -97,24 +97,24 @@ function appendProjectCards(grid,projects){
   for(const project of projects){
     const card=document.createElement('article');card.className='project-card';card.dataset.projectId=project.id;
     const c=project.counts||{},streams=project.streams||[];
-    card.innerHTML='<div class="project-head"><h2>'+esc(project.name)+'</h2><span class="kind">'+esc(project.kind==='platform'?'NỀN TẢNG':'DỰ ÁN')+'</span></div>'
-      +'<div class="stats"><span class="stat working">Đang làm '+Number(c.working||0)+'</span><span class="stat review">Rà soát '+Number(c.review||0)+'</span><span class="stat blocked">Bị chặn '+Number(c.blocked||0)+'</span><span class="stat">Chờ '+Number(c.waiting||0)+'</span><span class="stat">Xong '+Number(c.done||0)+'</span></div>'
-      +'<div class="streams">'+(streams.length?streams.map(s=>'<div class="stream" data-workstream-id="'+esc(s.id)+'"><b>'+esc(s.name)+'</b><small>'+Number(s.count||0)+' công việc</small></div>').join(''):'<div class="stream"><b>Chưa phân nhánh</b><small>Không có công việc hiện hành</small></div>')+'</div>';
+    card.innerHTML='<div class="project-head"><h2>'+esc(project.name)+'</h2><span class="kind">'+esc(project.kind==='platform'?'Ná»€N Táº¢NG':'Dá»° ÃN')+'</span></div>'
+      +'<div class="stats"><span class="stat working">Äang lÃ m '+Number(c.working||0)+'</span><span class="stat review">RÃ  soÃ¡t '+Number(c.review||0)+'</span><span class="stat blocked">Bá»‹ cháº·n '+Number(c.blocked||0)+'</span><span class="stat">Chá» '+Number(c.waiting||0)+'</span><span class="stat">Xong '+Number(c.done||0)+'</span></div>'
+      +'<div class="streams">'+(streams.length?streams.map(s=>'<div class="stream" data-workstream-id="'+esc(s.id)+'"><b>'+esc(s.name)+'</b><small>'+Number(s.count||0)+' cÃ´ng viá»‡c</small></div>').join(''):'<div class="stream"><b>ChÆ°a phÃ¢n nhÃ¡nh</b><small>KhÃ´ng cÃ³ cÃ´ng viá»‡c hiá»‡n hÃ nh</small></div>')+'</div>';
     grid.append(card);
   }
 }
 function render(data){
   if(renderGroups(data))return;
   const grid=$('projectGrid'),projects=normalizedProjects(data);grid.replaceChildren();
-  if(!projects.length){grid.innerHTML='<div class="empty">Chưa có dữ liệu dự án đã xác minh.</div>';return}
+  if(!projects.length){grid.innerHTML='<div class="empty">ChÆ°a cÃ³ dá»¯ liá»‡u dá»± Ã¡n Ä‘Ã£ xÃ¡c minh.</div>';return}
   appendProjectCards(grid,projects);
 }
 async function load(){
   try{
     const r=await fetch('/api/live-status',{cache:'no-store'}),data=await r.json();
-    if(!data?.ok)throw new Error(data?.reason||'Nguồn trạng thái chưa sẵn sàng');
-    $('status').classList.remove('warn');$('status').textContent='DỮ LIỆU HIỆN HÀNH · '+new Date(data?.generatedAt||Date.now()).toLocaleTimeString('vi-VN',{hour12:false});render(data);
-  }catch(error){$('status').classList.add('warn');$('status').textContent='CHƯA ĐỌC ĐƯỢC DỮ LIỆU DỰ ÁN';$('projectGrid').innerHTML='<div class="empty">Không có snapshot dự án để hiển thị.</div>'}
+    if(!data?.ok)throw new Error(data?.reason||'Nguá»“n tráº¡ng thÃ¡i chÆ°a sáºµn sÃ ng');
+    $('status').classList.remove('warn');$('status').textContent='Dá»® LIá»†U HIá»†N HÃ€NH Â· '+new Date(data?.generatedAt||Date.now()).toLocaleTimeString('vi-VN',{hour12:false});render(data);
+  }catch(error){$('status').classList.add('warn');$('status').textContent='CHÆ¯A Äá»ŒC ÄÆ¯á»¢C Dá»® LIá»†U Dá»° ÃN';$('projectGrid').innerHTML='<div class="empty">KhÃ´ng cÃ³ snapshot dá»± Ã¡n Ä‘á»ƒ hiá»ƒn thá»‹.</div>'}
 }
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});load();setInterval(()=>{if(!document.hidden)load()},10000);
 </script>
