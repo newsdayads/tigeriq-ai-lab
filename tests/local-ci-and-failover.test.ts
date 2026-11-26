@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
-import { runLocalCiGate, LOCAL_CI_SCHEMA } from '../apps/tigeriq-coding-lane/local-ci-gate.mjs';
+import { runLocalCiGate, LOCAL_CI_SCHEMA, scopedTestCommand } from '../apps/tigeriq-coding-lane/local-ci-gate.mjs';
 import { assertCodingCiExecutorAvailable } from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import { verifyCodingFunctionalChecks, CODING_STEP_PACKET_VERSION } from '../apps/tigeriq-coding-lane/step-contract.mjs';
 import { resolveQuotaFailoverChain, createHandoffCheckpoint } from '../apps/tigeriq-core/work-routing-policy.mjs';
@@ -56,6 +56,25 @@ describe('Local CI Gate & Zero-Drop AI Failover', () => {
     const calls = [];
     withGitFixture((cwd, head) => runLocalCiGate({ cwd, sourceHeadSha: head, changedPaths: ['apps/tigeriq-core/pc-operator-mcp.mjs'], runner: (cmd) => { calls.push(cmd); return 'PASS'; } }));
     expect(calls).toEqual(['npm run typecheck && npx vitest run tests/pc-operator-mcp.test.mjs && npm run build']);
+  });
+
+  it.each([
+    'scripts/tigeriq-core/update-core-runtime.ps1',
+    'scripts/tigeriq-core/pc01-release-guard.ps1',
+    'scripts/tigeriq-core/pc01-release-preflight.mjs',
+    'scripts/tigeriq-core/bootstrap-watchdog.ps1',
+    'scripts/tigeriq-core/install-core-updater.ps1',
+    'tests/pc01-standing-release.test.mjs',
+  ])('requires PowerShell and release regression suites for %s', (path) => {
+    const cmd = scopedTestCommand([path]);
+    expect(cmd).toBe('pwsh -NoLogo -NoProfile -NonInteractive -Command "exit 0" && npm run typecheck && npx vitest run tests/pc01-release-preflight.test.mjs tests/pc01-updater-release-gate.test.mjs tests/pc01-release-guard-e2e.test.mjs && npm run build');
+  });
+
+  it('deduplicates mixed release and coding tests; leaves unrelated paths unchanged', () => {
+    const cmd = scopedTestCommand(['scripts/tigeriq-core/update-core-runtime.ps1', 'scripts/tigeriq-core/pc01-release-guard.ps1', 'apps/tigeriq-coding-lane/local-ci-gate.mjs']);
+    expect(cmd.match(/tests\/pc01-release-guard-e2e\.test\.mjs/g)).toHaveLength(1);
+    expect(cmd).toContain('tests/local-ci-and-failover.test.ts');
+    expect(scopedTestCommand(['docs/example.md'])).toBe('npm run typecheck && npm run build');
   });
 
   it('produces an exact-head Local CI receipt accepted by verifyCodingFunctionalChecks', () => {
