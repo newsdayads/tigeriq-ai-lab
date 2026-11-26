@@ -70,7 +70,7 @@ test('writing requires its own scope and a separate Core lease', () => {
 test('elevated tool is not authorized by generic write or shell scope', () => {
   assert.deepEqual(call('task_action', valid(['mcp:read', 'pc01:write'])).missing, ['pc01:admin']);
   assert.equal(call('task_action', valid(['mcp:read', 'pc01:admin'])).ok, true);
-  assert.equal(call('paperclip_lab_broker_install', valid(['mcp:read', 'pc01:admin'])).requiresCoreLease, true);
+  assert.equal(call('paperclip_lab_broker_install', valid(['mcp:read', 'pc01:admin'])).ok, false);
 });
 test('malformed scopes and unknown tool fail closed', () => {
   assert.equal(call('file_list', { ...valid(), scopes: 'mcp:read' }).ok, false);

@@ -64,10 +64,10 @@ function normalizedProjects(data){
   }
   return [...map.values()].sort((a,b)=>a.order-b.order||a.name.localeCompare(b.name)).map(p=>({...p,streams:[...p.streams.values()].sort((a,b)=>a.order-b.order||a.name.localeCompare(b.name))}));
 }
-// Seven Owner-approved top-level groups; work counts come only from API snapshot.
+// Owner-approved top-level groups; work counts come only from API snapshot.
 function renderGroups(data){
   const groups=Array.isArray(data?.portfolioGroups)?data.portfolioGroups:[];
-  if(groups.length!==7)return false;
+  if(!groups.length)return false;
   const grid=$('projectGrid');grid.replaceChildren();
   const actual=new Map(normalizedProjects(data).map(p=>[p.id,p])), grouped=new Set();
   for(const group of groups){

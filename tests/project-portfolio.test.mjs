@@ -220,7 +220,7 @@ describe('TigerIQ LIVE project portfolio', () => {
       { number: 7002, title: '[WORKFLOW LAB] Portfolio', workKind: 'WORK', status: 'WAITING' },
     ]);
     const groups = buildPortfolioGroups(buildProjectPortfolio(rows));
-    expect(groups).toHaveLength(7);
+    expect(groups).toHaveLength(6);
     expect(groups.find(g => g.id === 'tigeriq-driver').projects[0].counts.blocked).toBe(1);
     expect(groups.find(g => g.id === 'tigeriq-ai').projects.find(p => p.id === 'tigeriq-workflow-lab').counts.waiting).toBe(1);
     expect(groups.find(g => g.id === 'tigeriq-coin').projects[0].presentInWorkSnapshot).toBe(false);
@@ -286,7 +286,7 @@ describe('TigerIQ LIVE project portfolio', () => {
         recentWork: [done],
       };
       vm.runInContext('render(data)', context);
-      expect(grid.children).toHaveLength(8);
+      expect(grid.children).toHaveLength(7);
       const alpha = grid.children.find(card => card.dataset.projectId === 'alpha-lab');
       expect(alpha.innerHTML).toContain('Alpha &lt;Lab&gt;');
       expect(alpha.innerHTML).toContain('Đang làm 1');
