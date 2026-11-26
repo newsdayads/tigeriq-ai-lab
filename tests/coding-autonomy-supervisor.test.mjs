@@ -160,6 +160,31 @@ describe('coding autonomy durable GitHub receipts',()=>{
     await expect(backfillGithubRetryReceipts(db,{fetchImpl:fetchMock})).resolves.toEqual({posted:0,existing:0,failed:1});
     expect(emitted.some(x=>x.kind==='GITHUB_RECEIPT_FAILED'&&x.payload.reason==='GITHUB_COMMENT_HTTP_503')).toBe(true);
   });
+
+  it('skips rows missing issue number with GITHUB_RECEIPT_SKIPPED and resolves metadata issueNumber fallback',async()=>{
+    process.env.TIGERIQ_GITHUB_TOKEN='fake-token';
+    const emitted=[];
+    const db={async query(sql,params=[]){
+      if(sql.includes("select e.id,e.payload,o.objective")){
+        expect(sql).toContain("'GITHUB_RECEIPT_SKIPPED'");
+        return {rows:[
+          {id:'1',payload:{objectiveId:'CODEOBJ-missing',reason:'CI_GATES_FAILED'},objective:'internal objective',metadata:{}},
+          {id:'2',payload:{objectiveId:'CODEOBJ-meta',sourceJobId:'CODE-1',retryJobId:'CODE-2',reason:'CI_GATES_FAILED',cycle:1},objective:'internal objective',metadata:{issueNumber:5611}},
+        ]};
+      }
+      if(sql.includes("select count(*)::int n from tigeriq_coding_watchdog_events"))return {rows:[{n:1}]};
+      if(sql.startsWith('insert into tigeriq_coding_watchdog_events')){
+        emitted.push({kind:params[0],payload:JSON.parse(params[1])});return {rows:[],rowCount:1};
+      }
+      throw new Error('UNEXPECTED_SQL:'+sql);
+    }};
+    const fetchMock=async(_url,options={})=>options.method==='POST'
+      ? {ok:true,status:201,json:async()=>({html_url:'https://example.test/5611'})}
+      : {ok:true,status:200,json:async()=>[]};
+    await expect(backfillGithubRetryReceipts(db,{fetchImpl:fetchMock})).resolves.toEqual({posted:1,existing:0,failed:1});
+    expect(emitted.some(x=>x.kind==='GITHUB_RECEIPT_SKIPPED'&&x.payload.sourceEventId==='1'&&x.payload.reason==='ISSUE_OR_EVENT_ID_MISSING')).toBe(true);
+    expect(emitted.some(x=>x.kind==='GITHUB_RECEIPT_POSTED'&&x.payload.sourceEventId==='2'&&x.payload.issueNumber===5611)).toBe(true);
+  });
 });
 
 describe('coding autonomy supervisor GitHub issue eligibility checks',()=>{
