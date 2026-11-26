@@ -2192,7 +2192,7 @@ async function runJob(j){
         // GitHub REST read performed by the execution plane on pinned SHA.
         const raw=await ghRepo(targetRepository,`/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`).catch(()=>({total_count:0,check_runs:[]}));
         if((!raw?.total_count||!Array.isArray(raw?.check_runs)||raw.check_runs.length===0)&&String(process.env.TIGERIQ_LOCAL_CI_ONLY||'true').toLowerCase()!=='false'){
-          const local=runLocalCiGate({sourceHeadSha:sha,commands:(stepPacket.required_checks||['CI Verify']).map(name=>({name,command:'npm run typecheck && npm run test && npm run build'}))});
+          const local=runLocalCiGate({sourceHeadSha:sha,changedPaths:[...actual]});
           return {provider:'pc01_local_ci_runner',sourceHeadSha:sha,repository:repositoryFullName,totalCount:local.checkRuns.length,checkRuns:local.checkRuns};
         }
         return {provider:'github_rest_authenticated',sourceHeadSha:sha,
