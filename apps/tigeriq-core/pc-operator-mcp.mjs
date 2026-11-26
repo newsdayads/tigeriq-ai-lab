@@ -341,14 +341,33 @@ export function pcOperatorTestRunSpec(testPath, {
 }
 
 export async function pcOperatorWorkOrderResponse(res, workOrder) {
-  // Core may answer 404 "not_found" as plain text; never JSON.parse it.
-  if (res.status === 404) return { workOrder: workOrder || null, found: false, status: 404, reason: 'WORK_ORDER_NOT_FOUND' };
-  if (!res.ok) return { workOrder: workOrder || null, found: false, status: res.status, reason: 'CORE_WORK_ORDER_HTTP_ERROR' };
+  // /api/status is the Core runtime snapshot. It is NOT the canonical GitHub
+  // issue store, and its bounded objectives list cannot prove source absence.
+  const key = typeof workOrder === 'string' ? workOrder.trim() || null : null;
+  if (res.status === 404) return { workOrder: key, found: false, status: 404, reason: 'CORE_STATUS_ROUTE_NOT_FOUND' };
+  if (!res.ok) return { workOrder: key, found: false, status: res.status, reason: 'CORE_WORK_ORDER_HTTP_ERROR' };
   try {
     const data = await res.json();
-    return { workOrder: workOrder || null, found: true, data };
+    if (!data || data.ok !== true) return { workOrder: key, found: false, status: res.status, reason: 'CORE_STATUS_UNHEALTHY' };
+    if (!key || data.workOrderId === key) return { workOrder: key, found: true, data };
+    const issueNumber = key.match(/^(?:GH-|#)?([1-9]\\d{0,7})$/i)?.[1] || '';
+    const objectives = (Array.isArray(data.objectives) ? data.objectives : []).filter((objective) => {
+      const meta = objective?.metadata || {};
+      if (issueNumber) return meta.source === 'github' && String(meta.issueNumber || '') === issueNumber;
+      return String(objective?.id || '') === key || String(meta.workOrderId || '') === key;
+    }).slice(0, 5).map((objective) => ({
+      id: objective.id, status: objective.status,
+      issueNumber: objective.metadata?.issueNumber || null,
+      issueUrl: objective.metadata?.issueUrl || null,
+      resourceScope: objective.metadata?.resourceScope || null,
+    }));
+    return {
+      workOrder: key, found: objectives.length > 0, status: 200,
+      source: 'CORE_STATUS_BOUNDED_SNAPSHOT', objectives,
+      ...(objectives.length ? {} : { reason: 'NOT_VISIBLE_IN_CORE_SNAPSHOT' }),
+    };
   } catch {
-    return { workOrder: workOrder || null, found: false, status: res.status, reason: 'CORE_WORK_ORDER_INVALID_JSON' };
+    return { workOrder: key, found: false, status: res.status, reason: 'CORE_WORK_ORDER_INVALID_JSON' };
   }
 }
 
@@ -1215,7 +1234,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
       workOrder: z.string().optional().describe('Mã Work Order (ví dụ: WO-060)'),
     },
     async ({ workOrder }) => {
-      const url = workOrder ? `http://127.0.0.1:8795/api/work-order?id=${encodeURIComponent(workOrder)}` : 'http://127.0.0.1:8795/api/status';
+      const url = 'http://127.0.0.1:8795/api/status';
       const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
       return pcOperatorWorkOrderResponse(res, workOrder);
     }
