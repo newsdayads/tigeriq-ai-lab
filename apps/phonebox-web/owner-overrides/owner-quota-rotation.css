@@ -1,0 +1,61 @@
+/* Owner quota rotation presentation; separate from vendor CSS. */
+@media screen and (max-width:700px) {
+  .page[data-id="home"] .w.tiq-rotating-quota .g-label {
+    white-space:pre-line !important; text-align:center; font-size:10px !important;
+    letter-spacing:0 !important; line-height:1.08; overflow-wrap:anywhere;
+    overflow:visible; width:100%;
+  }
+  .page[data-id="home"] .w.tiq-rotating-quota .g-sub {
+    display:block !important; white-space:normal; text-align:center;
+    font-size:8px !important; line-height:1.08; max-width:100%;
+    overflow-wrap:anywhere; flex-shrink:0;
+  }
+  .page[data-id="home"] .w.tiq-rotating-quota .g-dial {
+    height:min(65px,75cqw) !important;
+  }
+}
+@media screen and (max-width:650px) and (max-height:540px) and (min-aspect-ratio:.82) {
+  .page[data-id="home"] .w.tiq-rotating-quota .g-dial { height:min(47px,72cqw) !important; }
+  .page[data-id="home"] .w.tiq-rotating-quota .g-label { font-size:9px !important; }
+  .page[data-id="home"] .w.tiq-rotating-quota .g-sub { font-size:8px !important; }
+}
+
+/* TigerIQ owner text legibility - 2026-11-26. Preserve grid placement and controls. */
+.page .w :is(.g-label,.g-sub,.s-label,.w-sum,.wx-meta span,.gh-pr .rp,.gh-pr .tt,.m-title,.m-artist,.q-label,.q-reset,.q-pace,.key .k-label) {
+  white-space:normal !important; overflow-wrap:anywhere; text-overflow:clip !important;
+  overflow:visible !important; max-width:100%; min-width:0; flex-shrink:0;
+}
+.page .w .m-title { display:block; -webkit-line-clamp:unset; }
+.page .w .gh-pr { height:auto !important; min-height:22px; align-items:flex-start; flex-shrink:0; }
+.page .w .gh-pr .tt { flex:1 1 0; }
+.page .w .gh-pr .rp { flex:0 1 42%; }
+.page .w-github .gh-list { flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior-y:contain; }
+.page .w-github .w-sum { flex:1 1 auto; }
+.page .w .s-head { flex-wrap:wrap; min-width:0; overflow:visible; }
+.page .w .s-main { flex-wrap:wrap; max-height:none !important; overflow:visible !important; flex-shrink:0; }
+.page .w .wx-meta { flex:1 1 auto; min-width:0; }
+.page .w-clock .wx { flex-shrink:0; }
+.page .w .key:not(.k-nolabel) .k-label { text-align:center; line-height:1.15; }
+.page .w-shortcuts .deck-grid { min-height:100%; height:auto; grid-auto-rows:minmax(64px,auto); }
+.page .w-shortcuts { overflow-y:auto !important; overscroll-behavior-y:contain; }
+.page .w-media { overflow-y:auto !important; overscroll-behavior-y:contain; }
+.page .w-media .m-top { flex:1 0 auto; }
+.page .w-media .m-controls { flex-shrink:0; }
+.page .w-clock { overflow-y:auto !important; }
+.page .w-quotaring { overflow-y:auto !important; }
+.page .w-quotaring .g-sub { display:block !important; flex-shrink:0; line-height:1.15; }
+.page .w .q-card { overflow-y:auto; }
+@media screen and (max-width:700px) {
+  .page:has(.w-clock) .grid > .w-quotaring { height:auto !important; min-height:150px !important; }
+  .page:has(.w-clock) .w-quotaring .g-label,
+  .page:has(.w-clock) .w-quotaring .g-sub { overflow:visible !important; white-space:normal !important; text-overflow:clip !important; }
+  .page:has(.w-clock) .w-quotaring .g-sub { display:block !important; font-size:10px !important; }
+  .page:has(.w-clock) .grid > .w-clock { height:auto !important; min-height:135px !important; }
+  .page .grid > .w:has(.deck-grid) { grid-column:1 / -1 !important; min-height:230px !important; height:auto !important; }
+  .page .grid > .w-media { min-height:220px !important; height:auto !important; }
+  .page .grid > .w-github { min-height:260px !important; }
+}
+@media screen and (max-width:650px) and (max-height:540px) and (min-aspect-ratio:.82) {
+  .page[data-id="system"] .w-chart .s-label { white-space:normal !important; overflow:visible !important; text-overflow:clip !important; }
+  .page[data-id="system"] .grid > .w-chart { min-height:170px !important; height:auto !important; }
+}

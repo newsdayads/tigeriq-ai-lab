@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { URLSearchParams } from 'node:url';
 import { makeGoogleOAuth } from './google-oauth.mjs';
+import { applyOwnerQuotaRotation } from './owner-quota-rotation.mjs';
 
 const VIEW_PORT = Number(process.env.PB_VIEW_PORT || 8924);
 const ADMIN_PORT = Number(process.env.PB_ADMIN_PORT || 8925);
@@ -175,6 +176,32 @@ function proxy(req, res, role, path) {
     out['x-content-type-options'] = 'nosniff';
     out['referrer-policy'] = 'no-referrer';
     if (out.location?.startsWith('http://127.0.0.1:')) out.location = '/';
+    // Owner overlays live outside the upstream PhoneBox checkout. Never overwrite vendor assets.
+    if (role === 'view' && req.method === 'GET' && upstreamRes.statusCode === 200 &&
+        ['/panel/widgets/pc.js','/panel/style.css'].includes(target)) {
+      const chunks = []; let size = 0;
+      upstreamRes.on('data', c => { size += c.length; if (size > 2097152) upstreamRes.destroy(); else chunks.push(c); });
+      upstreamRes.on('end', () => {
+        const original = Buffer.concat(chunks).toString('utf8');
+        let custom = original;
+        if (target.endsWith('/pc.js')) {
+          const patched = applyOwnerQuotaRotation(original);
+          if (patched === null) console.warn('PhoneBox owner quota overlay: vendor source changed; original retained');
+          custom = patched ?? original;
+        } else {
+          for (const name of ['zflip7-cover.css','zflip7-portrait.css','owner-quota-rotation.css']) {
+            const candidates = [new URL('./owner-overrides/'+name, import.meta.url), new URL('./assets/'+name, import.meta.url)];
+            const existing = candidates.find(p => fs.existsSync(p));
+            if (existing) custom += '\n' + fs.readFileSync(existing,'utf8');
+            else console.warn('PhoneBox owner CSS missing:',name);
+          }
+        }
+        delete out['content-length']; delete out['content-encoding']; delete out['etag'];
+        out['content-type'] = target.endsWith('/pc.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8';
+        res.writeHead(200, out); res.end(custom);
+      });
+      return;
+    }
     res.writeHead(upstreamRes.statusCode || 502, out);
     upstreamRes.pipe(res);
   });
