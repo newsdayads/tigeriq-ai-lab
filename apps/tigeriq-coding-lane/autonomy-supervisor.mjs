@@ -121,14 +121,14 @@ async function postGithubIssueComment(issueNumber,body,fetchImpl=fetch){
 export async function backfillGithubRetryReceipts(pool,{fetchImpl=fetch,limit=10}={}){
   const cap=Math.max(1,Math.min(50,Number(limit)||10));
   const q=await pool.query(`
-    select e.id,e.payload,o.objective
+    select e.id,e.payload,o.objective,o.metadata
     from tigeriq_coding_watchdog_events e
     left join tigeriq_coding_objectives o on o.id=e.payload->>'objectiveId'
     where e.kind='RETRY_QUEUED'
       and e.payload->>'reason'='CI_GATES_FAILED'
       and not exists (
         select 1 from tigeriq_coding_watchdog_events ack
-        where ack.kind='GITHUB_RECEIPT_POSTED'
+        where ack.kind in ('GITHUB_RECEIPT_POSTED','GITHUB_RECEIPT_SKIPPED')
           and ack.payload->>'sourceEventId'=e.id::text
       )
     order by e.id desc
@@ -136,11 +136,15 @@ export async function backfillGithubRetryReceipts(pool,{fetchImpl=fetch,limit=10
   let posted=0,existing=0,failed=0;
   for(const row of q.rows||[]){
     const payload=row?.payload&&typeof row.payload==='object'?row.payload:{};
-    const issueNumber=extractGitHubIssueNumber(row?.objective);
+    const meta=row?.metadata&&typeof row.metadata==='object'?row.metadata:{};
+    const rawIssue=Number(payload.issueNumber||meta.issueNumber||0);
+    const issueNumber=extractGitHubIssueNumber(row?.objective)
+      ||(Number.isInteger(rawIssue)&&rawIssue>0?rawIssue:null)
+      ||extractGitHubIssueNumber(meta.issueUrl||payload.issueUrl||'');
     const sourceEventId=String(row?.id||'').trim();
     if(!issueNumber||!sourceEventId){
       failed++;
-      await emit(pool,'GITHUB_RECEIPT_FAILED',{sourceEventId:sourceEventId||null,objectiveId:payload.objectiveId||null,reason:'ISSUE_OR_EVENT_ID_MISSING'});
+      await emit(pool,'GITHUB_RECEIPT_SKIPPED',{sourceEventId:sourceEventId||null,objectiveId:payload.objectiveId||null,reason:'ISSUE_OR_EVENT_ID_MISSING'});
       continue;
     }
     const countQ=await pool.query(
