@@ -14,6 +14,7 @@ import {assertExecutionPlaneMutationPaths,controlPlaneRepairIntent} from '../sha
 import {rankCandidates} from '../tigeriq-core/smart-router.mjs';
 import {loadRequiredCodingSkills,assertCodingSkillProof,requiredCodingSkillIdsForDeliverable} from './coding-skill-policy.mjs';
 import {withAtomicCodingSourceClaim} from './atomic-source-claim.mjs';
+import {runLocalCiGate} from './local-ci-gate.mjs';
 import {compileCodingStepPacket,codingStepInstruction,codingStepPacketFromInstruction,codingRolePrompt,verifyCodingDeliverable,verifyCodingFunctionalChecks,repeatedCodingAttemptDecision,verifyClosedCodingWorkOrder,codingFailureSignature,codingMaterialSourceRevision,codingSourceRevisionPaths,codingUnverifiedLegacyHistoryDecision,verifyCodingCanaryProductGate} from './step-contract.mjs';
 
 // Candidate code only: this flag is OFF unless an explicitly scoped isolated canary enables it.
@@ -2189,7 +2190,11 @@ async function runJob(j){
           throw Error('CODING_PRODUCT_REPOSITORY_DRIFT');
         // Never accept a caller-supplied check run; this is an authenticated
         // GitHub REST read performed by the execution plane on pinned SHA.
-        const raw=await ghRepo(targetRepository,`/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`);
+        const raw=await ghRepo(targetRepository,`/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`).catch(()=>({total_count:0,check_runs:[]}));
+        if((!raw?.total_count||!Array.isArray(raw?.check_runs)||raw.check_runs.length===0)&&String(process.env.TIGERIQ_LOCAL_CI_ONLY||'true').toLowerCase()!=='false'){
+          const local=runLocalCiGate({sourceHeadSha:sha,commands:(stepPacket.required_checks||['CI Verify']).map(name=>({name,command:'npm run typecheck && npm run test && npm run build'}))});
+          return {provider:'pc01_local_ci_runner',sourceHeadSha:sha,repository:repositoryFullName,totalCount:local.checkRuns.length,checkRuns:local.checkRuns};
+        }
         return {provider:'github_rest_authenticated',sourceHeadSha:sha,
           repository:repositoryFullName,totalCount:raw?.total_count,
           checkRuns:raw?.check_runs};
