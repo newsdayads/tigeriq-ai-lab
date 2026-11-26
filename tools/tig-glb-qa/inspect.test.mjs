@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { inspectGlb } from './inspect.mjs';
 
 function fixture(options = {}) {
-  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j0eoAAAAASUVORK5CYII=', 'base64');
+  let png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP438AAAAQBAYDFKhhdAAAAAElFTkSuQmCC', 'base64');
+  if (options.imageDamage === 'signature') png[0] ^= 1;
+  if (options.imageDamage === 'crc') png[29] ^= 1;
+  if (options.imageDamage === 'truncated') png = png.subarray(0, -4);
   const bin = Buffer.alloc(68 + png.length + (4 - png.length % 4) % 4);
   [0,0,0,1,0,0,0,options.degenerate ? 0 : 1,0].forEach((x,i) => bin.writeFloatLE(options.nan && i === 0 ? NaN : x,i*4));
   [0,0,1,0,0,options.outsideUv ? 2 : 1].forEach((x,i) => bin.writeFloatLE(options.nanUv && i === 0 ? NaN : x,36+i*4));
@@ -13,6 +16,7 @@ function fixture(options = {}) {
   if (options.extraPrimitive) doc.meshes[0].primitives.push(doc.meshes[0].primitives[0]);
   if (options.skin) doc.skins=[{joints:[0]}];
   if (options.imageUri) doc.images=[{uri:'https://example.invalid/a.png',mimeType:'image/png'}];
+  if (options.imageMime) doc.images[0].mimeType = options.imageMime;
   const raw=Buffer.from(JSON.stringify(doc)); const json=Buffer.concat([raw,Buffer.alloc((4-raw.length%4)%4,32)]);
   const h=Buffer.alloc(12);h.writeUInt32LE(options.badHeader?0:0x46546c67);h.writeUInt32LE(2,4);h.writeUInt32LE(28+json.length+bin.length,8);
   const chunk=(type,bytes)=>{const header=Buffer.alloc(8);header.writeUInt32LE(bytes.length);header.writeUInt32LE(type,4);return Buffer.concat([header,bytes]);};
@@ -31,3 +35,6 @@ test('missing embedded image fails screen',()=>assert.equal(inspectGlb(fixture({
 test('triangle budget is enforced across primitives',()=>{const r=inspectGlb(fixture({extraPrimitive:true}),{triangleBudget:1});assert.equal(r.triangles,2);assert.equal(r.technicalScreen,'NOT_MET');});
 test('invalid budget rejected',()=>assert.throws(()=>inspectGlb(fixture(),{triangleBudget:0}),/invalid triangle budget/));
 test('skin presence alone never proves rig or release',()=>{const r=inspectGlb(fixture({skin:true}));assert.equal(r.skins,1);assert.equal(r.rigScreen,'NOT_MET');assert.equal(r.releaseEligible,false);});
+
+for (const imageDamage of ['signature','crc','truncated']) test('rejects damaged PNG '+imageDamage,()=>assert.throws(()=>inspectGlb(fixture({imageDamage})),/invalid PNG/));
+for (const imageMime of ['image/jpeg','image/webp']) test('rejects mismatched image MIME '+imageMime,()=>assert.throws(()=>inspectGlb(fixture({imageMime})),/invalid (JPEG|WebP)/));
