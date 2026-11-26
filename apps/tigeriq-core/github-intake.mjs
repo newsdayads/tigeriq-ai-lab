@@ -475,6 +475,9 @@ export async function reconcileSupersededActiveGithubObjective({pool,spec,active
     return githubActiveObjectiveSourceIsSuperseded(row,spec);
   });
   if(!candidate?.id)return {released:false,reason:'NO_SUPERSEDED_ACTIVE_OBJECTIVE'};
+  // Compare the observed revision fields atomically. A refreshed sourceRevision
+  // can coexist with a stale immutable objective ID or parked acceptance revision.
+  // Reject concurrent metadata changes and preserve every live-work fence below.
   const supersedeMeta={
     supersededBySourceRevision:sourceRevision,
     supersededReason:'NEW_GITHUB_SOURCE_REVISION_NO_LIVE_WORK',
@@ -485,7 +488,9 @@ export async function reconcileSupersededActiveGithubObjective({pool,spec,active
         metadata=o.metadata||$3::jsonb,
         updated_at=now()
     where o.id=$1 and o.status='active'
-      and coalesce(o.metadata->>'sourceRevision','')<>$2
+      and coalesce(o.metadata->>'sourceRevision','')=$2
+      and coalesce(o.metadata->>'managerAwaitingAcceptanceRevision','')=$4
+      and o.metadata->>'source'='github' and o.metadata->>'issueNumber'=$5
       and not exists (
         select 1 from tigeriq_jobs j
         where j.objective_id=o.id and j.status not in ('done','failed','cancelled')
@@ -500,7 +505,7 @@ export async function reconcileSupersededActiveGithubObjective({pool,spec,active
         where l.lease_until>now()
           and (l.work_id=o.id or l.work_id in (select j.id from tigeriq_jobs j where j.objective_id=o.id))
       )
-    returning o.id`,[candidate.id,sourceRevision,JSON.stringify(supersedeMeta)]);
+    returning o.id`,[candidate.id,String(candidate.metadata?.sourceRevision||''),JSON.stringify(supersedeMeta),String(candidate.metadata?.managerAwaitingAcceptanceRevision||''),issueNumber]);
   if(q.rowCount!==1)return {released:false,reason:'ACTIVE_WORK_OR_RACE'};
   await pool.query(
     "insert into tigeriq_events(type,objective_id,data) values('GITHUB_STALE_ACTIVE_OBJECTIVE_SUPERSEDED',$1,$2)",
