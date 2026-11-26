@@ -1,4 +1,8 @@
-import test from 'node:test';
+import test, { beforeEach } from 'node:test';
+import { resetGithubSharedClientForTests } from '../apps/tigeriq-core/github-shared-client.mjs';
+
+// A simulated rate-limit in one fixture must not affect another fixture.
+beforeEach(() => resetGithubSharedClientForTests());
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
@@ -168,6 +172,7 @@ NO_PC01_SHELL=true
 CAPABILITY=reasoning`;
 
 const SAFE_AUTO_POLICY_BASE=`PRIORITY=P1
+TIGERIQ_EXECUTABLE=true
 ZERO_COST=true
 NO_PC01_SHELL=true
 NO_PAID_COST=true
@@ -376,7 +381,7 @@ test('safe P1-P5 admission ignores owner-facing DISPLAY_STATE when execution sta
 test('parked or resource-blocked work does not stop the next compatible P1-P5 claim',async()=>{
   const pool=coreBacklogPool();
   const parkedBody=[
-    SAFE_AUTO_POLICY_BASE.replace('RESOURCE_SCOPE=SAFE_AUTO_TEST','RESOURCE_SCOPE=PARKED_SCOPE'),
+    SAFE_AUTO_POLICY_BASE.replace('RESOURCE_SCOPE=SAFE_AUTO_TEST','RESOURCE_SCOPE=PARKED_SCOPE').replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false'),
     'OWNER_POLICY=AUTO',
     'TIGERIQ_EXECUTABLE=false',
     'AUTO_QUEUE=EXCLUDED_REVIEW_WAIT',
@@ -598,8 +603,9 @@ test('GitHub intake preserves supported PUBLIC_EVIDENCE_KEYS',()=>{
   assert.deepStrictEqual(spec.publicEvidenceKeys,['installedSha','changedPaths']);
 });
 
-test('safe P1-P5 policy admission does not require legacy TIGERIQ_EXECUTABLE/NO_CODE_CHANGE flags',()=>{
+test('safe P1-P5 requires current execution authorization but not legacy NO_CODE_CHANGE',()=>{
   const issue={number:2474,state:'open',title:'[P1][CORE] safe coding coordination',body:SAFE_AUTO_POLICY_BASE,labels:[],html_url:'https://example/2474'};
+  assert.deepStrictEqual(safeAutoWorkAdmission({...issue,body:issue.body.replace('TIGERIQ_EXECUTABLE=true\n','')}),{eligible:false,reason:'EXECUTION_FLAG_REQUIRED'});
   const admission=safeAutoWorkAdmission(issue);
   assert.deepStrictEqual({eligible:admission.eligible,reason:admission.reason,requiresCodingHandoff:admission.requiresCodingHandoff},{eligible:true,reason:'SAFE_P1_P5_POLICY',requiresCodingHandoff:true});
   const spec=parseExecutableIssue(issue);
@@ -679,9 +685,9 @@ test('safe P1-P5 policy fails closed on P0, Owner/HOLD, dependency, App Chrome, 
     [{...base,body:SAFE_AUTO_POLICY_BASE+'\nCURRENT_STATE=WAITING_PARENT_GATE'},'DEPENDENCY_BLOCKED'],
     [{...base,title:'[P1][APP-CHROME] excluded'},'APP_CHROME_EXCLUDED'],
     [{...base,body:SAFE_AUTO_POLICY_BASE+'\nASSIGNED_EXECUTOR=NV02'},'OWNER_OR_UI_ROUTE'],
-    [{...base,body:SAFE_AUTO_POLICY_BASE.replace('NO_SECURITY_BOUNDARY_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=false')},'HARD_GATE_SAFETY_FLAGS_INCOMPLETE'],
+    [{...base,body:SAFE_AUTO_POLICY_BASE.replace('NO_SECURITY_BOUNDARY_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=false')},'EXPLICIT_SAFETY_FLAG_DISABLED'],
     [{...base,body:SAFE_AUTO_POLICY_BASE+'\nMUTATION_OWNER=NV12'},'MUTATION_OWNER_CONFLICT'],
-    [{...base,body:SAFE_AUTO_POLICY_BASE+'\nTIGERIQ_EXECUTABLE=false'},'EXPLICIT_EXECUTION_DISABLED'],
+    [{...base,body:SAFE_AUTO_POLICY_BASE.replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false')},'EXPLICIT_EXECUTION_DISABLED'],
     [{...base,body:SAFE_AUTO_POLICY_BASE+'\nAUTO_QUEUE=EXCLUDED'},'AUTO_QUEUE_EXCLUDED'],
     [{...base,body:SAFE_AUTO_POLICY_BASE+'\nAUTO_QUEUE=EXCLUDED_PARENT_COORDINATION'},'AUTO_QUEUE_EXCLUDED'],
     [{...base,body:SAFE_AUTO_POLICY_BASE+'\nAUTO_QUEUE=EXCLUDED_UNTIL_DEPENDENCY'},'AUTO_QUEUE_EXCLUDED'],
@@ -691,7 +697,7 @@ test('safe P1-P5 policy fails closed on P0, Owner/HOLD, dependency, App Chrome, 
 });
 
 test('generic API intake does not intercept explicit NV03/NV04 UI targets',()=>{
-  const common=['PRIORITY=P1','ZERO_COST=true','OWNER_POLICY=AUTO','NO_PC01_SHELL=true','NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true','NO_PRODUCTION_RELEASE=true','NO_DESTRUCTIVE=true','NO_DIRECT_MAIN=true','RESOURCE_SCOPE=UI_TARGET_TEST'];
+  const common=['PRIORITY=P1','TIGERIQ_EXECUTABLE=true','ZERO_COST=true','OWNER_POLICY=AUTO','NO_PC01_SHELL=true','NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true','NO_PRODUCTION_RELEASE=true','NO_DESTRUCTIVE=true','NO_DIRECT_MAIN=true','RESOURCE_SCOPE=UI_TARGET_TEST'];
   const review={number:2678,state:'open',title:'[P1][REVIEW] explicit NV03',body:[...common,'CAPABILITY=review','TARGET_EMPLOYEE=NV03'].join('\n'),labels:[]};
   const research={number:2679,state:'open',title:'[P1][RESEARCH] explicit NV04',body:[...common,'CAPABILITY=deep_research','TARGET_EMPLOYEE=NV04'].join('\n'),labels:[]};
   for(const issue of [review,research]){
@@ -866,7 +872,7 @@ test('terminal outcome sync preserves old revision so a fresh executable source 
 
 test('generic stale terminal label is not cleared for explicit non-executable coordination work',async()=>{
   const pool=coreBacklogPool();
-  const issue={number:2873,state:'open',title:'[P1][CORE] coordination parent',body:SAFE_AUTO_POLICY_BASE.replace('SAFE_AUTO_TEST','GENERIC_TERMINAL_PARENT')+'\nTIGERIQ_EXECUTABLE=false\nAUTO_QUEUE=EXCLUDED_PARENT_COORDINATION',labels:[],comments:0,html_url:'https://example/2873',updated_at:'2026-10-02T05:00:00Z'};
+  const issue={number:2873,state:'open',title:'[P1][CORE] coordination parent',body:SAFE_AUTO_POLICY_BASE.replace('SAFE_AUTO_TEST','GENERIC_TERMINAL_PARENT').replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false')+'\nAUTO_QUEUE=EXCLUDED_PARENT_COORDINATION',labels:[],comments:0,html_url:'https://example/2873',updated_at:'2026-10-02T05:00:00Z'};
   pool.objectives.push({id:'OBJ-GH-2873',status:'blocked',metadata:{source:'github',issueNumber:2873,resourceScope:'GENERIC_TERMINAL_PARENT',sourceRevision:'older'}});
   issue.body+='\nREARM_GENERATION=2';
   issue.labels=[{name:'tigeriq:terminal-blocked'}];
@@ -897,7 +903,7 @@ test('outcome sync retires a stale active objective when current source becomes 
   pool.jobs.push({id:'JOB-2811-W',objective_id:'OBJ-GH-2811-R-old',status:'waiting_resource'});
   const issue={
     number:2811,state:'open',state_reason:null,title:'[P1][API HEALTH][UI] parent owner gate',
-    body:SAFE_AUTO_POLICY_BASE.replace('SAFE_AUTO_TEST','API_HEALTH_PARENT')+'\nTIGERIQ_EXECUTABLE=false\nAUTO_QUEUE=EXCLUDED_PARENT_COORDINATION',
+    body:SAFE_AUTO_POLICY_BASE.replace('SAFE_AUTO_TEST','API_HEALTH_PARENT').replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false')+'\nAUTO_QUEUE=EXCLUDED_PARENT_COORDINATION',
     labels:[],comments:0,updated_at:'2026-10-02T05:26:46Z',html_url:'https://example/2811',
   };
   let mutations=0;
