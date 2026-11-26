@@ -717,7 +717,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
     } finally {
       server.close();
     }
-  });
+  }, 60000); // Native Docker and WSL each allow a 20-second timeout.
 
   it('handles ui_window_list with structured window response', async () => {
     const handler = createPcOperatorMcpHandler({
