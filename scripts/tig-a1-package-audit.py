@@ -22,9 +22,40 @@ def names(z):
     return set(entries)
 
 
+def validate_png_pixels(header, chunks):
+    width, height, depth, color, compression, filtering, interlace = struct.unpack('>IIBBBBB', header)
+    depths = {0: (1, 2, 4, 8, 16), 2: (8, 16), 3: (1, 2, 4, 8), 4: (8, 16), 6: (8, 16)}
+    require(color in depths and depth in depths[color], 'invalid PNG color/depth')
+    require(compression == filtering == 0 and interlace in (0, 1), 'invalid PNG encoding')
+    channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[color]
+    passes = [(0, 0, 1, 1)] if not interlace else [
+        (0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4),
+        (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2)]
+    layouts = []
+    for x, y, dx, dy in passes:
+        w = max(0, (width - x + dx - 1) // dx)
+        h = max(0, (height - y + dy - 1) // dy)
+        if w and h:
+            layouts.append((1 + (w * channels * depth + 7) // 8, h))
+    expected = sum(stride * rows for stride, rows in layouts)
+    require(0 < expected <= 64 * 1024 * 1024, 'PNG decoded size exceeds audit limit')
+    decoder = zlib.decompressobj()
+    try:
+        pixels = decoder.decompress(b''.join(chunks), expected + 1)
+    except zlib.error as exc:
+        raise ValueError('invalid PNG IDAT stream') from exc
+    require(decoder.eof and not decoder.unused_data and not decoder.unconsumed_tail
+            and len(pixels) == expected, 'invalid PNG decoded size or stream ending')
+    offset = 0
+    for stride, rows in layouts:
+        end = offset + stride * rows
+        require(all(v <= 4 for v in pixels[offset:end:stride]), 'invalid PNG row filter')
+        offset = end
+
+
 def png_size(data):
     require(data[:8] == b"\x89PNG\r\n\x1a\n", 'invalid PNG signature')
-    offset, dimensions, seen_idat = 8, None, False
+    offset, dimensions, header, chunks = 8, None, None, []
     while offset + 12 <= len(data):
         length, kind = struct.unpack_from('>I4s', data, offset)
         end = offset + 12 + length
@@ -33,12 +64,14 @@ def png_size(data):
         require(zlib.crc32(kind + payload) == struct.unpack_from('>I', data, end - 4)[0], 'PNG CRC failure')
         if offset == 8:
             require(kind == b'IHDR' and length == 13, 'missing PNG IHDR')
+            header = payload
             dimensions = struct.unpack_from('>II', payload)
             require(all(dimensions), 'invalid PNG dimensions')
         if kind == b'IDAT':
-            seen_idat = True
+            chunks.append(payload)
         if kind == b'IEND':
-            require(length == 0 and end == len(data) and seen_idat, 'invalid PNG ending')
+            require(length == 0 and end == len(data) and chunks, 'invalid PNG ending')
+            validate_png_pixels(header, chunks)
             return dimensions
         offset = end
     raise ValueError('missing PNG IEND')
