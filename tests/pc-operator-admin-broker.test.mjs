@@ -7,7 +7,7 @@ import { authorizeVerifiedTool } from '../apps/tigeriq-core/pc-operator-oauth-po
 const repoRoot = process.cwd();
 
 test('keeps admin verification inside existing task_action surface', () => {
-  assert.equal(PC_OPERATOR_MCP_TOOLS.length, 25);
+  assert.equal(PC_OPERATOR_MCP_TOOLS.length, 22);
   assert.equal(PC_OPERATOR_MCP_TOOLS.includes('task_action'), true);
   assert.equal(PC_OPERATOR_MCP_TOOLS.includes('admin_shell'), false);
   const spec = pcOperatorAdminVerifySpec({ nonce: '12345678-1234-1234-1234-1234567890ab' });

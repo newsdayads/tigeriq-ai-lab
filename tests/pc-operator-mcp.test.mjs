@@ -66,7 +66,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
       const json = await res.json();
       expect(json.ok).toBe(true);
       expect(json.version).toBe('2.0.0');
-      expect(json.toolsCount).toBe(25);
+      expect(json.toolsCount).toBe(22);
       expect(json.tools).toEqual(PC_OPERATOR_MCP_TOOLS);
     } finally {
       server.close();
