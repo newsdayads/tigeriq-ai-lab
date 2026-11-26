@@ -350,7 +350,7 @@ export async function pcOperatorWorkOrderResponse(res, workOrder) {
     const data = await res.json();
     if (!data || data.ok !== true) return { workOrder: key, found: false, status: res.status, reason: 'CORE_STATUS_UNHEALTHY' };
     if (!key || data.workOrderId === key) return { workOrder: key, found: true, data };
-    const issueNumber = key.match(/^(?:GH-|#)?([1-9]\\d{0,7})$/i)?.[1] || '';
+    const issueNumber = key.match(/^(?:GH-|#)?([1-9]\d{0,7})$/i)?.[1] || '';
     const objectives = (Array.isArray(data.objectives) ? data.objectives : []).filter((objective) => {
       const meta = objective?.metadata || {};
       if (issueNumber) return meta.source === 'github' && String(meta.issueNumber || '') === issueNumber;
