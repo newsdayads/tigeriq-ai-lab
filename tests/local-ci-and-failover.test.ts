@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { runLocalCiGate, LOCAL_CI_SCHEMA } from '../apps/tigeriq-coding-lane/local-ci-gate.mjs';
+import { assertCodingCiExecutorAvailable } from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import { verifyCodingFunctionalChecks, CODING_STEP_PACKET_VERSION } from '../apps/tigeriq-coding-lane/step-contract.mjs';
 import { resolveQuotaFailoverChain, createHandoffCheckpoint } from '../apps/tigeriq-core/work-routing-policy.mjs';
 import { parseCodingIssue } from '../apps/tigeriq-core/github-coding-intake.mjs';
@@ -25,6 +26,28 @@ function withGitFixture(fn) {
 }
 
 describe('Local CI Gate & Zero-Drop AI Failover', () => {
+  it('reports a missing isolated executor immediately for exact-head workflow absence', async () => {
+    const sha = 'a'.repeat(40);
+    await expect(assertCodingCiExecutorAvailable({sha,checkRuns:[],localOnly:true,readWorkflows:async()=>{throw Object.assign(new Error('missing'),{status:404});}})).rejects.toMatchObject({code:'LOCAL_CI_ISOLATED_EXECUTOR_REQUIRED',detail:{sha,workflowsAbsent:true}});
+    await expect(assertCodingCiExecutorAvailable({sha,checkRuns:[],localOnly:true,readWorkflows:async()=>[]})).rejects.toMatchObject({code:'LOCAL_CI_ISOLATED_EXECUTOR_REQUIRED'});
+  });
+
+  it('preserves real pending workflow checks and external repository gates', async () => {
+    const sha = 'b'.repeat(40);
+    let reads=0;
+    const readWorkflows=async()=>{reads++;return [{name:'ci.yml'}];};
+    await expect(assertCodingCiExecutorAvailable({sha,checkRuns:[],localOnly:true,readWorkflows})).resolves.toBeUndefined();
+    await assertCodingCiExecutorAvailable({sha,checkRuns:[{status:'queued'}],localOnly:true,readWorkflows});
+    await assertCodingCiExecutorAvailable({sha,checkRuns:[],localOnly:false,readWorkflows});
+    await assertCodingCiExecutorAvailable({sha,checkRuns:[],localOnly:true,repository:{isSource:false},readWorkflows});
+    expect(reads).toBe(1);
+  });
+
+  it('does not reinterpret authorization or transport failures as missing workflows', async () => {
+    const error=Object.assign(new Error('forbidden'),{status:403});
+    await expect(assertCodingCiExecutorAvailable({sha:'c'.repeat(40),checkRuns:[],localOnly:true,readWorkflows:async()=>{throw error;}})).rejects.toBe(error);
+  });
+
   it('has completely removed .github/workflows', () => {
     expect(existsSync(new URL('../.github/workflows', import.meta.url))).toBe(false);
   });
