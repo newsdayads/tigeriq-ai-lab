@@ -94,6 +94,14 @@ it.skipIf(!pwshPresent)('rejects approval after expiry',()=>{
   expect(run({approval}).reason).toBe('RELEASE_APPROVAL_EXPIRED_OR_TOO_LONG');
 });
 
+it.skipIf(!pwshPresent)('preserves a valid explicit offset timestamp and rejects a too-long approval',()=>{
+  const approval=template();
+  approval.expiresAtUtc=new Date(Date.now()+8*3600_000).toISOString().replace(/Z$/,'+07:00');
+  expect(run({approval}).reason).toBe('LOCAL_RELEASE_APPROVAL_PRESENT');
+  approval.expiresAtUtc=new Date(Date.now()+8*86400_000).toISOString();
+  expect(run({approval}).reason).toBe('RELEASE_APPROVAL_EXPIRED_OR_TOO_LONG');
+});
+
 it.skipIf(!pwshPresent)('real untrusted temporary approval-file ACL fails closed',()=>{
   expect(run({approval:template(),aclMock:false}).reason).toBe('RELEASE_APPROVAL_ACL_UNTRUSTED');
 });
