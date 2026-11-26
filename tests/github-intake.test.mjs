@@ -1056,7 +1056,7 @@ Return requested public evidence only.`;
   assert.strictEqual(comments.length,1);
   assert.strictEqual(labelAdds,1);
   assert.strictEqual(labelClears,0);
-  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT').length,1);
+  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT'&&e.data?.terminalBlocked===true).length,1);
 
   const firstRevision=terminalFaults[0].data.sourceRevision;
   issues=[{...issues[0],body:baseBody+'\nREARM_GENERATION=2'}];
@@ -1419,7 +1419,7 @@ test('Owner-direct v0.20 CI artifact signer is admitted only as an owner-direct 
   const body=[
     'TIGERIQ_EXECUTABLE=true',
     'OWNER_POLICY=AUTO',
-    'OWNER_DIRECT=true',
+    'OWNER_DIRECT=true','OWNER_APPROVED_AUTONOMOUS_ANDROID=true',
     'PRIORITY=P3',
     'CAPABILITY=pc_operator',
     'NO_CODE_CHANGE=true',
@@ -1431,8 +1431,9 @@ test('Owner-direct v0.20 CI artifact signer is admitted only as an owner-direct 
     'Execute exactly the pre-admitted typed v0.20 CI artifact signer.',
     'ACCEPTANCE',
     'Return sanitized result evidence only.',
-  ].join('\\n');
+  ].join('\n');
   const issues=[{number:3219,state:'open',title:'v0.20 signer',body,html_url:'https://example/3219'}];
+  assert.strictEqual(parseExecutableIssue({...issues[0],body:body.replace('OWNER_APPROVED_AUTONOMOUS_ANDROID=true','')}),null,'legacy owner-direct alone cannot bypass current Android fence');
   const out=await materializeGithubIssues({pool,openIssues:issues,token:'fake'});
   assert.strictEqual(out.created,1);
   assert.strictEqual(out.issueNumber,3219);
@@ -1442,7 +1443,7 @@ test('Owner-direct v0.20 CI artifact signer is admitted only as an owner-direct 
   assert.strictEqual(pool.jobs[0].capability,'pc_operator');
 
   const noOwnerPool=coreBacklogPool();
-  const noOwnerBody=body.replace('OWNER_DIRECT=true\\n','');
+  const noOwnerBody=body.replace('OWNER_DIRECT=true\n','');
   const blocked=await materializeGithubIssues({pool:noOwnerPool,openIssues:[{number:3220,state:'open',title:'v0.20 signer no owner',body:noOwnerBody,html_url:'https://example/3220'}],token:'fake'});
   assert.strictEqual(blocked.created,0);
   assert.strictEqual(noOwnerPool.jobs.length,0);
@@ -1458,7 +1459,7 @@ test('Owner-direct v0.20 signer ACL bootstrap is admitted only with owner author
   const body=[
     'TIGERIQ_EXECUTABLE=true',
     'OWNER_POLICY=AUTO',
-    'OWNER_DIRECT=true',
+    'OWNER_DIRECT=true','OWNER_APPROVED_AUTONOMOUS_ANDROID=true',
     'PRIORITY=P1',
     'CAPABILITY=pc_operator',
     'NO_CODE_CHANGE=true',
@@ -1495,7 +1496,7 @@ test('Owner-direct v0.20 signed APK chunk export is fixed and validates chunk in
   const body=[
     'TIGERIQ_EXECUTABLE=true',
     'OWNER_POLICY=AUTO',
-    'OWNER_DIRECT=true',
+    'OWNER_DIRECT=true','OWNER_APPROVED_AUTONOMOUS_ANDROID=true',
     'PRIORITY=P1',
     'CAPABILITY=pc_operator',
     'NO_CODE_CHANGE=true',
@@ -1549,7 +1550,7 @@ test('Owner-direct v0.20 signed APK chunk export is fixed and validates chunk in
 test('Owner-direct v0.21 CI artifact signer is admitted only as fixed local action',async()=>{
   const pool=coreBacklogPool();
   const body=[
-    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1',
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','OWNER_APPROVED_AUTONOMOUS_ANDROID=true','PRIORITY=P1',
     'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
     'RESOURCE_SCOPE=ANDROID_V021_CI_SIGN_TEST',
     'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_sign_v021_ci_artifact"}',
@@ -1574,7 +1575,7 @@ test('Owner-direct v0.21 CI artifact signer is admitted only as fixed local acti
 test('Owner-direct v0.21 release export and manifest publish validate bounded inputs',async()=>{
   const exportPool=coreBacklogPool();
   const exportBody=[
-    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P3',
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','OWNER_APPROVED_AUTONOMOUS_ANDROID=true','PRIORITY=P3',
     'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
     'RESOURCE_SCOPE=ANDROID_V021_EXPORT_TEST',
     'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_export_v021_signed_apk_chunk","chunkIndex":3}',
@@ -1586,7 +1587,7 @@ test('Owner-direct v0.21 release export and manifest publish validate bounded in
 
   const publishPool=coreBacklogPool();
   const publishBody=[
-    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P3',
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','OWNER_APPROVED_AUTONOMOUS_ANDROID=true','PRIORITY=P3',
     'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
     'RESOURCE_SCOPE=ANDROID_V021_MANIFEST_TEST',
     'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_publish_v021_manifest","driveFileId":"1AbCdEfGhIjKlMnOpQrStUv"}',
@@ -1612,7 +1613,7 @@ test('typed direct pc_operator action remains executable when explanatory prompt
   const body=[
     'TIGERIQ_EXECUTABLE=true',
     'OWNER_POLICY=AUTO',
-    'OWNER_DIRECT=true',
+    'OWNER_DIRECT=true','OWNER_APPROVED_AUTONOMOUS_ANDROID=true',
     'PRIORITY=P1',
     'CAPABILITY=pc_operator',
     'NO_CODE_CHANGE=true',
@@ -1650,9 +1651,9 @@ test('P0 is excluded while system-routed P1-P5 materialize in priority order',as
   ];
   const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
   let out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
-  assert.strictEqual(out.issueNumber,10);assert.strictEqual(pool.objectives.at(-1).priority,'P1');
-  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
-  assert.strictEqual(out.issueNumber,20);assert.strictEqual(pool.objectives.at(-1).priority,'P2');
+  assert.strictEqual(out.created,2);
+  assert.deepStrictEqual(out.createdItems.map(item=>item.issueNumber),[10,20]);
+  assert.deepStrictEqual(pool.objectives.map(item=>item.priority),['P1','P2']);
   out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
   assert.strictEqual(out.created,0);
   assert.strictEqual(pool.objectives.filter(o=>o.status==='active').length,2);
@@ -1790,7 +1791,7 @@ test('closed source issue terminalizes stale active GitHub objective and release
     },
   });
   const closed={number:1620,state:'closed',state_reason:'not_planned',closed_at:'2026-09-23T10:43:42Z',title:'stale canary',body:''};
-  const nextIssue={number:60,state:'open',state_reason:null,updated_at:'2026-09-23T10:44:00Z',title:'next read-only work',body:READ_ONLY_BASE+'\\nOWNER_DIRECT=true\\nPRIORITY=P0',html_url:'https://example/60'};
+  const nextIssue={number:60,state:'open',state_reason:null,updated_at:'2026-09-23T10:44:00Z',title:'next read-only work',body:READ_ONLY_BASE+'\nOWNER_DIRECT=true\nPRIORITY=P1\nRESOURCE_SCOPE=NEXT_READ_ONLY',html_url:'https://example/60'};
   const fetchImpl=async(url)=>{
     if(url.endsWith('/issues/1620'))return response(closed);
     if(url.includes('/issues?'))return response([nextIssue]);
@@ -1819,7 +1820,8 @@ test('CORE_REVIEW GitHub objectives bypass generic manager and queue one direct 
   assert.match(core,/\[TIGERIQ_INDEPENDENT_REVIEW_V1\]/);
   assert.match(core,/REVIEW=PASS\|CHANGES_REQUIRED/);
   assert.match(managerSlice,/if\(await reconcileGithubCoreReviewObjective\(o\)\) return;/);
-  assert.ok(managerSlice.indexOf('reconcileGithubCoreReviewObjective(o)')<managerSlice.indexOf('callManagerDecision('));
+  assert.ok(core.indexOf('reconcileGithubCoreReviewObjective(o)',managerAt)<core.indexOf('callManagerDecision(',managerAt));
+  assert.ok(core.indexOf('callManagerDecision(',managerAt)>managerAt);
 });
 
 test('CORE_REVIEW direct path preserves strict targetWorker routing and terminal evidence',()=>{
