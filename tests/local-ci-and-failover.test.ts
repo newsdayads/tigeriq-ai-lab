@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
-import { runLocalCiGate, LOCAL_CI_SCHEMA, scopedTestCommand } from '../apps/tigeriq-coding-lane/local-ci-gate.mjs';
+import { runLocalCiGate, LOCAL_CI_SCHEMA, scopedTestCommand, QUEUE_HYGIENE_COMMAND } from '../apps/tigeriq-coding-lane/local-ci-gate.mjs';
 import { assertCodingCiExecutorAvailable } from '../apps/tigeriq-coding-lane/coding-lane.mjs';
 import { verifyCodingFunctionalChecks, CODING_STEP_PACKET_VERSION } from '../apps/tigeriq-coding-lane/step-contract.mjs';
 import { resolveQuotaFailoverChain, createHandoffCheckpoint } from '../apps/tigeriq-core/work-routing-policy.mjs';
@@ -55,7 +55,7 @@ describe('Local CI Gate & Zero-Drop AI Failover', () => {
   it('runs the MCP regression suite for direct MCP changes', () => {
     const calls = [];
     withGitFixture((cwd, head) => runLocalCiGate({ cwd, sourceHeadSha: head, changedPaths: ['apps/tigeriq-core/pc-operator-mcp.mjs'], runner: (cmd) => { calls.push(cmd); return 'PASS'; } }));
-    expect(calls).toEqual(['npm run typecheck && npx vitest run tests/pc-operator-mcp.test.mjs && npm run build']);
+    expect(calls).toEqual(['npm run typecheck && npx vitest run tests/pc-operator-mcp.test.mjs && npm run build', QUEUE_HYGIENE_COMMAND.command]);
   });
 
   it.each([
@@ -75,6 +75,28 @@ describe('Local CI Gate & Zero-Drop AI Failover', () => {
     expect(cmd.match(/tests\/pc01-release-guard-e2e\.test\.mjs/g)).toHaveLength(1);
     expect(cmd).toContain('tests/local-ci-and-failover.test.ts');
     expect(scopedTestCommand(['docs/example.md'])).toBe('npm run typecheck && npm run build');
+  });
+
+  it('records independent exact-head queue hygiene success in default CI', () => {
+    withGitFixture((cwd, head) => {
+      const receipt = runLocalCiGate({ cwd, sourceHeadSha: head, runner: () => 'PASS' });
+      expect(receipt.pass).toBe(true);
+      expect(receipt.checkRuns.map(({name, conclusion, head_sha}) => ({name, conclusion, head_sha}))).toEqual([
+        {name:'CI Verify', conclusion:'success', head_sha:head},
+        {name:'Queue Hygiene Verify', conclusion:'success', head_sha:head},
+      ]);
+    });
+  });
+
+  it('fails the entire default CI receipt when queue hygiene fails despite a passing build', () => {
+    withGitFixture((cwd, head) => {
+      const receipt = runLocalCiGate({ cwd, sourceHeadSha: head, runner: cmd => {
+        if(cmd === QUEUE_HYGIENE_COMMAND.command) throw new Error('QUEUE_HYGIENE_FAILED');
+        return 'PASS';
+      } });
+      expect(receipt.pass).toBe(false);
+      expect(receipt.checkRuns.map(r => r.conclusion)).toEqual(['success','failure']);
+    });
   });
 
   it('produces an exact-head Local CI receipt accepted by verifyCodingFunctionalChecks', () => {
