@@ -32,6 +32,11 @@ export function scopedTestCommand(changedPaths = []) {
     'tests/pc01-release-preflight.test.mjs',
     'tests/pc01-updater-release-gate.test.mjs',
     'tests/pc01-release-guard-e2e.test.mjs',
+    'apps/tigeriq-core/pc01-standing-release.mjs',
+    'apps/tigeriq-core/pc01-release-approval.mjs',
+    'apps/tigeriq-core/github-actions-oidc.mjs',
+    'apps/tigeriq-coding-lane/local-ci-gate.mjs',
+    'tests/local-ci-and-failover.test.ts',
     'tests/pc01-standing-release.test.mjs',
   ]);
   const releaseChecks = paths.some(p => releasePaths.has(p));
@@ -39,10 +44,11 @@ export function scopedTestCommand(changedPaths = []) {
     suites.add('tests/pc01-release-preflight.test.mjs');
     suites.add('tests/pc01-updater-release-gate.test.mjs');
     suites.add('tests/pc01-release-guard-e2e.test.mjs');
+    suites.add('tests/pc01-standing-release.test.mjs');
   }
   for (const p of paths) {
     if (p.includes('phonebox') || p.includes('phone-farm') || p.includes('pc-operator-mcp')) suites.add('tests/pc-operator-mcp.test.mjs');
-    if (p.includes('coding-lane')) suites.add('tests/local-ci-and-failover.test.ts');
+    if (p.includes('coding-lane') || p === 'tests/local-ci-and-failover.test.ts') suites.add('tests/local-ci-and-failover.test.ts');
     if (p.includes('work-routing-policy')) suites.add('tests/work-routing-policy.test.mjs');
     if (p.includes('github-coding-intake')) suites.add('tests/github-coding-intake.test.mjs');
     if (p.includes('project-portfolio') || p.includes('portfolio.yaml')) suites.add('tests/project-portfolio.test.mjs');
