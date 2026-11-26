@@ -1182,6 +1182,31 @@ test('cleared stale oversized fault is retired for the current revision and does
   assert.deepStrictEqual(issue.labels,['tigeriq:terminal-blocked']);
 });
 
+test('PC terminal label rearm denies missing proof, current fault, owner hold and existing objective',async()=>{
+  const issue={number:1616,state:'open',title:'stale terminal guarded',labels:['tigeriq:terminal-blocked'],comments:0,body:[
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1',
+    'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=PC_REARM_FENCED','ASSIGNED_ACTION','Use exactly tigeriq_pc action=tcp_probe host="127.0.0.1" port=8798.',
+    'ACCEPTANCE','Return bounded evidence.'
+  ].join('\n')};
+  const revision=parseExecutableIssue({...issue,labels:[]}).sourceRevision;
+  for(const kind of ['missing','same-revision','owner-hold','existing-objective']){
+    const pool=coreBacklogPool();
+    if(kind!=='missing')pool.events.push({type:'ROUTING_FAULT',data:{
+      issueNumber:issue.number,reason:'OPENCLAW_INSTRUCTION_INVALID',sourceRevision:kind==='same-revision'?revision:'older',
+      ownerVisible:true,terminalBlocked:true,
+    }});
+    if(kind==='existing-objective')pool.objectives.push({id:'OBJ-GH-1616',status:'blocked',metadata:{source:'github',issueNumber:1616,sourceRevision:'different'}});
+    const input=kind==='owner-hold'?{...issue,body:'OWNER_HOLD=true\n'+issue.body}:issue;
+    let writes=0;
+    const fetchImpl=async(url,init={})=>{if(String(init.method||'GET').toUpperCase()!=='GET')writes++;return response([]);};
+    const result=await materializeGithubIssues({pool,fetchImpl,openIssues:[input],token:'fake'});
+    assert.equal(result.created,0,kind);
+    assert.equal(writes,0,kind);
+    assert.equal(pool.jobs.length,0,kind);
+  }
+});
+
 test('OpenClaw terminal routing state is loaded once per reconciliation, not once per PC issue',async()=>{
   const pool=coreBacklogPool();
   const makeIssue=(number)=>({
@@ -1450,8 +1475,12 @@ test('Owner-direct v0.20 CI artifact signer is admitted only as an owner-direct 
 
   const coreSource=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   assert.match(coreSource,/PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set\(\['task_start','task_stop','android_worker_sign_v020_ci_artifact'/);
-  assert.match(coreSource,/android_worker_gate_c_v021_status/);
-  assert.match(coreSource,/android_worker_gate_c_v021_enqueue_10/);
+  const intakeSource=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
+  const operatorSource=readFileSync(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs',import.meta.url),'utf8');
+  assert.match(intakeSource,/PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS=new Set\([^\n]*'android_worker_gate_c_v021_status'/);
+  assert.match(intakeSource,/PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set\([^\n]*'android_worker_gate_c_v021_enqueue_10'/);
+  assert.match(operatorSource,/action === 'android_worker_gate_c_v021_status'/);
+  assert.match(operatorSource,/action === 'android_worker_gate_c_v021_enqueue_10'/);
 });
 
 test('Owner-direct v0.20 signer ACL bootstrap is admitted only with owner authorization',async()=>{
