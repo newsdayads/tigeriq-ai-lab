@@ -7,7 +7,7 @@ const repoGroup={drivetrack:6,'tigeriq-media':3,'tigeriq-media-content':3,deroph
 const codes={'CORE':2,'TIGERIQ AI':2,'TIGERIQ LIVE':2,'WORKFLOW LAB':2,'APP CHROME':2,'MOBILE WORKER':2,'TIGERIQ NEWS':3,'TIGERIQ MEDIA':3,'PAPERCLIP':4,'PAPERCLIP VNEXT':4,'REVENUE LAB':5,'TIGERIQ DRIVER':6,'DRIVER':6,'DEXCAM':7,'DEXCAM PERSONAL':7,'TIGERIQ COIN':8};
 const coreProjectOwner={
  'tigeriq-platform':2,'tigeriq-mobile-worker':2,'tigeriq-live':2,'tigeriq-workflow-lab':2,'tigeriq-app-chrome':2,
- 'tigeriq-news':3,'tigeriq-media':3,'paperclip-vnext':4,'revenue-lab':5,'tigeriq-driver':6,
+ 'tigeriq-news':3,'tigeriq-media':3,'tigeriq-driver':6,
  'dexcam-personal':7,'tigeriq-dexcam-personal':7,'tigeriq-coin':8
 };
 const repos=['tigeriq-ai-lab',...Object.keys(repoGroup)];
