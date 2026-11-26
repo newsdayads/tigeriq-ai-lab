@@ -475,6 +475,9 @@ export async function reconcileSupersededActiveGithubObjective({pool,spec,active
     return githubActiveObjectiveSourceIsSuperseded(row,spec);
   });
   if(!candidate?.id)return {released:false,reason:'NO_SUPERSEDED_ACTIVE_OBJECTIVE'};
+  // Compare the observed revision fields atomically. A refreshed sourceRevision
+  // can coexist with a stale immutable objective ID or parked acceptance revision.
+  // Reject concurrent metadata changes and preserve every live-work fence below.
   const supersedeMeta={
     supersededBySourceRevision:sourceRevision,
     supersededReason:'NEW_GITHUB_SOURCE_REVISION_NO_LIVE_WORK',
@@ -485,7 +488,9 @@ export async function reconcileSupersededActiveGithubObjective({pool,spec,active
         metadata=o.metadata||$3::jsonb,
         updated_at=now()
     where o.id=$1 and o.status='active'
-      and coalesce(o.metadata->>'sourceRevision','')<>$2
+      and coalesce(o.metadata->>'sourceRevision','')=$2
+      and coalesce(o.metadata->>'managerAwaitingAcceptanceRevision','')=$4
+      and o.metadata->>'source'='github' and o.metadata->>'issueNumber'=$5
       and not exists (
         select 1 from tigeriq_jobs j
         where j.objective_id=o.id and j.status not in ('done','failed','cancelled')
@@ -500,7 +505,7 @@ export async function reconcileSupersededActiveGithubObjective({pool,spec,active
         where l.lease_until>now()
           and (l.work_id=o.id or l.work_id in (select j.id from tigeriq_jobs j where j.objective_id=o.id))
       )
-    returning o.id`,[candidate.id,sourceRevision,JSON.stringify(supersedeMeta)]);
+    returning o.id`,[candidate.id,String(candidate.metadata?.sourceRevision||''),JSON.stringify(supersedeMeta),String(candidate.metadata?.managerAwaitingAcceptanceRevision||''),issueNumber]);
   if(q.rowCount!==1)return {released:false,reason:'ACTIVE_WORK_OR_RACE'};
   await pool.query(
     "insert into tigeriq_events(type,objective_id,data) values('GITHUB_STALE_ACTIVE_OBJECTIVE_SUPERSEDED',$1,$2)",
@@ -1429,11 +1434,31 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
   const fetchedRows=Array.isArray(openIssues)?openIssues:await ghJson(fetchImpl,`https://api.github.com/repos/${owner}/${repo}/issues?state=open&per_page=100&sort=updated&direction=desc`,token);
   const dependencyReconciled=await reconcileSatisfiedDeclaredBlockers({fetchImpl,owner,repo,token,issues:fetchedRows});
   const rows=await reconcileStaleTerminalBlockedRearms({pool,fetchImpl,owner,repo,token,issues:dependencyReconciled.issues});
-  const specs=sortBacklogSpecs(dedupeBacklogWorkOrders(rows.map(parseExecutableIssue).filter(Boolean)));
+  const candidates=rows.map(issue=>{
+    const spec=parseExecutableIssue(issue);
+    if(spec)return spec;
+    // A machine terminal label can suppress parsing before the existing
+    // revision-bound OpenClaw rearm state machine sees it. Do not grant
+    // execution here: parse the otherwise-current contract, then require the
+    // durable stale routing fault and successful label reconciliation below.
+    if(bodyValue(issue?.body||'','CAPABILITY').trim().toLowerCase()!=='pc_operator'
+      ||!issueLabelNames(issue).some(name=>name.toLowerCase()==='tigeriq:terminal-blocked'))return null;
+    const labels=(Array.isArray(issue.labels)?issue.labels:[]).filter(label=>
+      (typeof label==='string'?label:String(label?.name||'')).toLowerCase()!=='tigeriq:terminal-blocked');
+    const candidate=parseExecutableIssue({...issue,labels});
+    return candidate?.capability==='pc_operator'?{...candidate,stalePcTerminalLabelCandidate:true}:null;
+  }).filter(Boolean);
   const openIssueIndex=indexOpenGithubIssues(rows);
   let activeRows=(await pool.query("select id,metadata from tigeriq_objectives where metadata->>'source'='github' and status='active'")).rows||[];
-  const hasPcOperator=specs.some((spec)=>spec.capability==='pc_operator');
+  const hasPcOperator=candidates.some((spec)=>spec.capability==='pc_operator');
   const openClawTerminalState=hasPcOperator?await loadOpenClawTerminalState(pool):null;
+  const specs=sortBacklogSpecs(dedupeBacklogWorkOrders(candidates.filter(spec=>{
+    if(!spec.stalePcTerminalLabelCandidate)return true;
+    const key=terminalRoutingKey(spec.number,spec.sourceRevision);
+    return openClawTerminalState.terminalByIssue.has(String(spec.number))
+      && !openClawTerminalState.terminalByRevision.has(key)
+      && !openClawTerminalState.clearedByRevision.has(key);
+  })));
   let skipped=0,externalClaims=0;
   const createdItems=[];
   const skipReasons={dependency:0,terminalSameRevision:0,activeScope:0,externalClaim:0,existingObjective:0,terminalPcOperator:0,scopeRace:0,other:0};
@@ -1446,6 +1471,13 @@ export async function materializeGithubIssues({pool,fetchImpl=fetch,owner=DEFAUL
       const issueKey=String(spec.number);
       const revisionKey=terminalRoutingKey(spec.number,spec.sourceRevision);
       if(openClawTerminalState.terminalByRevision.has(revisionKey)){skipped++;skipReasons.terminalPcOperator++;continue;}
+      if(spec.stalePcTerminalLabelCandidate){
+        // Oversized instructions are rejected before materializing objectives.
+        // If an objective now exists, a later blocked label may belong to it;
+        // never use a historic routing fault to clear that other state.
+        const existing=(await pool.query("select id,status,metadata from tigeriq_objectives where metadata->>'source'='github' and metadata->>'issueNumber'=$1 order by created_at desc limit 1",[issueKey])).rows[0];
+        if(existing){skipped++;skipReasons.terminalPcOperator++;continue;}
+      }
       if(openClawTerminalState.terminalByIssue.has(issueKey)&&!openClawTerminalState.clearedByRevision.has(revisionKey)){
         const cleared=await githubMutationRetryable(()=>clearTerminalBlockedLabel({fetchImpl,owner,repo,issueNumber:spec.number,token}));
         if(!cleared){skipped++;skipReasons.terminalPcOperator++;continue;}
@@ -1876,6 +1908,11 @@ export async function syncGithubOutcomes({pool,fetchImpl=fetch,owner=DEFAULT_OWN
         sourceRevision:currentSourceRevision||String(row.metadata?.sourceRevision||''),
         githubSourceExecutionExcluded:true,
         githubSourceExecutionExclusionReason:sourceExecutionExclusion,
+        ...(sourceIssueForGate?.state==='closed'?{
+          githubSourceState:'closed',
+          githubSourceStateReason:String(sourceIssueForGate.state_reason||'closed'),
+          githubSourceClosedAt:String(sourceIssueForGate.closed_at||''),
+        }:{}),
         githubResultReported:true,
         githubTerminalLabelSynced:true,
       };
