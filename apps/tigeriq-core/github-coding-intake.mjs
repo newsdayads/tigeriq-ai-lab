@@ -184,17 +184,18 @@ export function parseCodingIssue(issue){
     ||currentCodingValue(body,'SUPERSEDED_BY')
     ||currentCodingValue(body,'SUPERSEDED'))return null;
   if(currentCodingValue(body,'NO_SECURITY_BOUNDARY_CHANGE').toLowerCase()==='false')return null;
+  const ownerAutoResume=exactFlag(body,'OWNER_DIRECT','true')&&/^(?:CONDITIONAL_AUTO_AFTER_VERIFIED_CORE_RECOVERY|AUTO)$/i.test(currentCodingValue(body,'RESUME_POLICY'));
   const required=[['TIGERIQ_EXECUTABLE','true'],['OWNER_POLICY','AUTO'],['AUTONOMOUS_CODE','true'],['ZERO_COST','true'],['NO_PC01_SHELL','true'],['NO_PAID_COST','true'],['NO_CREDENTIAL_CHANGE','true'],['NO_SECURITY_BOUNDARY_CHANGE','true'],['NO_DESTRUCTIVE','true'],['NO_PRODUCTION_RELEASE','true'],['NO_BROWSER_AUTH','true'],['NO_DIRECT_MAIN','true']];
-  if(required.some(([k,v])=>!exactFlag(body,k,v)))return null;
+  if(!ownerAutoResume&&required.some(([k,v])=>!exactFlag(body,k,v)))return null;
   // Work Order V2 uses READY/WORKING + real leases. Archived V1
   // ACTIVE_EXECUTION/CANONICAL_SPEC lines must not override a current V2 contract.
   // Keep V1's full section gate and the REVIEW_ONLY exclusion unchanged.
   const lifecycleV2=currentCodingValue(body,'WORK_ORDER_LIFECYCLE').toUpperCase()==='V2';
-  if(lifecycleV2){
+  if(lifecycleV2||ownerAutoResume){
     if(isReviewOnlySpec(header))return null;
   }else if(!isActiveExecutionSpec(body))return null;
   const classification=classifyWorkOrder(header);
-  if(classification.route!=='CODING')return null;
+  if(!ownerAutoResume&&classification.route!=='CODING')return null;
   const {sourcePriority,priority,legacyP0Autonomous,ownerControlled,assignedExecutor}=effectiveBacklogPriority(header,'P3');
   const scopeLease=parseCodingScope(header);
   const controlRepair=controlPlaneRepairIntent(header);
