@@ -22,7 +22,7 @@ describe('GH-5135 V1.0.64 QuickBar source contract', () => {
     expect(compose).toContain('repeat(3) { rowIndex ->');
     expect(compose).toContain('repeat(3) { columnIndex ->');
     expect(compose).toContain('slots[rowIndex * 3 + columnIndex]');
-    expect(home).toContain('baselineTopPx - dp(50)');
+    expect(home).toContain('val liftedTop = HomeLayoutRules.quickBarTop(root.height, dp(50))');
     expect(home).toContain('QuickBarGrid(');
     expect(home).toContain('class HomeActivity : ComponentActivity()');
     expect(home).toContain('val quickBar = ComposeView(this).apply');

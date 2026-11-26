@@ -592,8 +592,7 @@ class HomeActivity : ComponentActivity() {
         }
 
         // V1.0.64 lifted the three-row shortcut cluster by 50dp toward the vehicle tail.
-        val baselineTopPx = root.height * .69f
-        val liftedTop = ((baselineTopPx - dp(50)).coerceAtLeast(root.height * .56f)) / root.height
+        val liftedTop = HomeLayoutRules.quickBarTop(root.height, dp(50))
         val quickBar = ComposeView(this).apply {
             setContent {
                 MaterialTheme {
@@ -718,8 +717,7 @@ class HomeActivity : ComponentActivity() {
             prefs.getBoolean("limo", false),
         )
         // Match QuickBar's existing V1 lift without changing its saved slots.
-        val quickBarExpectedTop =
-            ((root.height * .69f - dp(50)).coerceAtLeast(root.height * .56f)) / root.height
+        val quickBarExpectedTop = HomeLayoutRules.quickBarTop(root.height, dp(50))
         val carTop = HomeLayoutRules.vehicleTopBeforeQuickBar(quickBarExpectedTop)
         renderVehicleArtwork(vehicleModel, .295f, carTop, .41f, .225f)
         val plate = prefs.getString(VehicleRules.PREF_LICENSE_PLATE, "")
