@@ -835,9 +835,35 @@ describe('P0 GH-5417: native PC Operator test runner and Work Order diagnostics'
       expect(() => pcOperatorTestRunSpec(testPath)).toThrow('MCP_TEST_PATH_NOT_ALLOWED');
     }
   });
-  it('turns plain-text Core 404 into a structured missing-work-order receipt', async () => {
-    await expect(pcOperatorWorkOrderResponse(new Response('not_found', {status:404}), '5417'))
-      .resolves.toEqual({workOrder:'5417',found:false,status:404,reason:'WORK_ORDER_NOT_FOUND'});
+  it('does not mislabel a missing Core route as a missing GitHub Work Order', async () => {
+    await expect(pcOperatorWorkOrderResponse(new Response('not_found', {status:404}), 'GH-5135'))
+      .resolves.toEqual({workOrder:'GH-5135',found:false,status:404,reason:'CORE_STATUS_ROUTE_NOT_FOUND'});
+  });
+  it('matches a GitHub issue only by explicit source metadata in the Core snapshot', async () => {
+    const data={ok:true,objectives:[
+      {id:'OBJ-GH-5135-R123',status:'active',metadata:{source:'github',issueNumber:5135,issueUrl:'https://github.com/newsdayads/tigeriq-ai-lab/issues/5135',resourceScope:'ANDROID_V2'}},
+      {id:'OBJ-GH-51350-R999',status:'active',metadata:{source:'github',issueNumber:51350}},
+      {id:'OBJ-GH-5135-OTHER',status:'blocked',metadata:{source:'manual',issueNumber:5135}},
+    ]};
+    await expect(pcOperatorWorkOrderResponse(new Response(JSON.stringify(data),{status:200}),'GH-5135'))
+      .resolves.toEqual({workOrder:'GH-5135',found:true,status:200,source:'CORE_STATUS_BOUNDED_SNAPSHOT',
+        objectives:[{id:'OBJ-GH-5135-R123',status:'active',issueNumber:5135,
+          issueUrl:'https://github.com/newsdayads/tigeriq-ai-lab/issues/5135',resourceScope:'ANDROID_V2'}]});
+  });
+  it('does not confuse a bounded runtime miss with canonical GitHub issue absence', async () => {
+    const data={ok:true,objectives:[{id:'OBJ-GH-51350',metadata:{source:'github',issueNumber:51350}}]};
+    await expect(pcOperatorWorkOrderResponse(new Response(JSON.stringify(data),{status:200}),'GH-5135'))
+      .resolves.toEqual({workOrder:'GH-5135',found:false,status:200,source:'CORE_STATUS_BOUNDED_SNAPSHOT',
+        objectives:[],reason:'NOT_VISIBLE_IN_CORE_SNAPSHOT'});
+  });
+  it('supports Core-native Work Order IDs and unfiltered status snapshots', async () => {
+    const data={ok:true,objectives:[{id:'WO-060',status:'active',metadata:{workOrderId:'WO-060'}}]};
+    const response=new Response(JSON.stringify(data),{status:200});
+    await expect(pcOperatorWorkOrderResponse(response,'WO-060'))
+      .resolves.toEqual({workOrder:'WO-060',found:true,status:200,source:'CORE_STATUS_BOUNDED_SNAPSHOT',
+        objectives:[{id:'WO-060',status:'active',issueNumber:null,issueUrl:null,resourceScope:null}]});
+    await expect(pcOperatorWorkOrderResponse(new Response(JSON.stringify(data),{status:200})))
+      .resolves.toEqual({workOrder:null,found:true,data});
   });
   it('does not parse untrusted non-JSON Core failures', async () => {
     await expect(pcOperatorWorkOrderResponse(new Response('unavailable', {status:503}), '5417'))
