@@ -1,5 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { inspectGlb } from './inspect.mjs';
 
 function fixture(options = {}) {
@@ -38,3 +43,30 @@ test('skin presence alone never proves rig or release',()=>{const r=inspectGlb(f
 
 for (const imageDamage of ['signature','crc','truncated']) test('rejects damaged PNG '+imageDamage,()=>assert.throws(()=>inspectGlb(fixture({imageDamage})),/invalid PNG/));
 for (const imageMime of ['image/jpeg','image/webp']) test('rejects mismatched image MIME '+imageMime,()=>assert.throws(()=>inspectGlb(fixture({imageMime})),/invalid (JPEG|WebP)/));
+
+function runCli(bytes, flags = []) {
+  const dir=mkdtempSync(join(tmpdir(),'tig-strict-'));
+  try {
+    const file=join(dir,'fixture.glb');writeFileSync(file,bytes);
+    return spawnSync(process.execPath,[fileURLToPath(new URL('./inspect.mjs',import.meta.url)),file,...flags],{encoding:'utf8'});
+  } finally { rmSync(dir,{recursive:true,force:true}); }
+}
+test('strict CLI returns zero for technical PASS without claiming release',()=>{
+  const r=runCli(fixture(),['--require-technical-pass']);
+  assert.equal(r.status,0);const report=JSON.parse(r.stdout);assert.equal(report.technicalScreen,'PASS');assert.equal(report.releaseEligible,false);
+});
+test('strict CLI returns 2 for technical NOT_MET and preserves the JSON diagnosis',()=>{
+  const r=runCli(fixture({noUv:true}),['--require-technical-pass']);
+  assert.equal(r.status,2);assert.equal(JSON.parse(r.stdout).technicalScreen,'NOT_MET');
+});
+test('default diagnostic CLI preserves exit zero for a valid but unmet screen',()=>{
+  const r=runCli(fixture({noUv:true}));assert.equal(r.status,0);assert.equal(JSON.parse(r.stdout).technicalScreen,'NOT_MET');
+});
+test('strict CLI malformed GLB exits 1 with no misleading PASS report',()=>{
+  const r=runCli(fixture({badHeader:true}),['--require-technical-pass']);assert.equal(r.status,1);assert.equal(r.stdout,'');assert.match(r.stderr,/header/);
+});
+test('CLI rejects unknown or repeated flags rather than silently ignoring them',()=>{
+  for(const flags of [['--unknown'],['--require-technical-pass','--require-technical-pass']]) {
+    const r=runCli(fixture(),flags);assert.equal(r.status,1);assert.equal(r.stdout,'');assert.match(r.stderr,/Usage:/);
+  }
+});
