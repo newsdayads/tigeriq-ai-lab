@@ -55,7 +55,30 @@ describe('Local CI Gate & Zero-Drop AI Failover', () => {
   it('runs the MCP regression suite for direct MCP changes', () => {
     const calls = [];
     withGitFixture((cwd, head) => runLocalCiGate({ cwd, sourceHeadSha: head, changedPaths: ['apps/tigeriq-core/pc-operator-mcp.mjs'], runner: (cmd) => { calls.push(cmd); return 'PASS'; } }));
-    expect(calls).toEqual(['npm run typecheck && npx vitest run tests/pc-operator-mcp.test.mjs && npm run build', QUEUE_HYGIENE_COMMAND.command]);
+    expect(calls).toEqual(['npm run typecheck && npx vitest run tests/pc-operator-mcp.test.mjs && node --test --test-reporter=tap tests/pc-operator-admin-broker.test.mjs tests/pc-operator-oauth-policy.test.mjs && npm run build', QUEUE_HYGIENE_COMMAND.command]);
+  });
+
+  it.each([
+    'apps/tigeriq-core/github-intake.mjs',
+    'apps/tigeriq-core/github-intake.test.mjs',
+    'tests/github-intake.test.mjs',
+    'apps/tigeriq-core/github-shared-client.mjs',
+    'apps/tigeriq-core/core.mjs',
+  ])('requires both Intake regression runners for %s', path => {
+    expect(scopedTestCommand([path])).toBe('npm run typecheck && npx vitest run apps/tigeriq-core/github-intake.test.mjs && node --test --test-reporter=tap tests/github-intake.test.mjs && npm run build');
+  });
+
+  it('deduplicates mixed Intake and OAuth checks and places both runners before build', () => {
+    const cmd=scopedTestCommand(['apps/tigeriq-core/github-intake.mjs','tests/github-intake.test.mjs','apps/tigeriq-core/pc-operator-oauth-policy.mjs','apps/tigeriq-core/pc-operator-mcp.mjs']);
+    expect(cmd).toBe('npm run typecheck && npx vitest run apps/tigeriq-core/github-intake.test.mjs tests/pc-operator-mcp.test.mjs && node --test --test-reporter=tap tests/github-intake.test.mjs tests/pc-operator-admin-broker.test.mjs tests/pc-operator-oauth-policy.test.mjs && npm run build');
+    withGitFixture((cwd,head)=>{
+      const receipt=runLocalCiGate({cwd,sourceHeadSha:head,changedPaths:['apps/tigeriq-core/github-intake.mjs'],runner:command=>{
+        if(command.includes('node --test'))throw new Error('INTAKE_REGRESSION');
+        return 'PASS';
+      }});
+      expect(receipt.pass).toBe(false);
+      expect(receipt.checkRuns[0].conclusion).toBe('failure');
+    });
   });
 
   it.each([

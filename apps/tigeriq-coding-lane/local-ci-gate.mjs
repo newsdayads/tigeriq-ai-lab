@@ -11,6 +11,18 @@ export const DEFAULT_LOCAL_CI_COMMANDS = Object.freeze([
 export function scopedTestCommand(changedPaths = []) {
   const paths = (Array.isArray(changedPaths) ? changedPaths : []).map((p) => String(p || '').toLowerCase());
   const suites = new Set();
+  const nodeSuites = new Set();
+  const intakePaths = new Set(['apps/tigeriq-core/github-intake.mjs','apps/tigeriq-core/github-intake.test.mjs','tests/github-intake.test.mjs','apps/tigeriq-core/github-shared-client.mjs','apps/tigeriq-core/core.mjs']);
+  const operatorPaths = new Set(['apps/tigeriq-core/pc-operator-mcp.mjs','tests/pc-operator-mcp.test.mjs','apps/tigeriq-core/pc-operator-oauth-policy.mjs','tests/pc-operator-admin-broker.test.mjs','tests/pc-operator-oauth-policy.test.mjs','apps/openclaw-tigeriq-runtime/operator.mjs']);
+  if (paths.some(p => intakePaths.has(p))) {
+    suites.add('apps/tigeriq-core/github-intake.test.mjs');
+    nodeSuites.add('tests/github-intake.test.mjs');
+  }
+  if (paths.some(p => operatorPaths.has(p))) {
+    suites.add('tests/pc-operator-mcp.test.mjs');
+    nodeSuites.add('tests/pc-operator-admin-broker.test.mjs');
+    nodeSuites.add('tests/pc-operator-oauth-policy.test.mjs');
+  }
   const releasePaths = new Set([
     'scripts/tigeriq-core/update-core-runtime.ps1',
     'scripts/tigeriq-core/pc01-release-guard.ps1',
@@ -35,10 +47,14 @@ export function scopedTestCommand(changedPaths = []) {
     if (p.includes('github-coding-intake')) suites.add('tests/github-coding-intake.test.mjs');
     if (p.includes('project-portfolio') || p.includes('portfolio.yaml')) suites.add('tests/project-portfolio.test.mjs');
   }
-  if (!suites.size) return 'npm run typecheck && npm run build';
   // The release suite skips live guard checks when pwsh is absent. Refuse a green CI in that case.
-  const preflight = releaseChecks ? 'pwsh -NoLogo -NoProfile -NonInteractive -Command "exit 0" && ' : '';
-  return `${preflight}npm run typecheck && npx vitest run ${[...suites].join(' ')} && npm run build`;
+  const commands = [];
+  if (releaseChecks) commands.push('pwsh -NoLogo -NoProfile -NonInteractive -Command "exit 0"');
+  commands.push('npm run typecheck');
+  if (suites.size) commands.push(`npx vitest run ${[...suites].join(' ')}`);
+  if (nodeSuites.size) commands.push(`node --test --test-reporter=tap ${[...nodeSuites].join(' ')}`);
+  commands.push('npm run build');
+  return commands.join(' && ');
 }
 
 /** Reject a claimed head unless the tracked checkout is exactly that commit. */
