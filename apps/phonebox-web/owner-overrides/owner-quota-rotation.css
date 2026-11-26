@@ -1,0 +1,21 @@
+/* Owner quota rotation presentation; separate from vendor CSS. */
+@media screen and (max-width:700px) {
+  .page[data-id="home"] .w.tiq-rotating-quota .g-label {
+    white-space:pre-line !important; text-align:center; font-size:10px !important;
+    letter-spacing:0 !important; line-height:1.08; overflow-wrap:anywhere;
+    overflow:visible; width:100%;
+  }
+  .page[data-id="home"] .w.tiq-rotating-quota .g-sub {
+    display:block !important; white-space:normal; text-align:center;
+    font-size:8px !important; line-height:1.08; max-width:100%;
+    overflow-wrap:anywhere; flex-shrink:0;
+  }
+  .page[data-id="home"] .w.tiq-rotating-quota .g-dial {
+    height:min(65px,75cqw) !important;
+  }
+}
+@media screen and (max-width:650px) and (max-height:540px) and (min-aspect-ratio:.82) {
+  .page[data-id="home"] .w.tiq-rotating-quota .g-dial { height:min(47px,72cqw) !important; }
+  .page[data-id="home"] .w.tiq-rotating-quota .g-label { font-size:9px !important; }
+  .page[data-id="home"] .w.tiq-rotating-quota .g-sub { font-size:8px !important; }
+}
