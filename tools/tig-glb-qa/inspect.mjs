@@ -2,6 +2,52 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
+// Framing checks only: no pixel decode or full codec conformance claim.
+const crcTable = Uint32Array.from({length:256}, (_, i) => {
+  for (let bit=0; bit<8; bit++) i = (i >>> 1) ^ ((i & 1) ? 0xedb88320 : 0);
+  return i >>> 0;
+});
+function crc32(bytes) {
+  let crc=0xffffffff;
+  for (const byte of bytes) crc=(crc >>> 8)^crcTable[(crc^byte)&255];
+  return (crc^0xffffffff)>>>0;
+}
+function checkImage(bytes, mime) {
+  const bad = name => { throw new Error('invalid '+name+' image framing'); };
+  if (mime==='image/png') {
+    if(bytes.length<45 || !bytes.subarray(0,8).equals(Buffer.from('89504e470d0a1a0a','hex'))) bad('PNG');
+    let at=8, first=true, hasData=false, ended=false;
+    while(at<bytes.length) {
+      if(bytes.length-at<12) bad('PNG');
+      const len=bytes.readUInt32BE(at), type=bytes.toString('ascii',at+4,at+8);
+      if(len>bytes.length-at-12) bad('PNG');
+      const end=at+8+len;
+      if(crc32(bytes.subarray(at+4,end))!==bytes.readUInt32BE(end)) bad('PNG');
+      if(first) {
+        if(type!=='IHDR'||len!==13||!bytes.readUInt32BE(at+8)||!bytes.readUInt32BE(at+12)) bad('PNG');
+        first=false;
+      } else if(type==='IHDR') bad('PNG');
+      if(type==='IDAT'&&len>0) hasData=true;
+      at=end+4;
+      if(type==='IEND') { if(len!==0||at!==bytes.length||!hasData) bad('PNG'); ended=true; break; }
+    }
+    if(!ended) bad('PNG');
+  } else if(mime==='image/jpeg') {
+    if(bytes.length<4||bytes[0]!==255||bytes[1]!==216||bytes[2]!==255||bytes.at(-2)!==255||bytes.at(-1)!==217) bad('JPEG');
+  } else if(mime==='image/webp') {
+    if(bytes.length<20||bytes.toString('ascii',0,4)!=='RIFF'||bytes.readUInt32LE(4)!==bytes.length-8||bytes.toString('ascii',8,12)!=='WEBP') bad('WebP');
+    let at=12, hasImage=false;
+    while(at<bytes.length) {
+      if(bytes.length-at<8) bad('WebP');
+      const type=bytes.toString('ascii',at,at+4), len=bytes.readUInt32LE(at+4);
+      if(len+(len&1)>bytes.length-at-8) bad('WebP');
+      if((type==='VP8 '||type==='VP8L'||type==='ANMF')&&len>0) hasImage=true;
+      at+=8+len+(len&1);
+    }
+    if(!hasImage) bad('WebP');
+  }
+}
+
 // Offline inspection only. No external URIs, execution, or asset mutation.
 export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
   const b = Buffer.from(input);
@@ -72,7 +118,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     total+=triangles; meshes.push({name:m.name??'mesh-'+mi,triangles,vertices});
   }
   const images=d.images??[];
-  for(const im of images) { if(im.uri!=null || !['image/png','image/jpeg','image/webp'].includes(im.mimeType)) fail('unsupported image'); if(!view(im.bufferView).length) fail('empty image'); }
+  for(const im of images) { if(im.uri!=null || !['image/png','image/jpeg','image/webp'].includes(im.mimeType)) fail('unsupported image'); const {start,length}=view(im.bufferView); if(!length) fail('empty image'); checkImage(bin.subarray(start,start+length),im.mimeType); }
   const skins=d.skins?.length??0, animations=d.animations?.length??0;
   return { schema:'tig-glb-inspection-v1',sha256:createHash('sha256').update(b).digest('hex'),meshes,triangles:total,triangleBudget,embeddedImages:images.length,uvMissing,uvOutOfRange,degenerate,skins,morphTargets,animations,
     technicalScreen:total<=triangleBudget&&uvMissing===0&&uvOutOfRange===0&&degenerate===0&&images.length>0?'PASS':'NOT_MET',
