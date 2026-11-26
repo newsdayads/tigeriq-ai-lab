@@ -371,6 +371,34 @@ export async function pcOperatorWorkOrderResponse(res, workOrder) {
   }
 }
 
+// The bounded runtime objectives and current open-work projection are distinct.
+// A projection match is visibility only; it never establishes job ownership or acceptance.
+export async function pcOperatorWorkOrderLookup(workOrder, fetchImpl = fetch, now = () => Date.now()) {
+  const res = await fetchImpl('http://127.0.0.1:8795/api/status', { signal: AbortSignal.timeout(5000), redirect: 'error' });
+  const result = await pcOperatorWorkOrderResponse(res, workOrder);
+  const numberText = /^(?:GH-|#)?([1-9]\d{0,7})$/i.exec(String(workOrder ?? '').trim())?.[1];
+  if (!numberText || result.reason !== 'NOT_VISIBLE_IN_CORE_SNAPSHOT') return result;
+  const number = Number(numberText);
+  const fail = (status, reason) => ({ workOrder: result.workOrder, found: false, status, reason });
+  let projected;
+  try {
+    projected = await fetchImpl('http://127.0.0.1:8795/api/health-live-work', { signal: AbortSignal.timeout(5000), redirect: 'error' });
+  } catch { return fail(503, 'CORE_WORK_PROJECTION_UNAVAILABLE'); }
+  if (!projected.ok) return fail(projected.status, 'CORE_WORK_PROJECTION_HTTP_ERROR');
+  let data;
+  try { data = await projected.json(); } catch { return fail(502, 'CORE_WORK_PROJECTION_INVALID_JSON'); }
+  const projection = data?.projection;
+  if (data?.ok !== true || !Array.isArray(projection?.openWork)) return fail(503, 'CORE_WORK_PROJECTION_UNAVAILABLE');
+  const generated = Date.parse(String(projection.generatedAt || ''));
+  if (!Number.isFinite(generated) || Math.abs(now() - generated) > 120000 || projection.stale === true || projection.workProjection?.stale === true) return fail(503, 'CORE_WORK_PROJECTION_STALE');
+  const rows = projection.openWork.filter(row => Number(row?.number) === number);
+  if (!rows.length) return fail(404, 'WORK_ORDER_NOT_VISIBLE_IN_OPEN_PROJECTION');
+  if (rows.length !== 1) return fail(409, 'CORE_WORK_PROJECTION_AMBIGUOUS');
+  const row = rows[0];
+  if (row.url !== 'https://github.com/newsdayads/tigeriq-ai-lab/issues/' + number || typeof row.title !== 'string' || !row.title.trim()) return fail(502, 'CORE_WORK_PROJECTION_SOURCE_INVALID');
+  return { ...result, found: true, source: 'CORE_OPEN_WORK_PROJECTION', reason: undefined, data: { number, title: row.title, status: String(row.status ?? ''), jobId: String(row.jobId ?? ''), url: row.url }, generatedAt: projection.generatedAt, leaseVerified: false, acceptanceVerified: false };
+}
+
 const PC_OPERATOR_ADMIN_VERIFY_TASK = 'TigerIQ PC Operator Admin Verify';
 
 export function pcOperatorAdminVerifySpec({
@@ -1234,9 +1262,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
       workOrder: z.string().optional().describe('Mã Work Order (ví dụ: WO-060)'),
     },
     async ({ workOrder }) => {
-      const url = 'http://127.0.0.1:8795/api/status';
-      const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-      return pcOperatorWorkOrderResponse(res, workOrder);
+      return pcOperatorWorkOrderLookup(workOrder);
     }
   );
 }
