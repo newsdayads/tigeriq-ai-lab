@@ -7,7 +7,6 @@ import { request as httpRequest } from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
 import { PAD_UI_ACTIONS, executePadUiAction, executePadV020Signer, probeNv07NativeUserSession } from './pad-ui.mjs';
-import { PAPERCLIP_LAB_ACTIONS, executePaperclipLabAction } from './paperclip-lab.mjs';
 
 const win = path.win32;
 export const PC_OPERATOR_ROOTS = Object.freeze([
@@ -2523,7 +2522,6 @@ export async function executePcAction(input, options = {}) {
   const started = Date.now();
   const action = String(input?.action || '');
   let data;
-  let capabilityEvidence = null;
   if (action === 'shell_exec') {
     data = await runShell(input || {});
   } else if (action === 'nv07_native_session_probe') {
@@ -2598,10 +2596,6 @@ export async function executePcAction(input, options = {}) {
     data = await listPath(input?.path);
   } else if (action === 'file_stat') {
     data = await statPath(input?.path);
-  } else if (PAPERCLIP_LAB_ACTIONS.includes(action)) {
-    const result = await executePaperclipLabAction(input || {}, { signal: options?.signal });
-    data = result.data;
-    capabilityEvidence = result.evidence;
   } else if (PAD_UI_ACTIONS.includes(action)) {
     data = await executePadUiAction(input || {});
   } else {
@@ -2639,9 +2633,6 @@ export async function executePcAction(input, options = {}) {
       productionMutationScope: action === 'tigeriq_live_3150_production_deploy' ? 'TigerIQ LIVE exact-SHA one-shot under validated release authority' : 'none',
       interactiveUiBroker: PAD_UI_ACTIONS.includes(action),
       interactiveUiScope: PAD_UI_ACTIONS.includes(action) ? 'Agent Desktop via existing Windows interactive broker' : 'none',
-      paperclipLabCapability: PAPERCLIP_LAB_ACTIONS.includes(action),
-      paperclipLabScope: PAPERCLIP_LAB_ACTIONS.includes(action) ? 'D:\\TigerIQ-Paperclip-Lab + 127.0.0.1:3210 only' : 'none',
-      ...(capabilityEvidence ? { paperclipLab: capabilityEvidence } : {}),
       arbitraryCoordinates: false,
     },
   };

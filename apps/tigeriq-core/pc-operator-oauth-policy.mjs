@@ -11,7 +11,6 @@ export const OAUTH_SCOPES = Object.freeze([
 ]);
 
 const readTools = [
-  'paperclip_lab_preflight', 'paperclip_lab_health',
   'file_read', 'file_list', 'file_stat', 'file_search',
   'process_list', 'task_list', 'service_status', 'docker_status',
   'wsl_status', 'ui_window_list', 'core_status', 'ollama_status',
@@ -25,7 +24,6 @@ const restrictedTools = {
   ui_action: ['pc01:ui'],
   test_run: ['pc01:execute'],
   evidence_record: ['pc01:write'],
-  paperclip_lab_broker_install: ['pc01:admin'],
 };
 export const TOOL_SCOPE_POLICY = Object.freeze({
   ...Object.fromEntries(readTools.map(name => [name, Object.freeze(['mcp:read'])])),

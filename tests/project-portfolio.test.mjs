@@ -171,7 +171,7 @@ describe('TigerIQ LIVE project portfolio', () => {
       workstreamName: 'Phát hành',
     });
   });
-  it('defines seven Owner-approved portfolio groups and five independent TigerIQ AI components', () => {
+  it('defines five Owner-approved portfolio groups and five independent TigerIQ AI components', () => {
     expect(CANONICAL_PORTFOLIO_GROUPS.map(group => group.name)).toEqual([
       'TigerIQ AI','TigerIQ News / Media',
       'TigerIQ Driver','DeXCam Personal','TigerIQ Coin'
@@ -296,4 +296,9 @@ describe('TigerIQ LIVE project portfolio', () => {
     });
   }
 
+});
+
+it('excludes retired project rows from active portfolio', () => {
+  const rows = annotatePortfolioRows([{number:2054,title:'[PAPERCLIP] retired',workKind:'WORK',status:'WAITING'},{number:5291,title:'[PHONE FARM] retired',workKind:'WORK',status:'WAITING'},{number:9999,title:'[CORE] active',workKind:'WORK',status:'WAITING'}]);
+  expect(buildProjectPortfolio(rows).map(p=>p.id)).toEqual(['tigeriq-platform']);
 });

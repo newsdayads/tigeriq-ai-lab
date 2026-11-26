@@ -20,11 +20,11 @@ function parseSsePayload(text) {
 }
 
 describe('TigerIQ PC Operator MCP Server', () => {
-  it('exposes exactly the 25 comprehensive tools', () => {
-    expect(PC_OPERATOR_MCP_TOOLS.length).toBe(25);
-    expect(PC_OPERATOR_MCP_TOOLS).toContain('paperclip_lab_preflight');
-    expect(PC_OPERATOR_MCP_TOOLS).toContain('paperclip_lab_health');
-    expect(PC_OPERATOR_MCP_TOOLS).toContain('paperclip_lab_broker_install');
+  it('exposes exactly the 22 comprehensive tools', () => {
+    expect(PC_OPERATOR_MCP_TOOLS.length).toBe(22);
+    expect(PC_OPERATOR_MCP_TOOLS).not.toContain('paperclip_lab_preflight');
+    expect(PC_OPERATOR_MCP_TOOLS).not.toContain('paperclip_lab_health');
+    expect(PC_OPERATOR_MCP_TOOLS).not.toContain('paperclip_lab_broker_install');
     expect(PC_OPERATOR_MCP_TOOLS).toContain('file_read');
     expect(PC_OPERATOR_MCP_TOOLS).toContain('file_write');
     expect(PC_OPERATOR_MCP_TOOLS).toContain('file_list');
@@ -66,7 +66,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
       const json = await res.json();
       expect(json.ok).toBe(true);
       expect(json.version).toBe('2.0.0');
-      expect(json.toolsCount).toBe(25);
+      expect(json.toolsCount).toBe(22);
       expect(json.tools).toEqual(PC_OPERATOR_MCP_TOOLS);
     } finally {
       server.close();
@@ -119,73 +119,13 @@ describe('TigerIQ PC Operator MCP Server', () => {
       });
       expect(listRes.status).toBe(200);
       const listText = await listRes.text();
-      expect(listText).toContain('paperclip_lab_preflight');
-      expect(listText).toContain('paperclip_lab_health');
-      expect(listText).toContain('paperclip_lab_broker_install');
+      expect(listText).not.toContain('paperclip_lab_preflight');
+      expect(listText).not.toContain('paperclip_lab_health');
+      expect(listText).not.toContain('paperclip_lab_broker_install');
       expect(listText).toContain('file_read');
       expect(listText).toContain('shell_exec');
       expect(listText).toContain('ui_screenshot');
 
-      // 3. tools/call paperclip_lab_preflight
-      const callPreflight = await fetch(`http://127.0.0.1:${port}/mcp`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 3,
-          method: 'tools/call',
-          params: {
-            name: 'paperclip_lab_preflight',
-            arguments: {},
-          },
-        }),
-      });
-      expect(callPreflight.status).toBe(200);
-      const preflightText = await callPreflight.text();
-      expect(preflightText).toContain('JOB-MCP-');
-      expect(preflightText).toContain('NATIVE_RECEIPT_NOT_ACCEPTED');
-      expect(preflightText).not.toContain('PC_OPERATOR_DIRECT_FENCE');
-      expect(preflightText).toContain('paperclip_lab_preflight');
-      expect(mockExecute).toHaveBeenCalledWith({ action: 'paperclip_lab_preflight' });
-
-      // 4. tools/call paperclip_lab_health
-      const callHealth = await fetch(`http://127.0.0.1:${port}/mcp`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 4,
-          method: 'tools/call',
-          params: {
-            name: 'paperclip_lab_health',
-            arguments: {},
-          },
-        }),
-      });
-      expect(callHealth.status).toBe(200);
-      const healthText = await callHealth.text();
-      expect(healthText).toContain('paperclip_lab_health');
-      expect(mockExecute).toHaveBeenCalledWith({ action: 'paperclip_lab_health' });
-
-      // 5. tools/call paperclip_lab_broker_install
-      const callBroker = await fetch(`http://127.0.0.1:${port}/mcp`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 5,
-          method: 'tools/call',
-          params: {
-            name: 'paperclip_lab_broker_install',
-            arguments: {},
-          },
-        }),
-      });
-      expect(callBroker.status).toBe(200);
-      const brokerText = await callBroker.text();
-      expect(brokerText).toContain('paperclip_lab_broker_install');
-      expect(brokerText).toContain('MCP_EXISTING_AUTH_REQUIRED');
-      expect(mockExecute).not.toHaveBeenCalledWith({ action: 'paperclip_lab_broker_install' });
     } finally {
       server.close();
     }
@@ -311,85 +251,6 @@ describe('TigerIQ PC Operator MCP Server', () => {
     } finally {
       gateway.close();
     }
-  });
-
-  it('requires existing gateway bearer and a real shared lease before writing broker', async () => {
-    const secret = 'a'.repeat(32);
-    const execute = vi.fn().mockResolvedValue({
-      ok: true,
-      data: { installed: true, r07SourceVerified: true, dockerVersion: '27.0' },
-    });
-    const leaseDb = { query: vi.fn() };
-    const leaseApi = {
-      acquire: vi.fn(async (_db, spec) => ({
-        resource_id: spec.resourceId,
-        work_id: spec.workId,
-        lease_token: 'private-token',
-        lease_until: new Date(Date.now() + 120000).toISOString(),
-      })),
-      heartbeat: vi.fn().mockResolvedValue(true),
-      release: vi.fn().mockResolvedValue(true),
-    };
-    const handler = createPcOperatorMcpHandler({
-      executePcActionImpl: execute,
-      existingSecret: secret,
-      leaseDb,
-      leaseApi,
-    });
-    const server = createServer(async (req, res) => {
-      const url = new URL(req.url, 'http://localhost');
-      if (!(await handler(req, res, url))) res.writeHead(404).end();
-    });
-    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-    const port = server.address().port;
-    const call = (authorization) =>
-      fetch('http://127.0.0.1:' + port + '/mcp', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          ...(authorization ? { authorization } : {}),
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 9,
-          method: 'tools/call',
-          params: { name: 'paperclip_lab_broker_install', arguments: {} },
-        }),
-      }).then((r) => r.text());
-    try {
-      const denied = await call(null);
-      expect(denied).toContain('MCP_EXISTING_AUTH_REQUIRED');
-      expect(execute).not.toHaveBeenCalled();
-
-      const accepted = await call('Bearer ' + secret);
-      expect(accepted).toContain('leaseVerified');
-      expect(accepted).toContain('leaseReleased');
-      expect(accepted).toContain('completedStepId');
-      expect(accepted).not.toContain('private-token');
-      expect(leaseApi.acquire).toHaveBeenCalledOnce();
-      expect(leaseApi.heartbeat).toHaveBeenCalled();
-      expect(leaseApi.release).toHaveBeenCalledOnce();
-      expect(execute).toHaveBeenCalledWith({ action: 'paperclip_lab_broker_install' });
-
-      leaseApi.acquire.mockResolvedValueOnce(null);
-      const busy = await call('Bearer ' + secret);
-      expect(busy).toContain('NV06_SHARED_LEASE_BUSY');
-      expect(execute).toHaveBeenCalledTimes(1);
-    } finally {
-      server.close();
-    }
-  });
-
-  it('never accepts a missing database or fabricated lease', async () => {
-    const execute = vi.fn();
-    const server = { tool: vi.fn() };
-    const { registerPcOperatorTools } = await import('../apps/tigeriq-core/pc-operator-mcp.mjs');
-    registerPcOperatorTools(server, execute, { allowMutation: true, leaseDb: null });
-    const install = server.tool.mock.calls.find(([name]) => name === 'paperclip_lab_broker_install')[3];
-    const result = await install();
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('MCP_CORE_SHARED_LEASE_DB_UNAVAILABLE');
-    expect(execute).not.toHaveBeenCalled();
   });
 
   it('executes file_write, file_read, and file_stat with safety boundaries', async () => {

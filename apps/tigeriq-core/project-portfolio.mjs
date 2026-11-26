@@ -290,7 +290,7 @@ export function mergePortfolioWorkRows(openWork = [], activeWork = [], recentWor
 }
 
 export function buildProjectPortfolio(rows = []) {
-  const visible = (Array.isArray(rows) ? rows : []).filter((row) => row?.workKind === 'WORK' && row?.portfolioHidden !== true);
+  const visible = (Array.isArray(rows) ? rows : []).filter((row) => row?.workKind === 'WORK' && row?.portfolioHidden !== true && !['paperclip-vnext', 'tigeriq-phone-farm'].includes(row.projectId) && ![2054,5291].includes(Number(row.number)));
   const hidden = (Array.isArray(rows) ? rows : []).filter((row) => row?.workKind === 'WORK' && row?.portfolioHidden === true);
   const map = new Map();
 
