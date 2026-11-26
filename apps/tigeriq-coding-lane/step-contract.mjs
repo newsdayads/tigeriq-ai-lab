@@ -255,8 +255,7 @@ export function verifyCodingFunctionalChecks({packet,checkRuns=[],sourceHeadSha=
       row.status==='completed'&&row.conclusion==='success'&&
       (!pinned||(row.head_sha.toLowerCase()===string(sourceHeadSha).toLowerCase()&&
          Number.isSafeInteger(row.id)&&row.id>0&&
-         row.appSlug==='github-actions'&&row.detailsUrl.startsWith(prefix)&&
-         /^\d+\/job\/\d+(?:[?#].*)?$/.test(row.detailsUrl.slice(prefix.length)))));
+         ((row.appSlug==='github-actions'&&row.detailsUrl.startsWith(prefix)&&/^\d+\/job\/\d+(?:[?#].*)?$/.test(row.detailsUrl.slice(prefix.length)))||(row.appSlug==='tigeriq-local-ci'&&row.detailsUrl.startsWith('local-ci://pc01/')&&/^\d+\/job\/\d+(?:[?#].*)?$/.test(row.detailsUrl.slice('local-ci://pc01/'.length)))))));
     if(!valid)unverified.push(name);
   }
   return {pass:missing.length===0&&unverified.length===0,

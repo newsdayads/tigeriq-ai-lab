@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import {githubRequestJson,githubTransportSnapshot,invalidateGithubCache} from '../apps/tigeriq-core/github-shared-client.mjs';
 import {githubEventIssue,githubEventNumber,subscribeGithubEvents,publishGithubEvent} from '../apps/tigeriq-core/github-event-bus.mjs';
 import {validateGithubActionsClaims} from '../apps/tigeriq-core/github-actions-oidc.mjs';
@@ -94,17 +94,8 @@ test('Core endpoint durably dedupes GitHub deliveries before publishing',()=>{
   assert.match(core,/publishGithubEvent/);
 });
 
-test('GitHub Work Order workflow is event-driven with OIDC and no persistent dispatch secret',()=>{
-  const workflow=readFileSync('.github/workflows/tigeriq-core-event-dispatch.yml','utf8');
-  assert.match(workflow,/issues:/);
-  assert.match(workflow,/issue_comment:/);
-  assert.match(workflow,/id-token: write/);
-  assert.match(workflow,/audience=tigeriq-core/);
-  assert.match(workflow,/X-TigerIQ-Delivery/);
-  assert.doesNotMatch(workflow,/WEBHOOK_SECRET|TIGERIQ_CORE_TOKEN/);
-  assert.doesNotMatch(workflow,/run_attempt/);
-  assert.match(workflow,/body\.splitlines\(\)/);
-  assert.match(workflow,/line\.startswith\(prefix\)/);
+test('GitHub Actions workflows are removed in favor of PC01 Local CI',()=>{
+  assert.equal(existsSync('.github/workflows/tigeriq-core-event-dispatch.yml'),false);
 });
 
 test('canonical bridge relays signed events while preserving read-only status API',()=>{

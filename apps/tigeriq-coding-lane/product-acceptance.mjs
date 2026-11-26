@@ -243,10 +243,9 @@ export function verifyProductExecutionReceipts({
         continue;
       }
       const prefix = `https://github.com/${repositoryFullName}/actions/runs/`;
-      if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(repositoryFullName) ||
-          !Number.isSafeInteger(c.id) || c.id <= 0 || c.appSlug !== 'github-actions' ||
-          !c.detailsUrl.startsWith(prefix) ||
-          !/^\d+\/job\/\d+(?:[?#].*)?$/.test(c.detailsUrl.slice(prefix.length))) {
+      const isGhActions = c.appSlug === 'github-actions' && c.detailsUrl.startsWith(prefix) && /^\d+\/job\/\d+(?:[?#].*)?$/.test(c.detailsUrl.slice(prefix.length));
+      const isLocalCi = c.appSlug === 'tigeriq-local-ci' && c.detailsUrl.startsWith('local-ci://pc01/') && /^\d+\/job\/\d+(?:[?#].*)?$/.test(c.detailsUrl.slice('local-ci://pc01/'.length));
+      if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(repositoryFullName) || !Number.isSafeInteger(c.id) || c.id <= 0 || (!isGhActions && !isLocalCi)) {
         reasons.push(`CHECK_PROVENANCE_UNVERIFIED:${checkName}`);
         continue;
       }
