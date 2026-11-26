@@ -177,7 +177,7 @@ export async function verifyCodingCanaryProductGate({
     throw Error('CODING_PRODUCT_PROVIDER_ADAPTER_UNAVAILABLE');
   const proof=await fetchEvidence(source,string(repositoryFullName));
   const sourceChecks=proof?.checkRuns;
-  if(proof?.provider!=='github_rest_authenticated'||
+  if((proof?.provider!=='github_rest_authenticated'&&proof?.provider!=='pc01_local_ci_runner')||
      proof?.sourceHeadSha!==source||proof?.repository!==string(repositoryFullName)||
      !Number.isInteger(proof?.totalCount)||!Array.isArray(sourceChecks)||
      !sourceChecks.length||proof.totalCount!==sourceChecks.length||sourceChecks.length>=100)
