@@ -11,10 +11,6 @@ groups:
     name: TigerIQ News / Media
     order: 20
     children: [tigeriq-news]
-  - id: paperclip-vnext
-    name: Paperclip vNext
-    order: 30
-    children: [paperclip-vnext]
   - id: revenue-lab
     name: Revenue Lab
     order: 40

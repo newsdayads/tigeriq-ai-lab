@@ -44,7 +44,6 @@ const PROJECT_ALIASES = new Map([
 export const CANONICAL_PORTFOLIO_GROUPS = Object.freeze([
   { id: 'tigeriq-ai', name: 'TigerIQ AI', order: 10, childIds: ['tigeriq-platform','tigeriq-mobile-worker','tigeriq-live','tigeriq-workflow-lab','tigeriq-app-chrome'] },
   { id: 'tigeriq-news', name: 'TigerIQ News / Media', order: 20, childIds: ['tigeriq-news'] },
-  { id: 'paperclip-vnext', name: 'Paperclip vNext', order: 30, childIds: ['paperclip-vnext'] },
   { id: 'revenue-lab', name: 'Revenue Lab', order: 40, childIds: ['revenue-lab'] },
   { id: 'tigeriq-driver', name: 'TigerIQ Driver', order: 50, childIds: ['tigeriq-driver'] },
   { id: 'dexcam-personal', name: 'DeXCam Personal', order: 60, childIds: ['dexcam-personal', 'tigeriq-camera'] },
@@ -304,7 +303,7 @@ export function mergePortfolioWorkRows(openWork = [], activeWork = [], recentWor
 }
 
 export function buildProjectPortfolio(rows = []) {
-  const visible = (Array.isArray(rows) ? rows : []).filter((row) => row?.workKind === 'WORK' && row?.portfolioHidden !== true);
+  const visible = (Array.isArray(rows) ? rows : []).filter((row) => row?.workKind === 'WORK' && row?.portfolioHidden !== true && !['paperclip-vnext', 'tigeriq-phone-farm'].includes(row.projectId) && ![2054,5291].includes(Number(row.number)));
   const hidden = (Array.isArray(rows) ? rows : []).filter((row) => row?.workKind === 'WORK' && row?.portfolioHidden === true);
   const map = new Map();
 
