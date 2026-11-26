@@ -126,6 +126,13 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     likeness:'NOT_EVALUATED',deformation:'NOT_EVALUATED',ownerVisualApproval:'REQUIRED',releaseEligible:false };
 }
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
-  try { console.log(JSON.stringify(inspectGlb(readFileSync(process.argv[2])),null,2)); }
-  catch(e) { console.error(e.message); process.exitCode=1; }
+  try {
+    const [file, ...flags] = process.argv.slice(2);
+    if (!file || file.startsWith('--') || flags.length>1 || (flags.length===1 && flags[0]!=='--require-technical-pass')) {
+      throw new Error('Usage: node inspect.mjs FILE [--require-technical-pass]');
+    }
+    const report=inspectGlb(readFileSync(file));
+    console.log(JSON.stringify(report,null,2));
+    if (flags.length===1 && report.technicalScreen!=='PASS') process.exitCode=2;
+  } catch(e) { console.error(e.message); process.exitCode=1; }
 }
