@@ -4,6 +4,8 @@ import io
 import json
 from pathlib import Path
 import struct
+import subprocess
+import sys
 import tempfile
 import unittest
 import zlib
@@ -24,7 +26,7 @@ def png(w, h):
 
 
 class PackageTests(unittest.TestCase):
-    def run_fixture(self, layer=None, composite=None, qa=None):
+    def run_fixture(self, layer=None, composite=None, qa=None, require_release=False):
         with tempfile.TemporaryDirectory() as folder:
             ora = io.BytesIO()
             with ZipFile(ora, 'w') as z:
@@ -39,6 +41,9 @@ class PackageTests(unittest.TestCase):
                 for name, data in entries.items():
                     z.writestr(name, data)
                 z.writestr('manifest.json', json.dumps({n: hashlib.sha256(d).hexdigest() for n, d in entries.items()}))
+            if require_release:
+                return subprocess.run([sys.executable, str(SCRIPT), str(path), '--require-release'],
+                                      capture_output=True, text=True, check=False)
             return module.audit(path)
 
     def test_valid_never_grants_release(self):
@@ -46,6 +51,14 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(result['technical_package_integrity'], 'PASS')
         self.assertFalse(result['release_authorized'])
         self.assertEqual(result['visual_acceptance'], 'NOT_VERIFIED_BY_THIS_TOOL')
+
+    def test_cli_refuses_release_of_technical_pass(self):
+        result = self.run_fixture(require_release=True)
+        self.assertEqual(result.returncode, 2, result.stderr)
+        receipt = json.loads(result.stdout)
+        self.assertEqual(receipt['technical_package_integrity'], 'PASS')
+        self.assertFalse(receipt['release_authorized'])
+        self.assertEqual(receipt['visual_acceptance'], 'NOT_VERIFIED_BY_THIS_TOOL')
 
     def test_fake_layer_rejected_even_with_valid_hash(self):
         with self.assertRaisesRegex(ValueError, 'PNG signature'):
