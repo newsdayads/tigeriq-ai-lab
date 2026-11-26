@@ -28,3 +28,8 @@ These are loaded **after** the upstream `/panel/style.css` through the existing 
 PC01 gateway Node tests 4/4 PASS, isolated HTTP style.css returned 200 and contained both owner overlays; production /healthz returned 200; upstream Git checkout had no uncommitted changes. Physical cover/portrait screenshots after this patch still require owner acceptance.
 
 No APK rebuild required; TWA APK fetches the gateway website CSS online. No phone-side Tailscale.
+
+## Owner quota rotation (PhoneBox v0.9.30, 26/11/2026)
+- Home Codex and Antigravity rings rotate available five-hour/weekly windows every five seconds, using the existing panel tick and live quota data. Antigravity cycles Gemini and Claude/GPT windows; other pages remain unchanged.
+- The owner-quota-rotation.mjs overlay transforms only the served widget module. Changed upstream anchors fall back to original source. Presentation is in owner-overrides/owner-quota-rotation.css. No APK rebuild or phone VPN.
+- PC01 Agent and USB app upgraded via vendor updater to 0.9.30; vendor ZIP SHA-256 matches release, original config SHA-256 unchanged, local vendor checkout clean at v0.9.30. Seven automated tests and isolated gateway HTTP overlay check passed. Physical Z Flip/iPhone acceptance remains pending.
