@@ -380,13 +380,22 @@ export async function pcOperatorWorkOrderLookup(workOrder, fetchImpl = fetch, no
   if (!numberText || result.reason !== 'NOT_VISIBLE_IN_CORE_SNAPSHOT') return result;
   const number = Number(numberText);
   const fail = (status, reason) => ({ workOrder: result.workOrder, found: false, status, reason });
+  // This projection composes the local bridge and multiple GitHub reads.
+  // Its cold path exceeded the 5s status deadline on PC01. Keep one bounded
+  // request (no retry storm), with a separate deadline and explicit timeout.
+  const projectionSignal = AbortSignal.timeout(20000);
   let projected;
   try {
-    projected = await fetchImpl('http://127.0.0.1:8795/api/health-live-work', { signal: AbortSignal.timeout(5000), redirect: 'error' });
-  } catch { return fail(503, 'CORE_WORK_PROJECTION_UNAVAILABLE'); }
+    projected = await fetchImpl('http://127.0.0.1:8795/api/health-live-work', { signal: projectionSignal, redirect: 'error' });
+  } catch (error) {
+    return fail(503, projectionSignal.aborted || error?.name === 'TimeoutError' ? 'CORE_WORK_PROJECTION_TIMEOUT' : 'CORE_WORK_PROJECTION_UNAVAILABLE');
+  }
   if (!projected.ok) return fail(projected.status, 'CORE_WORK_PROJECTION_HTTP_ERROR');
   let data;
-  try { data = await projected.json(); } catch { return fail(502, 'CORE_WORK_PROJECTION_INVALID_JSON'); }
+  try { data = await projected.json(); } catch (error) {
+    if (projectionSignal.aborted || error?.name === 'TimeoutError') return fail(503, 'CORE_WORK_PROJECTION_TIMEOUT');
+    return fail(502, 'CORE_WORK_PROJECTION_INVALID_JSON');
+  }
   const projection = data?.projection;
   if (data?.ok !== true || !Array.isArray(projection?.openWork)) return fail(503, 'CORE_WORK_PROJECTION_UNAVAILABLE');
   const generated = Date.parse(String(projection.generatedAt || ''));
