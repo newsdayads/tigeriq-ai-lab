@@ -251,11 +251,22 @@ function Test-OwnerProjectPolicyAcl {
 # Owner project delegation is installed by an explicitly authorized administrator,
 # outside GitHub candidate source. This is NOT a forged GitHub/OIDC signature.
 # Without that protected grant the V1/V2 signed-ticket behavior stays unchanged.
+# PowerShell 7.5+ auto-converts JSON ISO dates into DateTime values. Preserve
+# the original ISO string so the existing invariant RoundtripKind parse does
+# not lose UTC/time-zone information when the object is cast back to string.
+# Windows PowerShell 5.1 has no DateKind parameter and already preserves strings.
+function Read-ReleaseJson([string]$path){
+  $raw=Get-Content -Raw -LiteralPath $path -ErrorAction Stop
+  if((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')){
+    return ($raw|ConvertFrom-Json -DateKind String -ErrorAction Stop)
+  }
+  return ($raw|ConvertFrom-Json -ErrorAction Stop)
+}
 function Get-OwnerProjectReleaseApproval([string]$targetSha,[string]$installedSha,[string[]]$changedPaths,[string]$verifiedGateSha){
   if(-not(Test-Path -LiteralPath $ownerProjectPolicyPath)){return $null}
   if(-not(Test-OwnerProjectPolicyAcl)){return @{approved=$false;reason='OWNER_PROJECT_POLICY_ACL_UNTRUSTED'}}
   try{
-    $p=Get-Content -Raw -LiteralPath $ownerProjectPolicyPath|ConvertFrom-Json -ErrorAction Stop
+    $p=Read-ReleaseJson $ownerProjectPolicyPath
     $expected=@('schema','enabled','repo','policy','authorizationSource','authorizationRef','activatedBy','installedAtActivation','issuedAtUtc')|Sort-Object
     $actual=@($p.PSObject.Properties.Name|Sort-Object)
     if(($actual -join ',') -cne ($expected -join ',') -or
@@ -364,7 +375,7 @@ function Get-ReleaseApproval([string]$targetSha,[string]$installedSha,[hashtable
   if(-not(Test-Path -LiteralPath $releaseApprovalPath)){return @{approved=$false;reason='RELEASE_LOCAL_APPROVAL_MISSING'}}
   if(-not(Test-ReleaseApprovalAcl)){return @{approved=$false;reason='RELEASE_APPROVAL_ACL_UNTRUSTED'}}
   try{
-    $a=Get-Content -Raw -LiteralPath $releaseApprovalPath|ConvertFrom-Json -ErrorAction Stop
+    $a=Read-ReleaseJson $releaseApprovalPath
     $snapshotV2=([string]$a.schema -ceq 'TIGERIQ_PC01_RELEASE_APPROVAL_V2')
     if(-not $snapshotV2 -and [string]$a.schema -ne 'TIGERIQ_PC01_RELEASE_APPROVAL_V1'){return @{approved=$false;reason='RELEASE_APPROVAL_SCHEMA_INVALID'}}
     if($snapshotV2 -and [string]$a.releasePolicy -cne 'SCOPED_SNAPSHOT_V2'){return @{approved=$false;reason='RELEASE_V2_POLICY_INVALID'}}
