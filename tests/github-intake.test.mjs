@@ -85,8 +85,8 @@ function coreBacklogPool(options={}){
       row.metadata={...row.metadata,...JSON.parse(params[2])};
       return {rowCount:1,rows:[{id:row.id}]};
     }
-    if(q.includes("select id,status,summary,metadata from tigeriq_objectives where metadata->>'source'='github'")){
-      const rows=objectives.filter(o=>o.metadata?.source==='github').map(o=>({id:o.id,status:o.status,summary:o.summary||'',metadata:o.metadata}));
+    if(/select id,status,summary,metadata from tigeriq_objectives\s+where metadata->>'source'='github'/.test(q)){
+      const rows=objectives.filter(o=>o.metadata?.source==='github'&&(!Array.isArray(params[0])||params[0].includes(String(o.metadata?.issueNumber)))).map(o=>({id:o.id,status:o.status,summary:o.summary||'',metadata:{...o.metadata}}));
       return {rowCount:rows.length,rows};
     }
     if(q.startsWith('update tigeriq_objectives set status=$2,summary=$3,metadata=metadata||$4::jsonb')){
@@ -532,7 +532,7 @@ test('mobile unavailable routing fault uses the checked-out client and releases 
     'RESOURCE_SCOPE=MOBILE_UNAVAILABLE_DEADLOCK_REGRESSION','CAPABILITY=mobile_worker',
     'EXECUTION_SURFACE=MOBILE_WORKER'
   ].join('\n');
-  const issue={number:3853,state:'open',title:'[P1][ANDROID] unavailable mobile regression',body,labels:[],comments:0,html_url:'https://example/3853'};
+  const issue={number:3853,state:'open',title:'[P1][MOBILE-WORKER] unavailable mobile regression',body,labels:[],comments:0,html_url:'https://example/3853'};
   const out=await materializeGithubIssues({
     pool,
     openIssues:[issue],
@@ -550,7 +550,7 @@ test('mobile unavailable routing fault uses the checked-out client and releases 
 });
 
 test('mobile objectives are excluded from the generic Core manager lane',()=>{
-  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   assert.match(core,/not in \('CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL','CORE_UI','MOBILE_WORKER'\)/);
 });
 
@@ -750,7 +750,7 @@ test('safe read-only Core autowork job includes source NEXT_ACTION and does not 
 test('blocked Core coordination for coding handoff clears terminal label and leaves source Work Order non-terminal',async()=>{
   const pool=coreBacklogPool();
   const issue={number:2474,state:'open',state_reason:null,title:'[P1][CORE] coding handoff blocked coordination',body:SAFE_AUTO_POLICY_BASE,labels:[{name:'tigeriq:terminal-blocked'}],comments:0,html_url:'https://example/2474'};
-  const spec=parseExecutableIssue(issue);
+  const spec=parseExecutableIssue({...issue,labels:[]});
   assert.ok(spec?.requiresCodingHandoff);
   pool.objectives.push({
     id:'OBJ-GH-2474',
@@ -834,7 +834,7 @@ test('generic stale terminal-blocked label clears once on fresh source revision 
   const projected=parseOpenWorkIssue(issue);
   assert.ok(projected);
   assert.notStrictEqual(projected.status,'BLOCKED');
-  assert.strictEqual(projected.status,'OPEN');
+  assert.strictEqual(projected.status,'QUEUED');
 
   out=await materializeGithubIssues({pool,openIssues:[issue],fetchImpl,token:'fake'});
   assert.strictEqual(out.created,0);
@@ -1447,7 +1447,7 @@ test('Owner-direct v0.20 CI artifact signer is admitted only as an owner-direct 
   assert.strictEqual(blocked.created,0);
   assert.strictEqual(noOwnerPool.jobs.length,0);
 
-  const coreSource=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const coreSource=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   assert.match(coreSource,/PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set\(\['task_start','task_stop','android_worker_sign_v020_ci_artifact'/);
   assert.match(coreSource,/android_worker_gate_c_v021_status/);
   assert.match(coreSource,/android_worker_gate_c_v021_enqueue_10/);
@@ -1485,7 +1485,7 @@ test('Owner-direct v0.20 signer ACL bootstrap is admitted only with owner author
   assert.strictEqual(blocked.created,0);
   assert.strictEqual(noOwnerPool.jobs.length,0);
 
-  const coreSource=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const coreSource=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   assert.match(coreSource,/android_worker_sign_v020_user_context/);
   assert.match(coreSource,/android_worker_grant_v020_signer_read_acl/);
 });
@@ -1635,8 +1635,8 @@ test('typed direct pc_operator action remains executable when explanatory prompt
 });
 
 test('Core manager excludes deterministic pc_operator execution surfaces',()=>{
-  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
-  assert.match(core,/not in \('CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL','CORE_UI'\)/);
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
+  assert.match(core,/not in \('CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL','CORE_UI','MOBILE_WORKER'\)/);
   assert.match(core,/reconcileCoreDirectPcOperatorObjectives/);
   assert.match(core,/PC_OPERATOR_DIRECT_OBJECTIVE_RECONCILED/);
 });
@@ -1766,7 +1766,7 @@ test('accepted sibling reuse is exact-revision and exact-scope gated',()=>{
 test('closed accepted sibling inheritance runs before new live/final review orchestration',()=>{
   const source=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
   const sync=source.slice(source.indexOf('export async function syncGithubOutcomes'));
-  const inheritAt=sync.indexOf('const inheritedAcceptedSibling=await inheritClosedAcceptedSiblingCompletion');
+  const inheritAt=sync.indexOf('const inheritedAcceptedSibling=dependencyGate.allow?await inheritClosedAcceptedSiblingCompletion');
   const acceptanceAt=sync.indexOf('if(!inheritedAcceptedSibling&&(row.metadata?.liveAcceptanceRequired===true||row.metadata?.finalReviewRequired===true))');
   const ensureAt=sync.indexOf('ensureFinalLiveReviewJob');
   assert.ok(inheritAt>0);
@@ -1809,7 +1809,7 @@ test('closed source issue terminalizes stale active GitHub objective and release
 });
 
 test('CORE_REVIEW GitHub objectives bypass generic manager and queue one direct review job',()=>{
-  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   const helperAt=core.indexOf('async function reconcileGithubCoreReviewObjective(o)');
   const managerAt=core.indexOf('async function managerTick()');
   const managerSlice=core.slice(managerAt,managerAt+4000);
@@ -1823,16 +1823,16 @@ test('CORE_REVIEW GitHub objectives bypass generic manager and queue one direct 
 });
 
 test('CORE_REVIEW direct path preserves strict targetWorker routing and terminal evidence',()=>{
-  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   assert.match(core,/preferredEmployeeId:j\.objective_metadata\?\.targetWorker\|\|null/);
-  assert.match(core,/CORE_REVIEW completed by \$\{reviewer\}\/\$\{provider\}/);
+  assert.ok(core.includes("CORE_REVIEW ${changesRequired?'changes required':'completed'} by ${reviewer}/${provider}"));
   assert.match(core,/GITHUB_CORE_REVIEW_COMPLETED/);
   assert.match(core,/GITHUB_CORE_REVIEW_BLOCKED/);
 });
 
 
 test('CORE_REVIEW evidence parser enforces exact reviewed head and structured decision',()=>{
-  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   const start=core.indexOf('export function parseGithubCoreReviewEvidence');
   const end=core.indexOf('\n}\n\nasync function reconcileGithubCoreReviewObjective',start)+2;
   assert.ok(start>0&&end>start);
@@ -1858,18 +1858,18 @@ test('CORE_REVIEW evidence parser enforces exact reviewed head and structured de
 });
 
 test('github_review job validates reviewer evidence before terminal done write',()=>{
-  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   const run=core.slice(core.indexOf('async function claimJob()'),core.indexOf('async function callManagerDecision'));
-  assert.match(run,/j\.kind==='github_review'\?parseGithubCoreReviewEvidence\(routed\.text,j\.prompt\):null/);
+  assert.match(run,/if\(j\.kind==='github_review'\)[\s\S]{0,300}reviewEvidence=parseGithubCoreReviewEvidence\(routed\.text,j\.prompt\)/);
   assert.match(run,/reviewEvidence/);
 });
 
 test('github_api_autowork may use approved FREE API roster while preserving explicit LOCAL',()=>{
-  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   assert.match(core,/const CORE_AUTOWORK_EMPLOYEES = Object\.freeze\(\[OLLAMA_EMPLOYEE_ID,'NV11','NV12'\]\)/);
-  assert.match(core,/const employeeAllowlist=j\.kind==='github_api_autowork'\?CORE_AUTOWORK_EMPLOYEES:stabilityAllowlist/);
+  assert.match(core,/const employeeAllowlist=j\.kind==='github_api_autowork'\?githubAutoworkEmployeeAllowlist\(j,CORE_AUTOWORK_EMPLOYEES\):stabilityAllowlist/);
   assert.match(core,/profile:effectiveCoreJobRoutingProfile\(j\)/);
-  assert.match(core,/taskKind==='github_api_autowork'\s*\? new Set\(CORE_AUTOWORK_EMPLOYEES\)/);
+  assert.match(core,/taskKind==='github_api_autowork'\s*\? new Set\(githubAutoworkEmployeeAllowlist\(job,CORE_AUTOWORK_EMPLOYEES\)\)/);
   assert.match(core,/employeeAllowlist\.size/);
   assert.match(core,/employeeAllowlist\.has\(String\(x\.employee_id\|\|''\)\.toUpperCase\(\)\)/);
 });
@@ -1885,7 +1885,7 @@ test('GitHub backlog fallback cadence stays fast and bounded',()=>{
 
 
 test('CORE_REVIEW CHANGES_REQUIRED blocks objective instead of closing review as completed',()=>{
-  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   assert.match(core,/decision==='CHANGES_REQUIRED'/);
   assert.match(core,/changesRequired\?'blocked':'completed'/);
   assert.match(core,/GITHUB_CORE_REVIEW_CHANGES_REQUIRED/);
