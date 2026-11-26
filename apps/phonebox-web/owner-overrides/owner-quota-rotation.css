@@ -85,3 +85,13 @@
 .page .w-processes .seg button { flex:1 1 auto; min-width:0; white-space:normal; overflow-wrap:anywhere; padding-inline:8px; }
 .page .w-github .w-head { flex-wrap:wrap; }
 .page .w-github .gh-bell { max-width:100%; min-width:0; }
+
+/* Compact landscape: reserve space for page dots and the iOS home indicator. */
+@media screen and (orientation:landscape) and (max-height:500px) and (min-width:701px) and (max-width:1000px) {
+  body:not(.pagebar-docked) #pager > .page { padding-top:max(10px,env(safe-area-inset-top)); padding-bottom:calc(30px + env(safe-area-inset-bottom, 0px)); }
+  body:not(.pagebar-docked):not(.controls-top) #dots { bottom:env(safe-area-inset-bottom,0px); }
+  body.controls-top:not(.pagebar-docked) #pager > .page { padding-top:calc(30px + env(safe-area-inset-top, 0px)); padding-bottom:max(10px,env(safe-area-inset-bottom)); }
+  .page[data-id="home"] .w-clock .date, .page[data-id="home"] .w-clock .wx-meta span { white-space:normal; overflow-wrap:anywhere; text-overflow:clip; overflow:visible; }
+  .page[data-id="home"] .w-quotaring .g-dial { height:min(58cqh,85cqw); }
+  .page[data-id="home"] .w-quotaring .g-label,.page[data-id="home"] .w-quotaring .g-sub { white-space:normal !important; overflow-wrap:anywhere; text-align:center; }
+}
