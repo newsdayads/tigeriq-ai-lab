@@ -76,9 +76,14 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     if (start > logical || length > logical - start) fail('buffer view out of bounds');
     return { v, start, length };
   }
-  function accessor(i, kind, types) {
+  function accessor(i, kind, types, { allowNormalizedInteger = false } = {}) {
     const a = d.accessors?.[integer(i, 'accessor index')];
-    if (!a || a.type !== kind || !types.includes(a.componentType) || a.sparse || a.normalized) fail('unsupported accessor');
+    if (!a || a.type !== kind || !types.includes(a.componentType) || a.sparse) fail('unsupported accessor');
+    if (allowNormalizedInteger) {
+      const unsignedInteger = a.componentType === 5121 || a.componentType === 5123;
+      if (unsignedInteger !== (a.normalized === true)) fail('invalid normalized accessor');
+      if (![5126, 5121, 5123].includes(a.componentType)) fail('unsupported normalized accessor');
+    } else if (a.normalized) fail('unsupported accessor');
     const { v, start, length } = view(a.bufferView);
     const count = integer(a.count, 'accessor count'), off = integer(a.byteOffset ?? 0, 'accessor offset');
     const components = { SCALAR:1, VEC2:2, VEC3:3 }[kind];
@@ -86,7 +91,13 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     const stride = integer(v.byteStride ?? width, 'stride');
     if (!count || stride < width || stride % size || (start + off) % size || off > length || width > length - off || count - 1 > Math.floor((length - off - width) / stride)) fail('accessor out of bounds');
     const reader = {5121:'readUInt8',5123:'readUInt16LE',5125:'readUInt32LE',5126:'readFloatLE'}[a.componentType];
-    return { count, get:(n,c=0) => bin[reader](start + off + n*stride + c*size) };
+    return { count, get:(n,c=0) => {
+      const value = bin[reader](start + off + n*stride + c*size);
+      if (!a.normalized) return value;
+      if (a.componentType === 5121) return value / 255;
+      if (a.componentType === 5123) return value / 65535;
+      fail('unsupported normalized accessor');
+    }};
   }
   if (!Array.isArray(d.meshes) || !d.meshes.length) fail('missing meshes');
   const meshes = []; let total = 0, morphTargets = 0, uvMissing = 0, uvOutOfRange = 0, degenerate = 0;
@@ -96,7 +107,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     for (const p of m.primitives) {
       if ((p.mode ?? 4) !== 4) fail('only triangle primitives supported');
       const pos = accessor(p.attributes?.POSITION, 'VEC3', [5126]);
-      const uv = p.attributes?.TEXCOORD_0 == null ? null : accessor(p.attributes.TEXCOORD_0, 'VEC2', [5126]);
+      const uv = p.attributes?.TEXCOORD_0 == null ? null : accessor(p.attributes.TEXCOORD_0, 'VEC2', [5126,5121,5123], { allowNormalizedInteger:true });
       if (uv && uv.count !== pos.count) fail('UV count mismatch');
       if (!uv) uvMissing++;
       for (let n=0;n<pos.count;n++) {
