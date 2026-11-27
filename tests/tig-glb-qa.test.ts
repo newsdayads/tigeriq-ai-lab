@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 const dir = mkdtempSync(join(tmpdir(), 'tig-glb-qa-'));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 let seq = 0;
-function fixture(opts: { index?: number; nan?: boolean; noUv?: boolean; degenerate?: boolean; outsideUv?: boolean; truncated?: boolean; stride?: number; external?: boolean; badHeader?: boolean; imageDamage?: 'crc' | 'signature' | 'truncated'; imageMime?: string; indexStride?: number; imageStride?: number; unknownBeforeBin?: boolean; unknownAfterBin?: boolean; badBinPadding?: boolean } = {}) {
+function fixture(opts: { index?: number; nan?: boolean; noUv?: boolean; degenerate?: boolean; outsideUv?: boolean; truncated?: boolean; stride?: number; external?: boolean; badHeader?: boolean; imageDamage?: 'crc' | 'signature' | 'truncated'; imageMime?: string; indexStride?: number; imageStride?: number; unknownBeforeBin?: boolean; unknownAfterBin?: boolean; badBinPadding?: boolean; sharedView?: boolean; singlePosition?: boolean } = {}) {
   let png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP438AAAAQBAYDFKhhdAAAAAElFTkSuQmCC', 'base64');
   if (opts.imageDamage === 'signature') png[0] ^= 1;
   if (opts.imageDamage === 'crc') png[29] ^= 1;
@@ -20,7 +20,7 @@ function fixture(opts: { index?: number; nan?: boolean; noUv?: boolean; degenera
   if(opts.badBinPadding) bin[bin.length-1] = 1;
   const doc = { asset:{version:'2.0'}, buffers:[{byteLength:68+png.length,...(opts.external?{uri:'external.bin'}:{})}],
     bufferViews:[{buffer:0,byteOffset:0,byteLength:36,...(opts.stride != null?{byteStride:opts.stride}:{})},{buffer:0,byteOffset:36,byteLength:24},{buffer:0,byteOffset:60,byteLength:6,...(opts.indexStride != null?{byteStride:opts.indexStride}:{})},{buffer:0,byteOffset:68,byteLength:png.length,...(opts.imageStride != null?{byteStride:opts.imageStride}:{})}],
-    accessors:[{bufferView:0,componentType:5126,count:3,type:'VEC3'},{bufferView:1,componentType:5126,count:3,type:'VEC2'},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],
+    accessors:[{bufferView:0,componentType:5126,count:opts.singlePosition?1:3,type:'VEC3'},{bufferView:opts.sharedView?0:1,componentType:5126,count:3,type:'VEC2'},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],
     meshes:[{name:'test',primitives:[{attributes:{POSITION:0,...(opts.noUv?{}:{TEXCOORD_0:1})},indices:2}]}],
     images:[{bufferView:3,mimeType:opts.imageMime??'image/png'}] };
   const json=Buffer.from(JSON.stringify(doc)); const padded=Buffer.concat([json,Buffer.alloc((4-json.length%4)%4,32)]);
@@ -43,19 +43,21 @@ function normalizedUvFixture(componentType: 5121 | 5123 | 5126, normalized = tru
   const pos = Buffer.alloc(36);
   [0,0,0,1,0,0,0,1,0].forEach((value,i)=>pos.writeFloatLE(value,i*4));
   const width = componentType === 5121 ? 1 : componentType === 5123 ? 2 : 4;
-  const uv = Buffer.alloc(6*width), values=[0,0,1,0,0,1];
+  const uvStride = componentType === 5121 ? 4 : width*2;
+  const uv = Buffer.alloc(3*uvStride), values=[0,0,1,0,0,1];
   values.forEach((value,i)=>{
-    if(componentType===5121) uv.writeUInt8(Math.round(value*255),i);
-    else if(componentType===5123) uv.writeUInt16LE(Math.round(value*65535),i*2);
-    else uv.writeFloatLE(value,i*4);
+    const offset = Math.floor(i/2)*uvStride + (i%2)*width;
+    if(componentType===5121) uv.writeUInt8(Math.round(value*255),offset);
+    else if(componentType===5123) uv.writeUInt16LE(Math.round(value*65535),offset);
+    else uv.writeFloatLE(value,offset);
   });
   const indices=Buffer.alloc(6);[0,1,2].forEach((value,i)=>indices.writeUInt16LE(value,i*2));
   const uvOffset=pos.length, indexOffset=uvOffset+uv.length, imageOffset=indexOffset+indices.length;
   const logical=imageOffset+png.length;
   const bin=Buffer.concat([pos,uv,indices,png,Buffer.alloc((4-logical%4)%4)]);
   const doc={asset:{version:'2.0'},buffers:[{byteLength:logical}],
-    bufferViews:[{buffer:0,byteOffset:0,byteLength:pos.length},{buffer:0,byteOffset:uvOffset,byteLength:uv.length},{buffer:0,byteOffset:indexOffset,byteLength:indices.length},{buffer:0,byteOffset:imageOffset,byteLength:png.length}],
-    accessors:[{bufferView:0,componentType:5126,count:3,type:'VEC3'},{bufferView:1,componentType,count:3,type:'VEC2',...(normalized?{normalized:true}:{})},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],
+    bufferViews:[{buffer:0,byteOffset:0,byteLength:pos.length},{buffer:0,byteOffset:uvOffset,byteLength:uv.length,...(componentType===5121?{byteStride:4}:{})},{buffer:0,byteOffset:indexOffset,byteLength:indices.length},{buffer:0,byteOffset:imageOffset,byteLength:png.length}],
+    accessors:[{bufferView:0,componentType:5126,count:3,type:'VEC3'},{bufferView:1,componentType,count:3,type:'VEC2',...(normalized?{normalized:true}:{}),...(arguments[2]?{byteOffset:2}:{})},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],
     meshes:[{primitives:[{attributes:{POSITION:0,TEXCOORD_0:1},indices:2}]}],images:[{bufferView:3,mimeType:'image/png'}]};
   const raw=Buffer.from(JSON.stringify(doc)), json=Buffer.concat([raw,Buffer.alloc((4-raw.length%4)%4,32)]);
   const header=Buffer.alloc(12);header.writeUInt32LE(0x46546c67);header.writeUInt32LE(2,4);header.writeUInt32LE(28+json.length+bin.length,8);
@@ -73,6 +75,15 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
   });
   it('rejects normalized FLOAT TEXCOORD_0',()=>{
     const r=run(normalizedUvFixture(5126,true));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid normalized accessor');
+  });
+  it('rejects misaligned vertex attribute accessor offsets',()=>{
+    const r=run(normalizedUvFixture(5123,true,true));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid vertex attribute alignment');
+  });
+  it('rejects shared vertex bufferViews without byteStride',()=>{
+    const r=run(fixture({sharedView:true}));expect(r.status).toBe(1);expect(r.stderr).toContain('shared vertex attributes require byteStride');
+  });
+  it('rejects byteStride larger than bufferView.byteLength',()=>{
+    const r=run(fixture({stride:40,singlePosition:true}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid buffer view stride');
   });
 
   it('accepts unknown extension chunks after BIN',()=>expect(JSON.parse(run(fixture({unknownAfterBin:true})).stdout).technicalScreen).toBe('PASS'));
