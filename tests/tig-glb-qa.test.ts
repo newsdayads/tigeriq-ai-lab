@@ -32,7 +32,7 @@ function run(b: Buffer) {
   const path=join(dir,`fixture-${seq++}.glb`);writeFileSync(path,b);
   return spawnSync(process.execPath,[resolve('tools/tig-glb-qa/inspect.mjs'),path],{encoding:'utf8'});
 }
-function normalizedUvFixture(componentType, normalized = true) {
+function normalizedUvFixture(componentType: 5121 | 5123 | 5126, normalized = true) {
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP438AAAAQBAYDFKhhdAAAAAElFTkSuQmCC', 'base64');
   const pos = Buffer.alloc(36);
   [0,0,0,1,0,0,0,1,0].forEach((value,i)=>pos.writeFloatLE(value,i*4));
