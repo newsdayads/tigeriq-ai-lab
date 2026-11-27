@@ -71,6 +71,7 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
 
   it('counts valid embedded geometry without certifying rig or release',()=>{const r=run(fixture());expect(r.status).toBe(0);expect(JSON.parse(r.stdout)).toMatchObject({triangles:1,embeddedImages:1,technicalScreen:'PASS',rigScreen:'NOT_MET',likeness:'NOT_EVALUATED',ownerVisualApproval:'REQUIRED',releaseEligible:false});});
   it.each([{index:3},{nan:true},{truncated:true},{stride:24},{external:true},{badHeader:true}])('rejects malformed input %j',opts=>{const r=run(fixture(opts));expect(r.status).toBe(1);expect(r.stdout).toBe('');});
+  it.each([3,5,256])('rejects invalid GLB byteStride %s',stride=>{const r=run(fixture({stride}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid buffer view stride');});
   it.each(['signature','crc','truncated'] as const)('rejects damaged PNG %s',imageDamage=>{const r=run(fixture({imageDamage}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid PNG');});
   it.each(['image/jpeg','image/webp'])('rejects mismatched image MIME %s',imageMime=>{const r=run(fixture({imageMime}));expect(r.status).toBe(1);expect(r.stderr).toMatch(/invalid (JPEG|WebP)/);});
   it.each([{noUv:true},{degenerate:true},{outsideUv:true}])('reports an unmet technical screen %j',opts=>{const r=run(fixture(opts));expect(r.status).toBe(0);expect(JSON.parse(r.stdout)).toMatchObject({technicalScreen:'NOT_MET',releaseEligible:false});});
