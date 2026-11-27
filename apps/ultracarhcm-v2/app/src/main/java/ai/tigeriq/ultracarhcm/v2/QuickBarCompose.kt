@@ -24,13 +24,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -63,60 +67,74 @@ internal fun QuickBarGrid(
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val sizing = QuickBarSizing.forHeight(maxHeight.value, LocalDensity.current.fontScale)
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(sizing.rowGapDp.dp),
-        ) {
-            repeat(3) { rowIndex ->
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    repeat(3) { columnIndex ->
-                        val slot = slots[rowIndex * 3 + columnIndex]
-                        val title = slot.label.ifBlank { "Ô ${slot.index + 1}" }
-                        Surface(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .combinedClickable(
-                                    onClick = { onClick(slot.index) },
-                                    onLongClick = { onLongClick(slot.index) },
-                                ),
-                            shape = MaterialTheme.shapes.medium,
-                            // V1 cockpit lives on a dark road scene: do not let
-                            // Material3's default bright Surface erase the dashboard.
-                            color = Color(0xD00C2230),
-                            contentColor = Color(0xFFF0FAFF),
-                            border = BorderStroke(1.dp, Color(0x6657C9EC)),
-                            tonalElevation = 0.dp,
-                        ) {
-                            Row(
+        val configuration = LocalViewConfiguration.current
+        // A fixed 48dp minimum hit region overlaps adjacent rows in a compact
+        // cockpit. Keep the platform width and cap only the vertical expansion
+        // to the allocated row; normal-height targets retain their default.
+        val rowHeight = ((maxHeight.value - 2f * sizing.rowGapDp) / 3f - 1f)
+            .coerceAtLeast(0f).dp
+        val boundedConfiguration = object : ViewConfiguration by configuration {
+            override val minimumTouchTargetSize = DpSize(
+                configuration.minimumTouchTargetSize.width,
+                minOf(configuration.minimumTouchTargetSize.height, rowHeight),
+            )
+        }
+        CompositionLocalProvider(LocalViewConfiguration provides boundedConfiguration) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(sizing.rowGapDp.dp),
+            ) {
+                repeat(3) { rowIndex ->
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        repeat(3) { columnIndex ->
+                            val slot = slots[rowIndex * 3 + columnIndex]
+                            val title = slot.label.ifBlank { "Ô ${slot.index + 1}" }
+                            Surface(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 6.dp, vertical = sizing.verticalPaddingDp.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                Icon(
-                                    imageVector = quickSlotIconVector(slot.icon),
-                                    contentDescription = title,
-                                    modifier = Modifier.size(sizing.iconDp.dp),
-                                    tint = Color(0xFF67D7F6),
-                                )
-                                Text(
-                                    text = title,
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        platformStyle = PlatformTextStyle(includeFontPadding = false),
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .combinedClickable(
+                                        onClick = { onClick(slot.index) },
+                                        onLongClick = { onLongClick(slot.index) },
                                     ),
-                                    color = Color(0xFFF0FAFF),
-                                    fontSize = sizing.fontSp.sp,
-                                    lineHeight = (sizing.fontSp * 1.2f).sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
+                                shape = MaterialTheme.shapes.medium,
+                                // V1 cockpit lives on a dark road scene: do not let
+                                // Material3's default bright Surface erase the dashboard.
+                                color = Color(0xD00C2230),
+                                contentColor = Color(0xFFF0FAFF),
+                                border = BorderStroke(1.dp, Color(0x6657C9EC)),
+                                tonalElevation = 0.dp,
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 6.dp, vertical = sizing.verticalPaddingDp.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = quickSlotIconVector(slot.icon),
+                                        contentDescription = title,
+                                        modifier = Modifier.size(sizing.iconDp.dp),
+                                        tint = Color(0xFF67D7F6),
+                                    )
+                                    Text(
+                                        text = title,
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            platformStyle = PlatformTextStyle(includeFontPadding = false),
+                                        ),
+                                        color = Color(0xFFF0FAFF),
+                                        fontSize = sizing.fontSp.sp,
+                                        lineHeight = (sizing.fontSp * 1.2f).sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
                         }
                     }
