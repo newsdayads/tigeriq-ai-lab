@@ -95,6 +95,8 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     const components = { SCALAR:1, VEC2:2, VEC3:3 }[kind];
     const size = {5121:1,5123:2,5125:4,5126:4}[a.componentType], width = size * components;
     const stride = integer(v.byteStride ?? width, 'stride');
+    if (v.byteStride != null && v.byteStride > length) fail('invalid buffer view stride');
+    if (vertexAttribute && (off % 4 !== 0 || (v.byteStride == null && size % 4 !== 0))) fail('invalid vertex attribute alignment');
     if (!count || stride < width || stride % size || (start + off) % size || off > length || width > length - off || count - 1 > Math.floor((length - off - width) / stride)) fail('accessor out of bounds');
     const reader = {5121:'readUInt8',5123:'readUInt16LE',5125:'readUInt32LE',5126:'readFloatLE'}[a.componentType];
     return { count, get:(n,c=0) => {
@@ -107,11 +109,22 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
   }
   if (!Array.isArray(d.meshes) || !d.meshes.length) fail('missing meshes');
   const meshes = []; let total = 0, morphTargets = 0, uvMissing = 0, uvOutOfRange = 0, degenerate = 0;
+  const vertexViewAccessors = new Map();
   for (const [mi,m] of d.meshes.entries()) {
     if (!Array.isArray(m.primitives) || !m.primitives.length) fail('missing primitives');
     let triangles = 0, vertices = 0;
     for (const p of m.primitives) {
       if ((p.mode ?? 4) !== 4) fail('only triangle primitives supported');
+      for (const accessorIndex of Object.values(p.attributes ?? {})) {
+        const index = integer(accessorIndex, 'vertex attribute accessor index');
+        const attribute = d.accessors?.[index];
+        if (!attribute) fail('unsupported vertex attribute accessor');
+        if (attribute.bufferView != null) {
+          let references = vertexViewAccessors.get(attribute.bufferView);
+          if (!references) vertexViewAccessors.set(attribute.bufferView, references = new Set());
+          references.add(index);
+        }
+      }
       const pos = accessor(p.attributes?.POSITION, 'VEC3', [5126], { vertexAttribute: true });
       const uv = p.attributes?.TEXCOORD_0 == null ? null : accessor(p.attributes.TEXCOORD_0, 'VEC2', [5126,5121,5123], { allowNormalizedInteger:true, vertexAttribute: true });
       if (uv && uv.count !== pos.count) fail('UV count mismatch');
@@ -133,6 +146,10 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
       triangles+=count/3; vertices+=pos.count; morphTargets+=p.targets?.length??0;
     }
     total+=triangles; meshes.push({name:m.name??'mesh-'+mi,triangles,vertices});
+  }
+  for (const [viewIndex, references] of vertexViewAccessors) {
+    const bufferView = d.bufferViews?.[viewIndex];
+    if (references.size > 1 && bufferView?.byteStride == null) fail('shared vertex attributes require byteStride');
   }
   const images=d.images??[];
   for(const im of images) { if(im.uri!=null || !['image/png','image/jpeg','image/webp'].includes(im.mimeType)) fail('unsupported image'); const {start,length}=view(im.bufferView); if(!length) fail('empty image'); checkImage(bin.subarray(start,start+length),im.mimeType); }
