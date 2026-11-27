@@ -23,7 +23,7 @@ function fixture(options = {}) {
   if (options.imageUri) doc.images=[{uri:'https://example.invalid/a.png',mimeType:'image/png'}];
   if (options.imageMime) doc.images[0].mimeType = options.imageMime;
   const raw=Buffer.from(JSON.stringify(doc)); const json=Buffer.concat([raw,Buffer.alloc((4-raw.length%4)%4,32)]);
-  const h=Buffer.alloc(12);h.writeUInt32LE(options.badHeader?0:0x46546c67);h.writeUInt32LE(2,4);h.writeUInt32LE(28+json.length+bin.length,8);
+  const h=Buffer.alloc(12);h.writeUInt32LE(options.badHeader?0:0x46546c67);h.writeUInt32LE(2,4);h.writeUInt32LE(28+json.length+bin.length+(options.unknownBeforeBin?8:0)+(options.unknownAfterBin?8:0),8);
   const chunk=(type,bytes)=>{const header=Buffer.alloc(8);header.writeUInt32LE(bytes.length);header.writeUInt32LE(type,4);return Buffer.concat([header,bytes]);};
   const unknown=chunk(0x12345678,Buffer.alloc(0));
   const chunks=[chunk(0x4e4f534a,json)];
