@@ -27,7 +27,7 @@ Turns repeatable work into SOPs, automations, schedules, and measurable processe
 - Every agent has a bounded role and explicit authority.
 - P0 is Owner-only and invisible/non-executable to AI employees; stale assignment markers cannot delegate it.
 - P1-P5 autonomous routing applies to Core-managed specialist resources such as API workers, Coding Lane and NV06/OpenClaw.
-- `NV02`, `NV03`, `NV04` are outside Core assignment and Core routing. The current Owner policy permits NV02 local self-pull of safe P1–P5 work with lease/evidence/release controls; Core cannot delegate or route work to NV02.
+- `NV02`, `NV03`, `NV04`: The current Owner policy (2026-11-28) permits both `NV02` and `NV03` local self-pull and full execution of safe P1–P5 work (coding, testing, PR/CI, and independent review of others' work) with non-overlapping `RESOURCE_SCOPE` and lease/evidence/release controls; Core cannot delegate or route conflicting work to `NV02`/`NV03`. `NV04` executes Core-dispatched research/review/audit packets.
 - Agents record important decisions/evidence.
 - Agents may propose; they do not exceed delegated authority.
 - Independent review is required for high-impact technical changes.
