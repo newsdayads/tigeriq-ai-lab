@@ -38,7 +38,7 @@ function run(b: Buffer) {
   const path=join(dir,`fixture-${seq++}.glb`);writeFileSync(path,b);
   return spawnSync(process.execPath,[resolve('tools/tig-glb-qa/inspect.mjs'),path],{encoding:'utf8'});
 }
-function normalizedUvFixture(componentType: 5121 | 5123 | 5126, normalized = true) {
+function normalizedUvFixture(componentType: 5121 | 5123 | 5126, normalized = true, misaligned = false) {
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP438AAAAQBAYDFKhhdAAAAAElFTkSuQmCC', 'base64');
   const pos = Buffer.alloc(36);
   [0,0,0,1,0,0,0,1,0].forEach((value,i)=>pos.writeFloatLE(value,i*4));
@@ -57,7 +57,7 @@ function normalizedUvFixture(componentType: 5121 | 5123 | 5126, normalized = tru
   const bin=Buffer.concat([pos,uv,indices,png,Buffer.alloc((4-logical%4)%4)]);
   const doc={asset:{version:'2.0'},buffers:[{byteLength:logical}],
     bufferViews:[{buffer:0,byteOffset:0,byteLength:pos.length},{buffer:0,byteOffset:uvOffset,byteLength:uv.length,...(componentType===5121?{byteStride:4}:{})},{buffer:0,byteOffset:indexOffset,byteLength:indices.length},{buffer:0,byteOffset:imageOffset,byteLength:png.length}],
-    accessors:[{bufferView:0,componentType:5126,count:3,type:'VEC3'},{bufferView:1,componentType,count:3,type:'VEC2',...(normalized?{normalized:true}:{}),...(arguments[2]?{byteOffset:2}:{})},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],
+    accessors:[{bufferView:0,componentType:5126,count:3,type:'VEC3'},{bufferView:1,componentType,count:3,type:'VEC2',...(normalized?{normalized:true}:{}),...(misaligned?{byteOffset:2}:{})},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],
     meshes:[{primitives:[{attributes:{POSITION:0,TEXCOORD_0:1},indices:2}]}],images:[{bufferView:3,mimeType:'image/png'}]};
   const raw=Buffer.from(JSON.stringify(doc)), json=Buffer.concat([raw,Buffer.alloc((4-raw.length%4)%4,32)]);
   const header=Buffer.alloc(12);header.writeUInt32LE(0x46546c67);header.writeUInt32LE(2,4);header.writeUInt32LE(28+json.length+bin.length,8);
