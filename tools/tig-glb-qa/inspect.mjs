@@ -69,6 +69,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
   if (d?.asset?.version !== '2.0' || !bin || d.buffers?.length !== 1 || d.buffers[0].uri != null) fail('unsupported non-embedded GLB');
   const logical = d.buffers[0].byteLength;
   if (!Number.isSafeInteger(logical) || logical < 0 || logical > bin.length || bin.length - logical > 3) fail('invalid buffer length');
+  if (bin.subarray(logical).some(byte => byte !== 0)) fail('invalid BIN padding');
   const integer = (x, name) => { if (!Number.isSafeInteger(x) || x < 0) fail('invalid ' + name); return x; };
   function view(i, { allowStride = false } = {}) {
     const v = d.bufferViews?.[integer(i, 'view index')];
