@@ -27,5 +27,7 @@ describe('GH-5135 F10 visual regression: no opaque white 3x3 QuickBar over night
     expect(compose).toContain('onClick = { onClick(slot.index) }');
     expect(compose).toContain('onLongClick = { onLongClick(slot.index) }');
     expect(compose).toContain('contentDescription = title');
+    expect(compose).toContain('minOf(configuration.minimumTouchTargetSize.height, rowHeight)');
+    expect(compose).toContain('LocalViewConfiguration provides boundedConfiguration');
   });
 });
