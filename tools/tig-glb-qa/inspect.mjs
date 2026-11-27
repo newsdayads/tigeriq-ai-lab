@@ -139,7 +139,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
   const skins=d.skins?.length??0, animations=d.animations?.length??0;
   return { schema:'tig-glb-inspection-v1',sha256:createHash('sha256').update(b).digest('hex'),meshes,triangles:total,triangleBudget,embeddedImages:images.length,uvMissing,uvOutOfRange,degenerate,skins,morphTargets,animations,
     technicalScreen:total<=triangleBudget&&uvMissing===0&&uvOutOfRange===0&&degenerate===0&&images.length>0?'PASS':'NOT_MET',
-    rigScreen:skins>0&&morphTargets>0?'PRESENT_NOT_VALIDATED':'NOT_MET',
+    rigScreen:skins>0?'NOT_CHECKED':'NOT_MET',
     likeness:'NOT_EVALUATED',deformation:'NOT_EVALUATED',ownerVisualApproval:'REQUIRED',releaseEligible:false };
 }
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {
