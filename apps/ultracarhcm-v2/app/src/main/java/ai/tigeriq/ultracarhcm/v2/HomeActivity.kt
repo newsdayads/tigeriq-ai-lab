@@ -70,8 +70,9 @@ class HomeActivity : ComponentActivity() {
         root = FrameLayout(this)
         setContentView(root)
         applyDefaultHomeConfiguration()
-        // onResume owns UI playback/ticks; queued draws must not start while stopped.
-        root.post { if (homeVisible && homeVideo == null) render() }
+        // onResume owns the initial draw as well as playback/ticks. A second
+        // queued draw here would rebuild the entire HOME when media falls back
+        // and homeVideo remains null after the first draw.
     }
 
     override fun onResume() {
