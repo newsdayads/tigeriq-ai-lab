@@ -15,7 +15,9 @@ describe('GH-5135 F10 visual regression: no opaque white 3x3 QuickBar over night
     expect(compose).toContain('contentColor = Color(0xFFF0FAFF)');
     expect(compose).toContain('border = BorderStroke(1.dp, Color(0x6657C9EC))');
     expect(compose).toContain('tonalElevation = 0.dp');
-    expect(compose).toContain('modifier = Modifier.size(18.dp)');
+    expect(compose).toContain('modifier = Modifier.size(sizing.iconDp.dp)');
+    expect(compose).toContain('QuickBarSizing.forHeight(maxHeight.value, LocalDensity.current.fontScale)');
+    expect(compose).toContain('lineHeight = (sizing.fontSp * 1.2f).sp');
     expect(compose).toContain('tint = Color(0xFF67D7F6)');
     expect(compose).toContain('overflow = TextOverflow.Ellipsis');
   });
