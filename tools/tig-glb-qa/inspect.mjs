@@ -74,6 +74,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     if (!v || v.buffer !== 0) fail('invalid buffer view');
     const start = integer(v.byteOffset ?? 0, 'view offset'), length = integer(v.byteLength, 'view length');
     if (start > logical || length > logical - start) fail('buffer view out of bounds');
+    if (v.byteStride != null && (!Number.isSafeInteger(v.byteStride) || v.byteStride < 4 || v.byteStride > 252 || v.byteStride % 4 !== 0)) fail('invalid buffer view stride');
     return { v, start, length };
   }
   function accessor(i, kind, types, { allowNormalizedInteger = false } = {}) {
