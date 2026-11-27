@@ -10,7 +10,7 @@ const fallbackAssignments = new Map([
   ['NV08',{ employee_id:'NV08', name:'Core AI Manager · Ollama Qwen3 8B', admin_state:'ACTIVE_CORE_RESOURCE / MANAGER_ONLY / QWEN3_8B / NO_OTHER_JOBS' }],
   ['NV09',{ employee_id:'NV09', name:'Core AI Coder · Ollama Qwen3.5 9B', admin_state:'IDLE_ON_DEMAND / LOCAL_OLLAMA_11435 / CODING_CAPABILITY / RANK_PRIMARY' }],
   ['NV02',{ employee_id:'NV02', name:'ChatGPT Plus', admin_state:'AVAILABLE_MANUAL / PRIMARY_UI_EXECUTOR / SEPARATE_CHROME_SESSION / NOT_CHIEF_OF_STAFF' }],
-  ['NV03',{ employee_id:'NV03', name:'ChatGPT Go', admin_state:'AVAILABLE_MANUAL / SECOND_REVIEW / SUPPORT_UI_ACCOUNT' }],
+  ['NV03',{ employee_id:'NV03', name:'ChatGPT Go', admin_state:'SELF_PULL_FULL_AUTO_P1_P5 / CODING_AND_INDEPENDENT_REVIEW' }],
   ['NV04',{ employee_id:'NV04', name:'Gemini Pro', admin_state:'AVAILABLE_MANUAL / DEEP_RESEARCH / INDEPENDENT_REVIEW / PAID_SUBSCRIPTION_CONFIRMED_2026-09-14' }],
   ['NV06',{ employee_id:'NV06', name:'PC Operator · OpenClaw', admin_state:'ACTIVE_CORE_RESOURCE / PC_OPERATOR / ZERO_COST / ACCEPTANCE_1528_PASS' }],
   ['NV07',{ employee_id:'NV07', name:'Google Antigravity', admin_state:'ADMIN_ENABLED / PROVISIONING / RUNTIME_NOT_VERIFIED / P1_P5_PROPOSAL_ONLY / NOT_YET_ROUTABLE' }],
