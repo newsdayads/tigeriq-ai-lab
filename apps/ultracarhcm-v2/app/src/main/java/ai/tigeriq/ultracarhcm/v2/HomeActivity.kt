@@ -45,7 +45,8 @@ class HomeActivity : ComponentActivity() {
     private var homeVideo: VideoView? = null
     private var customBackgroundVideo: VideoView? = null
     private var homeVisible = false
-    private val resumeDraw = Runnable { if (homeVisible && homeVideo == null) render() }
+    private var drawAfterLayout = false
+    private val resumeDraw = Runnable { if (homeVisible && (homeVideo == null || drawAfterLayout)) render() }
     private val accent = Color.rgb(0, 208, 255)
     private val clockTick = object : Runnable {
         override fun run() {
@@ -71,6 +72,14 @@ class HomeActivity : ComponentActivity() {
         root = FrameLayout(this)
         setContentView(root)
         applyDefaultHomeConfiguration()
+        root.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
+            // A posted draw can run before the first nonzero layout. Retry only
+            // a draw that actually encountered zero bounds, not every layout.
+            if (homeVisible && drawAfterLayout && right > left && bottom > top) {
+                root.removeCallbacks(resumeDraw)
+                root.post(resumeDraw)
+            }
+        }
         // onResume owns the initial draw as well as playback/ticks. A second
         // queued draw here would rebuild the entire HOME when media falls back
         // and homeVideo remains null after the first draw.
@@ -103,6 +112,7 @@ class HomeActivity : ComponentActivity() {
         // Stop hardware decoding and ticking while HOME is no longer visible.
         // A later onResume recreates only this V2-owned video; never touches V1.
         homeVisible = false
+        drawAfterLayout = false
         root.removeCallbacks(resumeDraw)
         tickHandler.removeCallbacks(clockTick)
         releaseHomeVideo()
@@ -111,6 +121,7 @@ class HomeActivity : ComponentActivity() {
 
     override fun onDestroy() {
         homeVisible = false
+        drawAfterLayout = false
         root.removeCallbacks(resumeDraw)
         tickHandler.removeCallbacks(clockTick)
         releaseHomeVideo()
@@ -676,7 +687,12 @@ class HomeActivity : ComponentActivity() {
     }
 
     private fun render() {
-        if (root.width == 0 || root.height == 0) return
+        if (root.width == 0 || root.height == 0) {
+            drawAfterLayout = homeVisible
+            return
+        }
+        drawAfterLayout = false
+        root.removeCallbacks(resumeDraw)
         releaseHomeVideo()
         root.removeAllViews()
         if (
