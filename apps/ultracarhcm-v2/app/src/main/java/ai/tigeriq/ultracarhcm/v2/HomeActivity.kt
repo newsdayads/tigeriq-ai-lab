@@ -46,7 +46,15 @@ class HomeActivity : ComponentActivity() {
     private var customBackgroundVideo: VideoView? = null
     private var homeVisible = false
     private var drawAfterLayout = false
-    private val resumeDraw = Runnable { if (homeVisible && (homeVideo == null || drawAfterLayout)) render() }
+    private var forceHomeDraw = false
+    private val resumeDraw = Runnable { if (homeVisible && (homeVideo == null || drawAfterLayout || forceHomeDraw)) render() }
+
+    private fun scheduleHomeDraw(force: Boolean = false) {
+        if (!homeVisible) return
+        forceHomeDraw = forceHomeDraw || force
+        root.removeCallbacks(resumeDraw)
+        root.post(resumeDraw)
+    }
     private val accent = Color.rgb(0, 208, 255)
     private val clockTick = object : Runnable {
         override fun run() {
@@ -90,9 +98,8 @@ class HomeActivity : ComponentActivity() {
         homeVisible = true
         tickHandler.removeCallbacks(clockTick)
         tickHandler.post(clockTick)
-        // Discard any queued draw from an earlier resume before scheduling this one.
-        root.removeCallbacks(resumeDraw)
-        root.post(resumeDraw)
+        // Coalesce resume with a pending configuration or media-fallback draw.
+        scheduleHomeDraw()
         if (DexUtils.isDesktop(this) && Settings.canDrawOverlays(this)) {
             try {
                 startService(Intent(this, OverlayService::class.java)
@@ -105,7 +112,7 @@ class HomeActivity : ComponentActivity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        root.post { if (homeVisible) render() }
+        scheduleHomeDraw(force = true)
     }
 
     override fun onStop() {
@@ -113,6 +120,7 @@ class HomeActivity : ComponentActivity() {
         // A later onResume recreates only this V2-owned video; never touches V1.
         homeVisible = false
         drawAfterLayout = false
+        forceHomeDraw = false
         root.removeCallbacks(resumeDraw)
         tickHandler.removeCallbacks(clockTick)
         releaseHomeVideo()
@@ -122,6 +130,7 @@ class HomeActivity : ComponentActivity() {
     override fun onDestroy() {
         homeVisible = false
         drawAfterLayout = false
+        forceHomeDraw = false
         root.removeCallbacks(resumeDraw)
         tickHandler.removeCallbacks(clockTick)
         releaseHomeVideo()
@@ -226,7 +235,7 @@ class HomeActivity : ComponentActivity() {
                         video.stopPlayback()
                         clearInvalidCustomBackground()
                         customBackgroundVideo = null
-                        root.post { if (homeVisible) render() }
+                        scheduleHomeDraw(force = true)
                     }
                     true
                 }
@@ -692,6 +701,7 @@ class HomeActivity : ComponentActivity() {
             return
         }
         drawAfterLayout = false
+        forceHomeDraw = false
         root.removeCallbacks(resumeDraw)
         releaseHomeVideo()
         root.removeAllViews()
