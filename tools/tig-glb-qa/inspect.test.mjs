@@ -80,7 +80,7 @@ for (const [name,options,field] of [['missing UV',{noUv:true},'uvMissing'],['out
 test('missing embedded image fails screen',()=>assert.equal(inspectGlb(fixture({noImage:true})).technicalScreen,'NOT_MET'));
 test('triangle budget is enforced across primitives',()=>{const r=inspectGlb(fixture({extraPrimitive:true}),{triangleBudget:1});assert.equal(r.triangles,2);assert.equal(r.technicalScreen,'NOT_MET');});
 test('invalid budget rejected',()=>assert.throws(()=>inspectGlb(fixture(),{triangleBudget:0}),/invalid triangle budget/));
-test('skin presence alone never proves rig or release',()=>{const r=inspectGlb(fixture({skin:true}));assert.equal(r.skins,1);assert.equal(r.rigScreen,'NOT_MET');assert.equal(r.releaseEligible,false);});
+test('declared skin without morph targets is not falsely marked absent',()=>{const r=inspectGlb(fixture({skin:true}));assert.equal(r.skins,1);assert.equal(r.morphTargets,0);assert.equal(r.rigScreen,'NOT_CHECKED');assert.equal(r.releaseEligible,false);});
 
 for (const imageDamage of ['signature','crc','truncated']) test('rejects damaged PNG '+imageDamage,()=>assert.throws(()=>inspectGlb(fixture({imageDamage})),/invalid PNG/));
 for (const imageMime of ['image/jpeg','image/webp']) test('rejects mismatched image MIME '+imageMime,()=>assert.throws(()=>inspectGlb(fixture({imageMime})),/invalid (JPEG|WebP)/));
