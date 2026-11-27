@@ -164,7 +164,7 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     const rerender = home.slice(renderStart, renderNight);
     expect(rerender).toMatch(/releaseHomeVideo\(\)\s*root\.removeAllViews\(\)/);
     const destroy = home.slice(home.indexOf('override fun onDestroy()'), home.indexOf('private fun releaseHomeVideo()'));
-    expect(destroy).toMatch(/homeVisible = false\s*tickHandler\.removeCallbacks\(clockTick\)\s*releaseHomeVideo\(\)\s*super\.onDestroy\(\)/);
+    expect(destroy).toMatch(/homeVisible = false\s*root\.removeCallbacks\(resumeDraw\)\s*tickHandler\.removeCallbacks\(clockTick\)\s*releaseHomeVideo\(\)\s*super\.onDestroy\(\)/);
     expect(home).toContain('if (homeVideo === bot)');
   });
 
@@ -178,10 +178,11 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(create).not.toMatch(/\brender\(\)/);
     const resume = home.slice(home.indexOf('override fun onResume()'), home.indexOf('override fun onConfigurationChanged('));
     expect(resume).toMatch(/homeVisible = true\s*tickHandler\.removeCallbacks\(clockTick\)\s*tickHandler\.post\(clockTick\)/);
-    expect(resume).toContain('root.post { if (homeVisible && homeVideo == null) render() }');
-    expect((resume.match(/\brender\(\)/g) ?? []).length).toBe(1);
+    expect(home).toContain('private val resumeDraw = Runnable { if (homeVisible && homeVideo == null) render() }');
+    expect(resume).toMatch(/root\.removeCallbacks\(resumeDraw\)\s*root\.post\(resumeDraw\)/);
+    expect((resume.match(/root\.post\(resumeDraw\)/g) ?? []).length).toBe(1);
     const stop = home.slice(home.indexOf('override fun onStop()'), home.indexOf('override fun onDestroy()'));
-    expect(stop).toMatch(/homeVisible = false\s*tickHandler\.removeCallbacks\(clockTick\)\s*releaseHomeVideo\(\)\s*super\.onStop\(\)/);
+    expect(stop).toMatch(/homeVisible = false\s*root\.removeCallbacks\(resumeDraw\)\s*tickHandler\.removeCallbacks\(clockTick\)\s*releaseHomeVideo\(\)\s*super\.onStop\(\)/);
     expect(home).toContain('root.post { if (homeVisible) render() }');
     expect(home).not.toContain('root.post { render() }');
     // Android lifecycle callback ownership is not physical Device/DeX QA.
