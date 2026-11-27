@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -27,6 +28,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,57 +61,63 @@ internal fun QuickBarGrid(
         "QuickBar requires exactly ${QuickSlotRules.SLOT_COUNT} slots"
     }
 
-    Column(
-        modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        repeat(3) { rowIndex ->
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                repeat(3) { columnIndex ->
-                    val slot = slots[rowIndex * 3 + columnIndex]
-                    val title = slot.label.ifBlank { "Ô ${slot.index + 1}" }
-                    Surface(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .combinedClickable(
-                                onClick = { onClick(slot.index) },
-                                onLongClick = { onLongClick(slot.index) },
-                            ),
-                        shape = MaterialTheme.shapes.medium,
-                        // V1 cockpit lives on a dark road scene: do not let
-                        // Material3's default bright Surface erase the dashboard.
-                        color = Color(0xD00C2230),
-                        contentColor = Color(0xFFF0FAFF),
-                        border = BorderStroke(1.dp, Color(0x6657C9EC)),
-                        tonalElevation = 0.dp,
-                    ) {
-                        Row(
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val sizing = QuickBarSizing.forHeight(maxHeight.value, LocalDensity.current.fontScale)
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(sizing.rowGapDp.dp),
+        ) {
+            repeat(3) { rowIndex ->
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    repeat(3) { columnIndex ->
+                        val slot = slots[rowIndex * 3 + columnIndex]
+                        val title = slot.label.ifBlank { "Ô ${slot.index + 1}" }
+                        Surface(
                             modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 6.dp, vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .combinedClickable(
+                                    onClick = { onClick(slot.index) },
+                                    onLongClick = { onLongClick(slot.index) },
+                                ),
+                            shape = MaterialTheme.shapes.medium,
+                            // V1 cockpit lives on a dark road scene: do not let
+                            // Material3's default bright Surface erase the dashboard.
+                            color = Color(0xD00C2230),
+                            contentColor = Color(0xFFF0FAFF),
+                            border = BorderStroke(1.dp, Color(0x6657C9EC)),
+                            tonalElevation = 0.dp,
                         ) {
-                            Icon(
-                                imageVector = quickSlotIconVector(slot.icon),
-                                contentDescription = title,
-                                modifier = Modifier.size(18.dp),
-                                tint = Color(0xFF67D7F6),
-                            )
-                            Text(
-                                text = title,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = Color(0xFFF0FAFF),
-                                fontSize = 11.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 6.dp, vertical = sizing.verticalPaddingDp.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Icon(
+                                    imageVector = quickSlotIconVector(slot.icon),
+                                    contentDescription = title,
+                                    modifier = Modifier.size(sizing.iconDp.dp),
+                                    tint = Color(0xFF67D7F6),
+                                )
+                                Text(
+                                    text = title,
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        platformStyle = PlatformTextStyle(includeFontPadding = false),
+                                    ),
+                                    color = Color(0xFFF0FAFF),
+                                    fontSize = sizing.fontSp.sp,
+                                    lineHeight = (sizing.fontSp * 1.2f).sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                     }
                 }
