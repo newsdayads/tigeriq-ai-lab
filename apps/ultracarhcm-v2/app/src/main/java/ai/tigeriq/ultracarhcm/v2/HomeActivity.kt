@@ -45,6 +45,7 @@ class HomeActivity : ComponentActivity() {
     private var homeVideo: VideoView? = null
     private var customBackgroundVideo: VideoView? = null
     private var homeVisible = false
+    private val resumeDraw = Runnable { if (homeVisible && homeVideo == null) render() }
     private val accent = Color.rgb(0, 208, 255)
     private val clockTick = object : Runnable {
         override fun run() {
@@ -80,7 +81,9 @@ class HomeActivity : ComponentActivity() {
         homeVisible = true
         tickHandler.removeCallbacks(clockTick)
         tickHandler.post(clockTick)
-        root.post { if (homeVisible && homeVideo == null) render() }
+        // Discard any queued draw from an earlier resume before scheduling this one.
+        root.removeCallbacks(resumeDraw)
+        root.post(resumeDraw)
         if (DexUtils.isDesktop(this) && Settings.canDrawOverlays(this)) {
             try {
                 startService(Intent(this, OverlayService::class.java)
@@ -100,6 +103,7 @@ class HomeActivity : ComponentActivity() {
         // Stop hardware decoding and ticking while HOME is no longer visible.
         // A later onResume recreates only this V2-owned video; never touches V1.
         homeVisible = false
+        root.removeCallbacks(resumeDraw)
         tickHandler.removeCallbacks(clockTick)
         releaseHomeVideo()
         super.onStop()
@@ -107,6 +111,7 @@ class HomeActivity : ComponentActivity() {
 
     override fun onDestroy() {
         homeVisible = false
+        root.removeCallbacks(resumeDraw)
         tickHandler.removeCallbacks(clockTick)
         releaseHomeVideo()
         super.onDestroy()
