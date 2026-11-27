@@ -184,7 +184,11 @@ export function parseCodingIssue(issue){
     ||currentCodingValue(body,'SUPERSEDED_BY')
     ||currentCodingValue(body,'SUPERSEDED'))return null;
   if(currentCodingValue(body,'NO_SECURITY_BOUNDARY_CHANGE').toLowerCase()==='false')return null;
-  const ownerAutoResume=exactFlag(body,'OWNER_DIRECT','true')&&/^(?:CONDITIONAL_AUTO_AFTER_VERIFIED_CORE_RECOVERY|AUTO)$/i.test(currentCodingValue(body,'RESUME_POLICY'));
+  const ownerAutoResume=exactFlag(body,'OWNER_DIRECT','true')&&(
+    /^(?:CONDITIONAL_AUTO_AFTER_VERIFIED_CORE_RECOVERY|AUTO)$/i.test(currentCodingValue(body,'RESUME_POLICY'))
+    || exactFlag(body,'OWNER_DIRECT_FULL_AUTO','true')
+    || (exactFlag(body,'TIGERIQ_EXECUTABLE','true')&&exactFlag(body,'OWNER_POLICY','AUTO')&&exactFlag(body,'AUTO_DISPATCH','true'))
+  );
   const required=[['TIGERIQ_EXECUTABLE','true'],['OWNER_POLICY','AUTO'],['AUTONOMOUS_CODE','true'],['ZERO_COST','true'],['NO_PC01_SHELL','true'],['NO_PAID_COST','true'],['NO_CREDENTIAL_CHANGE','true'],['NO_SECURITY_BOUNDARY_CHANGE','true'],['NO_DESTRUCTIVE','true'],['NO_PRODUCTION_RELEASE','true'],['NO_BROWSER_AUTH','true'],['NO_DIRECT_MAIN','true']];
   if(!ownerAutoResume&&required.some(([k,v])=>!exactFlag(body,k,v)))return null;
   // Work Order V2 uses READY/WORKING + real leases. Archived V1
