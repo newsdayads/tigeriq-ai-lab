@@ -172,10 +172,14 @@ describe('GH-5135 HOME configuration source contract (not device QA)', () => {
     expect(home).toContain('private var homeVisible = false');
     const create = home.slice(home.indexOf('override fun onCreate('), home.indexOf('override fun onResume()'));
     expect(create).not.toContain('tickHandler.post(clockTick)');
-    expect(create).toContain('root.post { if (homeVisible && homeVideo == null) render() }');
+    // onResume must be the sole initial draw owner, including the media fallback
+    // where homeVideo remains null after rendering. Two callbacks rebuild HOME twice.
+    expect(create).not.toMatch(/root\.post\s*\{/);
+    expect(create).not.toMatch(/\brender\(\)/);
     const resume = home.slice(home.indexOf('override fun onResume()'), home.indexOf('override fun onConfigurationChanged('));
     expect(resume).toMatch(/homeVisible = true\s*tickHandler\.removeCallbacks\(clockTick\)\s*tickHandler\.post\(clockTick\)/);
     expect(resume).toContain('root.post { if (homeVisible && homeVideo == null) render() }');
+    expect((resume.match(/\brender\(\)/g) ?? []).length).toBe(1);
     const stop = home.slice(home.indexOf('override fun onStop()'), home.indexOf('override fun onDestroy()'));
     expect(stop).toMatch(/homeVisible = false\s*tickHandler\.removeCallbacks\(clockTick\)\s*releaseHomeVideo\(\)\s*super\.onStop\(\)/);
     expect(home).toContain('root.post { if (homeVisible) render() }');
