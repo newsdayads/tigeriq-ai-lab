@@ -61,6 +61,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     at += 8;
     if (len % 4 || at + len > b.length) fail('invalid chunk length');
     if (chunks++ === 0 && type !== 0x4e4f534a) fail('JSON must be first');
+    if (type === 0x004e4942 && chunks !== 2) fail('BIN chunk must be second');
     if (type === 0x4e4f534a) { if (d) fail('duplicate JSON'); d = JSON.parse(b.subarray(at, at + len).toString('utf8')); }
     else if (type === 0x004e4942) { if (bin) fail('duplicate BIN'); bin = b.subarray(at, at + len); }
     at += len;
@@ -69,15 +70,18 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
   const logical = d.buffers[0].byteLength;
   if (!Number.isSafeInteger(logical) || logical < 0 || logical > bin.length || bin.length - logical > 3) fail('invalid buffer length');
   const integer = (x, name) => { if (!Number.isSafeInteger(x) || x < 0) fail('invalid ' + name); return x; };
-  function view(i) {
+  function view(i, { allowStride = false } = {}) {
     const v = d.bufferViews?.[integer(i, 'view index')];
     if (!v || v.buffer !== 0) fail('invalid buffer view');
     const start = integer(v.byteOffset ?? 0, 'view offset'), length = integer(v.byteLength, 'view length');
     if (start > logical || length > logical - start) fail('buffer view out of bounds');
-    if (v.byteStride != null && (!Number.isSafeInteger(v.byteStride) || v.byteStride < 4 || v.byteStride > 252 || v.byteStride % 4 !== 0)) fail('invalid buffer view stride');
+    if (v.byteStride != null) {
+      if (!allowStride) fail('byteStride only allowed for vertex attributes');
+      if (!Number.isSafeInteger(v.byteStride) || v.byteStride < 4 || v.byteStride > 252 || v.byteStride % 4 !== 0) fail('invalid buffer view stride');
+    }
     return { v, start, length };
   }
-  function accessor(i, kind, types, { allowNormalizedInteger = false } = {}) {
+  function accessor(i, kind, types, { allowNormalizedInteger = false, vertexAttribute = false } = {}) {
     const a = d.accessors?.[integer(i, 'accessor index')];
     if (!a || a.type !== kind || !types.includes(a.componentType) || a.sparse) fail('unsupported accessor');
     if (allowNormalizedInteger) {
@@ -85,7 +89,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
       if (unsignedInteger !== (a.normalized === true)) fail('invalid normalized accessor');
       if (![5126, 5121, 5123].includes(a.componentType)) fail('unsupported normalized accessor');
     } else if (a.normalized) fail('unsupported accessor');
-    const { v, start, length } = view(a.bufferView);
+    const { v, start, length } = view(a.bufferView, { allowStride: vertexAttribute });
     const count = integer(a.count, 'accessor count'), off = integer(a.byteOffset ?? 0, 'accessor offset');
     const components = { SCALAR:1, VEC2:2, VEC3:3 }[kind];
     const size = {5121:1,5123:2,5125:4,5126:4}[a.componentType], width = size * components;
@@ -107,8 +111,8 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     let triangles = 0, vertices = 0;
     for (const p of m.primitives) {
       if ((p.mode ?? 4) !== 4) fail('only triangle primitives supported');
-      const pos = accessor(p.attributes?.POSITION, 'VEC3', [5126]);
-      const uv = p.attributes?.TEXCOORD_0 == null ? null : accessor(p.attributes.TEXCOORD_0, 'VEC2', [5126,5121,5123], { allowNormalizedInteger:true });
+      const pos = accessor(p.attributes?.POSITION, 'VEC3', [5126], { vertexAttribute: true });
+      const uv = p.attributes?.TEXCOORD_0 == null ? null : accessor(p.attributes.TEXCOORD_0, 'VEC2', [5126,5121,5123], { allowNormalizedInteger:true, vertexAttribute: true });
       if (uv && uv.count !== pos.count) fail('UV count mismatch');
       if (!uv) uvMissing++;
       for (let n=0;n<pos.count;n++) {
