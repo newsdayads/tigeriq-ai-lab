@@ -139,6 +139,10 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
     expect(r.status).toBe(0);
     expect(JSON.parse(r.stdout)).toMatchObject({uvMissing:0,uvOutOfRange:0,technicalScreen:'PASS',releaseEligible:false});
   });
+  it('rejects vertex attributes with mismatched counts',()=>{
+    const glb=rewriteJsonFixture(d=>{d.bufferViews[0].byteStride=12;d.accessors.push({...d.accessors[0],count:2});d.meshes[0].primitives[0].attributes.NORMAL=3;});
+    const r=run(glb);expect(r.status).toBe(1);expect(r.stderr).toContain('vertex attribute count mismatch');
+  });
   it('rejects duplicate JSON chunks even when first JSON value is null',()=>{
     const r=run(duplicateJsonFixture());expect(r.status).toBe(1);expect(r.stderr).toContain('duplicate JSON');
   });
