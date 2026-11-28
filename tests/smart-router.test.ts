@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { describe,expect,it } from 'vitest';
-import { ROUTING_PROFILES,createResourceId,deriveRoutingProfile,failurePolicy,normalizeQuota,quotaUsable,rankCandidates,rateLimitFailureState } from '../apps/tigeriq-core/smart-router.mjs';
+import { ROUTING_PROFILES,createResourceId,deriveRoutingProfile,failurePolicy,normalizeQuota,quotaUsable,rankCandidates,rateLimitFailureState,diagnoseRoutingFailure } from '../apps/tigeriq-core/smart-router.mjs';
 
 const base=(overrides={})=>({resource_id:'res:groq:free-model:default:core',employee_id:'NV11',provider:'groq',model:'free-model',enabled:true,health_state:'ONLINE',cooldown_until:null,cost_tier:'FREE',capabilities:['general','reasoning','review'],rank:10,success_count:9,failure_count:1,last_latency_ms:900,quota_state:{known:false,usable:true},taskStats:{general:{success:9,failure:1,retry:0,failover:0}},...overrides});
 
@@ -19,4 +19,19 @@ describe('#777 Smart Router foundation',()=>{
   it('filters active cooldown and uses task-specific latency/failure/retry/failover history',()=>{const slow=base({resource_id:'res:slow:model:default:core',provider:'slow',last_latency_ms:50,taskStats:{research:{success:1,failure:9,retry:3,failover:2,avgLatencyMs:9000}}});const fast=base({resource_id:'res:fast:model:default:core',provider:'fast',last_latency_ms:5000,taskStats:{research:{success:9,failure:1,retry:0,failover:0,avgLatencyMs:100}}});expect(rankCandidates([slow,fast],{profile:'FAST',taskKind:'research'}).chosen?.resourceId).toBe('res:fast:model:default:core');expect(rankCandidates([fast,{...slow,cooldown_until:'2999-01-01T00:00:00Z'}],{nowMs:Date.parse('2026-09-15T00:00:00Z')}).candidates.find(x=>x.resourceId==='res:slow:model:default:core')?.reasons).toContain('cooldown');});
   it('returns explainable decision evidence',()=>{const d=rankCandidates([base()],{profile:'AUTO',taskKind:'general',capability:'reasoning'});expect(d).toMatchObject({profile:'AUTO',taskKind:'general',capability:'reasoning'});expect(d.chosen?.reasons.length).toBeGreaterThan(0);expect(d.candidates[0]).toHaveProperty('score');});
   it('uses bounded failure policies and never auto-bypasses auth/config/security/paid/production boundaries',()=>{expect(failurePolicy('rate_limit')).toMatchObject({retrySameResource:false,failover:true,stop:false});expect(failurePolicy('timeout')).toMatchObject({retrySameResource:true,failover:true});expect(failurePolicy('invalid_response')).toMatchObject({failover:true,stop:false});expect(failurePolicy('job_contract')).toEqual({kind:'job_contract',retrySameResource:false,failover:false,cooldownMs:0,stop:true});for(const kind of ['auth','configuration','security','credential','paid','production','irreversible'])expect(failurePolicy(kind)).toMatchObject({failover:false,stop:true});});
+});
+
+describe('GH-5814 adaptive routing safety',()=>{
+  it('does not repeat unchanged timeout; respects hard gates',()=>{
+    expect(diagnoseRoutingFailure('timeout')).toMatchObject({action:'FAILOVER',retrySameResource:false});
+    expect(diagnoseRoutingFailure('timeout',{materialChangeVerified:true})).toMatchObject({action:'RETRY_CHANGED_REQUEST',retrySameResource:true});
+    expect(diagnoseRoutingFailure('auth',{materialChangeVerified:true})).toMatchObject({action:'STOP',retrySameResource:false});
+  });
+  it('does not penalize workload volume when retry/failure ratios match',()=>{
+    const a=base({resource_id:'res:a',taskStats:{general:{success:9,failure:1,retry:1,failover:1}}});
+    const b=base({resource_id:'res:b',taskStats:{general:{success:90,failure:10,retry:10,failover:10}}});
+    const out=rankCandidates([a,b]);
+    expect(out.candidates[0].score).toBe(out.candidates[1].score);
+    expect(out.candidates[1].reasons).toContain('taskSamples:100');
+  });
 });

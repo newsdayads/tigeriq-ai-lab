@@ -73,3 +73,29 @@ describe('Learn From Failure',()=>{
     expect(block).toMatch(/version: 1\.0\.0/);
   });
 });
+
+describe('Verified learning evidence — GH-5814',()=>{
+  it('does not inflate confidence from replayed durable event IDs',()=>{
+    const first=ev(1);
+    const result=buildFailureLearningCandidates([first,first,ev(2)]);
+    expect(result).toHaveLength(1);
+    expect(result[0].occurrenceCount).toBe(2);
+    expect(result[0].occurrences).toHaveLength(2);
+    expect(result[0].evidenceRefs).toEqual(['event:1','event:2']);
+    expect(buildFailureLearningCandidates([first,first])).toEqual([]);
+  });
+  it('rejects empty evidence IDs and invalid timestamps',()=>{
+    expect(normalizeFailureEvent({...ev(1),seq:''})).toBeNull();
+    expect(normalizeFailureEvent({...ev(1),seq:'  '})).toBeNull();
+    expect(normalizeFailureEvent({...ev(2),ts:'not-a-date'})).toBeNull();
+    expect(buildFailureLearningCandidates([{...ev(1),seq:''},{...ev(2),ts:'not-a-date'},ev(3)])).toEqual([]);
+  });
+  it('does not lose protected-boundary evidence when duplicate IDs are replayed',()=>{
+    const first=ev(1);
+    const protectedReplay=ev(1,{message:'production credential auth failure'});
+    const result=buildFailureLearningCandidates([first,protectedReplay,ev(2)])[0];
+    expect(result.occurrenceCount).toBe(2);
+    expect(result.requiresOwnerAuthorization).toBe(true);
+    expect(result.autoPromotionAllowed).toBe(false);
+  });
+});

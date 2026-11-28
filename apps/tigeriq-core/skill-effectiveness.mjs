@@ -41,6 +41,8 @@ export function buildSkillOutcomeObservation(id, input = {}) {
     version,
     jobId,
     objectiveId: input?.objectiveId ? String(input.objectiveId) : null,
+    taskKind: input?.taskKind ? String(input.taskKind) : null,
+    qualityVerified: input?.qualityVerified === true,
     outcome,
     verified,
     resourceId: input?.resourceId ? String(input.resourceId) : null,
@@ -166,4 +168,29 @@ export function measureEffectiveness(id) {
 export function retireSkill(id) {
   if (!id) throw new Error('Skill ID is required');
   return eventsMap.delete(id);
+}
+
+/** Advisory terminal evidence within a single objective and skill version; not causal proof of quality. */
+export function scopedSkillLearningProfile(skill, records = [], { objectiveId, taskKind } = {}) {
+  const unique = new Map(), conflicting = new Set();
+  if (objectiveId && taskKind && skill?.id && skill?.version) {
+    for (const row of Array.isArray(records) ? records : []) {
+      if (!row || row.verified !== true || row.objectiveId !== objectiveId || row.taskKind !== taskKind ||
+          row.skillId !== skill.id || row.version !== skill.version || !row.jobId ||
+          row.evidenceRef !== `CORE_JOB:${row.jobId}` ||
+          row.dedupeKey !== skillOutcomeDedupeKey({jobId:row.jobId,skillId:row.skillId,version:row.version}) ||
+          !['completed','failed'].includes(row.outcome)) continue;
+      if (row.outcome === 'completed' && row.qualityVerified !== true) continue;
+      const previous = unique.get(row.dedupeKey);
+      if (previous && previous.outcome !== row.outcome) conflicting.add(row.dedupeKey);
+      else if (!previous) unique.set(row.dedupeKey,row);
+    }
+  }
+  for (const key of conflicting) unique.delete(key);
+  const samples = [...unique.values()];
+  const success = samples.filter(row=>row.outcome==='completed').length;
+  const failure = samples.length-success;
+  return { skillId:skill?.id||null, version:skill?.version||null, sampleCount:samples.length,
+    success, failure, confidence:samples.length>=5?'SUFFICIENT_SAMPLE':'INSUFFICIENT_SAMPLE',
+    posterior:(success+2)/(samples.length+4), evidenceRefs:samples.map(row=>row.evidenceRef) };
 }

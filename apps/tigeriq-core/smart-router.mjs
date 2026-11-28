@@ -201,19 +201,23 @@ export function scoreResource(resource,{profile='AUTO',capability='general',task
   const taskOk=Math.max(0,Number(stats.success??0));
   const taskFail=Math.max(0,Number(stats.failure??0));
   const taskTotal=taskOk+taskFail;
-  const taskFailure=taskTotal?taskFail/taskTotal:globalFailure;
+  // Shrink small-sample estimates toward the global history.
+  const taskFailure=taskTotal?(taskFail+4*globalFailure)/(taskTotal+4):globalFailure;
   const taskLatency=Math.max(0,Number(stats.avgLatencyMs??stats.avg_latency_ms??latency));
   const retries=Math.max(0,Number(stats.retry??stats.retries??0));
   const failovers=Math.max(0,Number(stats.failover??stats.failovers??0));
   const quota=normalizeQuota(resource.quota_state??resource.quotaState??{},nowMs);
-  let score=baseRank + globalFailure*25 + taskFailure*30 + retries*2 + failovers*3 + taskLatency/1500;
+  // Rates avoid penalizing workers merely for high usage volume.
+  const retryRate=taskTotal?Math.min(2,retries/taskTotal):0;
+  const failoverRate=taskTotal?Math.min(2,failovers/taskTotal):0;
+  let score=baseRank + globalFailure*25 + taskFailure*30 + retryRate*10 + failoverRate*15 + taskLatency/1500;
   if(normalizedProfile==='FAST')score+=taskLatency/350;
   if(normalizedProfile==='CHEAP')score+=isLocal(resource)?-12:0;
   if(normalizedProfile==='LOCAL')score-=20;
   if(normalizedProfile==='RESEARCH'&&caps.includes('reasoning'))score-=8;
   if(normalizedProfile==='REVIEW'&&caps.includes('review'))score-=10;
   if(quota.known&&quota.remainingRatio!==null){score+=(1-quota.remainingRatio)*20;reasons.push(`quota:${quota.remainingRatio.toFixed(2)}`);}
-  reasons.push(`base:${baseRank}`,`latency:${taskLatency}`,`success:${successRate(resource).toFixed(2)}`,`taskFailure:${taskFailure.toFixed(2)}`);
+  reasons.push(`base:${baseRank}`,`latency:${taskLatency}`,`success:${successRate(resource).toFixed(2)}`,`taskFailure:${taskFailure.toFixed(2)}`,`taskSamples:${taskTotal}`,`retryRate:${retryRate.toFixed(2)}`,`failoverRate:${failoverRate.toFixed(2)}`);
   return {eligible:true,resourceId,score:Number(score.toFixed(3)),reasons};
 }
 
@@ -229,4 +233,12 @@ export function rankCandidates(resources,{profile='AUTO',capability='general',ta
     candidates:evaluated.map(x=>({resourceId:x.resourceId,employeeId:x.resource.employee_id??x.resource.employeeId??null,provider:x.resource.provider??null,model:x.resource.model??null,eligible:x.eligible,score:Number.isFinite(x.score)?x.score:null,reasons:x.reasons})),
     chosen:chosen?{resourceId:chosen.resourceId,employeeId:chosen.resource.employee_id??chosen.resource.employeeId??null,provider:chosen.resource.provider??null,model:chosen.resource.model??null,score:chosen.score,reasons:chosen.reasons}:null,
   };
+}
+
+/** An unchanged timed-out request is not a material repair. */
+export function diagnoseRoutingFailure(kind, { materialChangeVerified = false } = {}) {
+  const policy=failurePolicy(kind);
+  const retry=policy.retrySameResource && materialChangeVerified===true;
+  return { kind:policy.kind, action:policy.stop?'STOP':retry?'RETRY_CHANGED_REQUEST':policy.failover?'FAILOVER':'STOP',
+    retrySameResource:!policy.stop&&retry, evidence:materialChangeVerified===true?'MATERIAL_CHANGE_VERIFIED':'NO_MATERIAL_CHANGE' };
 }

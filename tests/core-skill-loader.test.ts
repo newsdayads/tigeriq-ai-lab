@@ -213,3 +213,19 @@ test('all ACTIVE registry skills have canonical contract files and fields', () =
   const contextual = registry.skills.find((skill: Entry) => skill.id === 'contextual-skill-loading');
   assert.equal(contextual?.state, 'CANDIDATE');
 });
+
+test('adaptive evidence is scoped, exact-version, deduplicated, quality-verified and shadow-only', () => {
+  const f=fixture([{id:'aaa-skill',state:'ACTIVE',triggers:'routing'},{id:'zzz-skill',state:'ACTIVE',triggers:'routing'}],{'aaa-skill':'A','zzz-skill':'Z'});
+  try{
+    const rows=Array.from({length:10},(_,i)=>{
+      const skillId=i<5?'aaa-skill':'zzz-skill',jobId='JOB-'+i;
+      return {skillId,version:'1.0.0',objectiveId:'OBJ',taskKind:'ai',jobId,dedupeKey:jobId+'::'+skillId+'::1.0.0',evidenceRef:'CORE_JOB:'+jobId,verified:true,qualityVerified:true,outcome:i<5?'failed':'completed'};
+    });
+    const evidence=[...rows,rows[9],{...rows[9],jobId:'OTHER',dedupeKey:'OTHER::zzz-skill::1.0.0',evidenceRef:'CORE_JOB:OTHER',objectiveId:'OTHER'},{...rows[9],jobId:'UNKNOWN',dedupeKey:'UNKNOWN::zzz-skill::1.0.0',evidenceRef:'CORE_JOB:UNKNOWN',qualityVerified:false}];
+    const result=matchAndLoadSkills('routing',{registryPath:f.registryPath,baseDir:f.dir,outcomeEvidence:evidence,learningScope:{objectiveId:'OBJ',taskKind:'ai'}});
+    assert.deepEqual(result.adaptiveShadow.baseline,['aaa-skill','zzz-skill']);
+    assert.deepEqual(result.adaptiveShadow.proposed,['zzz-skill','aaa-skill']);
+    assert.equal(result.adaptiveShadow.profiles.find((x:any)=>x.skillId==='zzz-skill').sampleCount,5);
+    assert.deepEqual(result.skills.map((x:any)=>x.id),['aaa-skill','zzz-skill']);
+  }finally{f.cleanup();}
+});
