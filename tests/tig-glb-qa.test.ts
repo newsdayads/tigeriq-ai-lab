@@ -202,3 +202,20 @@ it('rejects POSITION bounds that do not match actual vertex data',()=>{const r=r
 it('accepts exact POSITION bounds for valid geometry',()=>{const r=run(fixture());expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');});
 
 it('rejects reserved maximum UNSIGNED_SHORT index value',()=>{const glb=fixture();const jsonLength=glb.readUInt32LE(12);const binStart=20+jsonLength+8;glb.writeUInt16LE(65535,binStart+64);const r=run(glb);expect(r.status).toBe(1);expect(r.stderr).toContain('reserved maximum index value');});
+
+it('rejects JSON chunk padding longer than the required 0-3 bytes',()=>{
+  const valid=fixture();
+  const jsonLength=valid.readUInt32LE(12);
+  const json=valid.subarray(20,20+jsonLength);
+  const bin=valid.subarray(20+jsonLength);
+  const expanded=Buffer.concat([json,Buffer.alloc(4,0x20)]);
+  const jsonHeader=Buffer.alloc(8);
+  jsonHeader.writeUInt32LE(expanded.length,0);
+  jsonHeader.writeUInt32LE(0x4e4f534a,4);
+  const glb=Buffer.concat([valid.subarray(0,12),jsonHeader,expanded,bin]);
+  glb.writeUInt32LE(glb.length,8);
+  const r=run(glb);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toBe('');
+  expect(r.stderr).toContain('invalid JSON chunk padding');
+});
