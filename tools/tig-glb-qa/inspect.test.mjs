@@ -15,10 +15,10 @@ function fixture(options = {}) {
   const bin = Buffer.alloc(68 + png.length + (4 - png.length % 4) % 4);
   [0,0,0,1,0,0,0,options.degenerate ? 0 : 1,0].forEach((x,i) => bin.writeFloatLE(options.nan && i === 0 ? NaN : x,i*4));
   [0,0,1,0,0,options.outsideUv ? 2 : 1].forEach((x,i) => bin.writeFloatLE(options.nanUv && i === 0 ? NaN : x,36+i*4));
-  [0,1,options.index ?? 2].forEach((x,i) => bin.writeUInt16LE(x,60+i*2));
+  [0,options.singlePosition?0:1,options.singlePosition?0:(options.index ?? 2)].forEach((x,i) => bin.writeUInt16LE(x,60+i*2));
   png.copy(bin,68);
   if (options.badBinPadding) bin[bin.length-1] = 1;
-  const doc = {asset:{version:'2.0'},buffers:[{byteLength:68+png.length,...(options.external ? {uri:'external.bin'} : {})}],bufferViews:[{buffer:0,byteOffset:0,byteLength:36,...(options.stride != null ? {byteStride:options.stride} : {})},{buffer:0,byteOffset:36,byteLength:24},{buffer:0,byteOffset:60,byteLength:6,...(options.indexStride != null ? {byteStride:options.indexStride} : {})},{buffer:0,byteOffset:68,byteLength:png.length,...(options.imageStride != null ? {byteStride:options.imageStride} : {})}],accessors:[{bufferView:0,componentType:5126,count:options.singlePosition?1:3,type:'VEC3',min:[0,0,0],max:[1,options.degenerate?0:1,0]},{bufferView:options.sharedView?0:1,componentType:5126,count:3,type:'VEC2'},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],meshes:[{name:'fixture',primitives:[{attributes:{POSITION:0,...(options.noUv ? {} : {TEXCOORD_0:1})},indices:2}]}],images:options.noImage ? [] : [{bufferView:3,mimeType:'image/png'}]};
+  const doc = {asset:{version:'2.0'},buffers:[{byteLength:68+png.length,...(options.external ? {uri:'external.bin'} : {})}],bufferViews:[{buffer:0,byteOffset:0,byteLength:36,...(options.stride != null ? {byteStride:options.stride} : {})},{buffer:0,byteOffset:36,byteLength:24},{buffer:0,byteOffset:60,byteLength:6,...(options.indexStride != null ? {byteStride:options.indexStride} : {})},{buffer:0,byteOffset:68,byteLength:png.length,...(options.imageStride != null ? {byteStride:options.imageStride} : {})}],accessors:[{bufferView:0,componentType:5126,count:options.singlePosition?1:3,type:'VEC3',min:[0,0,0],max:[1,options.degenerate?0:1,0]},{bufferView:options.sharedView?0:1,componentType:5126,count:options.singlePosition?1:3,type:'VEC2'},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],meshes:[{name:'fixture',primitives:[{attributes:{POSITION:0,...(options.noUv ? {} : {TEXCOORD_0:1})},indices:2}]}],images:options.noImage ? [] : [{bufferView:3,mimeType:'image/png'}]};
   if (options.extraPrimitive) doc.meshes[0].primitives.push(doc.meshes[0].primitives[0]);
   if (options.skin) doc.skins=[{joints:[0]}];
   if (options.imageUri) doc.images=[{uri:'https://example.invalid/a.png',mimeType:'image/png'}];
@@ -108,9 +108,9 @@ function normalizedUvFixture(componentType, normalized = true, misaligned = fals
   const indices=Buffer.alloc(6);[0,1,2].forEach((value,i)=>indices.writeUInt16LE(value,i*2));
   const delta = misalignedView ? 1 : viewOffsetDelta;
   const uvOffset=pos.length+Math.max(delta,0), viewOffset=pos.length+delta, accessorOffset=Math.max(0,-delta);
-  const viewLength=uv.length+accessorOffset, indexOffset=uvOffset+uv.length, imageOffset=indexOffset+indices.length;
+  const viewLength=uv.length+accessorOffset, indexPadding=(2-((uvOffset+uv.length)%2))%2, indexOffset=uvOffset+uv.length+indexPadding, imageOffset=indexOffset+indices.length;
   const logical=imageOffset+png.length;
-  const bin=Buffer.concat([pos,Buffer.alloc(Math.max(delta,0)),uv,indices,png,Buffer.alloc((4-logical%4)%4)]);
+  const bin=Buffer.concat([pos,Buffer.alloc(Math.max(delta,0)),uv,Buffer.alloc(indexPadding),indices,png,Buffer.alloc((4-logical%4)%4)]);
   const doc={asset:{version:'2.0'},buffers:[{byteLength:logical}],
     bufferViews:[{buffer:0,byteOffset:0,byteLength:pos.length},{buffer:0,byteOffset:viewOffset,byteLength:viewLength,...(componentType!==5126 && !omitStride?{byteStride:4}:{})},{buffer:0,byteOffset:indexOffset,byteLength:indices.length},{buffer:0,byteOffset:imageOffset,byteLength:png.length}],
     accessors:[{bufferView:0,componentType:5126,count:3,type:'VEC3',min:[0,0,0],max:[1,1,0]},{bufferView:1,componentType,count:3,type:'VEC2',byteOffset:accessorOffset+(misaligned?2:0),...(normalized?{normalized:true}:{})},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],
@@ -137,7 +137,7 @@ test('rejects null embedded image URI',()=>assert.throws(()=>inspectGlb(rewriteJ
 test('rejects null byteStride instead of treating it as omitted',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.bufferViews[0].byteStride=null;})),/invalid buffer view stride/));
 test('rejects null accessor byteOffset instead of defaulting to zero',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors[0].byteOffset=null;})),/invalid accessor offset/));
 test('rejects null bufferView byteOffset instead of defaulting to zero',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.bufferViews[0].byteOffset=null;})),/invalid view offset/));
-test('rejects null sparse accessor property',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors[0].sparse=null;})),/unsupported accessor/));
+test('rejects null sparse accessor property',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors[0].sparse=null;})),/unsupported vertex attribute accessor/));
 test('rejects null normalized accessor property',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors[0].normalized=null;})),/invalid normalized accessor/));
 test('rejects invalid UTF-8 in the JSON chunk',()=>assert.throws(()=>inspectGlb(invalidUtf8Fixture()),/invalid UTF-8 JSON/));
 test('rejects unnormalized integer TEXCOORD_0',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5121,false)),/invalid normalized accessor/));
@@ -146,7 +146,7 @@ test('rejects accessor byteOffset that is 2-byte aligned but not 4-byte aligned 
 test('accepts UNSIGNED_SHORT VEC2 when bufferView starts at a 2-byte offset but accessor offset is 4-byte aligned',()=>assert.equal(inspectGlb(normalizedUvFixture(5123,true,false,false,true,2)).technicalScreen,'PASS'));
 test('accepts UNSIGNED_BYTE vertex attributes when bufferView starts at a non-4-byte absolute offset',()=>assert.equal(inspectGlb(normalizedUvFixture(5121,true,false,true)).technicalScreen,'PASS'));
 test('rejects shared vertex bufferViews without byteStride',()=>assert.throws(()=>inspectGlb(fixture({sharedView:true})),/shared vertex attributes require byteStride/));
-test('accepts a single vertex when byteStride exceeds bufferView.byteLength',()=>assert.equal(inspectGlb(fixture({stride:40,singlePosition:true})).technicalScreen,'PASS'));
+test('accepts a single vertex accessor when byteStride exceeds bufferView.byteLength',()=>{const report=inspectGlb(fixture({stride:40,singlePosition:true}));assert.equal(report.degenerate,1);assert.equal(report.technicalScreen,'NOT_MET');});
 
 test('accepts unknown extension chunks after BIN',()=>assert.equal(inspectGlb(fixture({unknownAfterBin:true})).technicalScreen,'PASS'));
 test('accepts valid interleaved vertex stride',()=>assert.equal(inspectGlb(fixture({stride:12})).technicalScreen,'PASS'));
