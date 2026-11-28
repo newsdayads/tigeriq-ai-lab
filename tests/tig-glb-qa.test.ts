@@ -95,7 +95,7 @@ function invalidUtf8Fixture() {
   return glb;
 }
 
-function normalizedUvFixture(componentType: 5121 | 5123 | 5126, normalized = true, misaligned = false, misalignedView = false) {
+function normalizedUvFixture(componentType: 5121 | 5123 | 5126, normalized = true, misaligned = false, misalignedView = false, omitStride = false) {
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP438AAAAQBAYDFKhhdAAAAAElFTkSuQmCC', 'base64');
   const pos = Buffer.alloc(36);
   [0,0,0,1,0,0,0,1,0].forEach((value,i)=>pos.writeFloatLE(value,i*4));
@@ -113,7 +113,7 @@ function normalizedUvFixture(componentType: 5121 | 5123 | 5126, normalized = tru
   const logical=imageOffset+png.length;
   const bin=Buffer.concat([pos,uv,indices,png,Buffer.alloc((4-logical%4)%4)]);
   const doc={asset:{version:'2.0'},buffers:[{byteLength:logical}],
-    bufferViews:[{buffer:0,byteOffset:0,byteLength:pos.length},{buffer:0,byteOffset:uvOffset + (misalignedView ? 1 : 0),byteLength:uv.length,...(componentType===5121?{byteStride:4}:{})},{buffer:0,byteOffset:indexOffset,byteLength:indices.length},{buffer:0,byteOffset:imageOffset,byteLength:png.length}],
+    bufferViews:[{buffer:0,byteOffset:0,byteLength:pos.length},{buffer:0,byteOffset:uvOffset + (misalignedView ? 1 : 0),byteLength:uv.length,...(componentType!==5126 && !omitStride?{byteStride:4}:{})},{buffer:0,byteOffset:indexOffset,byteLength:indices.length},{buffer:0,byteOffset:imageOffset,byteLength:png.length}],
     accessors:[{bufferView:0,componentType:5126,count:3,type:'VEC3',min:[0,0,0],max:[1,1,0]},{bufferView:1,componentType,count:3,type:'VEC2',...(normalized?{normalized:true}:{}),...(misaligned?{byteOffset:2}:{})},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],
     meshes:[{primitives:[{attributes:{POSITION:0,TEXCOORD_0:1},indices:2}]}],images:[{bufferView:3,mimeType:'image/png'}]};
   const raw=Buffer.from(JSON.stringify(doc)), json=Buffer.concat([raw,Buffer.alloc((4-raw.length%4)%4,32)]);
@@ -122,6 +122,11 @@ function normalizedUvFixture(componentType: 5121 | 5123 | 5126, normalized = tru
   return Buffer.concat([header,chunk(0x4e4f534a,json),chunk(0x004e4942,bin)]);
 }
 describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
+  it('rejects normalized UNSIGNED_SHORT TEXCOORD_0 without required 4-byte vertex stride',()=>{
+    const r=run(normalizedUvFixture(5123,true,false,false,true));
+    expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid vertex attribute alignment');
+  });
+
   it.each([5121,5123] as const)('accepts normalized integer TEXCOORD_0 %s',componentType=>{
     const r=run(normalizedUvFixture(componentType));
     expect(r.status).toBe(0);
