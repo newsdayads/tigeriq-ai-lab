@@ -139,6 +139,14 @@ class PackageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'unsupported critical PNG chunk'):
             self.run_fixture(layer=insert_after_ihdr(png(1, 1), b'ABCD', b''))
 
+    def test_invalid_png_chunk_type_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'invalid PNG chunk type'):
+            self.run_fixture(layer=insert_after_ihdr(png(1, 1), b'AB!D', b''))
+
+    def test_lowercase_png_reserved_chunk_type_bit_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'invalid PNG reserved chunk-type bit'):
+            self.run_fixture(layer=insert_after_ihdr(png(1, 1), b'ABcD', b''))
+
     def test_wrong_composite_size(self):
         with self.assertRaisesRegex(ValueError, 'canvas mismatch'):
             self.run_fixture(composite=png(1, 1))
