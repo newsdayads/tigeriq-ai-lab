@@ -360,3 +360,11 @@ test('rejects object-valued bufferViews container', () => {
 test('rejects object-valued accessors container', () => {
   assert.throws(() => inspectGlb(rewriteJsonFixture(d => { d.accessors = Object.fromEntries(d.accessors.map((value, index) => [index, value])); })), /invalid glTF storage arrays/);
 });
+
+test('rejects bufferView shared between vertex attributes and primitive indices', () => {
+  assert.throws(() => inspectGlb(rewriteJsonFixture(d => { d.accessors[2].bufferView = 0; })), /bufferView mixes vertex attribute and index data/);
+});
+
+test('rejects bufferView shared between vertex attributes and embedded images', () => {
+  assert.throws(() => inspectGlb(rewriteJsonFixture(d => { d.images[0].bufferView = 0; })), /bufferView mixes vertex attribute and image data/);
+});
