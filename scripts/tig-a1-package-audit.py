@@ -54,7 +54,7 @@ def validate_png_pixels(header, chunks):
 
 
 def png_size(data):
-    require(data[:8] == b"\\x89PNG\\r\\n\\x1a\\n", 'invalid PNG signature')
+    require(data[:8] == b"\x89PNG\r\n\x1a\n", 'invalid PNG signature')
     offset, dimensions, header, chunks = 8, None, None, []
     color = depth = None
     palette_seen = False
