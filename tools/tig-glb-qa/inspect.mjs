@@ -108,7 +108,8 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
       let documentEnd;
       try { documentEnd = jsonDocumentEnd(jsonText); }
       catch { fail('invalid JSON chunk'); }
-      const documentBytes = Buffer.byteLength(jsonText.slice(0, documentEnd), 'utf8');
+      const hasUtf8Bom = b[at] === 0xef && b[at + 1] === 0xbb && b[at + 2] === 0xbf;
+      const documentBytes = (hasUtf8Bom ? 3 : 0) + Buffer.byteLength(jsonText.slice(0, documentEnd), 'utf8');
       const paddingLength = (4 - (documentBytes % 4)) % 4;
       if (len - documentBytes < paddingLength) fail('invalid JSON chunk padding');
       const jsonPadding = b.subarray(at + len - paddingLength, at + len);
