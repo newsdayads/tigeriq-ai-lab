@@ -465,6 +465,7 @@ def run_request(value):
     output = root / (ident + ".odt")
     fd, temp_name = tempfile.mkstemp(prefix="." + ident + ".", suffix=".tmp", dir=root)
     temp_path = pathlib.Path(temp_name)
+    published = False
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
@@ -474,14 +475,18 @@ def run_request(value):
             raise ValueError("TEMP_READBACK_FAILED")
         # Same-volume hard-link publication is atomic and fails if output exists.
         os.link(temp_path, output)
-        try:
-            temp_path.unlink()
-        except OSError:
-            output.unlink(missing_ok=True)
-            raise
-        if output.read_bytes() != data:
+        published = True
+        if output.read_bytes() != data or not os.path.samefile(temp_path, output):
             raise ValueError("OUTPUT_READBACK_FAILED")
+        temp_path.unlink()
     except BaseException:
+        # Remove only the output inode created by this operation; preserve a pre-existing file.
+        if published:
+            try:
+                if temp_path.exists() and output.exists() and os.path.samefile(temp_path, output):
+                    output.unlink()
+            except OSError:
+                pass
         try:
             temp_path.unlink(missing_ok=True)
         except OSError:
@@ -507,7 +512,7 @@ def main():
                 result[key] = value
             return result
         value = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_pairs)
-        print(json.dumps(run_request(value, ROOT), ensure_ascii=True))
+        print(json.dumps(run_request(value), ensure_ascii=True))
         return 0
     except (ValueError, OSError, UnicodeError, RecursionError) as exc:
         print(json.dumps({"ok": False, "error": str(exc) if type(exc) is ValueError and str(exc).isupper() else type(exc).__name__}, ensure_ascii=True))
