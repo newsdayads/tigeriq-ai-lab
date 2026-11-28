@@ -15,7 +15,7 @@ Existing ACTIVE skills retain their identities, triggers, versions and security 
 Use diagrams only when topology, flow or trust boundaries convey information better than text. Preserve approved project tokens, prefer 4–9 meaningful nodes, one focal node, a consistent primary direction, orthogonal connectors, and explicit trust boundaries. Render local SVG without external fonts/URLs or scripts; verify geometry, labels, clipping, contrast and actual raster at target viewport. Label proposed topology as proposed. A static picture never proves runtime behavior.
 
 ### spec-first-tdd / learn-from-failure / automated-code-review-gate
-For an incident record exact surface, symptom, revision and timestamp/receipt; separate service liveness from the affected operation. Rank falsifiable hypotheses, perform one bounded discriminating probe, correlate same scope/revision, and retain evidence. Do not infer causality from temporal coincidence or temporary recovery. No unchanged retries or auto-repair on protected boundaries; use existing self-audit, failure-learning, writer, CI and release gates. A repeated signature is a candidate, not a learned rule or root cause.
+For an incident record exact surface, symptom, revision and timestamp/receipt; separate service liveness from the affected operation. Rank falsifiable hypotheses, perform one bounded discriminating probe, correlate same scope/revision, and retain evidence. Do not infer causality from temporal coincidence or temporary recovery. No unchanged retries or auto-repair on protected boundaries; use existing self-audit, failure-learning, writer, local verification and guarded release gates. A repeated signature is a candidate, not a learned rule or root cause.
 
 ### visual-quality-gate (video)
 Keep an editable authored HTML timeline; stable IDs, explicit duration/start/end, deterministic frame-time input, local assets, no remote requests. Check scene coverage and overlap, visually inspect sampled frames, verify encoder/container/size/duration/frame count, compare repeated frame renders. If deterministic output fails, do not claim it passed. Existing local rendering tools first; no new daemon, hosted account or payment. HyperFrames runtime remains default-deny pending security review and real canary.
@@ -28,7 +28,7 @@ Keep an editable authored HTML timeline; stable IDs, explicit duration/start/end
 - No additional paid cost incurred. No source-level changes are live until guarded merge and relevant runtime acceptance.
 
 ## Next
-1. Existing review and exact-head CI; then validate reference usage on actual tasks, not just registry text.
+1. Complete existing review and local isolated exact-head verification with a reproducible receipt (GitHub Actions are retired by canonical Loader v2.0); then validate reference usage on actual tasks, not just registry text.
 2. For incident, a bounded timed native enumeration under authorized conditions; no claim of root cause or fix. Keep existing Seelen running unless authorized recovery demands otherwise.
 3. Video: sandbox reproducibility resolved for the fixture; audit exact local renderer/dependencies and test actual HyperFrames package isolated without paid/network features. PC01 only for approved artifact/runtime, not ordinary repo coding.
 
