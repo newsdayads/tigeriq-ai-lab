@@ -4,6 +4,15 @@ Status: Bootstrap Entry Point
 Priority: P0
 Updated: 2026-11-17
 
+<!-- OWNER_NO_GITHUB_ACTIONS_20261129 -->
+## P0 — CẤM TỰ Ý DÙNG GITHUB ACTIONS — OWNER 29/11/2026
+OWNER_DIRECT=true | SCOPE=ALL_TIGERIQ_PROJECTS_AND_AGENTS | GITHUB_ACTIONS=RETIRED_DEFAULT_DENY | LOCAL_VERIFICATION=REQUIRED
+- GitHub Actions đã được Owner loại bỏ toàn dự án. Cấm tự tạo, khôi phục, kích hoạt, chạy lại, lập lịch hoặc dùng GitHub Actions làm điều kiện chờ, kiểm thử, phát hành hay fallback. Chỉ ngoại lệ khi Owner chỉ định rõ việc sử dụng GitHub Actions cho đúng phạm vi; quyền FULL AUTO thông thường không phải ngoại lệ.
+- GitHub vẫn là nguồn mã chuẩn: dùng connector, nhánh riêng, PR, kiểm tra mã đúng SHA và hợp nhất theo quyền hiện hành. Thay CI trên Actions bằng kiểm thử trực tiếp trong môi trường cô lập phù hợp (ưu tiên PC01 OAuth MCP khi cần PC01), biên nhận kết quả, kiểm tra SHA, đọc lại main, sao lưu/khôi phục và nghiệm thu thực tế. Không tạo hệ thống CI/hàng đợi thứ hai.
+- Mọi yêu cầu CI/exact-head trong tài liệu cũ phải hiểu theo kiểm thử thay thế có bằng chứng; không lấy 0 workflow/check-run làm blocker chỉ vì Actions đã nghỉ. Không bỏ qua branch protection thật, quyền một người ghi, bảo mật, chi phí, cổng Production hoặc nghiệm thu thiết bị.
+- Phạm vi mọi chat mới, Work và nhân sự AI đã nạp nguồn; không tuyên bố ép thực thi trên phiên chưa nạp nguồn. Ca hồi quy: PhoneBox PR #5817 — bản sửa CSS kiểm thử PC01 6/6, hợp nhất d307674e9d0cceb37e6bab385618ef19dda918d8, phát hành CSS có biên nhận; không khôi phục Actions.
+<!-- /OWNER_NO_GITHUB_ACTIONS_20261129 -->
+
 <!-- TIGERIQ_3D_DRIVE_DESTINATION_20261112 -->
 ## TIGERIQ 3D — GOOGLE DRIVE ĐÍCH LƯU MẶC ĐỊNH (OWNER 12/11/2026)
 OWNER_DIRECT=true | STORAGE_TARGET=GOOGLE_DRIVE | FOLDER_ID=1QFje3OTZfDIeCMfrH5aHoMWqXNwJP2xM

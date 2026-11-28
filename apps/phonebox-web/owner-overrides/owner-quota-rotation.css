@@ -106,3 +106,77 @@
     padding-top:max(4px,env(safe-area-inset-top,0px));
   }
 }
+
+/* Owner 2026-11-29: portrait-only adaptive layout; keep saved widget geometry and cover/landscape unchanged. */
+@media screen and (max-width:700px) and (min-height:541px) and (orientation:portrait) {
+  #pager > .page {
+    box-sizing:border-box; width:100%; min-width:0; flex:0 0 100%;
+    padding-inline:max(10px,env(safe-area-inset-left,0px)) max(10px,env(safe-area-inset-right,0px)) !important;
+  }
+  body:not(.pagebar-docked):not(.controls-top) #pager > .page {
+    height:calc(100dvh - 52px - env(safe-area-inset-bottom,0px)) !important;
+    padding-bottom:10px !important;
+  }
+  body.controls-top:not(.pagebar-docked) #pager > .page {
+    padding-top:calc(44px + env(safe-area-inset-top,0px)) !important;
+  }
+  /* A clock on a media/forecast page must not inherit Home's four-column layout. */
+  .page:not([data-id="home"]) .grid {
+    width:100%; min-width:0; grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+    grid-template-rows:none !important; grid-auto-rows:auto !important; gap:8px !important;
+    grid-auto-flow:row !important; align-content:start !important;
+  }
+  .page:not([data-id="home"]) .grid > .w {
+    grid-area:auto / auto / auto / span 1 !important;
+    order:0 !important; width:100%; min-width:0; box-sizing:border-box;
+  }
+  .page:not([data-id="home"]) .grid > .w:is(.w-media,.w-processes,.w-sessions,.w-github,.w-quotas,.w-shortcuts),
+  .page:not([data-id="home"]) .grid > .w:has(.session-grid,.deck-grid,.gh-list),
+  .page:not([data-id="home"]) .grid > .w:only-child {
+    grid-area:auto / 1 / auto / -1 !important;
+  }
+  .page:not([data-id="home"]) .grid > .w-clock {
+    height:auto !important; min-height:210px !important; padding:10px !important;
+  }
+  .page:not([data-id="home"]) .w-clock .clock {font-size:clamp(26px,8vw,42px) !important;}
+  .page:not([data-id="home"]) .w-clock .date {white-space:normal;overflow-wrap:normal; font-size:12px;}
+  .page:not([data-id="home"]) .grid > .w-forecast {
+    height:244px !important; min-height:244px !important; padding:9px 8px;
+  }
+  .page:not([data-id="home"]) .grid > .w-media {
+    container-type:inline-size; height:auto !important; min-height:180px !important;
+    padding:12px; overflow:visible !important;
+  }
+  .page:not([data-id="home"]) .w-media .m-top {flex:0 0 auto;align-items:center;gap:10px;}
+  .page:not([data-id="home"]) .w-media .art-wrap {height:clamp(48px,19cqw,84px);max-width:26%;}
+  .page:not([data-id="home"]) .w-media .m-text {flex:1 1 0;min-width:0;}
+  .page:not([data-id="home"]) .w-media .m-title {font-size:clamp(14px,4.5cqw,20px);overflow-wrap:break-word;}
+  .page:not([data-id="home"]) .w-media .m-app {font-size:11px;letter-spacing:.04em;flex-wrap:wrap;}
+  .page:not([data-id="home"]) .w-media .m-artist {font-size:12px;}
+  /* System: CPU/GPU and memory/network fit two per row, with charts sized for touch screens. */
+  .page[data-id="system"] .grid > .w-chart,
+  .page[data-id="system"] .grid > .w-meters {
+    grid-area:auto / auto / auto / span 1 !important;
+    height:230px !important; min-height:230px !important;
+    padding:9px 8px 0;
+  }
+  .page[data-id="system"] .w-chart .s-label {font-size:10px;letter-spacing:.025em;white-space:normal;}
+  .page[data-id="system"] .w-chart .s-main {display:flex;flex-wrap:wrap;gap:4px 7px;}
+  .page[data-id="system"] .w-chart .s-main b {font-size:clamp(15px,4.4vw,23px);}
+  .page[data-id="system"] .w-chart .s-main .multi {margin-right:0;font-size:10px;white-space:normal;}
+  .page[data-id="system"] .w-chart .s-main small {font-size:10px;}
+  .page[data-id="system"] .w-chart canvas {width:calc(100% + 16px) !important;margin:4px -8px 0;}
+  .page[data-id="system"] .w-meters {overflow-y:auto !important;}
+  .page[data-id="system"] .w-meters .disks {grid-template-columns:repeat(2,minmax(0,1fr));}
+  /* Processes: no half-width orphan; readable name, CPU/RAM switch and vertically reachable rows. */
+  .page:not([data-id="home"]) .grid > .w-processes {
+    height:auto !important; min-height:260px !important; container-type:inline-size;
+    overflow:visible !important; padding:0;
+  }
+  .page .w-processes .p-head {height:auto;min-height:36px;flex-wrap:wrap;gap:8px;}
+  .page .w-processes .seg {flex-wrap:nowrap;}
+  .page .w-processes .seg button {white-space:nowrap;min-height:36px;}
+  .page .w-processes .p-grid {flex:0 0 auto;grid-template-columns:1fr !important;grid-template-rows:none !important;grid-auto-rows:minmax(52px,auto);}
+  .page .w-processes .proc {min-height:52px;padding:8px 10px;gap:9px;}
+  .page .w-processes .p-title {white-space:normal;overflow-wrap:anywhere;text-overflow:clip;overflow:visible;}
+}
