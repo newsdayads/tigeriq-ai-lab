@@ -285,6 +285,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
     expect(spec.args).toEqual(['-3.12', 'D:\\TigerIQ\\Runtime\\CoreSource\\apps\\openclaw-tigeriq-runtime\\cli-anything-writer.py']);
     expect(spec.outputPath).toBe('D:\\TigerIQ\\State\\cli-anything-writer\\sample-1.odt');
     expect(spec.shell).toBe(false);
+    expect(spec.scriptGitBlobSha).toBe('b6d0fa5a7265c15b0ec8fc0c15ec1b871c0abdb3');
     for (const bad of [
       { ...request, id: '../escape' },
       { ...request, id: 'nul' },
