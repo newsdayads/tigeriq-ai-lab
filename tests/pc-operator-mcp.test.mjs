@@ -293,6 +293,8 @@ describe('TigerIQ PC Operator MCP Server', () => {
       { ...request, paragraphs: [] },
       { ...request, paragraphs: ['x'.repeat(2001)] },
       { ...request, title: 'x'.repeat(201) },
+      { ...request, paragraphs: ['\\uD800'] },
+      { ...request, paragraphs: ['\\u0000'] },
     ]) expect(() => validateCliAnythingWriterRequest(bad)).toThrow();
   });
 
