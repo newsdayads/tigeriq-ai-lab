@@ -192,6 +192,150 @@ async function runShell({ command, cwd, shell = 'powershell', timeoutSec = 60 })
   return { ...result, shell: useCmd ? 'cmd' : 'powershell' };
 }
 
+const CLI_ANYTHING_WRITER_ROOT = 'D:\\TigerIQ\\State\\cli-anything-writer';
+const CLI_ANYTHING_WRITER_SCRIPT = 'D:\\TigerIQ\\Runtime\\CoreSource\\apps\\openclaw-tigeriq-runtime\\cli-anything-writer.py';
+const CLI_ANYTHING_WRITER_UPSTREAM_BLOB = '59a50348b33c878dec576f4e8d6b7591d0a420d5';
+
+export function validateCliAnythingWriterRequest(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.keys(value).sort().join(',') !== 'id,paragraphs,title') {
+    throw new Error('CLI_ANYTHING_WRITER_INVALID_REQUEST');
+  }
+  const id = value.id;
+  const title = value.title;
+  const paragraphs = value.paragraphs;
+  if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(id)
+    || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/.test(id)) {
+    throw new Error('CLI_ANYTHING_WRITER_INVALID_ID');
+  }
+  const validText = (text, max) => typeof text === 'string' && text.trim().length > 0
+    && text.length <= max
+    && !/[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\ufffe\\uffff]/u.test(text);
+  if (!validText(title, 200)) throw new Error('CLI_ANYTHING_WRITER_INVALID_TITLE');
+  if (!Array.isArray(paragraphs) || paragraphs.length < 1 || paragraphs.length > 30
+    || paragraphs.some(p => !validText(p, 2000))) {
+    throw new Error('CLI_ANYTHING_WRITER_INVALID_PARAGRAPHS');
+  }
+  const encoded = Buffer.from(JSON.stringify(value), 'utf8');
+  if (encoded.length > 65536) throw new Error('CLI_ANYTHING_WRITER_INPUT_TOO_LARGE');
+  return { id, title, paragraphs: [...paragraphs] };
+}
+
+export function cliAnythingWriterSpec(request, {
+  runtimeRoot = 'D:\\TigerIQ\\Runtime\\CoreSource',
+  outputRoot = CLI_ANYTHING_WRITER_ROOT,
+  pythonLauncher = 'py.exe',
+} = {}) {
+  const normalized = validateCliAnythingWriterRequest(request);
+  const scriptPath = win.join(runtimeRoot, 'apps', 'openclaw-tigeriq-runtime', 'cli-anything-writer.py');
+  const outputPath = win.join(outputRoot, normalized.id + '.odt');
+  return Object.freeze({
+    exe: pythonLauncher,
+    args: ['-3.12', scriptPath],
+    cwd: runtimeRoot,
+    scriptPath,
+    outputRoot,
+    outputPath,
+    request: normalized,
+    shell: false,
+    callerOutputPath: false,
+  });
+}
+
+async function runCliAnythingWriter(request, { spawnImpl = spawn, timeoutSec = 30 } = {}) {
+  if (process.platform !== 'win32') throw new Error('CLI_ANYTHING_WRITER_WINDOWS_PC01_REQUIRED');
+  const spec = cliAnythingWriterSpec(request);
+  const scriptPath = await realPathInsideRoots(spec.scriptPath);
+  const runtimeRoot = await realPathInsideRoots(spec.cwd);
+  const outputRoot = await realPathInsideRoots(spec.outputRoot);
+  if (normalizeWinPath(scriptPath).toLowerCase() !== normalizeWinPath(spec.scriptPath).toLowerCase()
+    || normalizeWinPath(runtimeRoot).toLowerCase() !== normalizeWinPath(spec.cwd).toLowerCase()
+    || normalizeWinPath(outputRoot).toLowerCase() !== normalizeWinPath(spec.outputRoot).toLowerCase()) {
+    throw new Error('CLI_ANYTHING_WRITER_PATH_REDIRECTED');
+  }
+  const [scriptStat, rootStat] = await Promise.all([fs.lstat(scriptPath), fs.lstat(outputRoot)]);
+  if (!scriptStat.isFile() || scriptStat.isSymbolicLink()
+    || !rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+    throw new Error('CLI_ANYTHING_WRITER_RUNTIME_LAYOUT_INVALID');
+  }
+  const timeout = Math.max(1, Math.min(60, Number(timeoutSec) || 30));
+  const result = await new Promise((resolve, reject) => {
+    const child = spawnImpl(spec.exe, spec.args, {
+      cwd: runtimeRoot,
+      windowsHide: true,
+      env: safeChildEnv(),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn(value);
+    };
+    child.stdout.on('data', chunk => {
+      stdout += chunk.toString();
+      if (stdout.length > 65536) stdout = stdout.slice(0, 65536);
+    });
+    child.stderr.on('data', chunk => {
+      stderr += chunk.toString();
+      if (stderr.length > 8192) stderr = stderr.slice(-8192);
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, timeout * 1000);
+    child.once('error', error => finish(reject, error));
+    child.once('close', code => finish(resolve, {
+      exitCode: typeof code === 'number' ? code : -1,
+      timedOut, stdout, stderr,
+    }));
+    child.stdin.on('error', error => {
+      if (error?.code !== 'EPIPE') finish(reject, error);
+    });
+    child.stdin.end(JSON.stringify(spec.request), 'utf8');
+  });
+  if (result.timedOut) throw new Error('CLI_ANYTHING_WRITER_TIMEOUT');
+  let receipt;
+  try { receipt = JSON.parse(result.stdout); }
+  catch { throw new Error('CLI_ANYTHING_WRITER_INVALID_PROCESS_RECEIPT'); }
+  if (result.exitCode !== 0 || receipt?.ok !== true) {
+    const code = typeof receipt?.error === 'string' && /^[A-Z0-9_]{1,80}$/.test(receipt.error)
+      ? receipt.error : 'PROCESS_FAILED';
+    throw new Error('CLI_ANYTHING_WRITER_' + code);
+  }
+  if (receipt.format !== 'odt' || receipt.path !== spec.outputPath
+    || !Number.isInteger(receipt.bytes) || receipt.bytes < 1
+    || !/^[0-9a-f]{64}$/.test(String(receipt.sha256 || ''))
+    || receipt.verification !== 'zip_xml_content_readback'
+    || receipt.upstream_blob !== CLI_ANYTHING_WRITER_UPSTREAM_BLOB) {
+    throw new Error('CLI_ANYTHING_WRITER_RECEIPT_CONTRACT_INVALID');
+  }
+  const outputPath = await realPathInsideRoots(spec.outputPath);
+  if (normalizeWinPath(outputPath).toLowerCase() !== normalizeWinPath(spec.outputPath).toLowerCase()) {
+    throw new Error('CLI_ANYTHING_WRITER_OUTPUT_PATH_REDIRECTED');
+  }
+  const outputStat = await fs.lstat(outputPath);
+  if (!outputStat.isFile() || outputStat.isSymbolicLink() || outputStat.size !== receipt.bytes) {
+    throw new Error('CLI_ANYTHING_WRITER_OUTPUT_STAT_MISMATCH');
+  }
+  const bytes = await fs.readFile(outputPath);
+  const readbackSha256 = createHash('sha256').update(bytes).digest('hex');
+  if (bytes.length !== receipt.bytes || readbackSha256 !== receipt.sha256) {
+    throw new Error('CLI_ANYTHING_WRITER_OUTPUT_HASH_MISMATCH');
+  }
+  return {
+    ...receipt,
+    readbackBytes: bytes.length,
+    readbackSha256,
+    readbackVerified: true,
+    execution: 'PYTHON_3_12_FIXED_PATH_NO_SHELL',
+  };
+}
+
 export function assertTigerIQTaskName(value) {
   const taskName = String(value || '').trim();
   if (!/^TigerIQ [A-Za-z0-9 ._()#-]{1,100}$/.test(taskName)) throw new Error('TIGERIQ_PC_TASK_NOT_ALLOWED');
@@ -2592,6 +2736,8 @@ export async function executePcAction(input, options = {}) {
     data = await readTextFile(input?.path);
   } else if (action === 'file_write') {
     data = await writeTextFile(input?.path, input?.content);
+  } else if (action === 'cli_anything_writer_create') {
+    data = await runCliAnythingWriter(input?.request, options?.writerOptions || {});
   } else if (action === 'file_list') {
     data = await listPath(input?.path);
   } else if (action === 'file_stat') {
@@ -2612,6 +2758,7 @@ export async function executePcAction(input, options = {}) {
       shell: action === 'shell_exec',
       shellMode: action === 'shell_exec' ? 'strict-allowlist' : 'none',
       fileAccess: action.startsWith('file_'),
+      cliAnythingWriter: action === 'cli_anything_writer_create',
       allowedRoots: PC_OPERATOR_ROOTS,
       inheritedSecretEnvironment: false,
       destructiveDelete: false,
