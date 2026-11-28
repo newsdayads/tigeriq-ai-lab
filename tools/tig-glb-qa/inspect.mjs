@@ -168,10 +168,15 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     let triangles = 0, vertices = 0;
     for (const p of m.primitives) {
       if (p.mode !== undefined && p.mode !== 4) fail('only triangle primitives supported');
+      let vertexAttributeCount;
       for (const accessorIndex of Object.values(p.attributes ?? {})) {
         const index = integer(accessorIndex, 'vertex attribute accessor index');
         const attribute = d.accessors?.[index];
         if (!attribute) fail('unsupported vertex attribute accessor');
+        const count = integer(attribute.count, 'accessor count');
+        if (!count) fail('invalid accessor count');
+        if (vertexAttributeCount !== undefined && count !== vertexAttributeCount) fail('vertex attribute count mismatch');
+        vertexAttributeCount = count;
         if (attribute.bufferView != null) {
           let references = vertexViewAccessors.get(attribute.bufferView);
           if (!references) vertexViewAccessors.set(attribute.bufferView, references = new Set());
