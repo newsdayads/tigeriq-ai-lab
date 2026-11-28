@@ -1108,9 +1108,19 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
     },
     async ({ request }) => {
       const result = await executePcActionImpl({ action: 'cli_anything_writer_create', request });
+      const data = result?.data;
+      const expectedPath = win.join('D:\\TigerIQ\\State\\cli-anything-writer', request.id + '.odt');
       if (result?.ok !== true || result?.action !== 'cli_anything_writer_create'
-        || result?.data?.readbackVerified !== true
-        || !/^[0-9a-f]{64}$/.test(String(result?.data?.readbackSha256 || ''))) {
+        || data?.format !== 'odt' || data?.path !== expectedPath
+        || !Number.isInteger(data?.bytes) || data.bytes < 1
+        || data?.readbackBytes !== data.bytes
+        || data?.sha256 !== data?.readbackSha256
+        || !/^[0-9a-f]{64}$/.test(String(data?.readbackSha256 || ''))
+        || data?.readbackVerified !== true
+        || data?.sourceGitBlobSha !== 'b6d0fa5a7265c15b0ec8fc0c15ec1b871c0abdb3'
+        || data?.upstream_blob !== '59a50348b33c878dec576f4e8d6b7591d0a420d5'
+        || data?.verification !== 'zip_xml_content_readback'
+        || data?.execution !== 'PYTHON_3_12_FIXED_PATH_NO_SHELL') {
         throw new Error('CLI_ANYTHING_WRITER_TYPED_RECEIPT_REQUIRED');
       }
       return result.data;
