@@ -30,4 +30,7 @@ Keep an editable authored HTML timeline; stable IDs, explicit duration/start/end
 ## Next
 1. Existing review and exact-head CI; then validate reference usage on actual tasks, not just registry text.
 2. For incident, a bounded timed native enumeration under authorized conditions; no claim of root cause or fix. Keep existing Seelen running unless authorized recovery demands otherwise.
-3. Video: resolve reproducibility mismatch, audit exact local renderer/dependencies, test actual HyperFrames package isolated without paid/network features. PC01 only for approved artifact/runtime, not ordinary repo coding.
+3. Video: sandbox reproducibility resolved for the fixture; audit exact local renderer/dependencies and test actual HyperFrames package isolated without paid/network features. PC01 only for approved artifact/runtime, not ordinary repo coding.
+
+## R04 follow-up — deterministic sandbox render PASS
+The original cold-start mismatch was reproduced in two fresh Chromium contexts. Prewarming each of the three scenes before capture, disabling GPU rendering and animations, and forcing layout before capture yielded 72/72 matching RGB frame hashes across two fresh offline contexts (144 scene assertions, zero external requests, three distinct scene rasters). This establishes repeatability for this exact local fixture, not a universal browser guarantee or actual HyperFrames execution. Chromium 144.0.7559.96, H.264 960x540, 12 fps, 72 frames, 6.000 s. HTML SHA256 dc58a8f7f606714bbbe81df3a1e918857499518853cd85ca618318d5bd422c55; new MP4 SHA256 ac692b163976f4c4e1fbcc4b118fdec3690833e7d6d85dc3281a421ac3d132e8. Original failure preserved above. Full upstream runtime remains default-deny pending package security review. No additional expense or new service.
