@@ -26,8 +26,8 @@ The JSON report includes the input SHA-256, mesh/triangle counts, UV and degener
 
 - GLB v2 with JSON first, embedded BIN second, one embedded buffer, and embedded PNG/JPEG/WebP image payloads.
 - Triangle primitives; required POSITION min/max bounds are checked against vertex data; reserved maximum index values are rejected; optional TEXCOORD_0 checks; bounded triangle budget.
-- `rigScreen` is informational: `NOT_CHECKED` when skins are declared. This tool does not validate joint/weight bindings, skeleton correctness, animation quality, or deformation.
-- Image checks validate framing/signatures and PNG chunk CRCs, not full image decoding or visual quality.
+- `rigScreen` is informational: `NOT_CHECKED` when skins are declared. This tool does not validate joint/weight bindings, skeleton correctness, animation quality, or deformation. Skin, animation, and morph-target counts are informational; their internal accessor/graph contracts are not validated.
+- Sparse and zero-initialized accessors are unsupported. Image checks validate framing/signatures and PNG chunk CRCs, not full image decoding or visual quality.
 - No external URI fetching, file mutation, model execution, likeness assessment, visual acceptance, N1/G1 acceptance, or release authorization.
 
 A `technicalScreen: PASS` is **not** art/visual acceptance and never makes `releaseEligible` true. Human visual review and the project's separate acceptance gates remain mandatory.
