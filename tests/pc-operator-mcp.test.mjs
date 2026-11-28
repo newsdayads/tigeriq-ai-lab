@@ -254,6 +254,20 @@ describe('TigerIQ PC Operator MCP Server', () => {
       }));
       expect(leaseApi.heartbeat).toHaveBeenCalled();
       expect(leaseApi.release).toHaveBeenCalled();
+
+      executePcActionImpl.mockResolvedValueOnce({
+        ok: true, action: 'cli_anything_writer_create',
+        data: { readbackVerified: true, readbackSha256: 'b'.repeat(64) },
+      });
+      const malformed = await fetch('http://127.0.0.1:' + server.address().port + '/mcp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + secret },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 103, method: 'tools/call',
+          params: { name: 'writer_create_odt', arguments: { request: { id: 'bad-receipt', title: 'TigerIQ', paragraphs: ['No false pass'] } } } }),
+      });
+      const rejected = parseSsePayload(await malformed.text());
+      expect(rejected.ok).toBe(false);
+      expect(rejected.error).toBe('CLI_ANYTHING_WRITER_TYPED_RECEIPT_REQUIRED');
     } finally { server.close(); }
   });
 
