@@ -204,7 +204,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
       action: 'cli_anything_writer_create',
       data: {
         format: 'odt',
-        path: 'D:\TigerIQ\State\cli-anything-writer\mcp-test.odt',
+        path: 'D:\\TigerIQ\\State\\cli-anything-writer\\mcp-test.odt',
         bytes: 1234,
         sha256: 'a'.repeat(64),
         verification: 'zip_xml_content_readback',
