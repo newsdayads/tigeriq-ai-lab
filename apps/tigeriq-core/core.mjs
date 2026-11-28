@@ -34,7 +34,7 @@ import { assessMainCiGate } from './main-ci-health.mjs';
 import { autonomousRcaCanonicalAction, autonomousRcaMaterializationDedupe, buildImprovementWorkOrder, buildOwnerException, classifyAutonomousRca, dedupeAutonomousRca, syntheticAutonomousRcaCanary } from './autonomous-rca.mjs';
 import { normalizeCampaignPhases, currentCampaignGoal, campaignPhaseCapability, campaignReviewIndependence, campaignPriorEvidenceContext, explicitJobRefsFromText, referencedJobEvidenceContext, referencedJobReviewExclusions, repairCampaignReviewPrompt, campaignTransition, makePhaseCheckpoint, campaignNeedsEvidence, campaignEvidenceJobId, verifyCampaignPhaseReceipt } from './campaign-runner.mjs';
 import { buildAutonomousCodingHandoffWorkOrder, normalizeTerminalWorkItems, handoffGenerationKey, evaluateChildObjectiveStates, isCodingHandoff } from './work-handoff.mjs';
-import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, functionalReprobeCandidates, functionalRoutingReadiness, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
+import { FUNCTIONAL_REPROBE_MAX, FUNCTIONAL_SUCCESS_TTL_MS, ROUTING_PROFILE_LABELS, createResourceId, deriveRoutingProfile, failurePolicy, diagnoseRoutingFailure, functionalReprobeCandidates, functionalRoutingReadiness, normalizeQuota, rankCandidates, rateLimitFailureState } from './smart-router.mjs';
 import { runExecutionPreflight } from './execution-preflight.mjs';
 import { detectIdleWithBacklog, routingFault } from './github-backlog-policy.mjs';
 import { staleLeaseRecoveryPlan } from './job-recovery-policy.mjs';
@@ -1075,7 +1075,7 @@ async function recoverStale() {
   }
 }
 async function taskPerformance(taskKind='general'){
-  const q=await pool.query(`select resource_id,count(*) filter(where type in ('RESOURCE_SUCCESS','RESOURCE_PROBE_OK'))::int as success,count(*) filter(where type in ('RESOURCE_FAILURE','RESOURCE_PROBE_FAIL'))::int as failure,count(*) filter(where type='ROUTING_RETRY')::int as retry,count(*) filter(where type='ROUTING_FAILOVER')::int as failover,round(avg((data->>'latencyMs')::numeric) filter(where data ? 'latencyMs'))::int as avg_latency_ms from tigeriq_events where resource_id is not null and ts>=now()-interval '7 days' and (task_kind=$1 or task_kind is null or $1='general') group by resource_id`,[taskKind]);
+  const q=await pool.query(`select resource_id,count(*) filter(where type='RESOURCE_SUCCESS')::int as success,count(*) filter(where type='RESOURCE_FAILURE')::int as failure,count(*) filter(where type='ROUTING_RETRY')::int as retry,count(*) filter(where type='ROUTING_FAILOVER')::int as failover,round(avg((data->>'latencyMs')::numeric) filter(where data ? 'latencyMs'))::int as avg_latency_ms from tigeriq_events where resource_id is not null and ts>=now()-interval '7 days' and job_id is not null and task_kind=$1 and type in ('RESOURCE_SUCCESS','RESOURCE_FAILURE','ROUTING_RETRY','ROUTING_FAILOVER') group by resource_id`,[taskKind]);
   return new Map(q.rows.map(x=>[x.resource_id,{success:Number(x.success||0),failure:Number(x.failure||0),retry:Number(x.retry||0),failover:Number(x.failover||0),avgLatencyMs:Number(x.avg_latency_ms||0)}]));
 }
 function emptyFunctionalRoutingEvidence(){return{lastSuccessAt:null,lastFailureAt:null,failureStreak:0};}
@@ -1235,7 +1235,7 @@ async function stabilityV2PeerExclusions(jobId,store=pool){
   };
 }
 async function invokeRouted(prompt,capability,jobId,maxAttempts=3,options={}){
-  if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const failures=[],excluded=[...new Set((Array.isArray(options.excludedResourceIds)?options.excludedResourceIds:[]).map(x=>String(x||'').trim()).filter(Boolean))],requestedExcludedProviders=[...new Set((Array.isArray(options.excludeProviders)?options.excludeProviders:Array.isArray(options.excludedProviders)?options.excludedProviders:[]).map(x=>String(x||'').trim().toLowerCase()).filter(Boolean))];for(let i=0;i<maxAttempts;i++){const peerExclusions=await stabilityV2PeerExclusions(jobId);for(const resourceId of peerExclusions.resourceIds)if(!excluded.includes(resourceId))excluded.push(resourceId);const attemptedProviders=[...new Set(failures.map(f=>String(f?.provider||'').trim().toLowerCase()).filter(Boolean))];const excludedProviders=[...new Set([...requestedExcludedProviders,...peerExclusions.providers,...attemptedProviders])];const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind,excludedProviders});if(!row)break;excluded.push(row.resource_id);const r=resources.find(x=>x.resourceId===row.resource_id);if(!r)continue;await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);const started=Date.now();try{const text=validateRoutedOutput(await invokeProvider(r,prompt,{profile,compiledPacket:options.compiledPacket||null,taskKind}),{jobId,prompt});if(typeof options.validateText==='function')options.validateText(text);const latency=Date.now()-started;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(error){if(localInferenceBusy(error)){await releaseLocalInferenceContention(r,jobId,taskKind);const busy=new Error('PC01_LOCAL_INFERENCE_BUSY');busy.code='PC01_LOCAL_INFERENCE_BUSY';busy.failures=[];throw busy;}let finalError=error,policy=failurePolicy(error?.kind||'outage');if(policy.retrySameResource){await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});try{const retryStarted=Date.now(),text=validateRoutedOutput(await invokeProvider(r,prompt,{profile,compiledPacket:options.compiledPacket||null,taskKind}),{jobId,prompt});if(typeof options.validateText==='function')options.validateText(text);const latency=Date.now()-retryStarted;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(retryError){finalError=retryError;policy=failurePolicy(retryError?.kind||policy.kind);}}const kind=finalError?.kind||'outage';failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.code||finalError?.message||finalError)});await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});if(policy.stop)break;}}const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
+  if(capability==='coding'){const e=new Error('LOCAL_CODING_DISABLED_GITHUB_ONLY');e.kind='configuration';throw e;}const taskKind=String(options.taskKind||'general'),profile=deriveRoutingProfile({requested:options.profile,taskKind,capability});const failures=[],excluded=[...new Set((Array.isArray(options.excludedResourceIds)?options.excludedResourceIds:[]).map(x=>String(x||'').trim()).filter(Boolean))],requestedExcludedProviders=[...new Set((Array.isArray(options.excludeProviders)?options.excludeProviders:Array.isArray(options.excludedProviders)?options.excludedProviders:[]).map(x=>String(x||'').trim().toLowerCase()).filter(Boolean))];for(let i=0;i<maxAttempts;i++){const peerExclusions=await stabilityV2PeerExclusions(jobId);for(const resourceId of peerExclusions.resourceIds)if(!excluded.includes(resourceId))excluded.push(resourceId);const attemptedProviders=[...new Set(failures.map(f=>String(f?.provider||'').trim().toLowerCase()).filter(Boolean))];const excludedProviders=[...new Set([...requestedExcludedProviders,...peerExclusions.providers,...attemptedProviders])];const row=await claimResource(capability,jobId,excluded,{...options,profile,taskKind,excludedProviders});if(!row)break;excluded.push(row.resource_id);const r=resources.find(x=>x.resourceId===row.resource_id);if(!r)continue;await pool.query("update tigeriq_jobs set employee_id=$2,resource_id=$3,provider=$4,routing_profile=$5,routing_decision=$6,attempts=attempts+1,lease_until=now()+interval '5 minutes' where id=$1",[jobId,r.id,r.resourceId,r.provider,profile,JSON.stringify(row.routingDecision)]);const started=Date.now();try{const text=validateRoutedOutput(await invokeProvider(r,prompt,{profile,compiledPacket:options.compiledPacket||null,taskKind}),{jobId,prompt});if(typeof options.validateText==='function')options.validateText(text);const latency=Date.now()-started;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(error){if(localInferenceBusy(error)){await releaseLocalInferenceContention(r,jobId,taskKind);const busy=new Error('PC01_LOCAL_INFERENCE_BUSY');busy.code='PC01_LOCAL_INFERENCE_BUSY';busy.failures=[];throw busy;}let finalError=error,policy=failurePolicy(error?.kind||'outage');const diagnosis=diagnoseRoutingFailure(policy.kind);await event('ROUTING_DIAGNOSIS',{jobId,employeeId:r.id,resourceId:r.resourceId,taskKind,profile,...diagnosis});if(diagnosis.retrySameResource){await event('ROUTING_RETRY',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind:policy.kind});try{const retryStarted=Date.now(),text=validateRoutedOutput(await invokeProvider(r,prompt,{profile,compiledPacket:options.compiledPacket||null,taskKind}),{jobId,prompt});if(typeof options.validateText==='function')options.validateText(text);const latency=Date.now()-retryStarted;await markResourceSuccess(r,jobId,latency,'RESOURCE_SUCCESS',true,{taskKind,profile});return{text,resource:r,latencyMs:latency,failures,routingProfile:profile,routingDecision:row.routingDecision};}catch(retryError){finalError=retryError;policy=failurePolicy(retryError?.kind||policy.kind);}}const kind=finalError?.kind||'outage';failures.push({employeeId:r.id,resourceId:r.resourceId,provider:r.provider,kind,message:String(finalError?.code||finalError?.message||finalError)});await markResourceFailure(r,jobId,finalError,'RESOURCE_FAILURE',true,{taskKind,profile});if(policy.failover)await event('ROUTING_FAILOVER',{jobId,employeeId:r.id,resourceId:r.resourceId,provider:r.provider,taskKind,profile,kind});if(policy.stop)break;}}const e=new Error('NO_AI_RESOURCE_AVAILABLE');e.failures=failures;throw e;
 }
 function buildNv09CanaryPrompt(inputPrompt='',marker='NV09_CORE_CANARY_OK'){
   const diagnostic=String(inputPrompt||'').trim().slice(0,700);
@@ -2233,6 +2233,7 @@ async function emitSkillEffectivenessObservations({
   retryBudgetExhausted = false,
   retryCount = 0,
   maxRetries = 0,
+  qualityVerified = false,
 }) {
   const skills = Array.isArray(skillContext?.skills) ? skillContext.skills : [];
   for (const skill of skills) {
@@ -2240,6 +2241,8 @@ async function emitSkillEffectivenessObservations({
       jobId: job.id,
       objectiveId: job.objective_id,
       version: skill.version || 'unknown',
+      taskKind: job.kind || 'ai',
+      qualityVerified,
       outcome,
       verified: true,
       resourceId: resource?.resourceId || resource?.resource_id || null,
@@ -2346,7 +2349,23 @@ async function runJob(j) {
     const skillObjectiveText=[j.title,j.prompt].filter(Boolean).join('\n');
     let skillRegistryError=null;
     try{
-      if(!deterministicCampaignVerifier)jobSkillContext=matchAndLoadSkills(focusedSkillRoutingText(skillObjectiveText));
+      if(!deterministicCampaignVerifier){
+        let learningOptions={};
+        try{
+          const learningRows=(await pool.query(
+            "select data from tigeriq_events where objective_id=$1 and type='SKILL_EFFECTIVENESS_OBSERVED' and data->>'taskKind'=$2 order by seq desc limit 120",
+            [j.objective_id,j.kind||'ai'],
+          )).rows;
+          learningOptions={outcomeEvidence:learningRows.map(row=>row.data),learningScope:{objectiveId:j.objective_id,taskKind:j.kind||'ai'}};
+        }catch(error){
+          console.warn('SKILL_ADAPTIVE_SHADOW_UNAVAILABLE',String(error?.code||'UNKNOWN').slice(0,80));
+        }
+        jobSkillContext=matchAndLoadSkills(focusedSkillRoutingText(skillObjectiveText),learningOptions);
+        if(jobSkillContext.adaptiveShadow){
+          try{await event('SKILL_ADAPTIVE_SHADOW',{objectiveId:j.objective_id,jobId:j.id,...jobSkillContext.adaptiveShadow});}
+          catch(error){console.warn('SKILL_ADAPTIVE_SHADOW_RECEIPT_FAILED',String(error?.code||'UNKNOWN').slice(0,80));}
+        }
+      }
     }catch(error){
       skillRegistryError=String(error?.message||error).slice(0,240);
       await event('SKILL_ROUTING_REGISTRY_REJECTED',{objectiveId:j.objective_id,jobId:j.id,reason:skillRegistryError});
@@ -2471,6 +2490,7 @@ async function runJob(j) {
       job:j,
       skillContext:jobSkillContext,
       outcome:'completed',
+      qualityVerified:executionGate?.pass===true||(autoworkOutput.accepted===true&&autoworkOutput.applicable===true),
       resource:routed.resource,
       durationMs:Math.max(0,Date.now()-skillUseStartedAt),
     });

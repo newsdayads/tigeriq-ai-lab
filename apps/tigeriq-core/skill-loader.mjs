@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadAgencyRoleReferences } from './agency-agent-reference.mjs';
+import { scopedSkillLearningProfile } from './skill-effectiveness.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const DEFAULT_REGISTRY = join(REPO_ROOT, 'docs', 'skills', 'registry.yaml');
@@ -126,6 +127,21 @@ export function matchAndLoadSkills(objectiveText = '', options = {}) {
     .filter(item => item.score > 0)
     .sort((a, b) => b.score - a.score || a.skill.id.localeCompare(b.skill.id));
 
+  // Advisory comparison only: never change loaded skills until an accepted canary.
+  const adaptiveProfiles = options.learningScope ? ranked.map(({skill,score})=>({
+    ...scopedSkillLearningProfile(skill,options.outcomeEvidence,options.learningScope),relevance:score
+  })) : [];
+  const shadowOrder = [];
+  for (const relevance of [...new Set(adaptiveProfiles.map(x=>x.relevance))]) {
+    const group=adaptiveProfiles.filter(x=>x.relevance===relevance);
+    const enough=group.every(x=>x.confidence==='SUFFICIENT_SAMPLE');
+    const sorted=group.slice().sort((a,b)=>b.posterior-a.posterior||a.skillId.localeCompare(b.skillId));
+    const separated=sorted.length>1 && sorted.every((x,i)=>i===0||sorted[i-1].posterior-x.posterior>=0.2);
+    shadowOrder.push(...(enough&&separated?sorted:group).map(x=>x.skillId));
+  }
+  const adaptiveShadow = options.learningScope ? { mode:'SHADOW_ONLY', baseline:ranked.map(x=>x.skill.id),
+    proposed:shadowOrder, profiles:adaptiveProfiles } : null;
+
   // Reserve a bounded slot for a verified reference before ACTIVE skills
   // occupy the context. Without this, source installation never reaches jobs.
   const agencyCandidate = ranked.length && maxSkills > 0 ? loadAgencyRoleReferences(objectiveText, {
@@ -188,6 +204,7 @@ export function matchAndLoadSkills(objectiveText = '', options = {}) {
     contextBlock,
     evidence: loaded.map(skill => ({ id: skill.id, version: skill.version || null, target: skill.target || null, bytes: skill.bytes })),
     skipped,
+    ...(adaptiveShadow ? {adaptiveShadow} : {}),
     agencyReferences: agencyBlock ? agency.references : [],
     agencyStatus: agencyBlock ? agency.status : (agency.contextBlock ? 'CONTEXT_BUDGET' : agency.status)
   };
