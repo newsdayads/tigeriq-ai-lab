@@ -324,3 +324,15 @@ test('accepts a zero RIFF padding byte in an embedded WebP image', () => {
   assert.equal(report.technicalScreen, 'PASS');
   assert.equal(report.releaseEligible, false);
 });
+
+test('rejects object-valued buffers container', () => {
+  assert.throws(() => inspectGlb(rewriteJsonFixture(d => { d.buffers = { 0: d.buffers[0], length: 1 }; })), /invalid glTF storage arrays/);
+});
+
+test('rejects object-valued bufferViews container', () => {
+  assert.throws(() => inspectGlb(rewriteJsonFixture(d => { d.bufferViews = Object.fromEntries(d.bufferViews.map((value, index) => [index, value])); })), /invalid glTF storage arrays/);
+});
+
+test('rejects object-valued accessors container', () => {
+  assert.throws(() => inspectGlb(rewriteJsonFixture(d => { d.accessors = Object.fromEntries(d.accessors.map((value, index) => [index, value])); })), /invalid glTF storage arrays/);
+});
