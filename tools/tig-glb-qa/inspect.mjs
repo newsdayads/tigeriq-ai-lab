@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import { TextDecoder } from 'node:util';
 
 // Framing checks only: no pixel decode or full codec conformance claim.
 const crcTable = Uint32Array.from({length:256}, (_, i) => {
@@ -62,7 +63,10 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     if (len % 4 || at + len > b.length) fail('invalid chunk length');
     if (chunks++ === 0 && type !== 0x4e4f534a) fail('JSON must be first');
     if (type === 0x004e4942 && chunks !== 2) fail('BIN chunk must be second');
-    if (type === 0x4e4f534a) { if (hasJson) fail('duplicate JSON'); hasJson = true; d = JSON.parse(b.subarray(at, at + len).toString('utf8')); }
+    if (type === 0x4e4f534a) { if (hasJson) fail('duplicate JSON'); hasJson = true; let jsonText;
+      try { jsonText = new TextDecoder('utf-8', { fatal: true }).decode(b.subarray(at, at + len)); }
+      catch { fail('invalid UTF-8 JSON'); }
+      d = JSON.parse(jsonText); }
     else if (type === 0x004e4942) { if (bin) fail('duplicate BIN'); bin = b.subarray(at, at + len); }
     at += len;
   }
