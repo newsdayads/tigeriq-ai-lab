@@ -43,3 +43,6 @@ This skill does not authorize APP Chrome/Core source mutation, Production releas
 
 ## Non-goals
 It does not create a second design authority when a scoped contract already exists.
+
+## Candidate reference — GH-5821
+Diagram layout and brand reference: [selective adoption pilot](../../integrations/diagram-sre-video.md). Reference only pending review and acceptance; no change to executable capabilities, promotion or authority.

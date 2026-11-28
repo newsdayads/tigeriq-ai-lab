@@ -43,3 +43,6 @@ Credential/security/Production/paid/destructive/irreversible-related candidates 
 
 ## Non-goals
 This skill does not self-promote rules, mutate policy, alter credentials/security, spend money, release Production, or perform destructive actions.
+
+## Candidate reference — GH-5821
+Incident evidence and hypothesis reference: [selective adoption pilot](../../integrations/diagram-sre-video.md). Reference only pending review and acceptance; no change to executable capabilities, promotion or authority.

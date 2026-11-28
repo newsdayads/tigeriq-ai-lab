@@ -46,3 +46,5 @@ No self-review, direct main mutation, automatic release, Codex, RDC, credentials
 
 ## Non-goals
 No second reviewer system, Agency worker identity, universal screenshot gate or automatic FAIL regardless of evidence.
+## Candidate reference — GH-5821
+Bounded review/evidence mapping reference: [selective adoption pilot](../../integrations/diagram-sre-video.md). Reference only pending review and acceptance; no change to review authority, required independence, or executable capabilities.
