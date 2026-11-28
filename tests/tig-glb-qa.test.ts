@@ -15,12 +15,12 @@ function fixture(opts: { index?: number; nan?: boolean; noUv?: boolean; degenera
   const bin = Buffer.alloc(68 + png.length + (4 - png.length % 4) % 4);
   [0,0,0,1,0,0,0,opts.degenerate?0:1,0].forEach((x,i)=>bin.writeFloatLE(opts.nan&&i===0?NaN:x,i*4));
   [0,0,1,0,0,opts.outsideUv?2:1].forEach((x,i)=>bin.writeFloatLE(x,36+i*4));
-  [0,1,opts.index??2].forEach((x,i)=>bin.writeUInt16LE(x,60+i*2));
+  [0,opts.singlePosition?0:1,opts.singlePosition?0:(opts.index??2)].forEach((x,i)=>bin.writeUInt16LE(x,60+i*2));
   png.copy(bin,68);
   if(opts.badBinPadding) bin[bin.length-1] = 1;
   const doc = { asset:{version:'2.0'}, buffers:[{byteLength:68+png.length,...(opts.external?{uri:'external.bin'}:{})}],
     bufferViews:[{buffer:0,byteOffset:0,byteLength:36,...(opts.stride != null?{byteStride:opts.stride}:{})},{buffer:0,byteOffset:36,byteLength:24},{buffer:0,byteOffset:60,byteLength:6,...(opts.indexStride != null?{byteStride:opts.indexStride}:{})},{buffer:0,byteOffset:68,byteLength:png.length,...(opts.imageStride != null?{byteStride:opts.imageStride}:{})}],
-    accessors:[{bufferView:0,componentType:5126,count:opts.singlePosition?1:3,type:'VEC3',min:[0,0,0],max:[1,opts.degenerate?0:1,0]},{bufferView:opts.sharedView?0:1,componentType:5126,count:3,type:'VEC2'},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],
+    accessors:[{bufferView:0,componentType:5126,count:opts.singlePosition?1:3,type:'VEC3',min:[0,0,0],max:[1,opts.degenerate?0:1,0]},{bufferView:opts.sharedView?0:1,componentType:5126,count:opts.singlePosition?1:3,type:'VEC2'},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],
     meshes:[{name:'test',primitives:[{attributes:{POSITION:0,...(opts.noUv?{}:{TEXCOORD_0:1})},indices:2}]}],
     images:[{bufferView:3,mimeType:opts.imageMime??'image/png'}] };
   const json=Buffer.from(JSON.stringify(doc)); const padded=Buffer.concat([json,Buffer.alloc((4-json.length%4)%4,32)]);
@@ -111,9 +111,9 @@ function normalizedUvFixture(componentType: 5121 | 5123 | 5126, normalized = tru
   const indices=Buffer.alloc(6);[0,1,2].forEach((value,i)=>indices.writeUInt16LE(value,i*2));
   const delta = misalignedView ? 1 : viewOffsetDelta;
   const uvOffset=pos.length+Math.max(delta,0), viewOffset=pos.length+delta, accessorOffset=Math.max(0,-delta);
-  const viewLength=uv.length+accessorOffset, indexOffset=uvOffset+uv.length, imageOffset=indexOffset+indices.length;
+  const viewLength=uv.length+accessorOffset, indexPadding=(2-((uvOffset+uv.length)%2))%2, indexOffset=uvOffset+uv.length+indexPadding, imageOffset=indexOffset+indices.length;
   const logical=imageOffset+png.length;
-  const bin=Buffer.concat([pos,Buffer.alloc(Math.max(delta,0)),uv,indices,png,Buffer.alloc((4-logical%4)%4)]);
+  const bin=Buffer.concat([pos,Buffer.alloc(Math.max(delta,0)),uv,Buffer.alloc(indexPadding),indices,png,Buffer.alloc((4-logical%4)%4)]);
   const doc={asset:{version:'2.0'},buffers:[{byteLength:logical}],
     bufferViews:[{buffer:0,byteOffset:0,byteLength:pos.length},{buffer:0,byteOffset:viewOffset,byteLength:viewLength,...(componentType!==5126 && !omitStride?{byteStride:4}:{})},{buffer:0,byteOffset:indexOffset,byteLength:indices.length},{buffer:0,byteOffset:imageOffset,byteLength:png.length}],
     accessors:[{bufferView:0,componentType:5126,count:3,type:'VEC3',min:[0,0,0],max:[1,1,0]},{bufferView:1,componentType,count:3,type:'VEC2',byteOffset:accessorOffset+(misaligned?2:0),...(normalized?{normalized:true}:{})},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],
@@ -168,7 +168,7 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
     const r=run(rewriteJsonFixture(d=>{d.bufferViews[0].byteOffset=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid view offset');
   });
   it('rejects null sparse accessor property',()=>{
-    const r=run(rewriteJsonFixture(d=>{d.accessors[0].sparse=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('unsupported accessor');
+    const r=run(rewriteJsonFixture(d=>{d.accessors[0].sparse=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('unsupported vertex attribute accessor');
   });
   it('rejects null normalized accessor property',()=>{
     const r=run(rewriteJsonFixture(d=>{d.accessors[0].normalized=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid normalized accessor');
@@ -194,8 +194,8 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
   it('rejects shared vertex bufferViews without byteStride',()=>{
     const r=run(fixture({sharedView:true}));expect(r.status).toBe(1);expect(r.stderr).toContain('shared vertex attributes require byteStride');
   });
-  it('accepts a single vertex when byteStride exceeds bufferView.byteLength',()=>{
-    const r=run(fixture({stride:40,singlePosition:true}));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');
+  it('accepts a single vertex accessor when byteStride exceeds bufferView.byteLength',()=>{
+    const r=run(fixture({stride:40,singlePosition:true}));expect(r.status).toBe(0);expect(JSON.parse(r.stdout)).toMatchObject({degenerate:1,technicalScreen:'NOT_MET'});
   });
 
   it('accepts unknown extension chunks after BIN',()=>expect(JSON.parse(run(fixture({unknownAfterBin:true})).stdout).technicalScreen).toBe('PASS'));
