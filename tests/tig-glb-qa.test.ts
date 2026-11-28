@@ -95,7 +95,7 @@ function invalidUtf8Fixture() {
   return glb;
 }
 
-function normalizedUvFixture(componentType: 5121 | 5123 | 5126, normalized = true, misaligned = false, misalignedView = false, omitStride = false) {
+function normalizedUvFixture(componentType: 5121 | 5123 | 5126, normalized = true, misaligned = false, misalignedView = false, omitStride = false, viewOffsetDelta = 0) {
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP438AAAAQBAYDFKhhdAAAAAElFTkSuQmCC', 'base64');
   const pos = Buffer.alloc(36);
   [0,0,0,1,0,0,0,1,0].forEach((value,i)=>pos.writeFloatLE(value,i*4));
@@ -109,12 +109,14 @@ function normalizedUvFixture(componentType: 5121 | 5123 | 5126, normalized = tru
     else uv.writeFloatLE(value,offset);
   });
   const indices=Buffer.alloc(6);[0,1,2].forEach((value,i)=>indices.writeUInt16LE(value,i*2));
-  const uvOffset=pos.length, indexOffset=uvOffset+uv.length, imageOffset=indexOffset+indices.length;
+  const delta = misalignedView ? 1 : viewOffsetDelta;
+  const uvOffset=pos.length+Math.max(delta,0), viewOffset=pos.length+delta, accessorOffset=Math.max(0,-delta);
+  const viewLength=uv.length+accessorOffset, indexOffset=uvOffset+uv.length, imageOffset=indexOffset+indices.length;
   const logical=imageOffset+png.length;
-  const bin=Buffer.concat([pos,uv,indices,png,Buffer.alloc((4-logical%4)%4)]);
+  const bin=Buffer.concat([pos,Buffer.alloc(Math.max(delta,0)),uv,indices,png,Buffer.alloc((4-logical%4)%4)]);
   const doc={asset:{version:'2.0'},buffers:[{byteLength:logical}],
-    bufferViews:[{buffer:0,byteOffset:0,byteLength:pos.length},{buffer:0,byteOffset:uvOffset + (misalignedView ? 1 : 0),byteLength:uv.length,...(componentType!==5126 && !omitStride?{byteStride:4}:{})},{buffer:0,byteOffset:indexOffset,byteLength:indices.length},{buffer:0,byteOffset:imageOffset,byteLength:png.length}],
-    accessors:[{bufferView:0,componentType:5126,count:3,type:'VEC3',min:[0,0,0],max:[1,1,0]},{bufferView:1,componentType,count:3,type:'VEC2',...(normalized?{normalized:true}:{}),...(misaligned?{byteOffset:2}:{})},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],
+    bufferViews:[{buffer:0,byteOffset:0,byteLength:pos.length},{buffer:0,byteOffset:viewOffset,byteLength:viewLength,...(componentType!==5126 && !omitStride?{byteStride:4}:{})},{buffer:0,byteOffset:indexOffset,byteLength:indices.length},{buffer:0,byteOffset:imageOffset,byteLength:png.length}],
+    accessors:[{bufferView:0,componentType:5126,count:3,type:'VEC3',min:[0,0,0],max:[1,1,0]},{bufferView:1,componentType,count:3,type:'VEC2',byteOffset:accessorOffset+(misaligned?2:0),...(normalized?{normalized:true}:{})},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],
     meshes:[{primitives:[{attributes:{POSITION:0,TEXCOORD_0:1},indices:2}]}],images:[{bufferView:3,mimeType:'image/png'}]};
   const raw=Buffer.from(JSON.stringify(doc)), json=Buffer.concat([raw,Buffer.alloc((4-raw.length%4)%4,32)]);
   const header=Buffer.alloc(12);header.writeUInt32LE(0x46546c67);header.writeUInt32LE(2,4);header.writeUInt32LE(28+json.length+bin.length,8);
@@ -176,11 +178,14 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
   it('rejects normalized FLOAT TEXCOORD_0',()=>{
     const r=run(normalizedUvFixture(5126,true));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid normalized accessor');
   });
-  it('rejects misaligned vertex attribute accessor offsets',()=>{
-    const r=run(normalizedUvFixture(5123,true,true));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid vertex attribute alignment');
+  it('rejects accessor byteOffset that is 2-byte aligned but not 4-byte aligned even when absolute offset is 4-byte aligned',()=>{
+    const r=run(normalizedUvFixture(5123,true,false,false,true,-2));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid vertex attribute alignment');
   });
-  it('rejects misaligned absolute vertex attribute offsets',()=>{
-    const r=run(normalizedUvFixture(5121,true,false,true));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid vertex attribute alignment');
+  it('accepts UNSIGNED_SHORT VEC2 when bufferView starts at a 2-byte offset but accessor offset is 4-byte aligned',()=>{
+    const r=run(normalizedUvFixture(5123,true,false,false,true,2));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');
+  });
+  it('accepts UNSIGNED_BYTE vertex attributes when bufferView starts at a non-4-byte absolute offset',()=>{
+    const r=run(normalizedUvFixture(5121,true,false,true));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');
   });
   it('rejects shared vertex bufferViews without byteStride',()=>{
     const r=run(fixture({sharedView:true}));expect(r.status).toBe(1);expect(r.stderr).toContain('shared vertex attributes require byteStride');
