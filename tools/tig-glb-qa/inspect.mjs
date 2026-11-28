@@ -173,15 +173,25 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
         const index = integer(accessorIndex, 'vertex attribute accessor index');
         const attribute = d.accessors?.[index];
         if (!attribute || attribute.bufferView == null || attribute.sparse !== undefined) fail('unsupported vertex attribute accessor');
-        const count = integer(attribute.count, 'accessor count');
+        if (!attribute || typeof attribute !== 'object' || Array.isArray(attribute) || attribute.bufferView == null || attribute.sparse !== undefined) fail('unsupported vertex attribute accessor');
+        const components = { SCALAR:1, VEC2:2, VEC3:3, VEC4:4 }[attribute.type];
+        const componentSize = {5120:1,5121:1,5122:2,5123:2,5126:4}[attribute.componentType];
+        if (!components || !componentSize) fail('unsupported vertex attribute accessor');
+        if (attribute.normalized !== undefined && typeof attribute.normalized !== 'boolean') fail('invalid normalized accessor');
+        if (attribute.normalized === true && attribute.componentType === 5126) fail('unsupported normalized accessor');
+        const { v, start, length } = view(attribute.bufferView, { allowStride: true });
+        const count = integer(attribute.count, 'accessor count'), offset = integer(attribute.byteOffset === undefined ? 0 : attribute.byteOffset, 'accessor offset');
         if (!count) fail('invalid accessor count');
+        const width = components * componentSize;
+        const stride = integer(v.byteStride === undefined ? width : v.byteStride, 'stride');
+        if (offset % componentSize !== 0 || (start + offset) % componentSize !== 0) fail('invalid accessor alignment');
+        if (offset % 4 !== 0 || (v.byteStride == null && width % 4 !== 0)) fail('invalid vertex attribute alignment');
+        if (stride < width || stride % componentSize || offset > length || width > length - offset || count - 1 > Math.floor((length - offset - width) / stride)) fail('accessor out of bounds');
         if (vertexAttributeCount !== undefined && count !== vertexAttributeCount) fail('vertex attribute count mismatch');
         vertexAttributeCount = count;
-        if (attribute.bufferView != null) {
-          let references = vertexViewAccessors.get(attribute.bufferView);
-          if (!references) vertexViewAccessors.set(attribute.bufferView, references = new Set());
-          references.add(index);
-        }
+        let references = vertexViewAccessors.get(attribute.bufferView);
+        if (!references) vertexViewAccessors.set(attribute.bufferView, references = new Set());
+        references.add(index);
       }
       if (!p.attributes || typeof p.attributes !== 'object' || Array.isArray(p.attributes)) fail('invalid primitive attributes');
       const positionIndex = integer(p.attributes.POSITION, 'vertex attribute accessor index');
