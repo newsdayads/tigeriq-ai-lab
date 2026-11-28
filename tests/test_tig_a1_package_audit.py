@@ -112,7 +112,7 @@ class PackageTests(unittest.TestCase):
             self.run_fixture(layer=png(1, 1, color_type=0, palette=b'\x00\x00\x00'))
 
     def test_palette_must_precede_idat(self):
-        with self.assertRaisesRegex(ValueError, 'PLTE ordering'):
+        with self.assertRaisesRegex(ValueError, 'missing PNG PLTE'):
             self.run_fixture(layer=png(1, 1, color_type=3, palette=b'\x00\x00\x00', palette_after_idat=True))
 
     def test_palette_length_must_be_rgb_triplets(self):
