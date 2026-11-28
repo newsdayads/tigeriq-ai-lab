@@ -188,3 +188,11 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
   it.each(['image/jpeg','image/webp'])('rejects mismatched image MIME %s',imageMime=>{const r=run(fixture({imageMime}));expect(r.status).toBe(1);expect(r.stderr).toMatch(/invalid (JPEG|WebP)/);});
   it.each([{noUv:true},{degenerate:true},{outsideUv:true}])('reports an unmet technical screen %j',opts=>{const r=run(fixture(opts));expect(r.status).toBe(0);expect(JSON.parse(r.stdout)).toMatchObject({technicalScreen:'NOT_MET',releaseEligible:false});});
 });
+
+it('rejects null TEXCOORD_0 instead of treating it as missing',()=>{const r=run(rewriteJsonFixture(d=>{d.meshes[0].primitives[0].attributes.TEXCOORD_0=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid vertex attribute accessor index');});
+it('rejects null primitive attributes object',()=>{const r=run(rewriteJsonFixture(d=>{d.meshes[0].primitives[0].attributes=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid primitive attributes');});
+it('rejects null images array instead of treating it as absent',()=>{const r=run(rewriteJsonFixture(d=>{d.images=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid images');});
+it('rejects null skins array instead of treating it as absent',()=>{const r=run(rewriteJsonFixture(d=>{d.skins=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid skins');});
+it('rejects null animations array instead of treating it as absent',()=>{const r=run(rewriteJsonFixture(d=>{d.animations=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid animations');});
+it('rejects null morph targets instead of treating them as absent',()=>{const r=run(rewriteJsonFixture(d=>{d.meshes[0].primitives[0].targets=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid morph targets');});
+it('rejects null image entries with a controlled validation error',()=>{const r=run(rewriteJsonFixture(d=>{d.images[0]=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('unsupported image');});
