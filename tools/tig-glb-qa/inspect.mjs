@@ -70,7 +70,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     else if (type === 0x004e4942) { if (bin) fail('duplicate BIN'); bin = b.subarray(at, at + len); }
     at += len;
   }
-  if (d?.asset?.version !== '2.0' || !bin || d.buffers?.length !== 1 || d.buffers[0].uri != null) fail('unsupported non-embedded GLB');
+  if (d?.asset?.version !== '2.0' || !bin || d.buffers?.length !== 1 || d.buffers[0].uri !== undefined) fail('unsupported non-embedded GLB');
   const logical = d.buffers[0].byteLength;
   if (!Number.isSafeInteger(logical) || logical < 0 || logical > bin.length || bin.length - logical > 3) fail('invalid buffer length');
   if (bin.subarray(logical).some(byte => byte !== 0)) fail('invalid BIN padding');
@@ -78,9 +78,9 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
   function view(i, { allowStride = false } = {}) {
     const v = d.bufferViews?.[integer(i, 'view index')];
     if (!v || v.buffer !== 0) fail('invalid buffer view');
-    const start = integer(v.byteOffset ?? 0, 'view offset'), length = integer(v.byteLength, 'view length');
+    const start = integer(v.byteOffset === undefined ? 0 : v.byteOffset, 'view offset'), length = integer(v.byteLength, 'view length');
     if (start > logical || length > logical - start) fail('buffer view out of bounds');
-    if (v.byteStride != null) {
+    if (v.byteStride !== undefined) {
       if (!allowStride) fail('byteStride only allowed for vertex attributes');
       if (!Number.isSafeInteger(v.byteStride) || v.byteStride < 4 || v.byteStride > 252 || v.byteStride % 4 !== 0) fail('invalid buffer view stride');
     }
@@ -88,17 +88,18 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
   }
   function accessor(i, kind, types, { allowNormalizedInteger = false, vertexAttribute = false } = {}) {
     const a = d.accessors?.[integer(i, 'accessor index')];
-    if (!a || a.type !== kind || !types.includes(a.componentType) || a.sparse) fail('unsupported accessor');
+    if (!a || a.type !== kind || !types.includes(a.componentType) || a.sparse !== undefined) fail('unsupported accessor');
+    if (a.normalized !== undefined && typeof a.normalized !== 'boolean') fail('invalid normalized accessor');
     if (allowNormalizedInteger) {
       const unsignedInteger = a.componentType === 5121 || a.componentType === 5123;
       if (unsignedInteger !== (a.normalized === true)) fail('invalid normalized accessor');
       if (![5126, 5121, 5123].includes(a.componentType)) fail('unsupported normalized accessor');
     } else if (a.normalized) fail('unsupported accessor');
     const { v, start, length } = view(a.bufferView, { allowStride: vertexAttribute });
-    const count = integer(a.count, 'accessor count'), off = integer(a.byteOffset ?? 0, 'accessor offset');
+    const count = integer(a.count, 'accessor count'), off = integer(a.byteOffset === undefined ? 0 : a.byteOffset, 'accessor offset');
     const components = { SCALAR:1, VEC2:2, VEC3:3 }[kind];
     const size = {5121:1,5123:2,5125:4,5126:4}[a.componentType], width = size * components;
-    const stride = integer(v.byteStride ?? width, 'stride');
+    const stride = integer(v.byteStride === undefined ? width : v.byteStride, 'stride');
     if (v.byteStride != null && v.byteStride > length) fail('invalid buffer view stride');
     if (vertexAttribute && ((start + off) % 4 !== 0 || (v.byteStride == null && width % 4 !== 0))) fail('invalid vertex attribute alignment');
     if (!count || stride < width || stride % size || (start + off) % size || off > length || width > length - off || count - 1 > Math.floor((length - off - width) / stride)) fail('accessor out of bounds');
@@ -118,7 +119,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     if (!Array.isArray(m.primitives) || !m.primitives.length) fail('missing primitives');
     let triangles = 0, vertices = 0;
     for (const p of m.primitives) {
-      if ((p.mode ?? 4) !== 4) fail('only triangle primitives supported');
+      if (p.mode !== undefined && p.mode !== 4) fail('only triangle primitives supported');
       for (const accessorIndex of Object.values(p.attributes ?? {})) {
         const index = integer(accessorIndex, 'vertex attribute accessor index');
         const attribute = d.accessors?.[index];
@@ -137,7 +138,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
         for(let c=0;c<3;c++) if(!Number.isFinite(pos.get(n,c))) fail('non-finite position');
         if(uv) for(let c=0;c<2;c++) { const x=uv.get(n,c); if(!Number.isFinite(x)) fail('non-finite UV'); if(x<0||x>1) uvOutOfRange++; }
       }
-      const idx = p.indices == null ? null : accessor(p.indices,'SCALAR',[5121,5123,5125]);
+      const idx = p.indices === undefined ? null : accessor(p.indices,'SCALAR',[5121,5123,5125]);
       const count = idx?.count ?? pos.count;
       if (count % 3) fail('non-triangle index count');
       for(let k=0;k<count;k+=3) {
@@ -156,7 +157,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     if (references.size > 1 && bufferView?.byteStride == null) fail('shared vertex attributes require byteStride');
   }
   const images=d.images??[];
-  for(const im of images) { if(im.uri!=null || !['image/png','image/jpeg','image/webp'].includes(im.mimeType)) fail('unsupported image'); const {start,length}=view(im.bufferView); if(!length) fail('empty image'); checkImage(bin.subarray(start,start+length),im.mimeType); }
+  for(const im of images) { if(im.uri !== undefined || !['image/png','image/jpeg','image/webp'].includes(im.mimeType)) fail('unsupported image'); const {start,length}=view(im.bufferView); if(!length) fail('empty image'); checkImage(bin.subarray(start,start+length),im.mimeType); }
   const skins=d.skins?.length??0, animations=d.animations?.length??0;
   return { schema:'tig-glb-inspection-v1',sha256:createHash('sha256').update(b).digest('hex'),meshes,triangles:total,triangleBudget,embeddedImages:images.length,uvMissing,uvOutOfRange,degenerate,skins,morphTargets,animations,
     technicalScreen:total<=triangleBudget&&uvMissing===0&&uvOutOfRange===0&&degenerate===0&&images.length>0?'PASS':'NOT_MET',
