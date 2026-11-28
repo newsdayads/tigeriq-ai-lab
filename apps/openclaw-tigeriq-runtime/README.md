@@ -11,7 +11,6 @@ OpenClaw tools for PC01:
 - process listing and allowlisted local TCP probes;
 - text file read/list/stat inside `D:\TigerIQ`, `D:\OpenClaw`, and `D:\TigerIQ-OpenClaw`;
 - text file writes only inside `D:\TigerIQ\State`, `D:\TigerIQ\Evidence`, `D:\TigerIQ\Logs`, and `D:\TigerIQ-OpenClaw\state`;
-- bounded Writer ODT creation from `{id,title,paragraphs}` using the pinned Python 3.12 adapter at the fixed CoreSource path; output is limited to `D:\TigerIQ\State\cli-anything-writer`, atomically no-overwrite published, then SHA-256 read back by the operator;
 - a strict diagnostic shell allowlist for read-only Git/OpenClaw/Ollama inspection;
 - bounded Power Automate Desktop UI actions through an interactive-session broker: health, launch, window/tree inspection, element invoke/click/value set, and a small allowlist of navigation keys.
 
@@ -26,6 +25,10 @@ Guardrails:
 - no Production deploy/publish or direct main/master mutation through this tool;
 - PAD UI automation is restricted to Power Automate Desktop windows/elements; no arbitrary screen coordinates or generic desktop control;
 - shell timeout <= 120s; file sizes and output are bounded.
+
+## Typed Writer MCP
+
+The existing PC Operator MCP exposes `writer_create_odt` with strict `{id,title,paragraphs}` input. It reuses the existing `pc01:write` authorization and NV06 shared-resource lease, pins the Python 3.12 script blob, fixes the output root to `D:\\TigerIQ\\State\\cli-anything-writer`, rejects caller-selected paths/commands, and verifies the output SHA-256 by readback. The action is not accepted if the Core lease database or lease is unavailable.
 
 Repository engineering remains GitHub/Coding Lane authority. This plugin is a PC01 runtime operator, not a replacement source-code lane.
 
