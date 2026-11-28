@@ -153,6 +153,8 @@ test('rejects UNSIGNED_SHORT VEC2 without byteStride even when element width is 
 test('accepts UNSIGNED_BYTE vertex attributes when bufferView starts at a non-4-byte absolute offset',()=>assert.equal(inspectGlb(normalizedUvFixture(5121,true,false,true)).technicalScreen,'PASS'));
 test('rejects shared vertex bufferViews without byteStride',()=>assert.throws(()=>inspectGlb(fixture({sharedView:true})),/shared vertex bufferView requires byteStride/));
 test('accepts shared vertex bufferViews with byteStride',()=>{const report=inspectGlb(fixture({sharedView:true,stride:12}));assert.equal(report.technicalScreen,'PASS');assert.equal(report.uvOutOfRange,0);});
+test('rejects distinct vertex accessors sharing a bufferView across primitives without byteStride',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0]});d.meshes[0].primitives.push({attributes:{POSITION:3,TEXCOORD_0:1},indices:2});})),/shared vertex bufferView requires byteStride/));
+test('accepts distinct vertex accessors sharing a bufferView across primitives with byteStride',()=>{const report=inspectGlb(rewriteJsonFixture(d=>{d.bufferViews[0].byteStride=12;d.accessors.push({...d.accessors[0]});d.meshes[0].primitives.push({attributes:{POSITION:3,TEXCOORD_0:1},indices:2});}));assert.equal(report.technicalScreen,'PASS');});
 test('rejects byteStride greater than bufferView.byteLength',()=>assert.throws(()=>inspectGlb(fixture({stride:40,singlePosition:true})),/invalid buffer view stride/));
 test('accepts byteStride equal to bufferView.byteLength',()=>{const report=inspectGlb(fixture({stride:36,singlePosition:true}));assert.equal(report.degenerate,1);assert.equal(report.technicalScreen,'NOT_MET');});
 
