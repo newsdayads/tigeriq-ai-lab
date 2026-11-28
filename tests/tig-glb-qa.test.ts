@@ -238,3 +238,13 @@ it('rejects JSON chunk padding longer than the required 0-3 bytes',()=>{
   expect(r.stdout).toBe('');
   expect(r.stderr).toContain('invalid JSON chunk padding');
 });
+
+it('rejects zero-initialized non-POSITION vertex attributes',()=>{
+  const r=run(rewriteJsonFixture(d=>{const normal={...d.accessors[0]};delete normal.bufferView;d.accessors.push(normal);d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;}));
+  expect(r.status).toBe(1);expect(r.stderr).toContain('unsupported vertex attribute accessor');
+});
+
+it('rejects sparse non-POSITION vertex attributes',()=>{
+  const r=run(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],sparse:{}});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;}));
+  expect(r.status).toBe(1);expect(r.stderr).toContain('unsupported vertex attribute accessor');
+});
