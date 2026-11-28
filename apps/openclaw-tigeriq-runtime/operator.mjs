@@ -211,7 +211,7 @@ export function validateCliAnythingWriterRequest(value) {
   }
   const validText = (text, max) => typeof text === 'string' && text.trim().length > 0
     && text.length <= max
-    && !/[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\ufffe\\uffff]/u.test(text);
+    && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ud800-\udfff\ufffe\uffff]/u.test(text);
   if (!validText(title, 200)) throw new Error('CLI_ANYTHING_WRITER_INVALID_TITLE');
   if (!Array.isArray(paragraphs) || paragraphs.length < 1 || paragraphs.length > 30
     || paragraphs.some(p => !validText(p, 2000))) {
@@ -237,6 +237,7 @@ export function cliAnythingWriterSpec(request, {
     scriptPath,
     outputRoot,
     outputPath,
+    scriptGitBlobSha: CLI_ANYTHING_WRITER_GIT_BLOB_SHA,
     request: normalized,
     shell: false,
     callerOutputPath: false,
@@ -315,6 +316,15 @@ async function runCliAnythingWriter(request, { spawnImpl = spawn, timeoutSec = 3
     child.stdin.end(JSON.stringify(spec.request), 'utf8');
   });
   if (result.timedOut) throw new Error('CLI_ANYTHING_WRITER_TIMEOUT');
+  const scriptBytesAfter = await fs.readFile(scriptPath);
+  const normalizedScriptAfter = Buffer.from(scriptBytesAfter.toString('utf8').replace(/\\r\\n/g, '\\n'), 'utf8');
+  const scriptGitBlobShaAfter = createHash('sha1')
+    .update(Buffer.from('blob ' + normalizedScriptAfter.length + '\\0', 'utf8'))
+    .update(normalizedScriptAfter)
+    .digest('hex');
+  if (scriptGitBlobShaAfter !== scriptGitBlobSha) {
+    throw new Error('CLI_ANYTHING_WRITER_SOURCE_CHANGED_DURING_EXECUTION');
+  }
   let receipt;
   try { receipt = JSON.parse(result.stdout); }
   catch { throw new Error('CLI_ANYTHING_WRITER_INVALID_PROCESS_RECEIPT'); }
