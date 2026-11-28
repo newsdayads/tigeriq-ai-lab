@@ -1,5 +1,17 @@
 name: TiG GLB QA
 on:
+  push:
+    branches: [feat/tig-glb-qa-5779]
+    paths:
+      - 'tools/tig-glb-qa/**'
+      - 'tests/tig-glb-qa.test.ts'
+      - '.github/workflows/tig-glb-qa.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig*.json'
+      - 'api/control.mjs'
+      - 'scripts/verify_queue_hygiene.mjs'
+      - 'scripts/verify_work_board_ui.mjs'
   pull_request:
     branches: [main]
     paths:
