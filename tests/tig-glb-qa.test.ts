@@ -263,6 +263,8 @@ it.each(['KHR_draco_mesh_compression','EXT_meshopt_compression'])('rejects unsup
   const r=run(rewriteJsonFixture(d=>{d.extensionsUsed=[extension];d.extensionsRequired=[extension];}));
   expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('unsupported required glTF extension: '+extension);
 });
+it('rejects empty extensionsUsed list',()=>{const r=run(rewriteJsonFixture(d=>{d.extensionsUsed=[];}));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid extensionsUsed');});
+it('rejects empty extensionsRequired list',()=>{const r=run(rewriteJsonFixture(d=>{d.extensionsRequired=[];}));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid extensionsRequired');});
 it('rejects malformed extensionsUsed list',()=>{const r=run(rewriteJsonFixture(d=>{d.extensionsUsed='KHR_draco_mesh_compression';}));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid extensionsUsed');});
 it('rejects empty extension names',()=>{const r=run(rewriteJsonFixture(d=>{d.extensionsUsed=[''];}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid extensionsUsed');});
 it('rejects duplicate extension declarations',()=>{const r=run(rewriteJsonFixture(d=>{d.extensionsUsed=['KHR_materials_unlit','KHR_materials_unlit'];}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid extensionsUsed');});
