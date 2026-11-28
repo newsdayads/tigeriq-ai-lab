@@ -9,6 +9,7 @@ import { inspectGlb } from './inspect.mjs';
 
 function fixture(options = {}) {
   let png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP438AAAAQBAYDFKhhdAAAAAElFTkSuQmCC', 'base64');
+  if (options.jpegOnlyMarkers) png = Buffer.from([0xff,0xd8,0xff,0xd9]);
   if (options.imageDamage === 'signature') png[0] ^= 1;
   if (options.imageDamage === 'crc') png[29] ^= 1;
   if (options.imageDamage === 'truncated') png = png.subarray(0, -4);
@@ -170,6 +171,7 @@ test('declared skin without morph targets is not falsely marked absent',()=>{con
 
 for (const imageDamage of ['signature','crc','truncated']) test('rejects damaged PNG '+imageDamage,()=>assert.throws(()=>inspectGlb(fixture({imageDamage})),/invalid PNG/));
 for (const imageMime of ['image/jpeg','image/webp']) test('rejects mismatched image MIME '+imageMime,()=>assert.throws(()=>inspectGlb(fixture({imageMime})),/invalid (JPEG|WebP)/));
+test('rejects JPEG payload containing only SOI and EOI markers',()=>assert.throws(()=>inspectGlb(fixture({imageMime:'image/jpeg',jpegOnlyMarkers:true})),/invalid JPEG image framing/));
 
 function runCli(bytes, flags = []) {
   const dir=mkdtempSync(join(tmpdir(),'tig-strict-'));
