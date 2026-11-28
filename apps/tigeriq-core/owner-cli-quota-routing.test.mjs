@@ -23,6 +23,13 @@ describe('Owner CLI quota routing: fail closed',()=>{
    expect(chooseOwnerCodingRoute({...args,antigravityModels:['gemini-4-neon-high','claude-sonnet-5-5-medium']}).chosen).toBeNull();
    expect(chooseOwnerCodingRoute({...args,snapshots:[{...agy[0],remainingFraction:0.02},agy[1]]}).chosen).toBeNull();
  });
+ it('uses Sonnet Low from a separate verified quota only when the preferred Gemini route is unavailable',()=>{
+   const fallback={...args,antigravityModels:[...models,'claude-sonnet-5-5-low']};
+   expect(chooseOwnerCodingRoute({...fallback,snapshots:[{...agy[0],remainingFraction:0.06},agy[1]]}).chosen.model).toBe('gemini-4-hydrogen-low');
+   expect(chooseOwnerCodingRoute({...fallback,snapshots:[{...agy[0],remainingFraction:0},agy[1]]}).chosen.model).toBe('claude-sonnet-5-5-low');
+   expect(chooseOwnerCodingRoute({...fallback,snapshots:[]}).chosen).toBeNull();
+   expect(chooseOwnerCodingRoute({...fallback,job:{...job,difficulty:'LOW'},antigravityModels:['gemini-4-hydrogen-medium']}).chosen.model).toBe('gemini-4-hydrogen-medium');
+ });
  it('does not infer quota from model availability',()=>{expect(chooseOwnerCodingRoute({...args,snapshots:[]})).toMatchObject({chosen:null,code:'NO_VERIFIED_AUTHORIZED_QUOTA'});});
  it('rejects stale snapshots',()=>{expect(chooseOwnerCodingRoute({...args,nowMs:nowMs+121000}).chosen).toBeNull();});
  it('rejects unverified Antigravity authentication',()=>{expect(chooseOwnerCodingRoute({...args,auth:{antigravity:false,codex:true}}).chosen).toBeNull();});
