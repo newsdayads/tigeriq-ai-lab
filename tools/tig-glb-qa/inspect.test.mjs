@@ -35,6 +35,27 @@ function fixture(options = {}) {
   return options.truncated ? glb.subarray(0,-1) : glb;
 }
 
+function duplicateJsonFixture() {
+  const valid = fixture();
+  const jsonLength = valid.readUInt32LE(12);
+  const json = valid.subarray(20, 20 + jsonLength);
+  const binHeader = 20 + jsonLength;
+  const binLength = valid.readUInt32LE(binHeader);
+  const bin = valid.subarray(binHeader + 8, binHeader + 8 + binLength);
+  const chunk = (type, bytes) => {
+    const header = Buffer.alloc(8);
+    header.writeUInt32LE(bytes.length);
+    header.writeUInt32LE(type, 4);
+    return Buffer.concat([header, bytes]);
+  };
+  const chunks = [chunk(0x4e4f534a, Buffer.from('null')), chunk(0x004e4942, bin), chunk(0x4e4f534a, json)];
+  const header = Buffer.alloc(12);
+  header.writeUInt32LE(0x46546c67);
+  header.writeUInt32LE(2, 4);
+  header.writeUInt32LE(12 + chunks.reduce((sum, part) => sum + part.length, 0), 8);
+  return Buffer.concat([header, ...chunks]);
+}
+
 function normalizedUvFixture(componentType, normalized = true, misaligned = false, misalignedView = false) {
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP438AAAAQBAYDFKhhdAAAAAElFTkSuQmCC', 'base64');
   const pos = Buffer.alloc(36);
@@ -67,6 +88,7 @@ for (const [componentType, label] of [[5121,'UNSIGNED_BYTE'],[5123,'UNSIGNED_SHO
     assert.equal(report.uvMissing,0);assert.equal(report.uvOutOfRange,0);assert.equal(report.technicalScreen,'PASS');assert.equal(report.releaseEligible,false);
   });
 }
+test('rejects duplicate JSON chunks even when first JSON value is null',()=>assert.throws(()=>inspectGlb(duplicateJsonFixture()),/duplicate JSON/));
 test('rejects unnormalized integer TEXCOORD_0',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5121,false)),/invalid normalized accessor/));
 test('rejects normalized FLOAT TEXCOORD_0',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5126,true)),/invalid normalized accessor/));
 test('rejects misaligned vertex attribute accessor offsets',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5123,true,true)),/invalid vertex attribute alignment/));
