@@ -200,3 +200,5 @@ it('rejects null image entries with a controlled validation error',()=>{const r=
 it('rejects POSITION accessor without required min/max bounds',()=>{const r=run(rewriteJsonFixture(d=>{delete d.accessors[0].min;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid POSITION bounds');});
 it('rejects POSITION bounds that do not match actual vertex data',()=>{const r=run(rewriteJsonFixture(d=>{d.accessors[0].max=[1,2,0];}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid POSITION bounds');});
 it('accepts exact POSITION bounds for valid geometry',()=>{const r=run(fixture());expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');});
+
+it('rejects reserved maximum UNSIGNED_SHORT index value',()=>{const glb=fixture();const jsonLength=glb.readUInt32LE(12);const binStart=20+jsonLength+8;glb.writeUInt16LE(65535,binStart+64);const r=run(glb);expect(r.status).toBe(1);expect(r.stderr).toContain('reserved maximum index value');});
