@@ -73,7 +73,36 @@ function checkImage(bytes, mime) {
     }
     if(!ended) bad('PNG');
   } else if(mime==='image/jpeg') {
-    if(bytes.length<4||bytes[0]!==255||bytes[1]!==216||bytes[2]!==255||bytes.at(-2)!==255||bytes.at(-1)!==217) bad('JPEG');
+    if (bytes.length < 12 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes.at(-2) !== 0xff || bytes.at(-1) !== 0xd9) bad('JPEG');
+    // Validate marker/segment framing through the first scan. SOI/EOI alone
+    // is not a JPEG image; require a well-formed frame header and scan header.
+    let at = 2, hasFrame = false, hasScan = false;
+    const frameMarkers = new Set([0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf]);
+    while (at < bytes.length - 2) {
+      if (bytes[at++] !== 0xff) bad('JPEG');
+      while (at < bytes.length && bytes[at] === 0xff) at++;
+      if (at >= bytes.length) bad('JPEG');
+      const marker = bytes[at++];
+      if (marker === 0x00 || marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) bad('JPEG');
+      if (at + 2 > bytes.length - 2) bad('JPEG');
+      const segmentLength = bytes.readUInt16BE(at);
+      if (segmentLength < 2 || segmentLength > bytes.length - 2 - at) bad('JPEG');
+      if (frameMarkers.has(marker)) {
+        if (segmentLength < 8) bad('JPEG');
+        const height = bytes.readUInt16BE(at + 3), width = bytes.readUInt16BE(at + 5), components = bytes[at + 7];
+        if (!height || !width || !components || segmentLength !== 8 + 3 * components) bad('JPEG');
+        hasFrame = true;
+      }
+      if (marker === 0xda) {
+        const components = bytes[at + 2];
+        if (!components || segmentLength !== 6 + 2 * components || !hasFrame) bad('JPEG');
+        at += segmentLength;
+        hasScan = true;
+        break;
+      }
+      at += segmentLength;
+    }
+    if (!hasFrame || !hasScan || at >= bytes.length - 2) bad('JPEG');
   } else if(mime==='image/webp') {
     if(bytes.length<20||bytes.toString('ascii',0,4)!=='RIFF'||bytes.readUInt32LE(4)!==bytes.length-8||bytes.toString('ascii',8,12)!=='WEBP') bad('WebP');
     let at=12, hasImage=false;
