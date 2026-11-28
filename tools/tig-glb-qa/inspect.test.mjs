@@ -209,3 +209,8 @@ test('rejects non-space JSON chunk padding',()=>{
   glb[20+jsonLength-1]=0x09;
   assert.throws(()=>inspectGlb(glb),/invalid JSON chunk padding/);
 });
+
+test('accepts UTF-8 mesh names with correct JSON padding alignment',()=>{
+  const glb=rewriteJsonFixture(d=>{d.meshes[0].name='猫';});
+  assert.equal(inspectGlb(glb).technicalScreen,'PASS');
+});
