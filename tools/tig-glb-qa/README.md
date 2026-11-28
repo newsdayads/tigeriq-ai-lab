@@ -25,7 +25,7 @@ The JSON report includes the input SHA-256, mesh/triangle counts, UV and degener
 ## Supported scope and limits
 
 - GLB v2 with JSON first, embedded BIN second, one embedded buffer, and embedded PNG/JPEG/WebP image payloads.
-- Triangle primitives; all base vertex attribute references and per-primitive element counts are checked; required POSITION min/max bounds are checked against vertex data; reserved maximum index values are rejected; optional TEXCOORD_0 values are screened; bounded triangle budget.
+- Triangle primitives; every base vertex attribute accessor is checked for supported storage type, valid bufferView, component/vertex alignment, byte stride, in-bounds element range, and matching per-primitive count; required POSITION min/max bounds are checked against vertex data; reserved maximum index values are rejected; optional TEXCOORD_0 values are screened; bounded triangle budget.
 - Binary accessor decoding and semantic value constraints are limited to POSITION and TEXCOORD_0. NORMAL, TANGENT, COLOR, JOINTS, WEIGHTS, custom attributes, morph-target accessors, and their semantic-specific value rules are not fully validated.
 - `rigScreen` is informational: `NOT_CHECKED` when skins are declared. This tool does not validate joint/weight bindings, skeleton correctness, animation quality, or deformation. Skin, animation, and morph-target counts are informational; their internal accessor/graph contracts are not validated.
 - Sparse and zero-initialized accessors are unsupported. Image checks validate framing/signatures and PNG chunk CRCs, not full image decoding or visual quality.
