@@ -59,6 +59,30 @@ function duplicateJsonFixture() {
   return Buffer.concat([header, ...chunks]);
 }
 
+function rewriteJsonFixture(mutator) {
+  const glb = fixture();
+  const jsonLength = glb.readUInt32LE(12);
+  const doc = JSON.parse(glb.subarray(20, 20 + jsonLength).toString('utf8').trim());
+  mutator(doc);
+  const raw = Buffer.from(JSON.stringify(doc));
+  const json = Buffer.concat([raw, Buffer.alloc((4 - raw.length % 4) % 4, 32)]);
+  const binHeader = 20 + jsonLength;
+  const binLength = glb.readUInt32LE(binHeader);
+  const bin = glb.subarray(binHeader + 8, binHeader + 8 + binLength);
+  const chunk = (type, bytes) => {
+    const header = Buffer.alloc(8);
+    header.writeUInt32LE(bytes.length);
+    header.writeUInt32LE(type, 4);
+    return Buffer.concat([header, bytes]);
+  };
+  const chunks = [chunk(0x4e4f534a, json), chunk(0x004e4942, bin)];
+  const header = Buffer.alloc(12);
+  header.writeUInt32LE(0x46546c67);
+  header.writeUInt32LE(2, 4);
+  header.writeUInt32LE(12 + chunks.reduce((sum, part) => sum + part.length, 0), 8);
+  return Buffer.concat([header, ...chunks]);
+}
+
 function invalidUtf8Fixture() {
   const glb = fixture();
   const jsonLength = glb.readUInt32LE(12);
@@ -105,6 +129,33 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
   });
   it('rejects duplicate JSON chunks even when first JSON value is null',()=>{
     const r=run(duplicateJsonFixture());expect(r.status).toBe(1);expect(r.stderr).toContain('duplicate JSON');
+  });
+  it('rejects null buffer URI instead of treating it as absent',()=>{
+    const r=run(rewriteJsonFixture(d=>{d.buffers[0].uri=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('unsupported non-embedded GLB');
+  });
+  it('rejects null primitive indices instead of treating them as omitted',()=>{
+    const r=run(rewriteJsonFixture(d=>{d.meshes[0].primitives[0].indices=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid accessor index');
+  });
+  it('rejects null primitive mode instead of applying the default',()=>{
+    const r=run(rewriteJsonFixture(d=>{d.meshes[0].primitives[0].mode=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('only triangle primitives supported');
+  });
+  it('rejects null embedded image URI',()=>{
+    const r=run(rewriteJsonFixture(d=>{d.images[0].uri=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('unsupported image');
+  });
+  it('rejects null byteStride instead of treating it as omitted',()=>{
+    const r=run(rewriteJsonFixture(d=>{d.bufferViews[0].byteStride=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid buffer view stride');
+  });
+  it('rejects null accessor byteOffset instead of defaulting to zero',()=>{
+    const r=run(rewriteJsonFixture(d=>{d.accessors[0].byteOffset=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid accessor offset');
+  });
+  it('rejects null bufferView byteOffset instead of defaulting to zero',()=>{
+    const r=run(rewriteJsonFixture(d=>{d.bufferViews[0].byteOffset=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid view offset');
+  });
+  it('rejects null sparse accessor property',()=>{
+    const r=run(rewriteJsonFixture(d=>{d.accessors[0].sparse=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('unsupported accessor');
+  });
+  it('rejects null normalized accessor property',()=>{
+    const r=run(rewriteJsonFixture(d=>{d.accessors[0].normalized=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid normalized accessor');
   });
   it('rejects invalid UTF-8 in the JSON chunk',()=>{
     const r=run(invalidUtf8Fixture());expect(r.status).toBe(1);expect(r.stderr).toContain('invalid UTF-8 JSON');
