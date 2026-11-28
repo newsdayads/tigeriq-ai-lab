@@ -185,3 +185,11 @@ test('CLI rejects unknown or repeated flags rather than silently ignoring them',
     const r=runCli(fixture(),flags);assert.equal(r.status,1);assert.equal(r.stdout,'');assert.match(r.stderr,/Usage:/);
   }
 });
+
+test('rejects null TEXCOORD_0 instead of treating it as missing',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.meshes[0].primitives[0].attributes.TEXCOORD_0=null;})),/invalid vertex attribute accessor index/));
+test('rejects null primitive attributes object',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.meshes[0].primitives[0].attributes=null;})),/invalid primitive attributes/));
+test('rejects null images array instead of treating it as absent',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.images=null;})),/invalid images/));
+test('rejects null skins array instead of treating it as absent',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.skins=null;})),/invalid skins/));
+test('rejects null animations array instead of treating it as absent',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.animations=null;})),/invalid animations/));
+test('rejects null morph targets instead of treating them as absent',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.meshes[0].primitives[0].targets=null;})),/invalid morph targets/));
+test('rejects null image entries with a controlled validation error',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.images[0]=null;})),/unsupported image/));
