@@ -81,6 +81,7 @@ function checkImage(bytes, mime) {
       if(bytes.length-at<8) bad('WebP');
       const type=bytes.toString('ascii',at,at+4), len=bytes.readUInt32LE(at+4);
       if(len+(len&1)>bytes.length-at-8) bad('WebP');
+      if((len&1)!==0 && bytes[at+8+len]!==0) bad('WebP');
       if((type==='VP8 '||type==='VP8L'||type==='ANMF')&&len>0) hasImage=true;
       at+=8+len+(len&1);
     }
