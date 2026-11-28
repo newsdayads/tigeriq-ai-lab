@@ -214,3 +214,18 @@ test('accepts UTF-8 mesh names with correct JSON padding alignment',()=>{
   const glb=rewriteJsonFixture(d=>{d.meshes[0].name='猫';});
   assert.equal(inspectGlb(glb).technicalScreen,'PASS');
 });
+
+test('accepts UTF-8 BOM while validating JSON chunk alignment',()=>{
+  const glb=fixture();
+  const jsonLength=glb.readUInt32LE(12);
+  const raw=glb.subarray(20,20+jsonLength).toString('utf8').trimEnd();
+  const jsonBytes=Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),Buffer.from(raw)]);
+  const json=Buffer.concat([jsonBytes,Buffer.alloc((4-jsonBytes.length%4)%4,0x20)]);
+  const binHeader=20+jsonLength;
+  const binLength=glb.readUInt32LE(binHeader);
+  const bin=glb.subarray(binHeader+8,binHeader+8+binLength);
+  const chunk=(type,bytes)=>{const h=Buffer.alloc(8);h.writeUInt32LE(bytes.length);h.writeUInt32LE(type,4);return Buffer.concat([h,bytes]);};
+  const out=Buffer.concat([glb.subarray(0,12),chunk(0x4e4f534a,json),chunk(0x004e4942,bin)]);
+  out.writeUInt32LE(out.length,8);
+  assert.equal(inspectGlb(out).technicalScreen,'PASS');
+});
