@@ -109,8 +109,10 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
       try { documentEnd = jsonDocumentEnd(jsonText); }
       catch { fail('invalid JSON chunk'); }
       const documentBytes = Buffer.byteLength(jsonText.slice(0, documentEnd), 'utf8');
-      const jsonPadding = b.subarray(at + documentBytes, at + len);
-      if (jsonPadding.length > 3 || jsonPadding.some(byte => byte !== 0x20)) fail('invalid JSON chunk padding');
+      const paddingLength = (4 - (documentBytes % 4)) % 4;
+      if (len - documentBytes < paddingLength) fail('invalid JSON chunk padding');
+      const jsonPadding = b.subarray(at + len - paddingLength, at + len);
+      if (jsonPadding.some(byte => byte !== 0x20)) fail('invalid JSON chunk padding');
       d = JSON.parse(jsonText); }
     else if (type === 0x004e4942) { if (bin) fail('duplicate BIN'); bin = b.subarray(at, at + len); }
     at += len;
