@@ -180,8 +180,8 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
   it('rejects shared vertex bufferViews without byteStride',()=>{
     const r=run(fixture({sharedView:true}));expect(r.status).toBe(1);expect(r.stderr).toContain('shared vertex attributes require byteStride');
   });
-  it('rejects byteStride larger than bufferView.byteLength',()=>{
-    const r=run(fixture({stride:40,singlePosition:true}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid buffer view stride');
+  it('accepts a single vertex when byteStride exceeds bufferView.byteLength',()=>{
+    const r=run(fixture({stride:40,singlePosition:true}));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');
   });
 
   it('accepts unknown extension chunks after BIN',()=>expect(JSON.parse(run(fixture({unknownAfterBin:true})).stdout).technicalScreen).toBe('PASS'));
