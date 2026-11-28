@@ -130,14 +130,16 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
           references.add(index);
         }
       }
-      const pos = accessor(p.attributes?.POSITION, 'VEC3', [5126], { vertexAttribute: true });
-      const uv = p.attributes?.TEXCOORD_0 == null ? null : accessor(p.attributes.TEXCOORD_0, 'VEC2', [5126,5121,5123], { allowNormalizedInteger:true, vertexAttribute: true });
+      if (!p.attributes || typeof p.attributes !== 'object' || Array.isArray(p.attributes)) fail('invalid primitive attributes');
+      const pos = accessor(p.attributes.POSITION, 'VEC3', [5126], { vertexAttribute: true });
+      const uv = p.attributes.TEXCOORD_0 === undefined ? null : accessor(p.attributes.TEXCOORD_0, 'VEC2', [5126,5121,5123], { allowNormalizedInteger:true, vertexAttribute: true });
       if (uv && uv.count !== pos.count) fail('UV count mismatch');
       if (!uv) uvMissing++;
       for (let n=0;n<pos.count;n++) {
         for(let c=0;c<3;c++) if(!Number.isFinite(pos.get(n,c))) fail('non-finite position');
         if(uv) for(let c=0;c<2;c++) { const x=uv.get(n,c); if(!Number.isFinite(x)) fail('non-finite UV'); if(x<0||x>1) uvOutOfRange++; }
       }
+      if (p.targets !== undefined && !Array.isArray(p.targets)) fail('invalid morph targets');
       const idx = p.indices === undefined ? null : accessor(p.indices,'SCALAR',[5121,5123,5125]);
       const count = idx?.count ?? pos.count;
       if (count % 3) fail('non-triangle index count');
@@ -156,8 +158,11 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     const bufferView = d.bufferViews?.[viewIndex];
     if (references.size > 1 && bufferView?.byteStride == null) fail('shared vertex attributes require byteStride');
   }
-  const images=d.images??[];
-  for(const im of images) { if(im.uri !== undefined || !['image/png','image/jpeg','image/webp'].includes(im.mimeType)) fail('unsupported image'); const {start,length}=view(im.bufferView); if(!length) fail('empty image'); checkImage(bin.subarray(start,start+length),im.mimeType); }
+  if (d.images !== undefined && !Array.isArray(d.images)) fail('invalid images');
+  if (d.skins !== undefined && !Array.isArray(d.skins)) fail('invalid skins');
+  if (d.animations !== undefined && !Array.isArray(d.animations)) fail('invalid animations');
+  const images=d.images ?? [];
+  for(const im of images) { if (!im || typeof im !== 'object' || Array.isArray(im) || im.uri !== undefined || !['image/png','image/jpeg','image/webp'].includes(im.mimeType)) fail('unsupported image'); const {start,length}=view(im.bufferView); if(!length) fail('empty image'); checkImage(bin.subarray(start,start+length),im.mimeType); }
   const skins=d.skins?.length??0, animations=d.animations?.length??0;
   return { schema:'tig-glb-inspection-v1',sha256:createHash('sha256').update(b).digest('hex'),meshes,triangles:total,triangleBudget,embeddedImages:images.length,uvMissing,uvOutOfRange,degenerate,skins,morphTargets,animations,
     technicalScreen:total<=triangleBudget&&uvMissing===0&&uvOutOfRange===0&&degenerate===0&&images.length>0?'PASS':'NOT_MET',
