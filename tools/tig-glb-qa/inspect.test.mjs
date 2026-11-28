@@ -278,6 +278,7 @@ test('rejects required extension absent from extensionsUsed',()=>assert.throws((
 test('accepts declared optional extension when no extension is required',()=>assert.equal(inspectGlb(rewriteJsonFixture(d=>{d.extensionsUsed=['KHR_materials_unlit'];})).technicalScreen,'PASS'));
 
 
+
 function webpPaddingFixture(paddingByte = 0) {
   const glb = fixture();
   const jsonLength = glb.readUInt32LE(12);
@@ -313,15 +314,13 @@ function webpPaddingFixture(paddingByte = 0) {
   return Buffer.concat([header, chunk(0x4e4f534a, json), chunk(0x004e4942, nextBin)]);
 }
 
-it('rejects a non-zero RIFF padding byte in an embedded WebP image', () => {
-  const r = run(webpPaddingFixture(0x7f));
-  expect(r.status).toBe(1);
-  expect(r.stdout).toBe('');
-  expect(r.stderr).toContain('invalid WebP');
+test('rejects a non-zero RIFF padding byte in an embedded WebP image', () => {
+  assert.throws(() => inspectGlb(webpPaddingFixture(0x7f)), /invalid WebP/);
 });
 
-it('accepts a zero RIFF padding byte in an embedded WebP image', () => {
-  const r = run(webpPaddingFixture(0));
-  expect(r.status).toBe(0);
-  expect(JSON.parse(r.stdout)).toMatchObject({embeddedImages:1,technicalScreen:'PASS',releaseEligible:false});
+test('accepts a zero RIFF padding byte in an embedded WebP image', () => {
+  const report = inspectGlb(webpPaddingFixture(0));
+  assert.equal(report.embeddedImages, 1);
+  assert.equal(report.technicalScreen, 'PASS');
+  assert.equal(report.releaseEligible, false);
 });
