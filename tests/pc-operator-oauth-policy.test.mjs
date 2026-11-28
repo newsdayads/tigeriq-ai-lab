@@ -16,9 +16,9 @@ const call = (toolName, verifiedPrincipal) => authorizeVerifiedTool({
   toolName, verifiedPrincipal, issuerUrl, resourceUrl, nowSeconds,
 });
 
-test('22 remaining tool names are covered exactly once; retired Paperclip names stay unavailable', () => {
-  assert.equal(Object.keys(TOOL_SCOPE_POLICY).length, 22);
-  assert.equal(new Set(Object.keys(TOOL_SCOPE_POLICY)).size, 22);
+test('23 remaining tool names are covered exactly once; retired Paperclip names stay unavailable', () => {
+  assert.equal(Object.keys(TOOL_SCOPE_POLICY).length, 23);
+  assert.equal(new Set(Object.keys(TOOL_SCOPE_POLICY)).size, 23);
   for (const name of ['paperclip_lab_preflight', 'paperclip_lab_health', 'paperclip_lab_broker_install']) {
     assert.equal(Object.hasOwn(TOOL_SCOPE_POLICY, name), false);
     assert.equal(call(name, valid()).ok, false);
@@ -70,6 +70,13 @@ test('writing requires its own scope and a separate Core lease', () => {
   assert.equal(result.ok, true);
   assert.equal(result.requiresCoreLease, true);
   assert.equal(call('task_action', valid(['mcp:read', 'pc01:write'])).ok, false);
+});
+test('typed Writer requires pc01 write scope and the existing Core lease', () => {
+  assert.equal(call('writer_create_odt', valid(['mcp:read'])).ok, false);
+  const result = call('writer_create_odt', valid(['mcp:read', 'pc01:write']));
+  assert.equal(result.ok, true);
+  assert.equal(result.requiresCoreLease, true);
+  assert.deepEqual(TOOL_SCOPE_POLICY.writer_create_odt, ['mcp:read', 'pc01:write']);
 });
 test('elevated tool is not authorized by generic write or shell scope', () => {
   assert.deepEqual(call('task_action', valid(['mcp:read', 'pc01:write'])).missing, ['pc01:admin']);

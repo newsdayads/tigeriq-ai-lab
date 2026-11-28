@@ -24,6 +24,7 @@ const restrictedTools = {
   ui_action: ['pc01:ui'],
   test_run: ['pc01:execute'],
   evidence_record: ['pc01:write'],
+  writer_create_odt: ['pc01:write'],
 };
 export const TOOL_SCOPE_POLICY = Object.freeze({
   ...Object.fromEntries(readTools.map(name => [name, Object.freeze(['mcp:read'])])),

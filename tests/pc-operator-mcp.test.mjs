@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { createPcOperatorMcpHandler, PC_OPERATOR_MCP_TOOLS, pcOperatorTestRunSpec, pcOperatorWorkOrderResponse, pcOperatorWorkOrderLookup } from '../apps/tigeriq-core/pc-operator-mcp.mjs';
+import { cliAnythingWriterSpec, validateCliAnythingWriterRequest } from '../apps/openclaw-tigeriq-runtime/operator.mjs';
 
 function parseSsePayload(text) {
   const lines = text.split('\n');
@@ -21,7 +22,7 @@ function parseSsePayload(text) {
 
 describe('TigerIQ PC Operator MCP Server', () => {
   it('exposes exactly the 22 comprehensive tools', () => {
-    expect(PC_OPERATOR_MCP_TOOLS.length).toBe(22);
+    expect(PC_OPERATOR_MCP_TOOLS.length).toBe(23);
     expect(PC_OPERATOR_MCP_TOOLS).not.toContain('paperclip_lab_preflight');
     expect(PC_OPERATOR_MCP_TOOLS).not.toContain('paperclip_lab_health');
     expect(PC_OPERATOR_MCP_TOOLS).not.toContain('paperclip_lab_broker_install');
@@ -30,6 +31,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
     expect(PC_OPERATOR_MCP_TOOLS).toContain('file_list');
     expect(PC_OPERATOR_MCP_TOOLS).toContain('file_stat');
     expect(PC_OPERATOR_MCP_TOOLS).toContain('file_search');
+    expect(PC_OPERATOR_MCP_TOOLS).toContain('writer_create_odt');
     expect(PC_OPERATOR_MCP_TOOLS).toContain('shell_exec');
     expect(PC_OPERATOR_MCP_TOOLS).toContain('process_list');
     expect(PC_OPERATOR_MCP_TOOLS).toContain('task_list');
@@ -66,7 +68,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
       const json = await res.json();
       expect(json.ok).toBe(true);
       expect(json.version).toBe('2.0.0');
-      expect(json.toolsCount).toBe(22);
+      expect(json.toolsCount).toBe(23);
       expect(json.tools).toEqual(PC_OPERATOR_MCP_TOOLS);
     } finally {
       server.close();
@@ -175,6 +177,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
     try {
       const blockedCalls = [
         { name: 'file_write', arguments: { path: 'D:\\TigerIQ\\State\\write.txt', content: 'NEVER_WRITTEN' } },
+        { name: 'writer_create_odt', arguments: { request: { id: 'no-auth', title: 'No auth', paragraphs: ['must not execute'] } } },
         { name: 'shell_exec', arguments: { command: 'echo MUST_NOT_EXECUTE' } },
         { name: 'ui_action', arguments: { action: 'pad_health' } },
       ];
@@ -192,6 +195,126 @@ describe('TigerIQ PC Operator MCP Server', () => {
     } finally {
       server.close();
     }
+  });
+
+  it('runs typed Writer through the existing authenticated, scoped Core lease', async () => {
+    const secret = 'w'.repeat(32);
+    const executePcActionImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      action: 'cli_anything_writer_create',
+      data: {
+        format: 'odt',
+        path: 'D:\\TigerIQ\\State\\cli-anything-writer\\mcp-test.odt',
+        bytes: 1234,
+        sha256: 'a'.repeat(64),
+        verification: 'zip_xml_content_readback',
+        upstream_blob: '59a50348b33c878dec576f4e8d6b7591d0a420d5',
+        sourceGitBlobSha: 'b6d0fa5a7265c15b0ec8fc0c15ec1b871c0abdb3',
+        execution: 'PYTHON_3_12_FIXED_PATH_NO_SHELL',
+        readbackBytes: 1234,
+        readbackSha256: 'a'.repeat(64),
+        readbackVerified: true,
+      },
+    });
+    const leaseApi = {
+      acquire: vi.fn(async (_db, spec) => ({
+        resource_id: spec.resourceId, work_id: spec.workId,
+        lease_token: 'writer-lease-token',
+        lease_until: new Date(Date.now() + 120000).toISOString(),
+      })),
+      heartbeat: vi.fn().mockResolvedValue(true),
+      release: vi.fn().mockResolvedValue(true),
+    };
+    const handler = createPcOperatorMcpHandler({
+      existingSecret: secret, leaseDb: { query: vi.fn() }, leaseApi, executePcActionImpl,
+    });
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url, 'http://localhost');
+      if (!(await handler(req, res, url))) res.writeHead(404).end();
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const request = { id: 'mcp-test', title: 'TigerIQ', paragraphs: ['Nội dung thử nghiệm'] };
+      const response = await fetch('http://127.0.0.1:' + server.address().port + '/mcp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + secret },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 101, method: 'tools/call',
+          params: { name: 'writer_create_odt', arguments: { request } } }),
+      });
+      expect(response.status).toBe(200);
+      const outcome = parseSsePayload(await response.text());
+      expect(outcome.ok).toBe(true);
+      expect(outcome.completedStepId).toBe('writer_create_odt');
+      expect(outcome.receipt.readbackVerified).toBe(true);
+      expect(executePcActionImpl).toHaveBeenCalledWith({ action: 'cli_anything_writer_create', request });
+      expect(leaseApi.acquire).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+        employeeId: 'NV06',
+        resourceId: 'res:openclaw:operator-local:default:pc01',
+        metadata: expect.objectContaining({ resourceScope: 'TIGERIQ_CLI_ANYTHING_SELECTIVE_ADOPTION', action: 'writer_create_odt' }),
+      }));
+      expect(leaseApi.heartbeat).toHaveBeenCalled();
+      expect(leaseApi.release).toHaveBeenCalled();
+
+      executePcActionImpl.mockResolvedValueOnce({
+        ok: true, action: 'cli_anything_writer_create',
+        data: { readbackVerified: true, readbackSha256: 'b'.repeat(64) },
+      });
+      const malformed = await fetch('http://127.0.0.1:' + server.address().port + '/mcp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + secret },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 103, method: 'tools/call',
+          params: { name: 'writer_create_odt', arguments: { request: { id: 'bad-receipt', title: 'TigerIQ', paragraphs: ['No false pass'] } } } }),
+      });
+      const rejected = parseSsePayload(await malformed.text());
+      expect(rejected.ok).toBe(false);
+      expect(rejected.error).toBe('CLI_ANYTHING_WRITER_TYPED_RECEIPT_REQUIRED');
+    } finally { server.close(); }
+  });
+
+  it('fails closed for typed Writer when the existing Core lease database is unavailable', async () => {
+    const secret = 'x'.repeat(32);
+    const executePcActionImpl = vi.fn();
+    const handler = createPcOperatorMcpHandler({
+      existingSecret: secret, leaseDb: null, executePcActionImpl,
+    });
+    const server = createServer(async (req, res) => {
+      const url = new URL(req.url, 'http://localhost');
+      if (!(await handler(req, res, url))) res.writeHead(404).end();
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const response = await fetch('http://127.0.0.1:' + server.address().port + '/mcp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: 'Bearer ' + secret },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 102, method: 'tools/call',
+          params: { name: 'writer_create_odt', arguments: { request: { id: 'no-lease', title: 'No lease', paragraphs: ['blocked'] } } } }),
+      });
+      const outcome = parseSsePayload(await response.text());
+      expect(outcome.ok).toBe(false);
+      expect(outcome.reason).toBe('PC_OPERATOR_WRITER_CORE_LEASE_DB_UNAVAILABLE');
+      expect(executePcActionImpl).not.toHaveBeenCalled();
+    } finally { server.close(); }
+  });
+
+  it('validates the typed Writer request and fixes the executable and output paths', () => {
+    const request = { id: 'sample-1', title: 'TigerIQ', paragraphs: ['Tiếng Việt 😀'] };
+    expect(validateCliAnythingWriterRequest(request)).toEqual(request);
+    const spec = cliAnythingWriterSpec(request);
+    expect(spec.exe).toBe('py.exe');
+    expect(spec.args).toEqual(['-3.12', 'D:\\TigerIQ\\Runtime\\CoreSource\\apps\\openclaw-tigeriq-runtime\\cli-anything-writer.py']);
+    expect(spec.outputPath).toBe('D:\\TigerIQ\\State\\cli-anything-writer\\sample-1.odt');
+    expect(spec.shell).toBe(false);
+    expect(spec.scriptGitBlobSha).toBe('b6d0fa5a7265c15b0ec8fc0c15ec1b871c0abdb3');
+    for (const bad of [
+      { ...request, id: '../escape' },
+      { ...request, id: 'nul' },
+      { ...request, outputPath: 'D:\\unsafe\\x.odt' },
+      { ...request, paragraphs: [] },
+      { ...request, paragraphs: ['x'.repeat(2001)] },
+      { ...request, title: 'x'.repeat(201) },
+      { ...request, paragraphs: ['\uD800'] },
+      { ...request, paragraphs: ['\u0000'] },
+    ]) expect(() => validateCliAnythingWriterRequest(bad)).toThrow();
   });
 
   it('denies authenticated mutations when Core shared lease is unavailable', async () => {

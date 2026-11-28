@@ -47,6 +47,7 @@ export const PC_OPERATOR_MCP_TOOLS = Object.freeze([
   'file_list',
   'file_stat',
   'file_search',
+  'writer_create_odt',
   // Terminal & Shell
   'shell_exec',
   // Processes, Tasks & Services
@@ -75,7 +76,7 @@ const NV06_RESOURCE_ID = 'res:openclaw:operator-local:default:pc01';
 const GENERAL_OPERATOR_SCOPE = 'TIGERIQ_PC_OPERATOR_MCP_AUTHENTICATED_MUTATION';
 const MUTATING_GENERAL_TOOLS = new Set([
   'file_write', 'shell_exec', 'task_action', 'ui_screenshot',
-  'ui_action', 'test_run', 'evidence_record',
+  'ui_action', 'test_run', 'evidence_record', 'writer_create_odt',
 ]);
 const leaseApiDefault = {
   acquire: acquireSharedResourceLease,
@@ -440,6 +441,9 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
         // A new bearer request is not an exclusive Core lease.
         const db = leaseDb === undefined ? existingCoreLeaseDb() : leaseDb;
         if (!db) {
+          if (name === 'writer_create_odt') return mcpReply({
+            ok: false, action: name, reason: 'PC_OPERATOR_WRITER_CORE_LEASE_DB_UNAVAILABLE',
+          });
           return handler(args);
         }
         const workId = 'JOB-MCP-' + randomUUID();
@@ -449,7 +453,7 @@ export function registerPcOperatorTools(server, executePcActionImpl = executePcA
           lease = await leaseApi.acquire(db, {
             employeeId: 'NV06', resourceId: NV06_RESOURCE_ID,
             workId, role: 'operator', lane: 'mcp_pc_operator', ttlMs: 600000,
-            metadata: { resourceScope: GENERAL_OPERATOR_SCOPE, action: name },
+            metadata: { resourceScope: name === 'writer_create_odt' ? 'TIGERIQ_CLI_ANYTHING_SELECTIVE_ADOPTION' : GENERAL_OPERATOR_SCOPE, action: name },
           });
           if (!lease) reason = 'PC_OPERATOR_SHARED_LEASE_BUSY';
           else if (!lease.lease_token || lease.resource_id !== NV06_RESOURCE_ID
@@ -1090,7 +1094,40 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
     }
   );
 
-  // 22. rdc_pool_status
+  // 22. writer_create_odt — fixed-root Writer output via the existing authenticated PC01 route.
+  wrapTool(
+    authorizedTools,
+    'writer_create_odt',
+    'Tạo ODT Writer bằng adapter CLI-Anything đã pin; chỉ nhận nội dung có cấu trúc, không nhận đường dẫn hay lệnh.',
+    {
+      request: z.object({
+        id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/).max(64),
+        title: z.string().min(1).max(200),
+        paragraphs: z.array(z.string().min(1).max(2000)).min(1).max(30),
+      }).strict().describe('Yêu cầu ODT có cấu trúc; id phải duy nhất, output path do runtime cố định'),
+    },
+    async ({ request }) => {
+      const result = await executePcActionImpl({ action: 'cli_anything_writer_create', request });
+      const data = result?.data;
+      const expectedPath = win.join('D:\\TigerIQ\\State\\cli-anything-writer', request.id + '.odt');
+      if (result?.ok !== true || result?.action !== 'cli_anything_writer_create'
+        || data?.format !== 'odt' || data?.path !== expectedPath
+        || !Number.isInteger(data?.bytes) || data.bytes < 1
+        || data?.readbackBytes !== data.bytes
+        || data?.sha256 !== data?.readbackSha256
+        || !/^[0-9a-f]{64}$/.test(String(data?.readbackSha256 || ''))
+        || data?.readbackVerified !== true
+        || data?.sourceGitBlobSha !== 'b6d0fa5a7265c15b0ec8fc0c15ec1b871c0abdb3'
+        || data?.upstream_blob !== '59a50348b33c878dec576f4e8d6b7591d0a420d5'
+        || data?.verification !== 'zip_xml_content_readback'
+        || data?.execution !== 'PYTHON_3_12_FIXED_PATH_NO_SHELL') {
+        throw new Error('CLI_ANYTHING_WRITER_TYPED_RECEIPT_REQUIRED');
+      }
+      return result.data;
+    }
+  );
+
+  // 23. rdc_pool_status
   wrapTool(
     authorizedTools,
     'rdc_pool_status',
@@ -1110,7 +1147,7 @@ Write-Output "SAVED:$($b.Width)x$($b.Height)"
     }
   );
 
-  // 23. work_order_status
+  // 24. work_order_status
   wrapTool(
     authorizedTools,
     'work_order_status',

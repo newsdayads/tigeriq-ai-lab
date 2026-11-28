@@ -4,6 +4,7 @@ OpenClaw tools for PC01:
 
 - `tigeriq_runtime`: bounded Core + Chrome Controller operations.
 - `tigeriq_pc`: guarded local PC operator for TigerIQ/OpenClaw runtime maintenance.
+- `writer_create_odt`: structured ODT generation through the existing authenticated PC Operator MCP, `pc01:write` scope, and existing NV06 Core shared-resource lease; no caller path or shell command.
 
 `tigeriq_pc` supports:
 - exact `TigerIQ ...` Scheduled Task status/start/stop/restart;
@@ -20,9 +21,14 @@ Guardrails:
 - blocks writes to the canonical TigerIQ repository, runtime CoreSource, and `.git`;
 - real-path containment checks block junction/symlink escapes for file actions;
 - no file delete action;
+- Writer requests cannot supply an executable, arguments, input file, output path, or arbitrary action; the route fails closed if the existing Core lease DB/lease is unavailable and does not install Python or packages;
 - no Production deploy/publish or direct main/master mutation through this tool;
 - PAD UI automation is restricted to Power Automate Desktop windows/elements; no arbitrary screen coordinates or generic desktop control;
 - shell timeout <= 120s; file sizes and output are bounded.
+
+## Typed Writer MCP
+
+The existing PC Operator MCP exposes `writer_create_odt` with strict `{id,title,paragraphs}` input. It reuses the existing `pc01:write` authorization and NV06 shared-resource lease, pins the Python 3.12 script blob, fixes the output root to `D:\TigerIQ\State\cli-anything-writer`, rejects caller-selected paths/commands, and verifies the output SHA-256 by readback. The action is not accepted if the Core lease database or lease is unavailable.
 
 Repository engineering remains GitHub/Coding Lane authority. This plugin is a PC01 runtime operator, not a replacement source-code lane.
 
