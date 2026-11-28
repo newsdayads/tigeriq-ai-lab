@@ -143,7 +143,8 @@ test('rejects invalid UTF-8 in the JSON chunk',()=>assert.throws(()=>inspectGlb(
 test('rejects unnormalized integer TEXCOORD_0',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5121,false)),/invalid normalized accessor/));
 test('rejects normalized FLOAT TEXCOORD_0',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5126,true)),/invalid normalized accessor/));
 test('rejects accessor byteOffset that is 2-byte aligned but not 4-byte aligned even when absolute offset is 4-byte aligned',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5123,true,false,false,true,-2)),/invalid vertex attribute alignment/));
-test('accepts UNSIGNED_SHORT VEC2 when bufferView starts at a 2-byte offset but accessor offset is 4-byte aligned',()=>assert.equal(inspectGlb(normalizedUvFixture(5123,true,false,false,true,2)).technicalScreen,'PASS'));
+test('accepts UNSIGNED_SHORT VEC2 when bufferView starts at a 2-byte offset but accessor offset is 4-byte aligned',()=>assert.equal(inspectGlb(normalizedUvFixture(5123,true,false,false,false,2)).technicalScreen,'PASS'));
+test('rejects UNSIGNED_SHORT VEC2 without byteStride even when element width is four bytes',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5123,true,false,false,true,0)),/invalid vertex attribute alignment/));
 test('accepts UNSIGNED_BYTE vertex attributes when bufferView starts at a non-4-byte absolute offset',()=>assert.equal(inspectGlb(normalizedUvFixture(5121,true,false,true)).technicalScreen,'PASS'));
 test('rejects shared vertex bufferViews without byteStride',()=>assert.throws(()=>inspectGlb(fixture({sharedView:true})),/shared vertex attributes require byteStride/));
 test('accepts a single vertex accessor when byteStride exceeds bufferView.byteLength',()=>{const report=inspectGlb(fixture({stride:40,singlePosition:true}));assert.equal(report.degenerate,1);assert.equal(report.technicalScreen,'NOT_MET');});
