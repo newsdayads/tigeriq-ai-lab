@@ -269,6 +269,8 @@ test('accepts structurally valid non-POSITION vertex attributes without claiming
 
 test('rejects required Draco compression extension',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.extensionsUsed=['KHR_draco_mesh_compression'];d.extensionsRequired=['KHR_draco_mesh_compression'];})),/unsupported required glTF extension: KHR_draco_mesh_compression/));
 test('rejects required meshopt compression extension',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.extensionsUsed=['EXT_meshopt_compression'];d.extensionsRequired=['EXT_meshopt_compression'];})),/unsupported required glTF extension: EXT_meshopt_compression/));
+test('rejects empty extensionsUsed list',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.extensionsUsed=[];})),/invalid extensionsUsed/));
+test('rejects empty extensionsRequired list',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.extensionsRequired=[];})),/invalid extensionsRequired/));
 test('rejects malformed extensionsUsed list',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.extensionsUsed='KHR_draco_mesh_compression';})),/invalid extensionsUsed/));
 test('rejects empty extension names',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.extensionsUsed=[''];})),/invalid extensionsUsed/));
 test('rejects duplicate extension declarations',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.extensionsUsed=['KHR_materials_unlit','KHR_materials_unlit'];})),/invalid extensionsUsed/));
