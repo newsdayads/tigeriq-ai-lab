@@ -18,7 +18,7 @@ function fixture(options = {}) {
   [0,1,options.index ?? 2].forEach((x,i) => bin.writeUInt16LE(x,60+i*2));
   png.copy(bin,68);
   if (options.badBinPadding) bin[bin.length-1] = 1;
-  const doc = {asset:{version:'2.0'},buffers:[{byteLength:68+png.length,...(options.external ? {uri:'external.bin'} : {})}],bufferViews:[{buffer:0,byteOffset:0,byteLength:36,...(options.stride != null ? {byteStride:options.stride} : {})},{buffer:0,byteOffset:36,byteLength:24},{buffer:0,byteOffset:60,byteLength:6,...(options.indexStride != null ? {byteStride:options.indexStride} : {})},{buffer:0,byteOffset:68,byteLength:png.length,...(options.imageStride != null ? {byteStride:options.imageStride} : {})}],accessors:[{bufferView:0,componentType:5126,count:options.singlePosition?1:3,type:'VEC3'},{bufferView:options.sharedView?0:1,componentType:5126,count:3,type:'VEC2'},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],meshes:[{name:'fixture',primitives:[{attributes:{POSITION:0,...(options.noUv ? {} : {TEXCOORD_0:1})},indices:2}]}],images:options.noImage ? [] : [{bufferView:3,mimeType:'image/png'}]};
+  const doc = {asset:{version:'2.0'},buffers:[{byteLength:68+png.length,...(options.external ? {uri:'external.bin'} : {})}],bufferViews:[{buffer:0,byteOffset:0,byteLength:36,...(options.stride != null ? {byteStride:options.stride} : {})},{buffer:0,byteOffset:36,byteLength:24},{buffer:0,byteOffset:60,byteLength:6,...(options.indexStride != null ? {byteStride:options.indexStride} : {})},{buffer:0,byteOffset:68,byteLength:png.length,...(options.imageStride != null ? {byteStride:options.imageStride} : {})}],accessors:[{bufferView:0,componentType:5126,count:options.singlePosition?1:3,type:'VEC3',min:[0,0,0],max:[1,options.degenerate?0:1,0]},{bufferView:options.sharedView?0:1,componentType:5126,count:3,type:'VEC2'},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],meshes:[{name:'fixture',primitives:[{attributes:{POSITION:0,...(options.noUv ? {} : {TEXCOORD_0:1})},indices:2}]}],images:options.noImage ? [] : [{bufferView:3,mimeType:'image/png'}]};
   if (options.extraPrimitive) doc.meshes[0].primitives.push(doc.meshes[0].primitives[0]);
   if (options.skin) doc.skins=[{joints:[0]}];
   if (options.imageUri) doc.images=[{uri:'https://example.invalid/a.png',mimeType:'image/png'}];
@@ -111,7 +111,7 @@ function normalizedUvFixture(componentType, normalized = true, misaligned = fals
   const bin=Buffer.concat([pos,uv,indices,png,Buffer.alloc((4-logical%4)%4)]);
   const doc={asset:{version:'2.0'},buffers:[{byteLength:logical}],
     bufferViews:[{buffer:0,byteOffset:0,byteLength:pos.length},{buffer:0,byteOffset:uvOffset + (misalignedView ? 1 : 0),byteLength:uv.length,...(componentType===5121?{byteStride:4}:{})},{buffer:0,byteOffset:indexOffset,byteLength:indices.length},{buffer:0,byteOffset:imageOffset,byteLength:png.length}],
-    accessors:[{bufferView:0,componentType:5126,count:3,type:'VEC3'},{bufferView:1,componentType,count:3,type:'VEC2',...(normalized?{normalized:true}:{}),...(misaligned?{byteOffset:2}:{})},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],
+    accessors:[{bufferView:0,componentType:5126,count:3,type:'VEC3',min:[0,0,0],max:[1,1,0]},{bufferView:1,componentType,count:3,type:'VEC2',...(normalized?{normalized:true}:{}),...(misaligned?{byteOffset:2}:{})},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],
     meshes:[{primitives:[{attributes:{POSITION:0,TEXCOORD_0:1},indices:2}]}],images:[{bufferView:3,mimeType:'image/png'}]};
   const raw=Buffer.from(JSON.stringify(doc)), json=Buffer.concat([raw,Buffer.alloc((4-raw.length%4)%4,32)]);
   const header=Buffer.alloc(12);header.writeUInt32LE(0x46546c67);header.writeUInt32LE(2,4);header.writeUInt32LE(28+json.length+bin.length,8);
@@ -193,3 +193,7 @@ test('rejects null skins array instead of treating it as absent',()=>assert.thro
 test('rejects null animations array instead of treating it as absent',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.animations=null;})),/invalid animations/));
 test('rejects null morph targets instead of treating them as absent',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.meshes[0].primitives[0].targets=null;})),/invalid morph targets/));
 test('rejects null image entries with a controlled validation error',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.images[0]=null;})),/unsupported image/));
+
+test('rejects POSITION accessor without required min/max bounds',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{delete d.accessors[0].min;})),/invalid POSITION bounds/));
+test('rejects POSITION bounds that do not match actual vertex data',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors[0].max=[1,2,0];})),/invalid POSITION bounds/));
+test('accepts exact POSITION bounds for valid geometry',()=>assert.equal(inspectGlb(fixture()).technicalScreen,'PASS'));
