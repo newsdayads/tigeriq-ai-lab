@@ -209,6 +209,18 @@ describe('Owner CLI Core Dispatch E2E & Negative Gates', () => {
     assert.ok(db.events.some((e) => e.type === 'OWNER_CLI_DISPATCH_FAILOVER'));
   });
 
+  it('falls back to Sonnet Low on Gemini quota failure, never High or a paid model',async()=>{
+    const db=makeFakeDb(),calls=[];
+    const probe=makeProbe({geminiRemain:0.6,claudeRemain:0.95});
+    probe.antigravity.models.push('claude-sonnet-5-5-low');
+    const result=await dispatchOwnerCliJob({db,job:{id:'FALLBACK-LOW',resourceScope:'test:fallback'},prompt:'bounded proposal',
+      probeQuota:async()=>probe,nowMs,emitEvent:db.emitEvent,
+      executeCli:async({model})=>{calls.push(model);if(calls.length===1)throw Object.assign(Error('quota exhausted'),{kind:'quota_exhausted'});return {output:'PROPOSAL'};}});
+    assert.equal(result.ok,true);
+    assert.equal(calls.join(','),'gemini-4-hydrogen-low,claude-sonnet-5-5-low');
+    assert.equal(result.productAccepted,false);
+    assert.equal(db.leases.size,0);
+  });
   it('fails closed on permission_denied without failover or bypass', async () => {
     const db = makeFakeDb();
     let calls = 0;
@@ -312,7 +324,7 @@ describe('Owner CLI Core Dispatch E2E & Negative Gates', () => {
     assert.equal(isNativeGoalPrompt('/goals'),false);
   });
   it('rejects non-Hydrogen models and goal commands before spawning the CLI', async()=>{
-    await assert.rejects(defaultExecuteOwnerCli({provider:'antigravity',model:'claude-opus-5-5-high',prompt:'test'}),/AGY_HYDROGEN_MODEL_REQUIRED/);
+    await assert.rejects(defaultExecuteOwnerCli({provider:'antigravity',model:'claude-opus-5-5-high',prompt:'test'}),/AGY_AUTHORIZED_MODEL_REQUIRED/);
     await assert.rejects(defaultExecuteOwnerCli({provider:'antigravity',model:'gemini-4-hydrogen-low',prompt:'/goal test'}),/AGY_GOAL_INTERACTIVE_EXECUTOR_REQUIRED/);
   });
   it('requires a real SUCCESS JSON response and records proposal-only receipt',()=>{
