@@ -118,7 +118,8 @@ function normalizedUvFixture(componentType, normalized = true, misaligned = fals
   const chunk=(type,bytes)=>{const h=Buffer.alloc(8);h.writeUInt32LE(bytes.length);h.writeUInt32LE(type,4);return Buffer.concat([h,bytes]);};
   return Buffer.concat([header,chunk(0x4e4f534a,json),chunk(0x004e4942,bin)]);
 }
-for (const componentType of [5121,5123]) test('rejects normalized integer TEXCOORD_0 '+componentType+' without required 4-byte vertex stride',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(componentType,true,false,false,true)),/invalid vertex attribute alignment/));
+test('rejects tightly packed normalized UNSIGNED_BYTE VEC2 TEXCOORD_0 without 4-byte element alignment',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5121,true,false,false,true)),/invalid vertex attribute alignment/));
+test('accepts tightly packed normalized UNSIGNED_SHORT VEC2 TEXCOORD_0 with implicit 4-byte stride',()=>{const report=inspectGlb(normalizedUvFixture(5123,true,false,false,true));assert.equal(report.technicalScreen,'PASS');assert.equal(report.uvMissing,0);assert.equal(report.uvOutOfRange,0);});
 for (const [componentType, label] of [[5121,'UNSIGNED_BYTE'],[5123,'UNSIGNED_SHORT']]) {
   test('accepts normalized '+label+' TEXCOORD_0',()=>{
     const report=inspectGlb(normalizedUvFixture(componentType));
