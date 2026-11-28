@@ -118,7 +118,7 @@ function normalizedUvFixture(componentType, normalized = true, misaligned = fals
   const chunk=(type,bytes)=>{const h=Buffer.alloc(8);h.writeUInt32LE(bytes.length);h.writeUInt32LE(type,4);return Buffer.concat([h,bytes]);};
   return Buffer.concat([header,chunk(0x4e4f534a,json),chunk(0x004e4942,bin)]);
 }
-test('rejects normalized UNSIGNED_SHORT TEXCOORD_0 without required 4-byte vertex stride',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5123,true,false,false,true)),/invalid vertex attribute alignment/));
+for (const componentType of [5121,5123]) test('rejects normalized integer TEXCOORD_0 '+componentType+' without required 4-byte vertex stride',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(componentType,true,false,false,true)),/invalid vertex attribute alignment/));
 for (const [componentType, label] of [[5121,'UNSIGNED_BYTE'],[5123,'UNSIGNED_SHORT']]) {
   test('accepts normalized '+label+' TEXCOORD_0',()=>{
     const report=inspectGlb(normalizedUvFixture(componentType));
