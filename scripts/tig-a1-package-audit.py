@@ -66,6 +66,10 @@ def png_size(data):
         require(end <= len(data), 'truncated PNG chunk')
         payload = data[offset + 8:end - 4]
         require(zlib.crc32(kind + payload) == struct.unpack_from('>I', data, end - 4)[0], 'PNG CRC failure')
+        if kind == b'IHDR':
+            require(offset == 8 and length == 13, 'duplicate or misplaced PNG IHDR')
+        if kind not in (b'IHDR', b'PLTE', b'IDAT', b'IEND'):
+            require(bool(kind[0] & 0x20), 'unsupported critical PNG chunk')
         if offset == 8:
             require(kind == b'IHDR' and length == 13, 'missing PNG IHDR')
             header = payload
