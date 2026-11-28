@@ -279,10 +279,11 @@ test('accepts declared optional extension when no extension is required',()=>ass
 
 
 
-function webpPaddingFixture(paddingByte = 0) {
+function webpPaddingFixture(paddingByte = 0, declareExtension = true) {
   const glb = fixture();
   const jsonLength = glb.readUInt32LE(12);
   const doc = JSON.parse(glb.subarray(20, 20 + jsonLength).toString('utf8').trim());
+  if (declareExtension) doc.extensionsUsed = ['EXT_texture_webp'];
   const binChunkStart = 20 + jsonLength;
   const binLength = glb.readUInt32LE(binChunkStart);
   const binStart = binChunkStart + 8;
@@ -313,6 +314,12 @@ function webpPaddingFixture(paddingByte = 0) {
   };
   return Buffer.concat([header, chunk(0x4e4f534a, json), chunk(0x004e4942, nextBin)]);
 }
+
+test('rejects signed BYTE NORMAL storage without KHR_mesh_quantization',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],componentType:5120});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;})),/invalid vertex attribute storage: NORMAL/));
+test('rejects signed SHORT JOINTS_0 storage',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],type:'VEC4',componentType:5122});d.meshes[0].primitives[0].attributes.JOINTS_0=d.accessors.length-1;})),/invalid vertex attribute storage: JOINTS_0/));
+test('accepts core glTF unsigned SHORT JOINTS_0 storage',()=>{const r=inspectGlb(rewriteJsonFixture(d=>{d.bufferViews.push({...d.bufferViews[0],byteStride:8});d.accessors.push({...d.accessors[0],bufferView:d.bufferViews.length-1,type:'VEC4',componentType:5123});d.meshes[0].primitives[0].attributes.JOINTS_0=d.accessors.length-1;}));assert.equal(r.technicalScreen,'PASS');});
+
+test('rejects WebP image without EXT_texture_webp declaration',()=>assert.throws(()=>inspectGlb(webpPaddingFixture(0,false)),/WebP image requires EXT_texture_webp in extensionsUsed/));
 
 test('rejects a non-zero RIFF padding byte in an embedded WebP image', () => {
   assert.throws(() => inspectGlb(webpPaddingFixture(0x7f)), /invalid WebP/);
