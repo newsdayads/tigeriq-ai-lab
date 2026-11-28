@@ -147,7 +147,8 @@ test('accepts UNSIGNED_SHORT VEC2 when bufferView starts at a 2-byte offset but 
 test('rejects UNSIGNED_SHORT VEC2 without byteStride even when element width is four bytes',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5123,true,false,false,true,0)),/invalid vertex attribute alignment/));
 test('accepts UNSIGNED_BYTE vertex attributes when bufferView starts at a non-4-byte absolute offset',()=>assert.equal(inspectGlb(normalizedUvFixture(5121,true,false,true)).technicalScreen,'PASS'));
 test('rejects shared vertex bufferViews without byteStride',()=>assert.throws(()=>inspectGlb(fixture({sharedView:true})),/shared vertex attributes require byteStride/));
-test('accepts a single vertex accessor when byteStride exceeds bufferView.byteLength',()=>{const report=inspectGlb(fixture({stride:40,singlePosition:true}));assert.equal(report.degenerate,1);assert.equal(report.technicalScreen,'NOT_MET');});
+test('rejects byteStride greater than bufferView.byteLength',()=>assert.throws(()=>inspectGlb(fixture({stride:40,singlePosition:true})),/invalid buffer view stride/));
+test('accepts byteStride equal to bufferView.byteLength',()=>{const report=inspectGlb(fixture({stride:36,singlePosition:true}));assert.equal(report.degenerate,1);assert.equal(report.technicalScreen,'NOT_MET');});
 
 test('accepts unknown extension chunks after BIN',()=>assert.equal(inspectGlb(fixture({unknownAfterBin:true})).technicalScreen,'PASS'));
 test('accepts valid interleaved vertex stride',()=>assert.equal(inspectGlb(fixture({stride:12})).technicalScreen,'PASS'));
