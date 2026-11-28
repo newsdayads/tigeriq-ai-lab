@@ -437,7 +437,7 @@ async function materializeNv04IdleSourceAudit({pool,fetchImpl,owner,repo,token,n
   const now=Date.now();
   if(!forceProbe&&now<nv04IdleNextProbeAt)return null;
   const gate=nv04IdleAuditGate({
-    enabled:nv04IdleEnabled===undefined?process.env.TIGERIQ_NV04_IDLE_AUDIT_ENABLED==='1':nv04IdleEnabled===true,
+    enabled:nv04IdleEnabled===undefined?process.env.TIGERIQ_NV04_IDLE_AUDIT_ENABLED!=='0':nv04IdleEnabled===true,
     worker:nv04Observation===undefined?readNv04IdleHeartbeat():nv04Observation,
     normalJobPending:false,coreAvailable:true,now,
   });
