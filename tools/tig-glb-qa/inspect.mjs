@@ -269,7 +269,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
         if (!Number.isSafeInteger(components) || !Number.isSafeInteger(componentSize)) fail('unsupported vertex attribute accessor');
         if (attribute.normalized !== undefined && typeof attribute.normalized !== 'boolean') fail('invalid normalized accessor');
         if (attribute.normalized === true && attribute.componentType === 5126) fail('unsupported normalized accessor');
-        const { v, start, length } = view(attribute.bufferView, { allowStride: true });
+        const { v, start, length } = view(attribute.bufferView, { allowStride: true, usage: 'vertex attribute' });
         const count = integer(attribute.count, 'accessor count'), offset = integer(attribute.byteOffset === undefined ? 0 : attribute.byteOffset, 'accessor offset');
         if (!count) fail('invalid accessor count');
         const width = components * componentSize;
