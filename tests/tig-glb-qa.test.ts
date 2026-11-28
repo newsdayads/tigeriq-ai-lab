@@ -211,8 +211,8 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
   it('accepts UNSIGNED_BYTE vertex attributes when bufferView starts at a non-4-byte absolute offset',()=>{
     const r=run(normalizedUvFixture(5121,true,false,true));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');
   });
-  it('rejects shared vertex bufferViews without byteStride',()=>{
-    const r=run(fixture({sharedView:true}));expect(r.status).toBe(1);expect(r.stderr).toContain('shared vertex attributes require byteStride');
+  it('accepts shared tightly packed vertex bufferViews without byteStride',()=>{
+    const r=run(fixture({sharedView:true}));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');
   });
   it('rejects byteStride greater than bufferView.byteLength',()=>{
     const r=run(fixture({stride:40,singlePosition:true}));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid buffer view stride');
