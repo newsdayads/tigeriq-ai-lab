@@ -257,3 +257,14 @@ it('rejects non-POSITION vertex attributes with unsupported component types',()=
 it('rejects inherited object keys as non-POSITION accessor types',()=>{const r=run(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],type:'toString'});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;}));expect(r.status).toBe(1);expect(r.stderr).toContain('unsupported vertex attribute accessor');});
 it('rejects inherited object keys as non-POSITION component types',()=>{const r=run(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],componentType:'toString'});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;}));expect(r.status).toBe(1);expect(r.stderr).toContain('unsupported vertex attribute accessor');});
 it('accepts structurally valid non-POSITION vertex attributes without claiming semantic payload validation',()=>{const r=run(rewriteJsonFixture(d=>{d.bufferViews.push({...d.bufferViews[0],byteStride:12});d.accessors.push({...d.accessors[0],bufferView:d.bufferViews.length-1});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;}));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');});
+
+
+it.each(['KHR_draco_mesh_compression','EXT_meshopt_compression'])('rejects unsupported required extension %s',extension=>{
+  const r=run(rewriteJsonFixture(d=>{d.extensionsUsed=[extension];d.extensionsRequired=[extension];}));
+  expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('unsupported required glTF extension: '+extension);
+});
+it('rejects malformed extensionsUsed list',()=>{const r=run(rewriteJsonFixture(d=>{d.extensionsUsed='KHR_draco_mesh_compression';}));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid extensionsUsed');});
+it('rejects empty extension names',()=>{const r=run(rewriteJsonFixture(d=>{d.extensionsUsed=[''];}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid extensionsUsed');});
+it('rejects duplicate extension declarations',()=>{const r=run(rewriteJsonFixture(d=>{d.extensionsUsed=['KHR_materials_unlit','KHR_materials_unlit'];}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid extensionsUsed');});
+it('rejects required extension absent from extensionsUsed',()=>{const r=run(rewriteJsonFixture(d=>{d.extensionsRequired=['KHR_draco_mesh_compression'];}));expect(r.status).toBe(1);expect(r.stderr).toContain('required extension missing from extensionsUsed');});
+it('accepts declared optional extension when no extension is required',()=>{const r=run(rewriteJsonFixture(d=>{d.extensionsUsed=['KHR_materials_unlit'];}));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');});
