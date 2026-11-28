@@ -128,6 +128,7 @@ for (const [componentType, label] of [[5121,'UNSIGNED_BYTE'],[5123,'UNSIGNED_SHO
     assert.equal(report.uvMissing,0);assert.equal(report.uvOutOfRange,0);assert.equal(report.technicalScreen,'PASS');assert.equal(report.releaseEligible,false);
   });
 }
+test('rejects vertex attributes with mismatched counts',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.bufferViews[0].byteStride=12;d.accessors.push({...d.accessors[0],count:2});d.meshes[0].primitives[0].attributes.NORMAL=3;})),/vertex attribute count mismatch/));
 test('rejects duplicate JSON chunks even when first JSON value is null',()=>assert.throws(()=>inspectGlb(duplicateJsonFixture()),/duplicate JSON/));
 test('rejects null buffer URI instead of treating it as absent',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.buffers[0].uri=null;})),/unsupported non-embedded GLB/));
 test('rejects null primitive indices instead of treating them as omitted',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.meshes[0].primitives[0].indices=null;})),/invalid accessor index/));
