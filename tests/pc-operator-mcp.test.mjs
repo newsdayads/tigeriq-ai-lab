@@ -278,7 +278,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
   });
 
   it('validates the typed Writer request and fixes the executable and output paths', () => {
-    const request = { id: 'sample-1', title: 'TigerIQ', paragraphs: ['Tiếng Việt'] };
+    const request = { id: 'sample-1', title: 'TigerIQ', paragraphs: ['Tiếng Việt 😀'] };
     expect(validateCliAnythingWriterRequest(request)).toEqual(request);
     const spec = cliAnythingWriterSpec(request);
     expect(spec.exe).toBe('py.exe');
