@@ -28,7 +28,7 @@ Guardrails:
 
 ## Typed Writer MCP
 
-The existing PC Operator MCP exposes `writer_create_odt` with strict `{id,title,paragraphs}` input. It reuses the existing `pc01:write` authorization and NV06 shared-resource lease, pins the Python 3.12 script blob, fixes the output root to `D:\\TigerIQ\\State\\cli-anything-writer`, rejects caller-selected paths/commands, and verifies the output SHA-256 by readback. The action is not accepted if the Core lease database or lease is unavailable.
+The existing PC Operator MCP exposes `writer_create_odt` with strict `{id,title,paragraphs}` input. It reuses the existing `pc01:write` authorization and NV06 shared-resource lease, pins the Python 3.12 script blob, fixes the output root to `D:\TigerIQ\State\cli-anything-writer`, rejects caller-selected paths/commands, and verifies the output SHA-256 by readback. The action is not accepted if the Core lease database or lease is unavailable.
 
 Repository engineering remains GitHub/Coding Lane authority. This plugin is a PC01 runtime operator, not a replacement source-code lane.
 
