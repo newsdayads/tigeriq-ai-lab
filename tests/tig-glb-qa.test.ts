@@ -217,6 +217,12 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
   it('accepts shared vertex bufferViews with byteStride',()=>{
     const r=run(fixture({sharedView:true,stride:12}));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');
   });
+  it('rejects distinct vertex accessors sharing a bufferView across primitives without byteStride',()=>{
+    const r=run(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0]});d.meshes[0].primitives.push({attributes:{POSITION:3,TEXCOORD_0:1},indices:2});}));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('shared vertex bufferView requires byteStride');
+  });
+  it('accepts distinct vertex accessors sharing a bufferView across primitives with byteStride',()=>{
+    const r=run(rewriteJsonFixture(d=>{d.bufferViews[0].byteStride=12;d.accessors.push({...d.accessors[0]});d.meshes[0].primitives.push({attributes:{POSITION:3,TEXCOORD_0:1},indices:2});}));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');
+  });
   it('rejects byteStride greater than bufferView.byteLength',()=>{
     const r=run(fixture({stride:40,singlePosition:true}));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid buffer view stride');
   });
