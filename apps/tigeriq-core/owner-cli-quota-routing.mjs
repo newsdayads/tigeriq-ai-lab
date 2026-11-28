@@ -35,15 +35,18 @@ export function antigravityQuotaSnapshots(result,{observedAt}={}){
   });
 }
 
-// Owner 2026-11-29: Hydrogen only for automatic Antigravity routing.
-// Both efforts share one Gemini quota; a higher Claude/GPT quota is not authorization.
+// Owner 2026-11-29: Hydrogen first; use a separately verified included quota as fallback.
+// Low/Medium share the Gemini pool. Never prefer Claude just because its quota is larger.
 export const HYDROGEN_LOW='gemini-4-hydrogen-low';
 export const HYDROGEN_MEDIUM='gemini-4-hydrogen-medium';
-const GROUPS=[{group:'Gemini Models',preferred:[HYDROGEN_LOW,HYDROGEN_MEDIUM]}];
+export const SONNET_LOW='claude-sonnet-5-5-low';
+export const OWNER_AGY_MODELS=Object.freeze([HYDROGEN_LOW,HYDROGEN_MEDIUM,SONNET_LOW]);
+const GROUPS=[{group:'Gemini Models',preferred:[HYDROGEN_LOW,HYDROGEN_MEDIUM]},
+  {group:'Claude and GPT models',preferred:[SONNET_LOW]}];
 const DIFFICULTY={
-  LOW:[HYDROGEN_LOW],
-  MEDIUM:[HYDROGEN_MEDIUM,HYDROGEN_LOW],
-  HIGH:[HYDROGEN_MEDIUM,HYDROGEN_LOW]
+  LOW:[HYDROGEN_LOW,HYDROGEN_MEDIUM,SONNET_LOW],
+  MEDIUM:[HYDROGEN_MEDIUM,HYDROGEN_LOW,SONNET_LOW],
+  HIGH:[HYDROGEN_MEDIUM,HYDROGEN_LOW,SONNET_LOW]
 };
 const available=(snapshot,nowMs)=>snapshot?.quotaKnown===true&&snapshot.blocked!==true
   &&snapshot.remainingFraction!==null&&snapshot.remainingFraction>0.05
@@ -72,7 +75,7 @@ export function chooseOwnerCodingRoute({
     }
   }
   if(agyCandidates.length){
-    agyCandidates.sort((a,b)=>b.remainingFraction-a.remainingFraction||a.preferenceIndex-b.preferenceIndex);
+    agyCandidates.sort((a,b)=>a.preferenceIndex-b.preferenceIndex);
     const {preferenceIndex,...chosen}=agyCandidates[0];
     return {chosen,code:'ELIGIBLE_NOT_DISPATCHED'};
   }
