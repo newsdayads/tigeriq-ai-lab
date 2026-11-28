@@ -193,7 +193,6 @@ async function runShell({ command, cwd, shell = 'powershell', timeoutSec = 60 })
 }
 
 const CLI_ANYTHING_WRITER_ROOT = 'D:\\TigerIQ\\State\\cli-anything-writer';
-const CLI_ANYTHING_WRITER_SCRIPT = 'D:\\TigerIQ\\Runtime\\CoreSource\\apps\\openclaw-tigeriq-runtime\\cli-anything-writer.py';
 const CLI_ANYTHING_WRITER_UPSTREAM_BLOB = '59a50348b33c878dec576f4e8d6b7591d0a420d5';
 const CLI_ANYTHING_WRITER_GIT_BLOB_SHA = 'b6d0fa5a7265c15b0ec8fc0c15ec1b871c0abdb3';
 
