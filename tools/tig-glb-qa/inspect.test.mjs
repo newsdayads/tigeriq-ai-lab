@@ -197,3 +197,5 @@ test('rejects null image entries with a controlled validation error',()=>assert.
 test('rejects POSITION accessor without required min/max bounds',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{delete d.accessors[0].min;})),/invalid POSITION bounds/));
 test('rejects POSITION bounds that do not match actual vertex data',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors[0].max=[1,2,0];})),/invalid POSITION bounds/));
 test('accepts exact POSITION bounds for valid geometry',()=>assert.equal(inspectGlb(fixture()).technicalScreen,'PASS'));
+
+test('rejects reserved maximum UNSIGNED_SHORT index value',()=>{const glb=fixture();const jsonLength=glb.readUInt32LE(12);const binStart=20+jsonLength+8;glb.writeUInt16LE(65535,binStart+64);assert.throws(()=>inspectGlb(glb),/reserved maximum index value/);});
