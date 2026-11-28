@@ -40,3 +40,6 @@ No extra browser/security rights, Production release or live NV02/NV03/NV04 acce
 
 ## Non-goals
 No separate Unslop Skill, package, auto-approved baseline or parallel authority.
+
+## Candidate reference — GH-5821
+Diagram and offline video verification reference: [selective adoption pilot](../../integrations/diagram-sre-video.md). Reference only pending review and acceptance; no change to executable capabilities, promotion or authority.

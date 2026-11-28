@@ -43,3 +43,6 @@ No direct main write, deployment, paid/credential/security/destructive change, n
 
 ## Non-goals
 No fake test for non-testable work, wholesale TDD replacement, architecture redesign, or duplicate debugging skill.
+
+## Candidate reference — GH-5821
+Bounded incident diagnosis reference: [selective adoption pilot](../../integrations/diagram-sre-video.md). Reference only pending review and acceptance; no change to executable capabilities, promotion or authority.
