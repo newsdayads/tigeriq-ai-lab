@@ -141,7 +141,7 @@ test('rejects normalized FLOAT TEXCOORD_0',()=>assert.throws(()=>inspectGlb(norm
 test('rejects misaligned vertex attribute accessor offsets',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5123,true,true)),/invalid vertex attribute alignment/));
 test('rejects misaligned absolute vertex attribute offsets',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5121,true,false,true)),/invalid vertex attribute alignment/));
 test('rejects shared vertex bufferViews without byteStride',()=>assert.throws(()=>inspectGlb(fixture({sharedView:true})),/shared vertex attributes require byteStride/));
-test('rejects byteStride larger than bufferView.byteLength',()=>assert.throws(()=>inspectGlb(fixture({stride:40,singlePosition:true})),/invalid buffer view stride/));
+test('accepts a single vertex when byteStride exceeds bufferView.byteLength',()=>assert.equal(inspectGlb(fixture({stride:40,singlePosition:true})).technicalScreen,'PASS'));
 
 test('accepts unknown extension chunks after BIN',()=>assert.equal(inspectGlb(fixture({unknownAfterBin:true})).technicalScreen,'PASS'));
 test('accepts valid interleaved vertex stride',()=>assert.equal(inspectGlb(fixture({stride:12})).technicalScreen,'PASS'));
