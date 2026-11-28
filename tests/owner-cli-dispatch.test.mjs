@@ -89,7 +89,7 @@ function makeProbe({ agyAuth = true, codexAuth = true, geminiRemain = 1, claudeR
             },
           }, { observedAt })
         : [],
-      models: ['gemini-3.8-flash-low', 'gemini-4-hydrogen-medium', 'claude-sonnet-5-5-medium'],
+      models: ['gemini-4-hydrogen-low', 'gemini-4-hydrogen-medium', 'gemini-3.8-flash-low', 'claude-sonnet-5-5-medium'],
     },
     codex: {
       authenticated: codexAuth,
@@ -117,7 +117,7 @@ describe('Owner CLI Core Dispatch E2E & Negative Gates', () => {
     assert.equal(res.ok, true);
     assert.equal(res.accepted, true);
     assert.equal(res.provider, 'antigravity');
-    assert.equal(res.model, 'gemini-3.8-flash-low');
+    assert.equal(res.model, 'gemini-4-hydrogen-low');
     assert.equal(db.leases.size, 0, 'lease must be released after completion');
     assert.ok(db.events.some((e) => e.type === 'OWNER_CLI_DISPATCH_STARTED'));
     assert.ok(db.events.some((e) => e.type === 'OWNER_CLI_DISPATCH_COMPLETED'));
@@ -180,7 +180,7 @@ describe('Owner CLI Core Dispatch E2E & Negative Gates', () => {
     assert.equal(calls, 1);
   });
 
-  it('fails over on disconnect/timeout to secondary pool and releases leases', async () => {
+  it('does not spend a stronger pool on a Hydrogen disconnect and releases leases', async () => {
     const db = makeFakeDb();
     let attempt = 0;
     const res = await dispatchOwnerCliJob({
@@ -200,8 +200,9 @@ describe('Owner CLI Core Dispatch E2E & Negative Gates', () => {
       emitEvent: db.emitEvent,
       nowMs,
     });
-    assert.equal(res.ok, true);
-    assert.equal(res.group, 'Claude and GPT models');
+    assert.equal(res.ok, false);
+    assert.equal(res.code, 'ALL_ELIGIBLE_PROVIDERS_FAILED');
+    assert.equal(attempt, 1);
     assert.equal(res.failures.length, 1);
     assert.equal(res.failures[0].kind, 'disconnect');
     assert.equal(db.leases.size, 0);
@@ -233,7 +234,7 @@ describe('Owner CLI Core Dispatch E2E & Negative Gates', () => {
     assert.ok(db.events.some((e) => e.type === 'OWNER_CLI_DISPATCH_ROLLED_BACK'));
   });
 
-  it('handles lease contention and fails over to another uncontested pool', async () => {
+  it('handles lease contention without spending a stronger model pool', async () => {
     const db = makeFakeDb();
     db.leases.set('res:owner-cli:antigravity:gemini-models', {
       resource_id: 'res:owner-cli:antigravity:gemini-models',
@@ -249,8 +250,8 @@ describe('Owner CLI Core Dispatch E2E & Negative Gates', () => {
       emitEvent: db.emitEvent,
       nowMs,
     });
-    assert.equal(res.ok, true);
-    assert.equal(res.group, 'Claude and GPT models');
+    assert.equal(res.ok, false);
+    assert.equal(res.code, 'ALL_ELIGIBLE_PROVIDERS_FAILED');
     assert.ok(db.events.some((e) => e.type === 'OWNER_CLI_DISPATCH_LEASE_CONTENTION'));
     assert.ok(db.leases.has('res:owner-cli:antigravity:gemini-models'), 'other worker lease must remain untouched');
   });
