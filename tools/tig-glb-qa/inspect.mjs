@@ -119,6 +119,21 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     at += len;
   }
   if (d?.asset?.version !== '2.0' || !bin || d.buffers?.length !== 1 || d.buffers[0].uri !== undefined) fail('unsupported non-embedded GLB');
+  const readExtensionList = (name, value) => {
+    if (value === undefined) return [];
+    if (!Array.isArray(value) || value.some(extension => typeof extension !== 'string' || extension.trim().length === 0) || new Set(value).size !== value.length) {
+      fail('invalid ' + name);
+    }
+    return value;
+  };
+  const extensionsUsed = readExtensionList('extensionsUsed', d.extensionsUsed);
+  const extensionsRequired = readExtensionList('extensionsRequired', d.extensionsRequired);
+  const usedExtensions = new Set(extensionsUsed);
+  const supportedRequiredExtensions = new Set();
+  for (const extension of extensionsRequired) {
+    if (!usedExtensions.has(extension)) fail('required extension missing from extensionsUsed');
+    if (!supportedRequiredExtensions.has(extension)) fail('unsupported required glTF extension: ' + extension);
+  }
   const logical = d.buffers[0].byteLength;
   if (!Number.isSafeInteger(logical) || logical < 0 || logical > bin.length || bin.length - logical > 3) fail('invalid buffer length');
   if (bin.subarray(logical).some(byte => byte !== 0)) fail('invalid BIN padding');
