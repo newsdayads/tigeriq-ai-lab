@@ -273,7 +273,24 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
   if (d.skins !== undefined && !Array.isArray(d.skins)) fail('invalid skins');
   if (d.animations !== undefined && !Array.isArray(d.animations)) fail('invalid animations');
   const images=d.images ?? [];
-  for(const im of images) { if (!im || typeof im !== 'object' || Array.isArray(im) || im.uri !== undefined || !['image/png','image/jpeg','image/webp'].includes(im.mimeType)) fail('unsupported image'); if (im.mimeType === 'image/webp' && !usedExtensions.has('EXT_texture_webp')) fail('WebP image requires EXT_texture_webp in extensionsUsed'); const {start,length}=view(im.bufferView); if(!length) fail('empty image'); checkImage(bin.subarray(start,start+length),im.mimeType); }
+  const webpImageIndices = new Set(images.flatMap((image, index) => image?.mimeType === 'image/webp' ? [index] : []));
+  if (webpImageIndices.size) {
+    if (!usedExtensions.has('EXT_texture_webp')) fail('WebP image requires EXT_texture_webp in extensionsUsed');
+    if (!Array.isArray(d.textures)) fail('WebP image requires texture extension references');
+    const referencedWebpImages = new Set();
+    for (const texture of d.textures) {
+      if (!texture || typeof texture !== 'object' || Array.isArray(texture)) fail('invalid texture');
+      const webpExtension = texture.extensions?.EXT_texture_webp;
+      if (webpExtension === undefined) continue;
+      if (!webpExtension || typeof webpExtension !== 'object' || Array.isArray(webpExtension)) fail('invalid EXT_texture_webp source');
+      const webpSource = integer(webpExtension.source, 'WebP image index');
+      const fallbackSource = integer(texture.source, 'fallback image index');
+      if (!webpImageIndices.has(webpSource) || fallbackSource >= images.length || images[fallbackSource]?.mimeType === 'image/webp') fail('invalid EXT_texture_webp image references');
+      referencedWebpImages.add(webpSource);
+    }
+    for (const index of webpImageIndices) if (!referencedWebpImages.has(index)) fail('unreferenced WebP image');
+  }
+  for(const im of images) { if (!im || typeof im !== 'object' || Array.isArray(im) || im.uri !== undefined || !['image/png','image/jpeg','image/webp'].includes(im.mimeType)) fail('unsupported image'); const {start,length}=view(im.bufferView); if(!length) fail('empty image'); checkImage(bin.subarray(start,start+length),im.mimeType); }
   const skins=d.skins?.length??0, animations=d.animations?.length??0;
   return { schema:'tig-glb-inspection-v1',sha256:createHash('sha256').update(b).digest('hex'),meshes,triangles:total,triangleBudget,embeddedImages:images.length,uvMissing,uvOutOfRange,degenerate,skins,morphTargets,animations,
     technicalScreen:total<=triangleBudget&&uvMissing===0&&uvOutOfRange===0&&degenerate===0&&images.length>0?'PASS':'NOT_MET',
