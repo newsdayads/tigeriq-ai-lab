@@ -59,6 +59,18 @@ function duplicateJsonFixture() {
   return Buffer.concat([header, ...chunks]);
 }
 
+function invalidUtf8Fixture() {
+  const glb = fixture();
+  const jsonLength = glb.readUInt32LE(12);
+  const json = Buffer.from(glb.subarray(20, 20 + jsonLength));
+  const marker = Buffer.from('fixture');
+  const offset = json.indexOf(marker);
+  if (offset === -1) throw new Error('fixture marker missing');
+  json[offset] = 0xff;
+  json.copy(glb, 20);
+  return glb;
+}
+
 function normalizedUvFixture(componentType: 5121 | 5123 | 5126, normalized = true, misaligned = false, misalignedView = false) {
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP438AAAAQBAYDFKhhdAAAAAElFTkSuQmCC', 'base64');
   const pos = Buffer.alloc(36);
@@ -93,6 +105,9 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
   });
   it('rejects duplicate JSON chunks even when first JSON value is null',()=>{
     const r=run(duplicateJsonFixture());expect(r.status).toBe(1);expect(r.stderr).toContain('duplicate JSON');
+  });
+  it('rejects invalid UTF-8 in the JSON chunk',()=>{
+    const r=run(invalidUtf8Fixture());expect(r.status).toBe(1);expect(r.stderr).toContain('invalid UTF-8 JSON');
   });
   it('rejects unnormalized integer TEXCOORD_0',()=>{
     const r=run(normalizedUvFixture(5121,false));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid normalized accessor');
