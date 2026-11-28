@@ -7,8 +7,9 @@ import { spawnSync } from 'node:child_process';
 const dir = mkdtempSync(join(tmpdir(), 'tig-glb-qa-'));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 let seq = 0;
-function fixture(opts: { index?: number; nan?: boolean; noUv?: boolean; degenerate?: boolean; outsideUv?: boolean; truncated?: boolean; stride?: number; external?: boolean; badHeader?: boolean; imageDamage?: 'crc' | 'signature' | 'truncated'; imageMime?: string; indexStride?: number; imageStride?: number; unknownBeforeBin?: boolean; unknownAfterBin?: boolean; badBinPadding?: boolean; sharedView?: boolean; singlePosition?: boolean } = {}) {
+function fixture(opts: { index?: number; nan?: boolean; noUv?: boolean; degenerate?: boolean; outsideUv?: boolean; truncated?: boolean; stride?: number; external?: boolean; badHeader?: boolean; imageDamage?: 'crc' | 'signature' | 'truncated'; imageMime?: string; jpegOnlyMarkers?: boolean; indexStride?: number; imageStride?: number; unknownBeforeBin?: boolean; unknownAfterBin?: boolean; badBinPadding?: boolean; sharedView?: boolean; singlePosition?: boolean } = {}) {
   let png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP438AAAAQBAYDFKhhdAAAAAElFTkSuQmCC', 'base64');
+  if (opts.jpegOnlyMarkers) png = Buffer.from([0xff,0xd8,0xff,0xd9]);
   if (opts.imageDamage === 'signature') png[0] ^= 1;
   if (opts.imageDamage === 'crc') png[29] ^= 1;
   if (opts.imageDamage === 'truncated') png = png.subarray(0, -4);
@@ -227,6 +228,7 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
   it.each([0,3,4.5,5,253,256])('rejects invalid GLB byteStride %s',stride=>{const r=run(fixture({stride}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid buffer view stride');});
   it.each(['signature','crc','truncated'] as const)('rejects damaged PNG %s',imageDamage=>{const r=run(fixture({imageDamage}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid PNG');});
   it.each(['image/jpeg','image/webp'])('rejects mismatched image MIME %s',imageMime=>{const r=run(fixture({imageMime}));expect(r.status).toBe(1);expect(r.stderr).toMatch(/invalid (JPEG|WebP)/);});
+  it('rejects JPEG payload containing only SOI and EOI markers',()=>{const r=run(fixture({imageMime:'image/jpeg',jpegOnlyMarkers:true}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid JPEG image framing');});
   it.each([{noUv:true},{degenerate:true},{outsideUv:true}])('reports an unmet technical screen %j',opts=>{const r=run(fixture(opts));expect(r.status).toBe(0);expect(JSON.parse(r.stdout)).toMatchObject({technicalScreen:'NOT_MET',releaseEligible:false});});
 });
 
