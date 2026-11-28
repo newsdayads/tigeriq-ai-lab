@@ -276,3 +276,52 @@ test('rejects empty extension names',()=>assert.throws(()=>inspectGlb(rewriteJso
 test('rejects duplicate extension declarations',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.extensionsUsed=['KHR_materials_unlit','KHR_materials_unlit'];})),/invalid extensionsUsed/));
 test('rejects required extension absent from extensionsUsed',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.extensionsRequired=['KHR_draco_mesh_compression'];})),/required extension missing from extensionsUsed/));
 test('accepts declared optional extension when no extension is required',()=>assert.equal(inspectGlb(rewriteJsonFixture(d=>{d.extensionsUsed=['KHR_materials_unlit'];})).technicalScreen,'PASS'));
+
+
+function webpPaddingFixture(paddingByte = 0) {
+  const glb = fixture();
+  const jsonLength = glb.readUInt32LE(12);
+  const doc = JSON.parse(glb.subarray(20, 20 + jsonLength).toString('utf8').trim());
+  const binChunkStart = 20 + jsonLength;
+  const binLength = glb.readUInt32LE(binChunkStart);
+  const binStart = binChunkStart + 8;
+  const bin = Buffer.from(glb.subarray(binStart, binStart + binLength));
+  const webp = Buffer.alloc(22);
+  webp.write('RIFF', 0, 'ascii');
+  webp.writeUInt32LE(webp.length - 8, 4);
+  webp.write('WEBP', 8, 'ascii');
+  webp.write('VP8 ', 12, 'ascii');
+  webp.writeUInt32LE(1, 16);
+  webp[20] = 0x00;
+  webp[21] = paddingByte;
+  doc.bufferViews[3].byteOffset = bin.length;
+  doc.bufferViews[3].byteLength = webp.length;
+  doc.buffers[0].byteLength = bin.length + webp.length;
+  const nextBin = Buffer.concat([bin, webp, Buffer.alloc((4 - (bin.length + webp.length) % 4) % 4)]);
+  const rawJson = Buffer.from(JSON.stringify(doc));
+  const json = Buffer.concat([rawJson, Buffer.alloc((4 - rawJson.length % 4) % 4, 0x20)]);
+  const header = Buffer.alloc(12);
+  header.writeUInt32LE(0x46546c67, 0);
+  header.writeUInt32LE(2, 4);
+  header.writeUInt32LE(28 + json.length + nextBin.length, 8);
+  const chunk = (type, bytes) => {
+    const h = Buffer.alloc(8);
+    h.writeUInt32LE(bytes.length, 0);
+    h.writeUInt32LE(type, 4);
+    return Buffer.concat([h, bytes]);
+  };
+  return Buffer.concat([header, chunk(0x4e4f534a, json), chunk(0x004e4942, nextBin)]);
+}
+
+it('rejects a non-zero RIFF padding byte in an embedded WebP image', () => {
+  const r = run(webpPaddingFixture(0x7f));
+  expect(r.status).toBe(1);
+  expect(r.stdout).toBe('');
+  expect(r.stderr).toContain('invalid WebP');
+});
+
+it('accepts a zero RIFF padding byte in an embedded WebP image', () => {
+  const r = run(webpPaddingFixture(0));
+  expect(r.status).toBe(0);
+  expect(JSON.parse(r.stdout)).toMatchObject({embeddedImages:1,technicalScreen:'PASS',releaseEligible:false});
+});
