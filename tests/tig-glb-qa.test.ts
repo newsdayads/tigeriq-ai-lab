@@ -361,3 +361,13 @@ it('accepts a zero RIFF padding byte in an embedded WebP image',()=>{
   const r=run(webpPaddingFixture(0));
   expect(r.status).toBe(0);expect(JSON.parse(r.stdout)).toMatchObject({embeddedImages:1,technicalScreen:'PASS',releaseEligible:false});
 });
+
+it('rejects bufferView shared between vertex attributes and primitive indices', () => {
+  const r = run(rewriteJsonFixture(d => { d.accessors[2].bufferView = 0; }));
+  expect(r.status).toBe(1); expect(r.stderr).toContain('bufferView mixes vertex attribute and index data');
+});
+
+it('rejects bufferView shared between vertex attributes and embedded images', () => {
+  const r = run(rewriteJsonFixture(d => { d.images[0].bufferView = 0; }));
+  expect(r.status).toBe(1); expect(r.stderr).toContain('bufferView mixes vertex attribute and image data');
+});
