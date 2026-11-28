@@ -54,8 +54,12 @@ def validate_png_pixels(header, chunks):
 
 
 def png_size(data):
-    require(data[:8] == b"\x89PNG\r\n\x1a\n", 'invalid PNG signature')
+    require(data[:8] == b"\\x89PNG\\r\\n\\x1a\\n", 'invalid PNG signature')
     offset, dimensions, header, chunks = 8, None, None, []
+    color = depth = None
+    palette_seen = False
+    idat_started = False
+    idat_ended = False
     while offset + 12 <= len(data):
         length, kind = struct.unpack_from('>I4s', data, offset)
         end = offset + 12 + length
@@ -67,15 +71,28 @@ def png_size(data):
             header = payload
             dimensions = struct.unpack_from('>II', payload)
             require(all(dimensions), 'invalid PNG dimensions')
-        if kind == b'IDAT':
+            depth, color = header[8], header[9]
+        if kind == b'PLTE':
+            require(not idat_started and not palette_seen, 'invalid PNG PLTE ordering or duplicate')
+            require(color in (2, 3, 6), 'PNG PLTE forbidden for grayscale color type')
+            require(3 <= length <= 768 and length % 3 == 0, 'invalid PNG PLTE length')
+            if color == 3:
+                require(length // 3 <= 2 ** depth, 'PNG PLTE exceeds indexed bit depth')
+            palette_seen = True
+        elif kind == b'IDAT':
+            require(not idat_ended, 'non-consecutive PNG IDAT chunks')
+            if color == 3:
+                require(palette_seen, 'missing PNG PLTE for indexed color')
+            idat_started = True
             chunks.append(payload)
+        elif idat_started and kind != b'IEND':
+            idat_ended = True
         if kind == b'IEND':
             require(length == 0 and end == len(data) and chunks, 'invalid PNG ending')
             validate_png_pixels(header, chunks)
             return dimensions
         offset = end
     raise ValueError('missing PNG IEND')
-
 
 def audit(path):
     with ZipFile(path) as z:
