@@ -131,15 +131,20 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
         }
       }
       if (!p.attributes || typeof p.attributes !== 'object' || Array.isArray(p.attributes)) fail('invalid primitive attributes');
-      const pos = accessor(p.attributes.POSITION, 'VEC3', [5126], { vertexAttribute: true });
+      const positionIndex = integer(p.attributes.POSITION, 'vertex attribute accessor index');
+      const pos = accessor(positionIndex, 'VEC3', [5126], { vertexAttribute: true });
+      const positionDefinition = d.accessors[positionIndex];
+      if (!Array.isArray(positionDefinition.min) || !Array.isArray(positionDefinition.max) || positionDefinition.min.length !== 3 || positionDefinition.max.length !== 3 || [...positionDefinition.min, ...positionDefinition.max].some(value => !Number.isFinite(value))) fail('invalid POSITION bounds');
+      const positionMin = [Infinity, Infinity, Infinity], positionMax = [-Infinity, -Infinity, -Infinity];
       const uv = p.attributes.TEXCOORD_0 === undefined ? null : accessor(p.attributes.TEXCOORD_0, 'VEC2', [5126,5121,5123], { allowNormalizedInteger:true, vertexAttribute: true });
       if (uv && uv.count !== pos.count) fail('UV count mismatch');
       if (!uv) uvMissing++;
       for (let n=0;n<pos.count;n++) {
-        for(let c=0;c<3;c++) if(!Number.isFinite(pos.get(n,c))) fail('non-finite position');
+        for(let c=0;c<3;c++) { const value = pos.get(n,c); if(!Number.isFinite(value)) fail('non-finite position'); positionMin[c] = Math.min(positionMin[c], value); positionMax[c] = Math.max(positionMax[c], value); }
         if(uv) for(let c=0;c<2;c++) { const x=uv.get(n,c); if(!Number.isFinite(x)) fail('non-finite UV'); if(x<0||x>1) uvOutOfRange++; }
       }
       if (p.targets !== undefined && !Array.isArray(p.targets)) fail('invalid morph targets');
+      if (positionDefinition.min.some((value, component) => Math.fround(value) !== positionMin[component]) || positionDefinition.max.some((value, component) => Math.fround(value) !== positionMax[component])) fail('invalid POSITION bounds');
       const idx = p.indices === undefined ? null : accessor(p.indices,'SCALAR',[5121,5123,5125]);
       const count = idx?.count ?? pos.count;
       if (count % 3) fail('non-triangle index count');
