@@ -1,5 +1,14 @@
 # TIGERIQ — WORKFLOW
 
+<!-- OWNER_NO_GITHUB_ACTIONS_20261129 -->
+## P0 — CẤM TỰ Ý DÙNG GITHUB ACTIONS — OWNER 29/11/2026
+OWNER_DIRECT=true | SCOPE=ALL_TIGERIQ_PROJECTS_AND_AGENTS | GITHUB_ACTIONS=RETIRED_DEFAULT_DENY | LOCAL_VERIFICATION=REQUIRED
+- GitHub Actions đã được Owner loại bỏ toàn dự án. Cấm tự tạo, khôi phục, kích hoạt, chạy lại, lập lịch hoặc dùng GitHub Actions làm điều kiện chờ, kiểm thử, phát hành hay fallback. Chỉ ngoại lệ khi Owner chỉ định rõ việc sử dụng GitHub Actions cho đúng phạm vi; quyền FULL AUTO thông thường không phải ngoại lệ.
+- GitHub vẫn là nguồn mã chuẩn: dùng connector, nhánh riêng, PR, kiểm tra mã đúng SHA và hợp nhất theo quyền hiện hành. Thay CI trên Actions bằng kiểm thử trực tiếp trong môi trường cô lập phù hợp (ưu tiên PC01 OAuth MCP khi cần PC01), biên nhận kết quả, kiểm tra SHA, đọc lại main, sao lưu/khôi phục và nghiệm thu thực tế. Không tạo hệ thống CI/hàng đợi thứ hai.
+- Mọi yêu cầu CI/exact-head trong tài liệu cũ phải hiểu theo kiểm thử thay thế có bằng chứng; không lấy 0 workflow/check-run làm blocker chỉ vì Actions đã nghỉ. Không bỏ qua branch protection thật, quyền một người ghi, bảo mật, chi phí, cổng Production hoặc nghiệm thu thiết bị.
+- Phạm vi mọi chat mới, Work và nhân sự AI đã nạp nguồn; không tuyên bố ép thực thi trên phiên chưa nạp nguồn. Ca hồi quy: PhoneBox PR #5817 — bản sửa CSS kiểm thử PC01 6/6, hợp nhất d307674e9d0cceb37e6bab385618ef19dda918d8, phát hành CSS có biên nhận; không khôi phục Actions.
+<!-- /OWNER_NO_GITHUB_ACTIONS_20261129 -->
+
 <!-- ANDROID_QA_EMULATOR_FIRST_OWNER_20261125 -->
 ## KIỂM THỬ ANDROID — ƯU TIÊN APKSTART PC01 (Owner 25/11/2026)
 OWNER_DIRECT=true | WORK_ORDER=GH-5772 | SCOPE=ALL_TIGERIQ_ANDROID_TEST_WORKFLOWS | DEFAULT=EMULATOR_FIRST_GENERAL_QA | DEVICE_SPECIFIC_ACCEPTANCE=PRESERVED
@@ -35,6 +44,7 @@ Updated: 2026-11-17
 - Tên Work Order/Issue/PR mới: phần mô tả phải dùng tiếng Việt dễ hiểu. Thuật ngữ tiếng Anh bắt buộc trong tiêu đề phải theo mẫu `English (nghĩa/chức năng tiếng Việt)`.
 - Ngoại lệ: chuỗi kỹ thuật cần giữ nguyên để dùng chính xác như câu lệnh, mã nguồn, tên file, tên nhánh, đường dẫn, URL, biến, hash, mã trạng thái hoặc log nguyên văn; tên riêng sản phẩm/model/thương hiệu chỉ được giữ nguyên khi dịch làm sai định danh.
 - Không dùng nhãn trạng thái tiếng Anh trong phần hiển thị thông thường. Ánh xạ: `PASS` → `ĐẠT`; `DONE` → `HOÀN TẤT`; `FAIL` → `LỖI/KHÔNG ĐẠT`; `BLOCKER` → `BỊ CHẶN`; `WAIT/PENDING` → `CHỜ`; `RESULT` → `KẾT QUẢ`; `NEXT ACTION` → `BƯỚC TIẾP THEO`; `IN PROGRESS/ACTIVE` → `ĐANG XỬ LÝ`.
+- **Chuẩn mã hóa UTF-8 & chống lỗi font tiếng Việt (toàn hệ thống):** Mọi nội dung tiếng Việt trên toàn hệ thống (GitHub Issue/PR title & body, comment, commit message, Dashboard, UI web/app, log, script PowerShell/Node) **bắt buộc dùng UTF-8 (no BOM)** và hiển thị đúng dấu tiếng Việt; **tuyệt đối cấm lỗi font / mojibake** (`Ã`, `Ä`, `á»`, `Æ°`...). Khi ghi/gửi qua PowerShell hoặc CLI (`gh`, `curl`, `Invoke-RestMethod`), bắt buộc thiết lập `[Console]::OutputEncoding` & `$OutputEncoding` sang UTF-8 không BOM và truyền nội dung qua tệp UTF-8 (`--body-file`) hoặc `Buffer.from(..., 'utf8')`; nếu phát hiện mojibake trước khi xuất bản/comment thì phải dừng sửa lại đúng UTF-8 mới được ghi nhận.
 
 ## 1.1. Cổng kiểm tra trước khi gửi — bắt buộc xuyên mọi chat
 - Mọi phản hồi trực tiếp cho anh Sơn phải qua kiểm tra cuối trước khi gửi; áp dụng cả NEW CHAT và các chat khác trong cùng Project.

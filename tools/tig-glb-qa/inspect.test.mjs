@@ -13,6 +13,25 @@ function fixture(options = {}) {
   if (options.imageDamage === 'signature') png[0] ^= 1;
   if (options.imageDamage === 'crc') png[29] ^= 1;
   if (options.imageDamage === 'truncated') png = png.subarray(0, -4);
+  if (options.invalidPngChunkType !== undefined) {
+    // Keep CRC correct so rejection must be due to the actual chunk type bytes.
+    const {offset, value} = options.invalidPngChunkType;
+    png[offset] = value;
+    let chunk = 8;
+    while (chunk < png.length) {
+      const end = chunk + 8 + png.readUInt32BE(chunk);
+      if (offset >= chunk + 4 && offset < chunk + 8) {
+        let crc = 0xffffffff;
+        for (const byte of png.subarray(chunk + 4, end)) {
+          crc ^= byte;
+          for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+        }
+        png.writeUInt32BE((crc ^ 0xffffffff) >>> 0, end);
+        break;
+      }
+      chunk = end + 4;
+    }
+  }
   const bin = Buffer.alloc(68 + png.length + (4 - png.length % 4) % 4);
   [0,0,0,1,0,0,0,options.degenerate ? 0 : 1,0].forEach((x,i) => bin.writeFloatLE(options.nan && i === 0 ? NaN : x,i*4));
   [0,0,1,0,0,options.outsideUv ? 2 : 1].forEach((x,i) => bin.writeFloatLE(options.nanUv && i === 0 ? NaN : x,36+i*4));
@@ -145,11 +164,11 @@ test('rejects null bufferView byteOffset instead of defaulting to zero',()=>asse
 test('rejects null sparse accessor property',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors[0].sparse=null;})),/unsupported vertex attribute accessor/));
 test('rejects null normalized accessor property',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors[0].normalized=null;})),/invalid normalized accessor/));
 test('rejects invalid UTF-8 in the JSON chunk',()=>assert.throws(()=>inspectGlb(invalidUtf8Fixture()),/invalid UTF-8 JSON/));
-test('rejects unnormalized integer TEXCOORD_0',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5121,false)),/invalid normalized accessor/));
-test('rejects normalized FLOAT TEXCOORD_0',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5126,true)),/invalid normalized accessor/));
+test('rejects unnormalized integer TEXCOORD_0',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5121,false)),/invalid vertex attribute storage: TEXCOORD_0/));
+test('rejects normalized FLOAT TEXCOORD_0',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5126,true)),/invalid vertex attribute storage: TEXCOORD_0/));
 test('rejects accessor byteOffset that is 2-byte aligned but not 4-byte aligned even when absolute offset is 4-byte aligned',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5123,true,false,false,true,-2)),/invalid vertex attribute alignment/));
 test('accepts UNSIGNED_SHORT VEC2 when bufferView starts at a 2-byte offset but accessor offset is 4-byte aligned',()=>assert.equal(inspectGlb(normalizedUvFixture(5123,true,false,false,false,2)).technicalScreen,'PASS'));
-test('rejects UNSIGNED_SHORT VEC2 without byteStride even when element width is four bytes',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5123,true,false,false,true,0)),/invalid vertex attribute alignment/));
+test('accepts tightly packed UNSIGNED_SHORT VEC2 with four-byte element width',()=>{const r=inspectGlb(normalizedUvFixture(5123,true,false,false,true,0));assert.equal(r.technicalScreen,'PASS');assert.equal(r.uvOutOfRange,0);});
 test('accepts UNSIGNED_BYTE vertex attributes when bufferView starts at a non-4-byte absolute offset',()=>assert.equal(inspectGlb(normalizedUvFixture(5121,true,false,true)).technicalScreen,'PASS'));
 test('rejects shared vertex bufferViews without byteStride',()=>assert.throws(()=>inspectGlb(fixture({sharedView:true})),/shared vertex bufferView requires byteStride/));
 test('accepts shared vertex bufferViews with byteStride',()=>{const report=inspectGlb(fixture({sharedView:true,stride:12}));assert.equal(report.technicalScreen,'PASS');assert.equal(report.uvOutOfRange,0);});
@@ -173,7 +192,8 @@ test('invalid budget rejected',()=>assert.throws(()=>inspectGlb(fixture(),{trian
 test('declared skin without morph targets is not falsely marked absent',()=>{const r=inspectGlb(fixture({skin:true}));assert.equal(r.skins,1);assert.equal(r.morphTargets,0);assert.equal(r.rigScreen,'NOT_CHECKED');assert.equal(r.releaseEligible,false);});
 
 for (const imageDamage of ['signature','crc','truncated']) test('rejects damaged PNG '+imageDamage,()=>assert.throws(()=>inspectGlb(fixture({imageDamage})),/invalid PNG/));
-for (const imageMime of ['image/jpeg','image/webp']) test('rejects mismatched image MIME '+imageMime,()=>assert.throws(()=>inspectGlb(fixture({imageMime})),/invalid (JPEG|WebP)/));
+test('rejects mismatched image MIME image/jpeg',()=>assert.throws(()=>inspectGlb(fixture({imageMime:'image/jpeg'})),/invalid JPEG image framing/));
+test('rejects mismatched image MIME image/webp',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.extensionsUsed=['EXT_texture_webp'];d.images.push({bufferView:3,mimeType:'image/webp'});d.textures=[{source:0,extensions:{EXT_texture_webp:{source:1}}}];})),/invalid WebP image framing/));
 test('rejects JPEG payload containing only SOI and EOI markers',()=>assert.throws(()=>inspectGlb(fixture({imageMime:'image/jpeg',jpegOnlyMarkers:true})),/invalid JPEG image framing/));
 
 function runCli(bytes, flags = []) {
@@ -271,9 +291,9 @@ test('rejects sparse non-POSITION vertex attributes',()=>{
 });
 test('rejects non-POSITION vertex attributes with an invalid bufferView',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],bufferView:999});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;})),/invalid buffer view/));
 test('rejects non-POSITION vertex attributes whose accessor range exceeds its bufferView',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],byteOffset:36});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;})),/accessor out of bounds/));
-test('rejects non-POSITION vertex attributes with unsupported component types',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],componentType:5125});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;})),/unsupported vertex attribute accessor/));
-test('rejects inherited object keys as non-POSITION accessor types',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],type:'toString'});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;})),/unsupported vertex attribute accessor/));
-test('rejects inherited object keys as non-POSITION component types',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],componentType:'toString'});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;})),/unsupported vertex attribute accessor/));
+test('rejects non-POSITION vertex attributes with unsupported component types',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],componentType:5125});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;})),/invalid vertex attribute storage: NORMAL/));
+test('rejects inherited object keys as non-POSITION accessor types',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],type:'toString'});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;})),/invalid vertex attribute storage: NORMAL/));
+test('rejects inherited object keys as non-POSITION component types',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],componentType:'toString'});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;})),/invalid vertex attribute storage: NORMAL/));
 test('accepts structurally valid non-POSITION vertex attributes without claiming semantic payload validation',()=>{const r=inspectGlb(rewriteJsonFixture(d=>{d.bufferViews.push({...d.bufferViews[0],byteStride:12});d.accessors.push({...d.accessors[0],bufferView:d.bufferViews.length-1});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;}));assert.equal(r.technicalScreen,'PASS');});
 
 
@@ -330,6 +350,7 @@ function webpPaddingFixture(paddingByte = 0, declareExtension = true) {
 test('rejects signed BYTE NORMAL storage without KHR_mesh_quantization',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],componentType:5120});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;})),/invalid vertex attribute storage: NORMAL/));
 test('rejects signed SHORT JOINTS_0 storage',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],type:'VEC4',componentType:5122});d.meshes[0].primitives[0].attributes.JOINTS_0=d.accessors.length-1;})),/invalid vertex attribute storage: JOINTS_0/));
 test('accepts core glTF unsigned SHORT JOINTS_0 storage',()=>{const r=inspectGlb(rewriteJsonFixture(d=>{d.bufferViews.push({...d.bufferViews[0],byteStride:8});d.accessors.push({...d.accessors[0],bufferView:d.bufferViews.length-1,type:'VEC4',componentType:5123});d.meshes[0].primitives[0].attributes.JOINTS_0=d.accessors.length-1;}));assert.equal(r.technicalScreen,'PASS');});
+for (const componentType of [5121,5123]) test(`accepts tightly packed JOINTS_0 VEC4 component ${componentType}`,()=>{const r=inspectGlb(rewriteJsonFixture(d=>{d.bufferViews.push({...d.bufferViews[0]});d.accessors.push({...d.accessors[0],bufferView:d.bufferViews.length-1,type:'VEC4',componentType});d.meshes[0].primitives[0].attributes.JOINTS_0=d.accessors.length-1;}));assert.equal(r.technicalScreen,'PASS');});
 
 test('rejects WebP image without a texture extension reference',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.extensionsUsed=['EXT_texture_webp'];d.textures=[];d.images.push({bufferView:3,mimeType:'image/webp'});})),/unreferenced WebP image/));
 test('rejects WebP texture extension without a fallback image',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.extensionsUsed=['EXT_texture_webp'];d.textures=[{extensions:{EXT_texture_webp:{source:1}}}];d.images.push({bufferView:3,mimeType:'image/webp'});})),/invalid fallback image index/));
@@ -344,7 +365,7 @@ test('rejects a non-zero RIFF padding byte in an embedded WebP image', () => {
 
 test('accepts a zero RIFF padding byte in an embedded WebP image', () => {
   const report = inspectGlb(webpPaddingFixture(0));
-  assert.equal(report.embeddedImages, 1);
+  assert.equal(report.embeddedImages, 2);
   assert.equal(report.technicalScreen, 'PASS');
   assert.equal(report.releaseEligible, false);
 });
@@ -368,3 +389,9 @@ test('rejects bufferView shared between vertex attributes and primitive indices'
 test('rejects bufferView shared between vertex attributes and embedded images', () => {
   assert.throws(() => inspectGlb(rewriteJsonFixture(d => { d.images[0].bufferView = 0; })), /bufferView mixes vertex attribute and image data/);
 });
+
+for (const [offset, value] of [[12, 0xc9], [37, 0xc9], [61, 0xc9]]) {
+  test(`rejects PNG chunk type with non-ASCII high bit at byte ${offset}, valid CRC`, () => {
+    assert.throws(() => inspectGlb(fixture({invalidPngChunkType:{offset,value}})), /invalid PNG image framing/);
+  });
+}

@@ -35,6 +35,30 @@ function fixture(opts: { index?: number; nan?: boolean; noUv?: boolean; degenera
   const glb=Buffer.concat([header,...chunks]);
   return opts.truncated?glb.subarray(0,-1):glb;
 }
+function pngHighBitFixture(chunkType: string) {
+  const glb=fixture();
+  const jsonLength=glb.readUInt32LE(12);
+  const doc=JSON.parse(glb.toString('utf8',20,20+jsonLength));
+  const view=doc.bufferViews[doc.images[0].bufferView];
+  const start=28+jsonLength+(view.byteOffset??0);
+  const limit=start+view.byteLength;
+  for(let at=start+8;at+12<=limit;) {
+    const len=glb.readUInt32BE(at), end=at+8+len;
+    if(end+4>limit) throw new Error('bad PNG fixture');
+    if(glb.toString('latin1',at+4,at+8)===chunkType) {
+      glb[at+4]|=0x80;
+      let crc=0xffffffff;
+      for(const byte of glb.subarray(at+4,end)) {
+        crc^=byte;
+        for(let bit=0;bit<8;bit++) crc=(crc>>>1)^((crc&1)?0xedb88320:0);
+      }
+      glb.writeUInt32BE((crc^0xffffffff)>>>0,end);
+      return glb;
+    }
+    at=end+4;
+  }
+  throw new Error('missing PNG fixture chunk: '+chunkType);
+}
 function run(b: Buffer) {
   const path=join(dir,`fixture-${seq++}.glb`);writeFileSync(path,b);
   return spawnSync(process.execPath,[resolve('tools/tig-glb-qa/inspect.mjs'),path],{encoding:'utf8'});
@@ -46,7 +70,7 @@ function duplicateJsonFixture() {
   const binHeader = 20 + jsonLength;
   const binLength = valid.readUInt32LE(binHeader);
   const bin = valid.subarray(binHeader + 8, binHeader + 8 + binLength);
-  const chunk = (type, bytes) => {
+  const chunk = (type: number, bytes: Buffer) => {
     const header = Buffer.alloc(8);
     header.writeUInt32LE(bytes.length);
     header.writeUInt32LE(type, 4);
@@ -60,7 +84,7 @@ function duplicateJsonFixture() {
   return Buffer.concat([header, ...chunks]);
 }
 
-function rewriteJsonFixture(mutator) {
+function rewriteJsonFixture(mutator: (doc: Record<string, any>) => void) {
   const glb = fixture();
   const jsonLength = glb.readUInt32LE(12);
   const doc = JSON.parse(glb.subarray(20, 20 + jsonLength).toString('utf8').trim());
@@ -70,7 +94,7 @@ function rewriteJsonFixture(mutator) {
   const binHeader = 20 + jsonLength;
   const binLength = glb.readUInt32LE(binHeader);
   const bin = glb.subarray(binHeader + 8, binHeader + 8 + binLength);
-  const chunk = (type, bytes) => {
+  const chunk = (type: number, bytes: Buffer) => {
     const header = Buffer.alloc(8);
     header.writeUInt32LE(bytes.length);
     header.writeUInt32LE(type, 4);
@@ -88,10 +112,10 @@ function invalidUtf8Fixture() {
   const glb = fixture();
   const jsonLength = glb.readUInt32LE(12);
   const json = Buffer.from(glb.subarray(20, 20 + jsonLength));
-  const marker = Buffer.from('fixture');
+  const marker = Buffer.from('"name":"test"');
   const offset = json.indexOf(marker);
   if (offset === -1) throw new Error('fixture marker missing');
-  json[offset] = 0xff;
+  json[offset + Buffer.byteLength('"name":"')] = 0xff;
   json.copy(glb, 20);
   return glb;
 }
@@ -121,7 +145,7 @@ function normalizedUvFixture(componentType: 5121 | 5123 | 5126, normalized = tru
     meshes:[{primitives:[{attributes:{POSITION:0,TEXCOORD_0:1},indices:2}]}],images:[{bufferView:3,mimeType:'image/png'}]};
   const raw=Buffer.from(JSON.stringify(doc)), json=Buffer.concat([raw,Buffer.alloc((4-raw.length%4)%4,32)]);
   const header=Buffer.alloc(12);header.writeUInt32LE(0x46546c67);header.writeUInt32LE(2,4);header.writeUInt32LE(28+json.length+bin.length,8);
-  const chunk=(type,bytes)=>{const h=Buffer.alloc(8);h.writeUInt32LE(bytes.length);h.writeUInt32LE(type,4);return Buffer.concat([h,bytes]);};
+  const chunk=(type: number, bytes: Buffer) =>{const h=Buffer.alloc(8);h.writeUInt32LE(bytes.length);h.writeUInt32LE(type,4);return Buffer.concat([h,bytes]);};
   return Buffer.concat([header,chunk(0x4e4f534a,json),chunk(0x004e4942,bin)]);
 }
 describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
@@ -194,10 +218,10 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
     const r=run(invalidUtf8Fixture());expect(r.status).toBe(1);expect(r.stderr).toContain('invalid UTF-8 JSON');
   });
   it('rejects unnormalized integer TEXCOORD_0',()=>{
-    const r=run(normalizedUvFixture(5121,false));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid normalized accessor');
+    const r=run(normalizedUvFixture(5121,false));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid vertex attribute storage: TEXCOORD_0');
   });
   it('rejects normalized FLOAT TEXCOORD_0',()=>{
-    const r=run(normalizedUvFixture(5126,true));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid normalized accessor');
+    const r=run(normalizedUvFixture(5126,true));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid vertex attribute storage: TEXCOORD_0');
   });
   it('rejects accessor byteOffset that is 2-byte aligned but not 4-byte aligned even when absolute offset is 4-byte aligned',()=>{
     const r=run(normalizedUvFixture(5123,true,false,false,true,-2));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid vertex attribute alignment');
@@ -205,8 +229,8 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
   it('accepts UNSIGNED_SHORT VEC2 when bufferView starts at a 2-byte offset but accessor offset is 4-byte aligned',()=>{
     const r=run(normalizedUvFixture(5123,true,false,false,false,2));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');
   });
-  it('rejects UNSIGNED_SHORT VEC2 without byteStride even when element width is four bytes',()=>{
-    const r=run(normalizedUvFixture(5123,true,false,false,true,0));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid vertex attribute alignment');
+  it('accepts tightly packed UNSIGNED_SHORT VEC2 with four-byte element width',()=>{
+    const r=run(normalizedUvFixture(5123,true,false,false,true,0));expect(r.status).toBe(0);expect(JSON.parse(r.stdout)).toMatchObject({technicalScreen:'PASS',uvOutOfRange:0,releaseEligible:false});
   });
   it('accepts UNSIGNED_BYTE vertex attributes when bufferView starts at a non-4-byte absolute offset',()=>{
     const r=run(normalizedUvFixture(5121,true,false,true));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');
@@ -236,7 +260,12 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
   it.each([{index:3},{nan:true},{truncated:true},{stride:24},{external:true},{badHeader:true},{unknownBeforeBin:true},{indexStride:4},{imageStride:4},{badBinPadding:true}])('rejects malformed input %j',opts=>{const r=run(fixture(opts));expect(r.status).toBe(1);expect(r.stdout).toBe('');if(opts.unknownBeforeBin) expect(r.stderr).toContain('BIN chunk must be second');if(opts.indexStride!=null||opts.imageStride!=null) expect(r.stderr).toContain('byteStride only allowed for vertex attributes');if(opts.badBinPadding) expect(r.stderr).toContain('invalid BIN padding');});
   it.each([0,3,4.5,5,253,256])('rejects invalid GLB byteStride %s',stride=>{const r=run(fixture({stride}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid buffer view stride');});
   it.each(['signature','crc','truncated'] as const)('rejects damaged PNG %s',imageDamage=>{const r=run(fixture({imageDamage}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid PNG');});
-  it.each(['image/jpeg','image/webp'])('rejects mismatched image MIME %s',imageMime=>{const r=run(fixture({imageMime}));expect(r.status).toBe(1);expect(r.stderr).toMatch(/invalid (JPEG|WebP)/);});
+  it.each(['IHDR','IDAT','IEND'])('rejects PNG high-bit chunk type %s even with valid CRC',chunkType=>{
+    const r=run(pngHighBitFixture(chunkType));
+    expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid PNG image framing');
+  });
+  it('rejects mismatched image MIME image/jpeg',()=>{const r=run(fixture({imageMime:'image/jpeg'}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid JPEG image framing');});
+  it('rejects mismatched image MIME image/webp',()=>{const r=run(rewriteJsonFixture(d=>{d.extensionsUsed=['EXT_texture_webp'];d.images.push({bufferView:3,mimeType:'image/webp'});d.textures=[{source:0,extensions:{EXT_texture_webp:{source:1}}}];}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid WebP image framing');});
   it('rejects JPEG payload containing only SOI and EOI markers',()=>{const r=run(fixture({imageMime:'image/jpeg',jpegOnlyMarkers:true}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid JPEG image framing');});
   it.each([{noUv:true},{degenerate:true},{outsideUv:true}])('reports an unmet technical screen %j',opts=>{const r=run(fixture(opts));expect(r.status).toBe(0);expect(JSON.parse(r.stdout)).toMatchObject({technicalScreen:'NOT_MET',releaseEligible:false});});
 });
@@ -283,9 +312,9 @@ it('rejects sparse non-POSITION vertex attributes',()=>{
 });
 it('rejects non-POSITION vertex attributes with an invalid bufferView',()=>{const r=run(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],bufferView:999});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid buffer view');});
 it('rejects non-POSITION vertex attributes whose accessor range exceeds its bufferView',()=>{const r=run(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],byteOffset:36});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;}));expect(r.status).toBe(1);expect(r.stderr).toContain('accessor out of bounds');});
-it('rejects non-POSITION vertex attributes with unsupported component types',()=>{const r=run(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],componentType:5125});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;}));expect(r.status).toBe(1);expect(r.stderr).toContain('unsupported vertex attribute accessor');});
-it('rejects inherited object keys as non-POSITION accessor types',()=>{const r=run(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],type:'toString'});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;}));expect(r.status).toBe(1);expect(r.stderr).toContain('unsupported vertex attribute accessor');});
-it('rejects inherited object keys as non-POSITION component types',()=>{const r=run(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],componentType:'toString'});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;}));expect(r.status).toBe(1);expect(r.stderr).toContain('unsupported vertex attribute accessor');});
+it('rejects non-POSITION vertex attributes with unsupported component types',()=>{const r=run(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],componentType:5125});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid vertex attribute storage: NORMAL');});
+it('rejects inherited object keys as non-POSITION accessor types',()=>{const r=run(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],type:'toString'});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid vertex attribute storage: NORMAL');});
+it('rejects inherited object keys as non-POSITION component types',()=>{const r=run(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],componentType:'toString'});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid vertex attribute storage: NORMAL');});
 it('accepts structurally valid non-POSITION vertex attributes without claiming semantic payload validation',()=>{const r=run(rewriteJsonFixture(d=>{d.bufferViews.push({...d.bufferViews[0],byteStride:12});d.accessors.push({...d.accessors[0],bufferView:d.bufferViews.length-1});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;}));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');});
 
 
@@ -302,8 +331,8 @@ it('rejects required extension absent from extensionsUsed',()=>{const r=run(rewr
 it('accepts declared optional extension when no extension is required',()=>{const r=run(rewriteJsonFixture(d=>{d.extensionsUsed=['KHR_materials_unlit'];}));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');});
 
 it('rejects object-valued buffers container',()=>{const r=run(rewriteJsonFixture(d=>{d.buffers={0:d.buffers[0],length:1};}));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid glTF storage arrays');});
-it('rejects object-valued bufferViews container',()=>{const r=run(rewriteJsonFixture(d=>{d.bufferViews=Object.fromEntries(d.bufferViews.map((value,index)=>[index,value]));}));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid glTF storage arrays');});
-it('rejects object-valued accessors container',()=>{const r=run(rewriteJsonFixture(d=>{d.accessors=Object.fromEntries(d.accessors.map((value,index)=>[index,value]));}));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid glTF storage arrays');});
+it('rejects object-valued bufferViews container',()=>{const r=run(rewriteJsonFixture(d=>{d.bufferViews=Object.fromEntries(d.bufferViews.map((value: unknown,index: number)=>[index,value]));}));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid glTF storage arrays');});
+it('rejects object-valued accessors container',()=>{const r=run(rewriteJsonFixture(d=>{d.accessors=Object.fromEntries(d.accessors.map((value: unknown,index: number)=>[index,value]));}));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid glTF storage arrays');});
 
 
 function webpPaddingFixture(paddingByte = 0, declareExtension = true) {
@@ -335,7 +364,7 @@ function webpPaddingFixture(paddingByte = 0, declareExtension = true) {
   header.writeUInt32LE(0x46546c67, 0);
   header.writeUInt32LE(2, 4);
   header.writeUInt32LE(28 + json.length + nextBin.length, 8);
-  const chunk = (type, bytes) => {
+  const chunk = (type: number, bytes: Buffer) => {
     const h = Buffer.alloc(8);
     h.writeUInt32LE(bytes.length, 0);
     h.writeUInt32LE(type, 4);
@@ -347,6 +376,7 @@ function webpPaddingFixture(paddingByte = 0, declareExtension = true) {
 it('rejects signed BYTE NORMAL storage without KHR_mesh_quantization',()=>{const r=run(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],componentType:5120});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid vertex attribute storage: NORMAL');});
 it('rejects signed SHORT JOINTS_0 storage',()=>{const r=run(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],type:'VEC4',componentType:5122});d.meshes[0].primitives[0].attributes.JOINTS_0=d.accessors.length-1;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid vertex attribute storage: JOINTS_0');});
 it('accepts core glTF unsigned SHORT JOINTS_0 storage',()=>{const r=run(rewriteJsonFixture(d=>{d.bufferViews.push({...d.bufferViews[0],byteStride:8});d.accessors.push({...d.accessors[0],bufferView:d.bufferViews.length-1,type:'VEC4',componentType:5123});d.meshes[0].primitives[0].attributes.JOINTS_0=d.accessors.length-1;}));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');});
+it.each([5121,5123])('accepts tightly packed JOINTS_0 VEC4 component %s',componentType=>{const r=run(rewriteJsonFixture(d=>{d.bufferViews.push({...d.bufferViews[0]});d.accessors.push({...d.accessors[0],bufferView:d.bufferViews.length-1,type:'VEC4',componentType});d.meshes[0].primitives[0].attributes.JOINTS_0=d.accessors.length-1;}));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');});
 it('rejects WebP texture extension without a fallback image',()=>{const r=run(rewriteJsonFixture(d=>{d.extensionsUsed=['EXT_texture_webp'];d.textures=[{extensions:{EXT_texture_webp:{source:1}}}];d.images.push({bufferView:3,mimeType:'image/webp'});}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid fallback image index');});
 it('rejects WebP texture extension when no WebP image target exists',()=>{const r=run(rewriteJsonFixture(d=>{d.extensionsUsed=['EXT_texture_webp'];d.textures=[{source:0,extensions:{EXT_texture_webp:{source:0}}}];}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid EXT_texture_webp image references');});
 it('rejects undeclared WebP texture extension when no WebP image target exists',()=>{const r=run(rewriteJsonFixture(d=>{d.textures=[{source:0,extensions:{EXT_texture_webp:{source:0}}}];}));expect(r.status).toBe(1);expect(r.stderr).toContain('WebP image requires EXT_texture_webp in extensionsUsed');});
@@ -359,7 +389,7 @@ it('rejects a non-zero RIFF padding byte in an embedded WebP image',()=>{
 });
 it('accepts a zero RIFF padding byte in an embedded WebP image',()=>{
   const r=run(webpPaddingFixture(0));
-  expect(r.status).toBe(0);expect(JSON.parse(r.stdout)).toMatchObject({embeddedImages:1,technicalScreen:'PASS',releaseEligible:false});
+  expect(r.status).toBe(0);expect(JSON.parse(r.stdout)).toMatchObject({embeddedImages:2,technicalScreen:'PASS',releaseEligible:false});
 });
 
 it('rejects bufferView shared between vertex attributes and primitive indices', () => {

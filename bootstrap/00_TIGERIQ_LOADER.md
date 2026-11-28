@@ -4,6 +4,15 @@ Status: Bootstrap Entry Point
 Priority: P0
 Updated: 2026-11-17
 
+<!-- OWNER_NO_GITHUB_ACTIONS_20261129 -->
+## P0 — CẤM TỰ Ý DÙNG GITHUB ACTIONS — OWNER 29/11/2026
+OWNER_DIRECT=true | SCOPE=ALL_TIGERIQ_PROJECTS_AND_AGENTS | GITHUB_ACTIONS=RETIRED_DEFAULT_DENY | LOCAL_VERIFICATION=REQUIRED
+- GitHub Actions đã được Owner loại bỏ toàn dự án. Cấm tự tạo, khôi phục, kích hoạt, chạy lại, lập lịch hoặc dùng GitHub Actions làm điều kiện chờ, kiểm thử, phát hành hay fallback. Chỉ ngoại lệ khi Owner chỉ định rõ việc sử dụng GitHub Actions cho đúng phạm vi; quyền FULL AUTO thông thường không phải ngoại lệ.
+- GitHub vẫn là nguồn mã chuẩn: dùng connector, nhánh riêng, PR, kiểm tra mã đúng SHA và hợp nhất theo quyền hiện hành. Thay CI trên Actions bằng kiểm thử trực tiếp trong môi trường cô lập phù hợp (ưu tiên PC01 OAuth MCP khi cần PC01), biên nhận kết quả, kiểm tra SHA, đọc lại main, sao lưu/khôi phục và nghiệm thu thực tế. Không tạo hệ thống CI/hàng đợi thứ hai.
+- Mọi yêu cầu CI/exact-head trong tài liệu cũ phải hiểu theo kiểm thử thay thế có bằng chứng; không lấy 0 workflow/check-run làm blocker chỉ vì Actions đã nghỉ. Không bỏ qua branch protection thật, quyền một người ghi, bảo mật, chi phí, cổng Production hoặc nghiệm thu thiết bị.
+- Phạm vi mọi chat mới, Work và nhân sự AI đã nạp nguồn; không tuyên bố ép thực thi trên phiên chưa nạp nguồn. Ca hồi quy: PhoneBox PR #5817 — bản sửa CSS kiểm thử PC01 6/6, hợp nhất d307674e9d0cceb37e6bab385618ef19dda918d8, phát hành CSS có biên nhận; không khôi phục Actions.
+<!-- /OWNER_NO_GITHUB_ACTIONS_20261129 -->
+
 <!-- TIGERIQ_3D_DRIVE_DESTINATION_20261112 -->
 ## TIGERIQ 3D — GOOGLE DRIVE ĐÍCH LƯU MẶC ĐỊNH (OWNER 12/11/2026)
 OWNER_DIRECT=true | STORAGE_TARGET=GOOGLE_DRIVE | FOLDER_ID=1QFje3OTZfDIeCMfrH5aHoMWqXNwJP2xM
@@ -44,6 +53,16 @@ OWNER_SCOPE=FULL_AUTONOMY_EXECUTION|PRIORITY=P0|AUTO_MERGE_AUTHORIZED=true
 - Toàn quyền tự chủ thực thi đầu-cuối: Khi nhận Work Order hoặc dự án, executor agent (NV02/NV06/Antigravity) được tự động thực hiện toàn bộ vòng đời: đọc lỗi -> sửa mã -> kiểm thử -> tự sửa môi trường/dependencies -> tự merge MAIN và xuất bản khi CI xanh.
 - Miễn trừ vĩnh viễn cổng Review độc lập cho các repo của Owner (`newsdayads/*`): Khi automated CI test đạt 100% exact-head GREEN, executor được phép và BẮT BUỘC tự merge PR vào main và kích hoạt deploy. Tuyệt đối KHÔNG dừng lại chờ người thứ hai duyệt hay báo EXTERNAL_WAIT_NONAUTHOR_REVIEW.
 - Chống bẫy thủ tục và vòng lặp vô tận: Mỗi bước thực thi tối đa 2 lần thử. Xong artifact (code/build/deploy) là CHỐT BƯỚC NGAY, cấm loop sửa các chi tiết phụ như format XML/SVG/Markdown.
+
+<!-- CHATGPT_SKILL_AUTOLOAD_20261128 -->
+## P0 — CHATGPT TỰ NẠP VÀ DÙNG KỸ NĂNG THEO MỤC TIÊU — OWNER 28/11/2026
+OWNER_DIRECT=true | SCOPE=ALL_TIGERIQ_CHATGPT_SOURCE_LOADED_SESSIONS | NO_SECOND_REGISTRY=true
+- Mọi chat TigerIQ mới (Plus, Go, Work và executor có quyền truy cập nguồn), kể cả khi tin nhắn đầu tiên là nhiệm vụ thay vì `vy`: đọc Loader, Bootstrap và chính sách #504 theo đường nạp hiện hữu; đọc danh mục `docs/skills/registry.yaml` trước khi xử lý mục tiêu. Khôi phục mục tiêu và trạng thái đúng nguồn; không bắt Owner nhắc lại hoặc nhập lệnh kích hoạt Skill.
+- Năm chuẩn bắt buộc theo mục tiêu: Ponytail — `context-budget-compaction`, `minimal-change-output`; UI UX Pro Max — `design-system-memory`, `image-to-ui-implementation`, `visual-quality-gate`; Graphify — `source-grounded-knowledge-retrieval` và chỉ mục mã nguồn hiện hữu đã xác minh SHA nếu cần; Agent Skills — `domain-skill-packaging`, `capability-aware-model-routing`, `external-skill-security-gate`; Superpowers — `spec-first-tdd`, `learn-from-failure`, `automated-code-review-gate`, `role-separated-execution`. Đây là ánh xạ hành vi vào danh mục hiện hữu, không phải xác nhận cài gói bên ngoài.
+- Với mỗi nhiệm vụ, tự chọn các ID ACTIVE liên quan theo phạm vi/trigger, đọc chỉ dẫn tương ứng hoặc nguồn được registry trỏ tới, áp dụng thực tế và lưu bằng chứng khi cần. Nếu thiếu mục tiêu thì chỉ nạp danh mục; không nạp tất cả Skill, không tự nâng CANDIDATE, không hứa tiết kiệm token theo quảng cáo. Khi nguồn hoặc quyền thiếu, báo đúng phần chưa xác minh, không giả đã tải/cài.
+- Giữ chuẩn V6/BCCT V5, đường nạp nhanh App Chrome, cổng bảo mật/chi phí/Production, một người ghi và quyền miễn rà soát đúng phạm vi. Không tạo cơ chế khởi động hoặc danh mục thứ hai. Chính sách động: #504, quyết định ngày 28/11/2026.
+- Nghiệm thu riêng từng bề mặt: chat mới không dùng lệnh `vy`, nhận nhiệm vụ trực tiếp, có biên nhận đọc nguồn + chọn đúng Skill ACTIVE + đầu ra đáp ứng mục tiêu; không tuyên bố GitHub ép mọi chat native tự nạp hoặc cài đặt toàn tài khoản. Các phiên chưa kiểm thử phải ghi CHƯA XÁC MINH.
+<!-- /CHATGPT_SKILL_AUTOLOAD_20261128 -->
 
 ## P0 — VY GOAL → SKILL → PROMPT → VERIFIED DELIVERY (OWNER 18/10/2026)
 OWNER_SCOPE=VY_OWNER_FACING_GUIDANCE|PRIORITY=P0|NO_SECOND_REGISTRY_OR_QUEUE=true
