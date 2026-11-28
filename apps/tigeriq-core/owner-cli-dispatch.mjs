@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { liveOwnerCliQuotaProbe, locateCodexExe } from './owner-cli-quota-probe.mjs';
-import { chooseOwnerCodingRoute } from './owner-cli-quota-routing.mjs';
+import { chooseOwnerCodingRoute, OWNER_AGY_MODELS } from './owner-cli-quota-routing.mjs';
 import { releaseSharedResourceLease } from './shared-resource-lease.mjs';
 
 const LOCAL = process.env.LOCALAPPDATA || '';
@@ -79,20 +79,47 @@ function spawnBoundedCli(exe, args, { timeoutMs = DEFAULT_TIMEOUT_MS, maxOutput 
   });
 }
 
+// This adapter is proposal-only. Native goal mode requires a permitted interactive
+// execution surface and durable goal/receipt reconciliation; never simulate that with plan.
+export const isNativeGoalPrompt = prompt => /^\/goal(?:\s|$)/i.test(String(prompt||'').trim());
+export function parseAntigravityPlanOutput(stdout) {
+  let result;
+  try { result=JSON.parse(String(stdout||'')); }
+  catch { throw Object.assign(new Error('AGY_INVALID_JSON_RECEIPT'),{kind:'cli_exit'}); }
+  if(result?.status!=='SUCCESS'){
+    const detail=typeof result?.error==='string'?result.error:String(result?.error?.message||result?.error?.code||result?.status||'');
+    throw Object.assign(new Error('AGY_PLAN_RESPONSE_NOT_SUCCESS'),{kind:classifyCliFailure(detail)});
+  }
+  if(typeof result.response!=='string'||!result.response.trim()||result.command){
+    throw Object.assign(new Error('AGY_PLAN_RESPONSE_NOT_SUCCESS'),{kind:'cli_exit'});
+  }
+  return {output:JSON.stringify(result),executionMode:'plan',productAccepted:false,
+    conversationId:typeof result.conversation_id==='string'?result.conversation_id:null,
+    usage:result.usage||null};
+}
+
 export async function defaultExecuteOwnerCli({ provider, model, prompt, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   const boundedMs = clampTimeout(timeoutMs);
+  if(provider==='antigravity'){
+    if(!OWNER_AGY_MODELS.includes(model))
+      throw Object.assign(new Error('AGY_AUTHORIZED_MODEL_REQUIRED'),{kind:'scope_denied'});
+    if(isNativeGoalPrompt(prompt))
+      throw Object.assign(new Error('AGY_GOAL_INTERACTIVE_EXECUTOR_REQUIRED'),{kind:'scope_denied'});
+  }
   if(ownerCliNeedsUserSession()){
     const r=await runOwnerCliInUserSession({action:'execute',provider,model,prompt,timeoutMs:boundedMs});
-    return {output:String(r?.output??r?.text??'')};
+    return provider==='antigravity'
+      ? parseAntigravityPlanOutput(r?.output)
+      : {output:String(r?.output??r?.text??'')};
   }
   if (provider === 'antigravity') {
     const timeoutSec = Math.max(5, Math.ceil(boundedMs / 1000));
     const { stdout } = await spawnBoundedCli(
       DEFAULT_AGY_EXE,
-      ['-p', String(prompt || ''), '--model', String(model || ''), '--mode', 'plan', '--output-format', 'json', '--print-timeout', `${timeoutSec}s`],
+      ['-p', String(prompt || ''), '--model', String(model || ''), '--mode', 'plan', '--settings', '{"useG1Credits":false}', '--output-format', 'json', '--print-timeout', `${timeoutSec}s`],
       { timeoutMs: boundedMs },
     );
-    return { output: stdout };
+    return parseAntigravityPlanOutput(stdout);
   }
   if (provider === 'codex') {
     const exe = await locateCodexExe();
@@ -145,7 +172,7 @@ async function checkDuplicateDispatch(db, idempotencyKey) {
   if (!db || !idempotencyKey) return null;
   const q = await db.query(
     `select type, data from tigeriq_events
-     where type in ('OWNER_CLI_DISPATCH_COMPLETED','OWNER_CLI_DISPATCH_STARTED','OWNER_CLI_DISPATCH_FAILED','OWNER_CLI_DISPATCH_ROLLED_BACK')
+     where type in ('OWNER_CLI_DISPATCH_COMPLETED','OWNER_CLI_DISPATCH_STARTED','OWNER_CLI_DISPATCH_FAILED','OWNER_CLI_DISPATCH_ROLLED_BACK','OWNER_CLI_DISPATCH_PENDING_RECONCILIATION')
        and data->>'idempotencyKey' = $1
      order by seq desc limit 5`,
     [idempotencyKey],
@@ -154,7 +181,7 @@ async function checkDuplicateDispatch(db, idempotencyKey) {
   const completed = rows.find((r) => r.type === 'OWNER_CLI_DISPATCH_COMPLETED');
   if (completed) return { state: 'completed', receipt: completed.data?.receipt || completed.data };
   const latest = rows[0];
-  if (latest?.type === 'OWNER_CLI_DISPATCH_STARTED') return { state: 'in_progress', data: latest.data };
+  if (['OWNER_CLI_DISPATCH_STARTED','OWNER_CLI_DISPATCH_PENDING_RECONCILIATION'].includes(latest?.type)) return { state: 'in_progress', data: latest.data };
   return null;
 }
 
@@ -190,7 +217,7 @@ export async function dispatchOwnerCliJob({
   nowMs = Date.now(),
   timeoutMs = DEFAULT_TIMEOUT_MS,
   leaseTtlMs = DEFAULT_LEASE_TTL_MS,
-  maxFailovers = 4,
+  maxFailovers = 2,
 } = {}) {
   const jobId = String(job.id || '').trim();
   const resourceScope = String(job.resourceScope || '').trim();
@@ -201,6 +228,9 @@ export async function dispatchOwnerCliJob({
   const cleanPrompt = String(prompt || '').trim();
   if (!cleanPrompt) {
     return { ok: false, accepted: false, code: 'PROMPT_REQUIRED', failures: [] };
+  }
+  if (isNativeGoalPrompt(cleanPrompt)) {
+    return {ok:false,accepted:false,code:'AGY_GOAL_INTERACTIVE_EXECUTOR_REQUIRED',failures:[]};
   }
   if (job.codexGrant && (job.codexGrant.jobId !== jobId || job.codexGrant.resourceScope !== resourceScope)) {
     await emitEvent('OWNER_CLI_DISPATCH_SCOPE_DENIED', { jobId, resourceScope, reason: 'CODEX_GRANT_SCOPE_MISMATCH' });
@@ -238,7 +268,7 @@ export async function dispatchOwnerCliJob({
   const failures = [];
   const boundedTimeout = clampTimeout(timeoutMs);
 
-  for (let attempt = 0; attempt < maxFailovers; attempt++) {
+  for (let attempt = 0; attempt < Math.min(2,Math.max(1,maxFailovers)); attempt++) {
     const decision = chooseOwnerCodingRoute({
       job: { ...job, id: jobId, resourceScope, priority },
       snapshots: remainingSnapshots,
@@ -291,6 +321,7 @@ export async function dispatchOwnerCliJob({
       attempt: attempt + 1,
     });
 
+    let pendingReceipt=false;
     try {
       const execResult = await executeCli({
         provider: chosen.provider,
@@ -319,6 +350,10 @@ export async function dispatchOwnerCliJob({
         remainingFraction: chosen.remainingFraction,
         latencyMs,
         output,
+        executionMode: chosen.provider === 'antigravity' ? 'plan' : 'read-only',
+        productAccepted: false,
+        conversationId: execResult?.conversationId ?? null,
+        usage: execResult?.usage ?? null,
         failures,
         leaseToken: lease.lease_token,
         observedAt: probe.observedAt || null,
@@ -331,6 +366,11 @@ export async function dispatchOwnerCliJob({
       const message = String(err?.message || err);
       failures.push({ provider: chosen.provider, model: chosen.model, group: chosen.group || null, kind, message });
 
+      if (/OWNER_CLI_BRIDGE_(?:TIMEOUT_PENDING|PENDING_RECEIPT|BUSY|RESULT_MISMATCH|RESULT_UNTRUSTED)/.test(message)) {
+        pendingReceipt=true;
+        await emitEvent('OWNER_CLI_DISPATCH_PENDING_RECONCILIATION',{jobId,idempotencyKey,resourceId,code:'OWNER_CLI_RECEIPT_PENDING',failures});
+        return {ok:false,accepted:false,pending:true,code:'OWNER_CLI_RECEIPT_PENDING',failures};
+      }
       if (NON_RETRYABLE_KINDS.has(kind)) {
         await emitEvent('OWNER_CLI_DISPATCH_ROLLED_BACK', { jobId, idempotencyKey, reason: kind, message, failures });
         await emitEvent('OWNER_CLI_DISPATCH_FAILED', { jobId, idempotencyKey, code: kind.toUpperCase(), kind, failures });
@@ -348,7 +388,7 @@ export async function dispatchOwnerCliJob({
       });
       remainingSnapshots = remainingSnapshots.filter((s) => !(s.provider === chosen.provider && (chosen.group ? s.group === chosen.group : true)));
     } finally {
-      await releaseSharedResourceLease(db, { resourceId, leaseToken: lease.lease_token }).catch(() => {});
+      if(!pendingReceipt)await releaseSharedResourceLease(db, { resourceId, leaseToken: lease.lease_token }).catch(() => {});
     }
   }
 

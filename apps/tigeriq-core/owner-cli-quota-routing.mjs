@@ -35,15 +35,18 @@ export function antigravityQuotaSnapshots(result,{observedAt}={}){
   });
 }
 
-const GROUPS=[
-  {group:'Gemini Models',preferred:['gemini-3.8-flash-low','gemini-4-hydrogen-medium','gemini-4-neon-high']},
-  {group:'Claude and GPT models',preferred:['claude-sonnet-5-5-medium','claude-opus-5-5-high','gpt-oss-120b-medium']},
-  {group:'Gemini 4 Argon',preferred:['gemini-4-argon-medium','gemini-4-argon-high']}
-];
+// Owner 2026-11-29: Hydrogen first; use a separately verified included quota as fallback.
+// Low/Medium share the Gemini pool. Never prefer Claude just because its quota is larger.
+export const HYDROGEN_LOW='gemini-4-hydrogen-low';
+export const HYDROGEN_MEDIUM='gemini-4-hydrogen-medium';
+export const SONNET_LOW='claude-sonnet-5-5-low';
+export const OWNER_AGY_MODELS=Object.freeze([HYDROGEN_LOW,HYDROGEN_MEDIUM,SONNET_LOW]);
+const GROUPS=[{group:'Gemini Models',preferred:[HYDROGEN_LOW,HYDROGEN_MEDIUM]},
+  {group:'Claude and GPT models',preferred:[SONNET_LOW]}];
 const DIFFICULTY={
-  LOW:['gemini-3.8-flash-low','gemini-4-hydrogen-medium','claude-sonnet-5-5-medium'],
-  MEDIUM:['gemini-4-hydrogen-medium','gemini-4-neon-high','claude-sonnet-5-5-medium','gemini-3.8-flash-low'],
-  HIGH:['gemini-4-neon-high','claude-opus-5-5-high','claude-sonnet-5-5-medium','gemini-4-hydrogen-medium']
+  LOW:[HYDROGEN_LOW,HYDROGEN_MEDIUM,SONNET_LOW],
+  MEDIUM:[HYDROGEN_MEDIUM,HYDROGEN_LOW,SONNET_LOW],
+  HIGH:[HYDROGEN_MEDIUM,HYDROGEN_LOW,SONNET_LOW]
 };
 const available=(snapshot,nowMs)=>snapshot?.quotaKnown===true&&snapshot.blocked!==true
   &&snapshot.remainingFraction!==null&&snapshot.remainingFraction>0.05
@@ -58,8 +61,8 @@ export function chooseOwnerCodingRoute({
 }={}){
   const id=String(job.id||''),scope=String(job.resourceScope||'');
   if(!id||!scope||job.priority==='P0')return {chosen:null,code:'JOB_SCOPE_REQUIRED'};
-  const task=String(job.difficulty||'MEDIUM').toUpperCase();
-  const preference=DIFFICULTY[task]||DIFFICULTY.MEDIUM;
+  const task=String(job.difficulty||'LOW').toUpperCase();
+  const preference=DIFFICULTY[task]||DIFFICULTY.LOW;
   const agyNames=new Set((Array.isArray(antigravityModels)?antigravityModels:[]).map(String));
   const quota=(Array.isArray(snapshots)?snapshots:[]).filter(s=>available(s,nowMs));
   const agyCandidates=[];
@@ -72,7 +75,7 @@ export function chooseOwnerCodingRoute({
     }
   }
   if(agyCandidates.length){
-    agyCandidates.sort((a,b)=>b.remainingFraction-a.remainingFraction||a.preferenceIndex-b.preferenceIndex);
+    agyCandidates.sort((a,b)=>a.preferenceIndex-b.preferenceIndex);
     const {preferenceIndex,...chosen}=agyCandidates[0];
     return {chosen,code:'ELIGIBLE_NOT_DISPATCHED'};
   }
