@@ -186,7 +186,10 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
     const r=run(normalizedUvFixture(5123,true,false,false,true,-2));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid vertex attribute alignment');
   });
   it('accepts UNSIGNED_SHORT VEC2 when bufferView starts at a 2-byte offset but accessor offset is 4-byte aligned',()=>{
-    const r=run(normalizedUvFixture(5123,true,false,false,true,2));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');
+    const r=run(normalizedUvFixture(5123,true,false,false,false,2));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');
+  });
+  it('rejects UNSIGNED_SHORT VEC2 without byteStride even when element width is four bytes',()=>{
+    const r=run(normalizedUvFixture(5123,true,false,false,true,0));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid vertex attribute alignment');
   });
   it('accepts UNSIGNED_BYTE vertex attributes when bufferView starts at a non-4-byte absolute offset',()=>{
     const r=run(normalizedUvFixture(5121,true,false,true));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');
