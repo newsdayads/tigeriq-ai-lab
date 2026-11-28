@@ -24,7 +24,7 @@ function normalizedMessage(value){
 
 export function normalizeFailureEvent(row){
   if(!row||!failureLearningEventTypes.includes(String(row.type||'')))return null;
-  if(row.seq===undefined||row.seq===null||!row.ts)return null;
+  if(row.seq===undefined||row.seq===null||!String(row.seq).trim()||!row.ts||!Number.isFinite(Date.parse(String(row.ts))))return null;
   const data=row.data&&typeof row.data==='object'?row.data:{};
   const message=data.message||data.error||data.detail||data.reason||'';
   const errorCode=compact(data.kind||data.code||data.errorCode||data.reason||normalizedMessage(message)||row.type,120);
@@ -66,7 +66,12 @@ export function buildFailureLearningCandidates(events,options={}){
   const out=[];
   for(const [signature,list] of groups){
     if(existing.has(signature)||list.length<minOccurrences)continue;
-    const ordered=list.slice().sort((a,b)=>Number(a.occurrence.eventSeq)-Number(b.occurrence.eventSeq));
+    const distinct=new Map();
+    for(const item of list){
+      const previous=distinct.get(item.evidenceRef);
+      if(!previous||(!previous.protectedBoundary&&item.protectedBoundary))distinct.set(item.evidenceRef,item);
+    }
+    const ordered=[...distinct.values()].sort((a,b)=>Number(a.occurrence.eventSeq)-Number(b.occurrence.eventSeq));
     const first=ordered[0],last=ordered.at(-1);
     const evidenceRefs=[...new Set(ordered.map(x=>x.evidenceRef))];
     if(evidenceRefs.length<minOccurrences)continue;
