@@ -56,6 +56,30 @@ function duplicateJsonFixture() {
   return Buffer.concat([header, ...chunks]);
 }
 
+function rewriteJsonFixture(mutator) {
+  const glb = fixture();
+  const jsonLength = glb.readUInt32LE(12);
+  const doc = JSON.parse(glb.subarray(20, 20 + jsonLength).toString('utf8').trim());
+  mutator(doc);
+  const raw = Buffer.from(JSON.stringify(doc));
+  const json = Buffer.concat([raw, Buffer.alloc((4 - raw.length % 4) % 4, 32)]);
+  const binHeader = 20 + jsonLength;
+  const binLength = glb.readUInt32LE(binHeader);
+  const bin = glb.subarray(binHeader + 8, binHeader + 8 + binLength);
+  const chunk = (type, bytes) => {
+    const header = Buffer.alloc(8);
+    header.writeUInt32LE(bytes.length);
+    header.writeUInt32LE(type, 4);
+    return Buffer.concat([header, bytes]);
+  };
+  const chunks = [chunk(0x4e4f534a, json), chunk(0x004e4942, bin)];
+  const header = Buffer.alloc(12);
+  header.writeUInt32LE(0x46546c67);
+  header.writeUInt32LE(2, 4);
+  header.writeUInt32LE(12 + chunks.reduce((sum, part) => sum + part.length, 0), 8);
+  return Buffer.concat([header, ...chunks]);
+}
+
 function invalidUtf8Fixture() {
   const glb = fixture();
   const jsonLength = glb.readUInt32LE(12);
@@ -101,6 +125,15 @@ for (const [componentType, label] of [[5121,'UNSIGNED_BYTE'],[5123,'UNSIGNED_SHO
   });
 }
 test('rejects duplicate JSON chunks even when first JSON value is null',()=>assert.throws(()=>inspectGlb(duplicateJsonFixture()),/duplicate JSON/));
+test('rejects null buffer URI instead of treating it as absent',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.buffers[0].uri=null;})),/unsupported non-embedded GLB/));
+test('rejects null primitive indices instead of treating them as omitted',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.meshes[0].primitives[0].indices=null;})),/invalid accessor index/));
+test('rejects null primitive mode instead of applying the default',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.meshes[0].primitives[0].mode=null;})),/only triangle primitives supported/));
+test('rejects null embedded image URI',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.images[0].uri=null;})),/unsupported image/));
+test('rejects null byteStride instead of treating it as omitted',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.bufferViews[0].byteStride=null;})),/invalid buffer view stride/));
+test('rejects null accessor byteOffset instead of defaulting to zero',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors[0].byteOffset=null;})),/invalid accessor offset/));
+test('rejects null bufferView byteOffset instead of defaulting to zero',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.bufferViews[0].byteOffset=null;})),/invalid view offset/));
+test('rejects null sparse accessor property',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors[0].sparse=null;})),/unsupported accessor/));
+test('rejects null normalized accessor property',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors[0].normalized=null;})),/invalid normalized accessor/));
 test('rejects invalid UTF-8 in the JSON chunk',()=>assert.throws(()=>inspectGlb(invalidUtf8Fixture()),/invalid UTF-8 JSON/));
 test('rejects unnormalized integer TEXCOORD_0',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5121,false)),/invalid normalized accessor/));
 test('rejects normalized FLOAT TEXCOORD_0',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5126,true)),/invalid normalized accessor/));
