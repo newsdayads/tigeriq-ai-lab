@@ -13,6 +13,45 @@ function crc32(bytes) {
   for (const byte of bytes) crc=(crc >>> 8)^crcTable[(crc^byte)&255];
   return (crc^0xffffffff)>>>0;
 }
+
+function jsonDocumentEnd(text) {
+  let start=0;
+  while (start<text.length && /\s/.test(text[start])) start++;
+  const first=text[start];
+  if (first==='"') {
+    let escaped=false;
+    for (let i=start+1;i<text.length;i++) {
+      if (escaped) escaped=false;
+      else if (text[i]==='\\') escaped=true;
+      else if (text[i]==='"') return i+1;
+    }
+    throw new Error('invalid JSON chunk');
+  }
+  if (first!=='{' && first!=='[') {
+    let end=start;
+    while (end<text.length && !/\s/.test(text[end])) end++;
+    if (end===start) throw new Error('invalid JSON chunk');
+    return end;
+  }
+  let depth=0, inString=false, escaped=false;
+  for (let i=start;i<text.length;i++) {
+    const ch=text[i];
+    if (inString) {
+      if (escaped) escaped=false;
+      else if (ch==='\\') escaped=true;
+      else if (ch==='"') inString=false;
+      continue;
+    }
+    if (ch==='"') inString=true;
+    else if (ch==='{' || ch==='[') depth++;
+    else if (ch==='}' || ch===']') {
+      depth--;
+      if (depth===0) return i+1;
+      if (depth<0) throw new Error('invalid JSON chunk');
+    }
+  }
+  throw new Error('invalid JSON chunk');
+}
 function checkImage(bytes, mime) {
   const bad = name => { throw new Error('invalid '+name+' image framing'); };
   if (mime==='image/png') {
@@ -66,6 +105,12 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     if (type === 0x4e4f534a) { if (hasJson) fail('duplicate JSON'); hasJson = true; let jsonText;
       try { jsonText = new TextDecoder('utf-8', { fatal: true }).decode(b.subarray(at, at + len)); }
       catch { fail('invalid UTF-8 JSON'); }
+      let documentEnd;
+      try { documentEnd = jsonDocumentEnd(jsonText); }
+      catch { fail('invalid JSON chunk'); }
+      const documentBytes = Buffer.byteLength(jsonText.slice(0, documentEnd), 'utf8');
+      const jsonPadding = b.subarray(at + documentBytes, at + len);
+      if (jsonPadding.length > 3 || jsonPadding.some(byte => byte !== 0x20)) fail('invalid JSON chunk padding');
       d = JSON.parse(jsonText); }
     else if (type === 0x004e4942) { if (bin) fail('duplicate BIN'); bin = b.subarray(at, at + len); }
     at += len;
