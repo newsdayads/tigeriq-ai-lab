@@ -168,7 +168,7 @@ async function checkDuplicateDispatch(db, idempotencyKey) {
   if (!db || !idempotencyKey) return null;
   const q = await db.query(
     `select type, data from tigeriq_events
-     where type in ('OWNER_CLI_DISPATCH_COMPLETED','OWNER_CLI_DISPATCH_STARTED','OWNER_CLI_DISPATCH_FAILED','OWNER_CLI_DISPATCH_ROLLED_BACK')
+     where type in ('OWNER_CLI_DISPATCH_COMPLETED','OWNER_CLI_DISPATCH_STARTED','OWNER_CLI_DISPATCH_FAILED','OWNER_CLI_DISPATCH_ROLLED_BACK','OWNER_CLI_DISPATCH_PENDING_RECONCILIATION')
        and data->>'idempotencyKey' = $1
      order by seq desc limit 5`,
     [idempotencyKey],
@@ -177,7 +177,7 @@ async function checkDuplicateDispatch(db, idempotencyKey) {
   const completed = rows.find((r) => r.type === 'OWNER_CLI_DISPATCH_COMPLETED');
   if (completed) return { state: 'completed', receipt: completed.data?.receipt || completed.data };
   const latest = rows[0];
-  if (latest?.type === 'OWNER_CLI_DISPATCH_STARTED') return { state: 'in_progress', data: latest.data };
+  if (['OWNER_CLI_DISPATCH_STARTED','OWNER_CLI_DISPATCH_PENDING_RECONCILIATION'].includes(latest?.type)) return { state: 'in_progress', data: latest.data };
   return null;
 }
 
