@@ -172,7 +172,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     if (start > logical || length > logical - start) fail('buffer view out of bounds');
     if (v.byteStride !== undefined) {
       if (!allowStride) fail('byteStride only allowed for vertex attributes');
-      if (!Number.isSafeInteger(v.byteStride) || v.byteStride < 4 || v.byteStride > 252 || v.byteStride % 4 !== 0) fail('invalid buffer view stride');
+      if (!Number.isSafeInteger(v.byteStride) || v.byteStride < 4 || v.byteStride > 252 || v.byteStride % 4 !== 0 || v.byteStride > length) fail('invalid buffer view stride');
     }
     return { v, start, length };
   }
