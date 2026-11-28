@@ -176,7 +176,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
         if (!attribute || typeof attribute !== 'object' || Array.isArray(attribute) || attribute.bufferView == null || attribute.sparse !== undefined) fail('unsupported vertex attribute accessor');
         const components = { SCALAR:1, VEC2:2, VEC3:3, VEC4:4 }[attribute.type];
         const componentSize = {5120:1,5121:1,5122:2,5123:2,5126:4}[attribute.componentType];
-        if (!components || !componentSize) fail('unsupported vertex attribute accessor');
+        if (!Number.isSafeInteger(components) || !Number.isSafeInteger(componentSize)) fail('unsupported vertex attribute accessor');
         if (attribute.normalized !== undefined && typeof attribute.normalized !== 'boolean') fail('invalid normalized accessor');
         if (attribute.normalized === true && attribute.componentType === 5126) fail('unsupported normalized accessor');
         const { v, start, length } = view(attribute.bufferView, { allowStride: true });
