@@ -44,6 +44,7 @@ README reading order is navigational only; it does not override decision precede
 - Codex is a quota-protected Owner-gated resource: default DENY. Do not request Codex review, route work to Codex, hand off to Codex Local, or invoke any Codex-backed action unless the Owner explicitly names Codex and authorizes the exact bounded scope. Generic commands such as `LÀM`, `TIẾP TỤC`, `02`, `LÀM TIẾP`, `TỰ HOÀN TẤT`, or `ÁP DỤNG` never imply Codex approval. P1–P5 standing authorization does not include Codex. Without matching approval, use another eligible zero-cost resource or wait; lack of an alternate reviewer is not permission to consume Codex quota.
 - Never commit secrets or restricted/private Owner context.
 - `04_TIGERIQ_OWNER_PROFILE_v1.md` must not be added to this general repository.
+- **System-wide UTF-8 / Vietnamese font integrity (Owner 2026-11-29):** All Vietnamese text across GitHub Issues/PRs, commit messages, Core/Dashboard, UI, logs, and PowerShell/Node scripts MUST use clean UTF-8 (no BOM); mojibake (`Ã`, `Ä`, `á»`, `Æ°`, etc.) is strictly forbidden. In PowerShell, always set UTF-8 encoding and pass Vietnamese content via UTF-8 files (`--body-file`) or UTF-8 HTTP buffers.
 
 ## Required execution loop
 SPEC → IMPLEMENT → TEST/CI → AUTO-FIX ON FAILURE → GREEN CI → MERGE TO MAIN → PRODUCTION DEPLOY → EVIDENCE REPORT.
