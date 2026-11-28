@@ -398,6 +398,7 @@ import json
 import pathlib
 import re
 import sys
+import tempfile
 
 ROOT = pathlib.Path(r"D:\TigerIQ\State\cli-anything-writer")
 MAX_INPUT = 65536
@@ -455,17 +456,37 @@ def render_writer(title, paragraphs):
     return data
 
 
-def run_request(value, root):
+def run_request(value):
     ident, title, paragraphs = validate_request(value)
-    root = pathlib.Path(root)
+    root = ROOT
     if not root.is_dir() or root.is_symlink() or root.is_junction() or root.resolve() != root.absolute():
         raise ValueError("OUTPUT_ROOT_UNAVAILABLE_OR_REDIRECTED")
     data = render_writer(title, paragraphs)
     output = root / (ident + ".odt")
-    with output.open("xb") as f:
-        f.write(data)
-    if output.read_bytes() != data:
-        raise ValueError("OUTPUT_READBACK_FAILED")
+    fd, temp_name = tempfile.mkstemp(prefix="." + ident + ".", suffix=".tmp", dir=root)
+    temp_path = pathlib.Path(temp_name)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        if temp_path.read_bytes() != data:
+            raise ValueError("TEMP_READBACK_FAILED")
+        # Same-volume hard-link publication is atomic and fails if output exists.
+        os.link(temp_path, output)
+        try:
+            temp_path.unlink()
+        except OSError:
+            output.unlink(missing_ok=True)
+            raise
+        if output.read_bytes() != data:
+            raise ValueError("OUTPUT_READBACK_FAILED")
+    except BaseException:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
     return {"ok": True, "format": "odt", "path": str(output), "bytes": len(data),
             "sha256": hashlib.sha256(data).hexdigest(), "verification": "zip_xml_content_readback",
             "upstream_blob": "59a50348b33c878dec576f4e8d6b7591d0a420d5"}
