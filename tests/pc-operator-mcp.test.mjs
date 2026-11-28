@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { createServer } from 'node:http';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { createPcOperatorMcpHandler, PC_OPERATOR_MCP_TOOLS, pcOperatorTestRunSpec, pcOperatorWorkOrderResponse } from '../apps/tigeriq-core/pc-operator-mcp.mjs';
+import { createPcOperatorMcpHandler, PC_OPERATOR_MCP_TOOLS, pcOperatorTestRunSpec, pcOperatorWorkOrderResponse, pcOperatorWorkOrderLookup } from '../apps/tigeriq-core/pc-operator-mcp.mjs';
 
 function parseSsePayload(text) {
   const lines = text.split('\n');
@@ -20,11 +20,11 @@ function parseSsePayload(text) {
 }
 
 describe('TigerIQ PC Operator MCP Server', () => {
-  it('exposes exactly the 25 comprehensive tools', () => {
-    expect(PC_OPERATOR_MCP_TOOLS.length).toBe(25);
-    expect(PC_OPERATOR_MCP_TOOLS).toContain('paperclip_lab_preflight');
-    expect(PC_OPERATOR_MCP_TOOLS).toContain('paperclip_lab_health');
-    expect(PC_OPERATOR_MCP_TOOLS).toContain('paperclip_lab_broker_install');
+  it('exposes exactly the 22 comprehensive tools', () => {
+    expect(PC_OPERATOR_MCP_TOOLS.length).toBe(22);
+    expect(PC_OPERATOR_MCP_TOOLS).not.toContain('paperclip_lab_preflight');
+    expect(PC_OPERATOR_MCP_TOOLS).not.toContain('paperclip_lab_health');
+    expect(PC_OPERATOR_MCP_TOOLS).not.toContain('paperclip_lab_broker_install');
     expect(PC_OPERATOR_MCP_TOOLS).toContain('file_read');
     expect(PC_OPERATOR_MCP_TOOLS).toContain('file_write');
     expect(PC_OPERATOR_MCP_TOOLS).toContain('file_list');
@@ -66,7 +66,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
       const json = await res.json();
       expect(json.ok).toBe(true);
       expect(json.version).toBe('2.0.0');
-      expect(json.toolsCount).toBe(25);
+      expect(json.toolsCount).toBe(22);
       expect(json.tools).toEqual(PC_OPERATOR_MCP_TOOLS);
     } finally {
       server.close();
@@ -119,73 +119,13 @@ describe('TigerIQ PC Operator MCP Server', () => {
       });
       expect(listRes.status).toBe(200);
       const listText = await listRes.text();
-      expect(listText).toContain('paperclip_lab_preflight');
-      expect(listText).toContain('paperclip_lab_health');
-      expect(listText).toContain('paperclip_lab_broker_install');
+      expect(listText).not.toContain('paperclip_lab_preflight');
+      expect(listText).not.toContain('paperclip_lab_health');
+      expect(listText).not.toContain('paperclip_lab_broker_install');
       expect(listText).toContain('file_read');
       expect(listText).toContain('shell_exec');
       expect(listText).toContain('ui_screenshot');
 
-      // 3. tools/call paperclip_lab_preflight
-      const callPreflight = await fetch(`http://127.0.0.1:${port}/mcp`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 3,
-          method: 'tools/call',
-          params: {
-            name: 'paperclip_lab_preflight',
-            arguments: {},
-          },
-        }),
-      });
-      expect(callPreflight.status).toBe(200);
-      const preflightText = await callPreflight.text();
-      expect(preflightText).toContain('JOB-MCP-');
-      expect(preflightText).toContain('NATIVE_RECEIPT_NOT_ACCEPTED');
-      expect(preflightText).not.toContain('PC_OPERATOR_DIRECT_FENCE');
-      expect(preflightText).toContain('paperclip_lab_preflight');
-      expect(mockExecute).toHaveBeenCalledWith({ action: 'paperclip_lab_preflight' });
-
-      // 4. tools/call paperclip_lab_health
-      const callHealth = await fetch(`http://127.0.0.1:${port}/mcp`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 4,
-          method: 'tools/call',
-          params: {
-            name: 'paperclip_lab_health',
-            arguments: {},
-          },
-        }),
-      });
-      expect(callHealth.status).toBe(200);
-      const healthText = await callHealth.text();
-      expect(healthText).toContain('paperclip_lab_health');
-      expect(mockExecute).toHaveBeenCalledWith({ action: 'paperclip_lab_health' });
-
-      // 5. tools/call paperclip_lab_broker_install
-      const callBroker = await fetch(`http://127.0.0.1:${port}/mcp`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 5,
-          method: 'tools/call',
-          params: {
-            name: 'paperclip_lab_broker_install',
-            arguments: {},
-          },
-        }),
-      });
-      expect(callBroker.status).toBe(200);
-      const brokerText = await callBroker.text();
-      expect(brokerText).toContain('paperclip_lab_broker_install');
-      expect(brokerText).toContain('MCP_EXISTING_AUTH_REQUIRED');
-      expect(mockExecute).not.toHaveBeenCalledWith({ action: 'paperclip_lab_broker_install' });
     } finally {
       server.close();
     }
@@ -311,85 +251,6 @@ describe('TigerIQ PC Operator MCP Server', () => {
     } finally {
       gateway.close();
     }
-  });
-
-  it('requires existing gateway bearer and a real shared lease before writing broker', async () => {
-    const secret = 'a'.repeat(32);
-    const execute = vi.fn().mockResolvedValue({
-      ok: true,
-      data: { installed: true, r07SourceVerified: true, dockerVersion: '27.0' },
-    });
-    const leaseDb = { query: vi.fn() };
-    const leaseApi = {
-      acquire: vi.fn(async (_db, spec) => ({
-        resource_id: spec.resourceId,
-        work_id: spec.workId,
-        lease_token: 'private-token',
-        lease_until: new Date(Date.now() + 120000).toISOString(),
-      })),
-      heartbeat: vi.fn().mockResolvedValue(true),
-      release: vi.fn().mockResolvedValue(true),
-    };
-    const handler = createPcOperatorMcpHandler({
-      executePcActionImpl: execute,
-      existingSecret: secret,
-      leaseDb,
-      leaseApi,
-    });
-    const server = createServer(async (req, res) => {
-      const url = new URL(req.url, 'http://localhost');
-      if (!(await handler(req, res, url))) res.writeHead(404).end();
-    });
-    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-    const port = server.address().port;
-    const call = (authorization) =>
-      fetch('http://127.0.0.1:' + port + '/mcp', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          ...(authorization ? { authorization } : {}),
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 9,
-          method: 'tools/call',
-          params: { name: 'paperclip_lab_broker_install', arguments: {} },
-        }),
-      }).then((r) => r.text());
-    try {
-      const denied = await call(null);
-      expect(denied).toContain('MCP_EXISTING_AUTH_REQUIRED');
-      expect(execute).not.toHaveBeenCalled();
-
-      const accepted = await call('Bearer ' + secret);
-      expect(accepted).toContain('leaseVerified');
-      expect(accepted).toContain('leaseReleased');
-      expect(accepted).toContain('completedStepId');
-      expect(accepted).not.toContain('private-token');
-      expect(leaseApi.acquire).toHaveBeenCalledOnce();
-      expect(leaseApi.heartbeat).toHaveBeenCalled();
-      expect(leaseApi.release).toHaveBeenCalledOnce();
-      expect(execute).toHaveBeenCalledWith({ action: 'paperclip_lab_broker_install' });
-
-      leaseApi.acquire.mockResolvedValueOnce(null);
-      const busy = await call('Bearer ' + secret);
-      expect(busy).toContain('NV06_SHARED_LEASE_BUSY');
-      expect(execute).toHaveBeenCalledTimes(1);
-    } finally {
-      server.close();
-    }
-  });
-
-  it('never accepts a missing database or fabricated lease', async () => {
-    const execute = vi.fn();
-    const server = { tool: vi.fn() };
-    const { registerPcOperatorTools } = await import('../apps/tigeriq-core/pc-operator-mcp.mjs');
-    registerPcOperatorTools(server, execute, { allowMutation: true, leaseDb: null });
-    const install = server.tool.mock.calls.find(([name]) => name === 'paperclip_lab_broker_install')[3];
-    const result = await install();
-    expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('MCP_CORE_SHARED_LEASE_DB_UNAVAILABLE');
-    expect(execute).not.toHaveBeenCalled();
   });
 
   it('executes file_write, file_read, and file_stat with safety boundaries', async () => {
@@ -717,7 +578,7 @@ describe('TigerIQ PC Operator MCP Server', () => {
     } finally {
       server.close();
     }
-  });
+  }, 60000); // Native Docker and WSL each allow a 20-second timeout.
 
   it('handles ui_window_list with structured window response', async () => {
     const handler = createPcOperatorMcpHandler({
@@ -835,9 +696,81 @@ describe('P0 GH-5417: native PC Operator test runner and Work Order diagnostics'
       expect(() => pcOperatorTestRunSpec(testPath)).toThrow('MCP_TEST_PATH_NOT_ALLOWED');
     }
   });
-  it('turns plain-text Core 404 into a structured missing-work-order receipt', async () => {
-    await expect(pcOperatorWorkOrderResponse(new Response('not_found', {status:404}), '5417'))
-      .resolves.toEqual({workOrder:'5417',found:false,status:404,reason:'WORK_ORDER_NOT_FOUND'});
+  it('does not mislabel a missing Core route as a missing GitHub Work Order', async () => {
+    await expect(pcOperatorWorkOrderResponse(new Response('not_found', {status:404}), 'GH-5135'))
+      .resolves.toEqual({workOrder:'GH-5135',found:false,status:404,reason:'CORE_STATUS_ROUTE_NOT_FOUND'});
+  });
+  it('matches a GitHub issue only by explicit source metadata in the Core snapshot', async () => {
+    const data={ok:true,objectives:[
+      {id:'OBJ-GH-5135-R123',status:'active',metadata:{source:'github',issueNumber:5135,issueUrl:'https://github.com/newsdayads/tigeriq-ai-lab/issues/5135',resourceScope:'ANDROID_V2'}},
+      {id:'OBJ-GH-51350-R999',status:'active',metadata:{source:'github',issueNumber:51350}},
+      {id:'OBJ-GH-5135-OTHER',status:'blocked',metadata:{source:'manual',issueNumber:5135}},
+    ]};
+    await expect(pcOperatorWorkOrderResponse(new Response(JSON.stringify(data),{status:200}),'GH-5135'))
+      .resolves.toEqual({workOrder:'GH-5135',found:true,status:200,source:'CORE_STATUS_BOUNDED_SNAPSHOT',
+        objectives:[{id:'OBJ-GH-5135-R123',status:'active',issueNumber:5135,
+          issueUrl:'https://github.com/newsdayads/tigeriq-ai-lab/issues/5135',resourceScope:'ANDROID_V2'}]});
+  });
+  it('does not confuse a bounded runtime miss with canonical GitHub issue absence', async () => {
+    const data={ok:true,objectives:[{id:'OBJ-GH-51350',metadata:{source:'github',issueNumber:51350}}]};
+    await expect(pcOperatorWorkOrderResponse(new Response(JSON.stringify(data),{status:200}),'GH-5135'))
+      .resolves.toEqual({workOrder:'GH-5135',found:false,status:200,source:'CORE_STATUS_BOUNDED_SNAPSHOT',
+        objectives:[],reason:'NOT_VISIBLE_IN_CORE_SNAPSHOT'});
+  });
+  it('supports Core-native Work Order IDs and unfiltered status snapshots', async () => {
+    const data={ok:true,objectives:[{id:'WO-060',status:'active',metadata:{workOrderId:'WO-060'}}]};
+    const response=new Response(JSON.stringify(data),{status:200});
+    await expect(pcOperatorWorkOrderResponse(response,'WO-060'))
+      .resolves.toEqual({workOrder:'WO-060',found:true,status:200,source:'CORE_STATUS_BOUNDED_SNAPSHOT',
+        objectives:[{id:'WO-060',status:'active',issueNumber:null,issueUrl:null,resourceScope:null}]});
+    await expect(pcOperatorWorkOrderResponse(new Response(JSON.stringify(data),{status:200})))
+      .resolves.toEqual({workOrder:null,found:true,data});
+  });
+  it('resolves visible open work when the bounded objective list misses', async () => {
+    const generatedAt='2026-11-26T11:55:59.985Z';
+    const row={number:5615,title:'News',status:'WAIT',jobId:'GH-5615',url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/5615'};
+    const fetchImpl=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ok:true,objectives:[]})))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ok:true,projection:{generatedAt,openWork:[row]}})));
+    const r=await pcOperatorWorkOrderLookup('GH-5615',fetchImpl,()=>Date.parse(generatedAt));
+    expect(r).toMatchObject({found:true,source:'CORE_OPEN_WORK_PROJECTION',data:row,leaseVerified:false,acceptanceVerified:false});
+    expect(fetchImpl.mock.calls.map(c=>c[0])).toEqual(['http://127.0.0.1:8795/api/status','http://127.0.0.1:8795/api/health-live-work']);
+  });
+  it('uses a separate bounded 20s deadline for the slow projection without retrying', async () => {
+    const timeout=vi.spyOn(AbortSignal,'timeout');
+    try {
+      const f=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ok:true,objectives:[]})))
+        .mockRejectedValueOnce(new DOMException('deadline','TimeoutError'));
+      expect(await pcOperatorWorkOrderLookup('GH-5615',f)).toMatchObject({found:false,status:503,reason:'CORE_WORK_PROJECTION_TIMEOUT'});
+      expect(timeout.mock.calls.map(c=>c[0])).toEqual([5000,20000]);
+      expect(f).toHaveBeenCalledTimes(2);
+      expect(f.mock.calls[1][1].redirect).toBe('error');
+    } finally { timeout.mockRestore(); }
+  });
+  it('distinguishes projection body deadline from malformed JSON', async () => {
+    const status=()=>new Response(JSON.stringify({ok:true,objectives:[]}));
+    const f=vi.fn().mockResolvedValueOnce(status())
+      .mockResolvedValueOnce({ok:true,json:async()=>{throw new DOMException('deadline','TimeoutError');}});
+    expect(await pcOperatorWorkOrderLookup('GH-5615',f)).toMatchObject({found:false,status:503,reason:'CORE_WORK_PROJECTION_TIMEOUT'});
+    const malformed=vi.fn().mockResolvedValueOnce(status()).mockResolvedValueOnce(new Response('not json'));
+    expect(await pcOperatorWorkOrderLookup('GH-5615',malformed)).toMatchObject({found:false,status:502,reason:'CORE_WORK_PROJECTION_INVALID_JSON'});
+  });
+  it('does not bypass a denied status route', async () => {
+    const f=vi.fn().mockResolvedValue(new Response('denied',{status:403}));
+    expect(await pcOperatorWorkOrderLookup('GH-5615',f)).toMatchObject({found:false,status:403});
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    ['stale',503,'CORE_WORK_PROJECTION_STALE'],
+    ['duplicate',409,'CORE_WORK_PROJECTION_AMBIGUOUS'],
+    ['foreign',502,'CORE_WORK_PROJECTION_SOURCE_INVALID'],
+    ['missing',404,'WORK_ORDER_NOT_VISIBLE_IN_OPEN_PROJECTION']
+  ])('fails closed for %s projection',async (kind,status,reason)=>{
+    const generatedAt='2026-11-26T11:55:59.985Z';
+    const row={number:5615,title:'News',url:'https://github.com/newsdayads/tigeriq-ai-lab/issues/5615'};
+    const openWork=kind==='duplicate'?[row,row]:kind==='foreign'?[{...row,url:'https://example.com/issues/5615'}]:kind==='missing'?[]:[row];
+    const f=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ok:true,objectives:[]})))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ok:true,projection:{generatedAt,stale:kind==='stale',openWork}})));
+    expect(await pcOperatorWorkOrderLookup('5615',f,()=>Date.parse(generatedAt))).toMatchObject({found:false,status,reason});
   });
   it('does not parse untrusted non-JSON Core failures', async () => {
     await expect(pcOperatorWorkOrderResponse(new Response('unavailable', {status:503}), '5417'))

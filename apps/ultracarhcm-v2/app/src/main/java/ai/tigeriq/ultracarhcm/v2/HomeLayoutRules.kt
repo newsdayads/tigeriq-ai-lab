@@ -14,6 +14,11 @@ internal object HomeLayoutRules {
      * of the height. Reserve a real vertical gap for the parked car artwork so
      * the nine editable buttons never mask the car or its license plate.
      */
+    fun quickBarTop(heightPx: Int, liftPx: Int): Float {
+        if (heightPx <= 0 || liftPx < 0) return .56f
+        return ((heightPx * .69f - liftPx) / heightPx).coerceIn(.56f, .647f)
+    }
+
     fun vehicleTopBeforeQuickBar(quickBarTop: Float): Float {
         val safeBarTop = (quickBarTop.takeIf { it.isFinite() } ?: .56f)
             .coerceIn(.56f, .80f)

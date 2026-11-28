@@ -1,8 +1,12 @@
-import test from 'node:test';
+import test, { beforeEach } from 'node:test';
+import { resetGithubSharedClientForTests } from '../apps/tigeriq-core/github-shared-client.mjs';
+
+// A simulated rate-limit in one fixture must not affect another fixture.
+beforeEach(() => resetGithubSharedClientForTests());
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { processGitHubIssue, classifyRisk, isZeroCost } from '../apps/tigeriq-coding-lane/github-intake.mjs';
-import { GITHUB_MATERIALIZE_BATCH_DEFAULT, GITHUB_RECONCILE_INTERVAL_MS, MAX_SAME_REVISION_FALLBACK_REARMS, buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, declaredBlockedBySpec, materializeGithubIssues, parseExecutableIssue, parsePcOperatorDirectAction, reconcileSatisfiedDeclaredBlockers, reconcileSupersededActiveGithubObjective, githubObjectiveEncodedSourceRevision, githubActiveObjectiveSourceIsSuperseded, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, sameRevisionFallbackRearmDecision, syncGithubOutcomes } from '../apps/tigeriq-core/github-intake.mjs';
+import { GITHUB_MATERIALIZE_BATCH_DEFAULT, GITHUB_RECONCILE_INTERVAL_MS, MAX_SAME_REVISION_FALLBACK_REARMS, buildGithubPcOperatorPrompt, cleanupTerminalObjectiveJobs, declaredBlockedBySpec, materializeGithubIssues, parseExecutableIssue, parsePcOperatorDirectAction, reconcileSatisfiedDeclaredBlockers, reconcileSupersededActiveGithubObjective, githubObjectiveEncodedSourceRevision, githubActiveObjectiveSourceIsSuperseded, reusableAcceptedSiblingMetadata, safeAutoWorkAdmission, sameRevisionFallbackRearmDecision, syncGithubOutcomes, workOrderDedupIdentity } from '../apps/tigeriq-core/github-intake.mjs';
 import { parseOpenWorkIssue } from '../api/live-status.mjs';
 
 test('isZeroCost checks label correctly', () => {
@@ -65,12 +69,13 @@ function coreBacklogPool(options={}){
       const active=objectives.filter(o=>o.metadata?.source==='github'&&o.status==='active');
       return {rowCount:active.length,rows:active.map(o=>({id:o.id,status:o.status,metadata:o.metadata}))};
     }
-    if(q.includes("update tigeriq_objectives o")&&q.includes("GITHUB_SOURCE_REVISION")){
-      throw new Error('UNEXPECTED_TEST_QUERY_MARKER');
-    }
     if(q.includes("update tigeriq_objectives o")&&q.includes("SUPERSEDED_BY_NEW_GITHUB_SOURCE_REVISION")){
       const row=objectives.find(o=>o.id===params[0]&&o.status==='active');
       if(!row)return {rowCount:0,rows:[]};
+      options.beforeSupersedeUpdate?.(row);
+      if(String(row.metadata?.sourceRevision||'')!==params[1]||
+         String(row.metadata?.managerAwaitingAcceptanceRevision||'')!==params[3]||
+         row.metadata?.source!=='github'||String(row.metadata?.issueNumber||'')!==params[4])return {rowCount:0,rows:[]};
       const liveJob=jobs.some(j=>j.objective_id===row.id&&!['done','failed','cancelled'].includes(j.status));
       const currentJob=jobs.some(j=>j.objective_id===row.id&&j.current_resource===true);
       const activeLease=jobs.some(j=>j.objective_id===row.id&&j.active_shared_lease===true);
@@ -80,8 +85,8 @@ function coreBacklogPool(options={}){
       row.metadata={...row.metadata,...JSON.parse(params[2])};
       return {rowCount:1,rows:[{id:row.id}]};
     }
-    if(q.includes("select id,status,summary,metadata from tigeriq_objectives where metadata->>'source'='github'")){
-      const rows=objectives.filter(o=>o.metadata?.source==='github').map(o=>({id:o.id,status:o.status,summary:o.summary||'',metadata:o.metadata}));
+    if(/select id,status,summary,metadata from tigeriq_objectives\s+where metadata->>'source'='github'/.test(q)){
+      const rows=objectives.filter(o=>o.metadata?.source==='github'&&(!Array.isArray(params[0])||params[0].includes(String(o.metadata?.issueNumber)))).map(o=>({id:o.id,status:o.status,summary:o.summary||'',metadata:{...o.metadata}}));
       return {rowCount:rows.length,rows};
     }
     if(q.startsWith('update tigeriq_objectives set status=$2,summary=$3,metadata=metadata||$4::jsonb')){
@@ -167,6 +172,7 @@ NO_PC01_SHELL=true
 CAPABILITY=reasoning`;
 
 const SAFE_AUTO_POLICY_BASE=`PRIORITY=P1
+TIGERIQ_EXECUTABLE=true
 ZERO_COST=true
 NO_PC01_SHELL=true
 NO_PAID_COST=true
@@ -279,6 +285,20 @@ test('current encoded revision is not falsely superseded and live stale work rem
   assert.equal(pool.objectives[0].status,'active');
 });
 
+test('orphan retirement rejects metadata refreshed concurrently after the stale-row read',async()=>{
+  const spec={number:5144,sourceRevision:'abcdef123456'};
+  const row={id:'OBJ-GH-5144-R111111111111-20261023102543',status:'active',metadata:{
+    source:'github',issueNumber:5144,sourceRevision:'111111111111',managerAwaitingAcceptanceRevision:'111111111111'
+  }};
+  const pool=coreBacklogPool({beforeSupersedeUpdate:stored=>{
+    stored.metadata={...stored.metadata,sourceRevision:spec.sourceRevision,managerAwaitingAcceptanceRevision:spec.sourceRevision};
+  }});
+  pool.objectives.push(row);
+  const decision=await reconcileSupersededActiveGithubObjective({pool,spec,activeRows:[structuredClone(row)]});
+  assert.deepStrictEqual(decision,{released:false,reason:'ACTIVE_WORK_OR_RACE'});
+  assert.equal(pool.objectives[0].status,'active');
+});
+
 test('declared BLOCKED_BY references are strict and deterministic',()=>{
   assert.deepStrictEqual(declaredBlockedBySpec('BLOCKED_BY=#4462',4463),{required:true,valid:true,dependencies:[4462],raw:'#4462'});
   assert.deepStrictEqual(declaredBlockedBySpec('BLOCKED_BY=NONE',4463),{required:false,dependencies:[],raw:'NONE'});
@@ -361,7 +381,7 @@ test('safe P1-P5 admission ignores owner-facing DISPLAY_STATE when execution sta
 test('parked or resource-blocked work does not stop the next compatible P1-P5 claim',async()=>{
   const pool=coreBacklogPool();
   const parkedBody=[
-    SAFE_AUTO_POLICY_BASE.replace('RESOURCE_SCOPE=SAFE_AUTO_TEST','RESOURCE_SCOPE=PARKED_SCOPE'),
+    SAFE_AUTO_POLICY_BASE.replace('RESOURCE_SCOPE=SAFE_AUTO_TEST','RESOURCE_SCOPE=PARKED_SCOPE').replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false'),
     'OWNER_POLICY=AUTO',
     'TIGERIQ_EXECUTABLE=false',
     'AUTO_QUEUE=EXCLUDED_REVIEW_WAIT',
@@ -512,7 +532,7 @@ test('mobile unavailable routing fault uses the checked-out client and releases 
     'RESOURCE_SCOPE=MOBILE_UNAVAILABLE_DEADLOCK_REGRESSION','CAPABILITY=mobile_worker',
     'EXECUTION_SURFACE=MOBILE_WORKER'
   ].join('\n');
-  const issue={number:3853,state:'open',title:'[P1][ANDROID] unavailable mobile regression',body,labels:[],comments:0,html_url:'https://example/3853'};
+  const issue={number:3853,state:'open',title:'[P1][MOBILE-WORKER] unavailable mobile regression',body,labels:[],comments:0,html_url:'https://example/3853'};
   const out=await materializeGithubIssues({
     pool,
     openIssues:[issue],
@@ -530,7 +550,7 @@ test('mobile unavailable routing fault uses the checked-out client and releases 
 });
 
 test('mobile objectives are excluded from the generic Core manager lane',()=>{
-  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   assert.match(core,/not in \('CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL','CORE_UI','MOBILE_WORKER'\)/);
 });
 
@@ -583,8 +603,9 @@ test('GitHub intake preserves supported PUBLIC_EVIDENCE_KEYS',()=>{
   assert.deepStrictEqual(spec.publicEvidenceKeys,['installedSha','changedPaths']);
 });
 
-test('safe P1-P5 policy admission does not require legacy TIGERIQ_EXECUTABLE/NO_CODE_CHANGE flags',()=>{
+test('safe P1-P5 requires current execution authorization but not legacy NO_CODE_CHANGE',()=>{
   const issue={number:2474,state:'open',title:'[P1][CORE] safe coding coordination',body:SAFE_AUTO_POLICY_BASE,labels:[],html_url:'https://example/2474'};
+  assert.deepStrictEqual(safeAutoWorkAdmission({...issue,body:issue.body.replace('TIGERIQ_EXECUTABLE=true\n','')}),{eligible:false,reason:'EXECUTION_FLAG_REQUIRED'});
   const admission=safeAutoWorkAdmission(issue);
   assert.deepStrictEqual({eligible:admission.eligible,reason:admission.reason,requiresCodingHandoff:admission.requiresCodingHandoff},{eligible:true,reason:'SAFE_P1_P5_POLICY',requiresCodingHandoff:true});
   const spec=parseExecutableIssue(issue);
@@ -664,9 +685,9 @@ test('safe P1-P5 policy fails closed on P0, Owner/HOLD, dependency, App Chrome, 
     [{...base,body:SAFE_AUTO_POLICY_BASE+'\nCURRENT_STATE=WAITING_PARENT_GATE'},'DEPENDENCY_BLOCKED'],
     [{...base,title:'[P1][APP-CHROME] excluded'},'APP_CHROME_EXCLUDED'],
     [{...base,body:SAFE_AUTO_POLICY_BASE+'\nASSIGNED_EXECUTOR=NV02'},'OWNER_OR_UI_ROUTE'],
-    [{...base,body:SAFE_AUTO_POLICY_BASE.replace('NO_SECURITY_BOUNDARY_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=false')},'HARD_GATE_SAFETY_FLAGS_INCOMPLETE'],
+    [{...base,body:SAFE_AUTO_POLICY_BASE.replace('NO_SECURITY_BOUNDARY_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=false')},'EXPLICIT_SAFETY_FLAG_DISABLED'],
     [{...base,body:SAFE_AUTO_POLICY_BASE+'\nMUTATION_OWNER=NV12'},'MUTATION_OWNER_CONFLICT'],
-    [{...base,body:SAFE_AUTO_POLICY_BASE+'\nTIGERIQ_EXECUTABLE=false'},'EXPLICIT_EXECUTION_DISABLED'],
+    [{...base,body:SAFE_AUTO_POLICY_BASE.replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false')},'EXPLICIT_EXECUTION_DISABLED'],
     [{...base,body:SAFE_AUTO_POLICY_BASE+'\nAUTO_QUEUE=EXCLUDED'},'AUTO_QUEUE_EXCLUDED'],
     [{...base,body:SAFE_AUTO_POLICY_BASE+'\nAUTO_QUEUE=EXCLUDED_PARENT_COORDINATION'},'AUTO_QUEUE_EXCLUDED'],
     [{...base,body:SAFE_AUTO_POLICY_BASE+'\nAUTO_QUEUE=EXCLUDED_UNTIL_DEPENDENCY'},'AUTO_QUEUE_EXCLUDED'],
@@ -676,7 +697,7 @@ test('safe P1-P5 policy fails closed on P0, Owner/HOLD, dependency, App Chrome, 
 });
 
 test('generic API intake does not intercept explicit NV03/NV04 UI targets',()=>{
-  const common=['PRIORITY=P1','ZERO_COST=true','OWNER_POLICY=AUTO','NO_PC01_SHELL=true','NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true','NO_PRODUCTION_RELEASE=true','NO_DESTRUCTIVE=true','NO_DIRECT_MAIN=true','RESOURCE_SCOPE=UI_TARGET_TEST'];
+  const common=['PRIORITY=P1','TIGERIQ_EXECUTABLE=true','ZERO_COST=true','OWNER_POLICY=AUTO','NO_PC01_SHELL=true','NO_PAID_COST=true','NO_CREDENTIAL_CHANGE=true','NO_SECURITY_BOUNDARY_CHANGE=true','NO_PRODUCTION_RELEASE=true','NO_DESTRUCTIVE=true','NO_DIRECT_MAIN=true','RESOURCE_SCOPE=UI_TARGET_TEST'];
   const review={number:2678,state:'open',title:'[P1][REVIEW] explicit NV03',body:[...common,'CAPABILITY=review','TARGET_EMPLOYEE=NV03'].join('\n'),labels:[]};
   const research={number:2679,state:'open',title:'[P1][RESEARCH] explicit NV04',body:[...common,'CAPABILITY=deep_research','TARGET_EMPLOYEE=NV04'].join('\n'),labels:[]};
   for(const issue of [review,research]){
@@ -729,7 +750,7 @@ test('safe read-only Core autowork job includes source NEXT_ACTION and does not 
 test('blocked Core coordination for coding handoff clears terminal label and leaves source Work Order non-terminal',async()=>{
   const pool=coreBacklogPool();
   const issue={number:2474,state:'open',state_reason:null,title:'[P1][CORE] coding handoff blocked coordination',body:SAFE_AUTO_POLICY_BASE,labels:[{name:'tigeriq:terminal-blocked'}],comments:0,html_url:'https://example/2474'};
-  const spec=parseExecutableIssue(issue);
+  const spec=parseExecutableIssue({...issue,labels:[]});
   assert.ok(spec?.requiresCodingHandoff);
   pool.objectives.push({
     id:'OBJ-GH-2474',
@@ -813,7 +834,7 @@ test('generic stale terminal-blocked label clears once on fresh source revision 
   const projected=parseOpenWorkIssue(issue);
   assert.ok(projected);
   assert.notStrictEqual(projected.status,'BLOCKED');
-  assert.strictEqual(projected.status,'OPEN');
+  assert.strictEqual(projected.status,'QUEUED');
 
   out=await materializeGithubIssues({pool,openIssues:[issue],fetchImpl,token:'fake'});
   assert.strictEqual(out.created,0);
@@ -851,7 +872,7 @@ test('terminal outcome sync preserves old revision so a fresh executable source 
 
 test('generic stale terminal label is not cleared for explicit non-executable coordination work',async()=>{
   const pool=coreBacklogPool();
-  const issue={number:2873,state:'open',title:'[P1][CORE] coordination parent',body:SAFE_AUTO_POLICY_BASE.replace('SAFE_AUTO_TEST','GENERIC_TERMINAL_PARENT')+'\nTIGERIQ_EXECUTABLE=false\nAUTO_QUEUE=EXCLUDED_PARENT_COORDINATION',labels:[],comments:0,html_url:'https://example/2873',updated_at:'2026-10-02T05:00:00Z'};
+  const issue={number:2873,state:'open',title:'[P1][CORE] coordination parent',body:SAFE_AUTO_POLICY_BASE.replace('SAFE_AUTO_TEST','GENERIC_TERMINAL_PARENT').replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false')+'\nAUTO_QUEUE=EXCLUDED_PARENT_COORDINATION',labels:[],comments:0,html_url:'https://example/2873',updated_at:'2026-10-02T05:00:00Z'};
   pool.objectives.push({id:'OBJ-GH-2873',status:'blocked',metadata:{source:'github',issueNumber:2873,resourceScope:'GENERIC_TERMINAL_PARENT',sourceRevision:'older'}});
   issue.body+='\nREARM_GENERATION=2';
   issue.labels=[{name:'tigeriq:terminal-blocked'}];
@@ -882,7 +903,7 @@ test('outcome sync retires a stale active objective when current source becomes 
   pool.jobs.push({id:'JOB-2811-W',objective_id:'OBJ-GH-2811-R-old',status:'waiting_resource'});
   const issue={
     number:2811,state:'open',state_reason:null,title:'[P1][API HEALTH][UI] parent owner gate',
-    body:SAFE_AUTO_POLICY_BASE.replace('SAFE_AUTO_TEST','API_HEALTH_PARENT')+'\nTIGERIQ_EXECUTABLE=false\nAUTO_QUEUE=EXCLUDED_PARENT_COORDINATION',
+    body:SAFE_AUTO_POLICY_BASE.replace('SAFE_AUTO_TEST','API_HEALTH_PARENT').replace('TIGERIQ_EXECUTABLE=true','TIGERIQ_EXECUTABLE=false')+'\nAUTO_QUEUE=EXCLUDED_PARENT_COORDINATION',
     labels:[],comments:0,updated_at:'2026-10-02T05:26:46Z',html_url:'https://example/2811',
   };
   let mutations=0;
@@ -1035,7 +1056,7 @@ Return requested public evidence only.`;
   assert.strictEqual(comments.length,1);
   assert.strictEqual(labelAdds,1);
   assert.strictEqual(labelClears,0);
-  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT').length,1);
+  assert.strictEqual(pool.events.filter((e)=>e.type==='ROUTING_FAULT'&&e.data?.terminalBlocked===true).length,1);
 
   const firstRevision=terminalFaults[0].data.sourceRevision;
   issues=[{...issues[0],body:baseBody+'\nREARM_GENERATION=2'}];
@@ -1159,6 +1180,31 @@ test('cleared stale oversized fault is retired for the current revision and does
   assert.strictEqual(out.created,0);
   assert.strictEqual(labelClears,1);
   assert.deepStrictEqual(issue.labels,['tigeriq:terminal-blocked']);
+});
+
+test('PC terminal label rearm denies missing proof, current fault, owner hold and existing objective',async()=>{
+  const issue={number:1616,state:'open',title:'stale terminal guarded',labels:['tigeriq:terminal-blocked'],comments:0,body:[
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1',
+    'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
+    'RESOURCE_SCOPE=PC_REARM_FENCED','ASSIGNED_ACTION','Use exactly tigeriq_pc action=tcp_probe host="127.0.0.1" port=8798.',
+    'ACCEPTANCE','Return bounded evidence.'
+  ].join('\n')};
+  const revision=parseExecutableIssue({...issue,labels:[]}).sourceRevision;
+  for(const kind of ['missing','same-revision','owner-hold','existing-objective']){
+    const pool=coreBacklogPool();
+    if(kind!=='missing')pool.events.push({type:'ROUTING_FAULT',data:{
+      issueNumber:issue.number,reason:'OPENCLAW_INSTRUCTION_INVALID',sourceRevision:kind==='same-revision'?revision:'older',
+      ownerVisible:true,terminalBlocked:true,
+    }});
+    if(kind==='existing-objective')pool.objectives.push({id:'OBJ-GH-1616',status:'blocked',metadata:{source:'github',issueNumber:1616,sourceRevision:'different'}});
+    const input=kind==='owner-hold'?{...issue,body:'OWNER_HOLD=true\n'+issue.body}:issue;
+    let writes=0;
+    const fetchImpl=async(url,init={})=>{if(String(init.method||'GET').toUpperCase()!=='GET')writes++;return response([]);};
+    const result=await materializeGithubIssues({pool,fetchImpl,openIssues:[input],token:'fake'});
+    assert.equal(result.created,0,kind);
+    assert.equal(writes,0,kind);
+    assert.equal(pool.jobs.length,0,kind);
+  }
 });
 
 test('OpenClaw terminal routing state is loaded once per reconciliation, not once per PC issue',async()=>{
@@ -1398,7 +1444,7 @@ test('Owner-direct v0.20 CI artifact signer is admitted only as an owner-direct 
   const body=[
     'TIGERIQ_EXECUTABLE=true',
     'OWNER_POLICY=AUTO',
-    'OWNER_DIRECT=true',
+    'OWNER_DIRECT=true','OWNER_APPROVED_AUTONOMOUS_ANDROID=true',
     'PRIORITY=P3',
     'CAPABILITY=pc_operator',
     'NO_CODE_CHANGE=true',
@@ -1410,8 +1456,9 @@ test('Owner-direct v0.20 CI artifact signer is admitted only as an owner-direct 
     'Execute exactly the pre-admitted typed v0.20 CI artifact signer.',
     'ACCEPTANCE',
     'Return sanitized result evidence only.',
-  ].join('\\n');
+  ].join('\n');
   const issues=[{number:3219,state:'open',title:'v0.20 signer',body,html_url:'https://example/3219'}];
+  assert.strictEqual(parseExecutableIssue({...issues[0],body:body.replace('OWNER_APPROVED_AUTONOMOUS_ANDROID=true','')}),null,'legacy owner-direct alone cannot bypass current Android fence');
   const out=await materializeGithubIssues({pool,openIssues:issues,token:'fake'});
   assert.strictEqual(out.created,1);
   assert.strictEqual(out.issueNumber,3219);
@@ -1421,15 +1468,19 @@ test('Owner-direct v0.20 CI artifact signer is admitted only as an owner-direct 
   assert.strictEqual(pool.jobs[0].capability,'pc_operator');
 
   const noOwnerPool=coreBacklogPool();
-  const noOwnerBody=body.replace('OWNER_DIRECT=true\\n','');
+  const noOwnerBody=body.replace('OWNER_DIRECT=true\n','');
   const blocked=await materializeGithubIssues({pool:noOwnerPool,openIssues:[{number:3220,state:'open',title:'v0.20 signer no owner',body:noOwnerBody,html_url:'https://example/3220'}],token:'fake'});
   assert.strictEqual(blocked.created,0);
   assert.strictEqual(noOwnerPool.jobs.length,0);
 
-  const coreSource=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const coreSource=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   assert.match(coreSource,/PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set\(\['task_start','task_stop','android_worker_sign_v020_ci_artifact'/);
-  assert.match(coreSource,/android_worker_gate_c_v021_status/);
-  assert.match(coreSource,/android_worker_gate_c_v021_enqueue_10/);
+  const intakeSource=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
+  const operatorSource=readFileSync(new URL('../apps/openclaw-tigeriq-runtime/operator.mjs',import.meta.url),'utf8');
+  assert.match(intakeSource,/PC_OPERATOR_DIRECT_READ_ONLY_ACTIONS=new Set\([^\n]*'android_worker_gate_c_v021_status'/);
+  assert.match(intakeSource,/PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set\([^\n]*'android_worker_gate_c_v021_enqueue_10'/);
+  assert.match(operatorSource,/action === 'android_worker_gate_c_v021_status'/);
+  assert.match(operatorSource,/action === 'android_worker_gate_c_v021_enqueue_10'/);
 });
 
 test('Owner-direct v0.20 signer ACL bootstrap is admitted only with owner authorization',async()=>{
@@ -1437,7 +1488,7 @@ test('Owner-direct v0.20 signer ACL bootstrap is admitted only with owner author
   const body=[
     'TIGERIQ_EXECUTABLE=true',
     'OWNER_POLICY=AUTO',
-    'OWNER_DIRECT=true',
+    'OWNER_DIRECT=true','OWNER_APPROVED_AUTONOMOUS_ANDROID=true',
     'PRIORITY=P1',
     'CAPABILITY=pc_operator',
     'NO_CODE_CHANGE=true',
@@ -1464,7 +1515,7 @@ test('Owner-direct v0.20 signer ACL bootstrap is admitted only with owner author
   assert.strictEqual(blocked.created,0);
   assert.strictEqual(noOwnerPool.jobs.length,0);
 
-  const coreSource=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const coreSource=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   assert.match(coreSource,/android_worker_sign_v020_user_context/);
   assert.match(coreSource,/android_worker_grant_v020_signer_read_acl/);
 });
@@ -1474,7 +1525,7 @@ test('Owner-direct v0.20 signed APK chunk export is fixed and validates chunk in
   const body=[
     'TIGERIQ_EXECUTABLE=true',
     'OWNER_POLICY=AUTO',
-    'OWNER_DIRECT=true',
+    'OWNER_DIRECT=true','OWNER_APPROVED_AUTONOMOUS_ANDROID=true',
     'PRIORITY=P1',
     'CAPABILITY=pc_operator',
     'NO_CODE_CHANGE=true',
@@ -1528,7 +1579,7 @@ test('Owner-direct v0.20 signed APK chunk export is fixed and validates chunk in
 test('Owner-direct v0.21 CI artifact signer is admitted only as fixed local action',async()=>{
   const pool=coreBacklogPool();
   const body=[
-    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P1',
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','OWNER_APPROVED_AUTONOMOUS_ANDROID=true','PRIORITY=P1',
     'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
     'RESOURCE_SCOPE=ANDROID_V021_CI_SIGN_TEST',
     'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_sign_v021_ci_artifact"}',
@@ -1553,7 +1604,7 @@ test('Owner-direct v0.21 CI artifact signer is admitted only as fixed local acti
 test('Owner-direct v0.21 release export and manifest publish validate bounded inputs',async()=>{
   const exportPool=coreBacklogPool();
   const exportBody=[
-    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P3',
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','OWNER_APPROVED_AUTONOMOUS_ANDROID=true','PRIORITY=P3',
     'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
     'RESOURCE_SCOPE=ANDROID_V021_EXPORT_TEST',
     'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_export_v021_signed_apk_chunk","chunkIndex":3}',
@@ -1565,7 +1616,7 @@ test('Owner-direct v0.21 release export and manifest publish validate bounded in
 
   const publishPool=coreBacklogPool();
   const publishBody=[
-    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','PRIORITY=P3',
+    'TIGERIQ_EXECUTABLE=true','OWNER_POLICY=AUTO','OWNER_DIRECT=true','OWNER_APPROVED_AUTONOMOUS_ANDROID=true','PRIORITY=P3',
     'CAPABILITY=pc_operator','NO_CODE_CHANGE=true','NO_PC01_SHELL=true',
     'RESOURCE_SCOPE=ANDROID_V021_MANIFEST_TEST',
     'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_publish_v021_manifest","driveFileId":"1AbCdEfGhIjKlMnOpQrStUv"}',
@@ -1585,63 +1636,13 @@ test('Owner-direct v0.21 release export and manifest publish validate bounded in
   assert.strictEqual(noOwner.created,0);
   assert.strictEqual(noOwnerPool.jobs.length,0);
 });
-test('Owner-direct typed Paperclip broker install is admitted as local direct pc_operator action',async()=>{
-  const pool=coreBacklogPool();
-  const body=[
-    'TIGERIQ_EXECUTABLE=true',
-    'OWNER_POLICY=AUTO',
-    'OWNER_DIRECT=true',
-    'PRIORITY=P1',
-    'CAPABILITY=pc_operator',
-    'NO_CODE_CHANGE=true',
-    'NO_PC01_SHELL=true',
-    'RESOURCE_SCOPE=TIGERIQ_PAPERCLIP_LAB_PC01_TEST',
-    'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"paperclip_lab_broker_install"}',
-    'ASSIGNED_ACTION',
-    'Execute exactly the pre-admitted typed broker install action.',
-    'ACCEPTANCE',
-    'Return structured local-direct evidence.',
-  ].join('\n');
-  const issues=[{number:2048,state:'open',title:'Paperclip broker install',body,html_url:'https://example/2048'}];
-  const out=await materializeGithubIssues({pool,openIssues:issues,token:'fake'});
-  assert.strictEqual(out.created,1);
-  assert.strictEqual(out.issueNumber,2048);
-  assert.strictEqual(pool.objectives[0].metadata.executionSurface,'PC_OPERATOR_DIRECT_LOCAL');
-  assert.deepStrictEqual(pool.objectives[0].metadata.pcOperatorDirectAction,{action:'paperclip_lab_broker_install'});
-  assert.strictEqual(pool.jobs[0].capability,'pc_operator');
-});
-
-test('Owner-direct typed Paperclip OpenAI device auth start is admitted with UUID only',async()=>{
-  const pool=coreBacklogPool();
-  const body=[
-    'TIGERIQ_EXECUTABLE=true',
-    'OWNER_POLICY=AUTO',
-    'OWNER_DIRECT=true',
-    'PRIORITY=P1',
-    'CAPABILITY=pc_operator',
-    'NO_CODE_CHANGE=true',
-    'NO_PC01_SHELL=true',
-    'RESOURCE_SCOPE=TIGERIQ_PAPERCLIP_OPENAI_DEVICE_AUTH_TEST',
-    'PC_OPERATOR_DIRECT_ACTION_JSON={"action":"paperclip_openai_device_auth_start","sessionId":"d780f0ee-b44c-41e1-830a-4aada9a68ceb"}',
-    'ASSIGNED_ACTION',
-    'Execute exactly the pre-admitted device auth start action.',
-    'ACCEPTANCE',
-    'Return safe start evidence only.',
-  ].join('\n');
-  const issues=[{number:2593,state:'open',title:'Paperclip OpenAI auth start',body,html_url:'https://example/2593'}];
-  const out=await materializeGithubIssues({pool,openIssues:issues,token:'fake'});
-  assert.strictEqual(out.created,1);
-  assert.strictEqual(pool.objectives[0].metadata.executionSurface,'PC_OPERATOR_DIRECT_LOCAL');
-  assert.deepStrictEqual(pool.objectives[0].metadata.pcOperatorDirectAction,{action:'paperclip_openai_device_auth_start',sessionId:'d780f0ee-b44c-41e1-830a-4aada9a68ceb'});
-  assert.strictEqual(pool.jobs[0].capability,'pc_operator');
-});
 test('typed direct pc_operator action remains executable when explanatory prompt exceeds OpenClaw limit',async()=>{
   const pool=coreBacklogPool();
   const assigned='x'.repeat(6500);
   const body=[
     'TIGERIQ_EXECUTABLE=true',
     'OWNER_POLICY=AUTO',
-    'OWNER_DIRECT=true',
+    'OWNER_DIRECT=true','OWNER_APPROVED_AUTONOMOUS_ANDROID=true',
     'PRIORITY=P1',
     'CAPABILITY=pc_operator',
     'NO_CODE_CHANGE=true',
@@ -1664,8 +1665,8 @@ test('typed direct pc_operator action remains executable when explanatory prompt
 });
 
 test('Core manager excludes deterministic pc_operator execution surfaces',()=>{
-  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
-  assert.match(core,/not in \('CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL','CORE_UI'\)/);
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
+  assert.match(core,/not in \('CORE_OPENCLAW_BOUNDED','PC_OPERATOR_DIRECT_LOCAL','CORE_UI','MOBILE_WORKER'\)/);
   assert.match(core,/reconcileCoreDirectPcOperatorObjectives/);
   assert.match(core,/PC_OPERATOR_DIRECT_OBJECTIVE_RECONCILED/);
 });
@@ -1679,9 +1680,9 @@ test('P0 is excluded while system-routed P1-P5 materialize in priority order',as
   ];
   const fetchImpl=async(url)=>url.includes('/issues?')?response(issues):response({});
   let out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
-  assert.strictEqual(out.issueNumber,10);assert.strictEqual(pool.objectives.at(-1).priority,'P1');
-  out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
-  assert.strictEqual(out.issueNumber,20);assert.strictEqual(pool.objectives.at(-1).priority,'P2');
+  assert.strictEqual(out.created,2);
+  assert.deepStrictEqual(out.createdItems.map(item=>item.issueNumber),[10,20]);
+  assert.deepStrictEqual(pool.objectives.map(item=>item.priority),['P1','P2']);
   out=await materializeGithubIssues({pool,fetchImpl,token:'fake'});
   assert.strictEqual(out.created,0);
   assert.strictEqual(pool.objectives.filter(o=>o.status==='active').length,2);
@@ -1795,7 +1796,7 @@ test('accepted sibling reuse is exact-revision and exact-scope gated',()=>{
 test('closed accepted sibling inheritance runs before new live/final review orchestration',()=>{
   const source=readFileSync(new URL('../apps/tigeriq-core/github-intake.mjs',import.meta.url),'utf8');
   const sync=source.slice(source.indexOf('export async function syncGithubOutcomes'));
-  const inheritAt=sync.indexOf('const inheritedAcceptedSibling=await inheritClosedAcceptedSiblingCompletion');
+  const inheritAt=sync.indexOf('const inheritedAcceptedSibling=dependencyGate.allow?await inheritClosedAcceptedSiblingCompletion');
   const acceptanceAt=sync.indexOf('if(!inheritedAcceptedSibling&&(row.metadata?.liveAcceptanceRequired===true||row.metadata?.finalReviewRequired===true))');
   const ensureAt=sync.indexOf('ensureFinalLiveReviewJob');
   assert.ok(inheritAt>0);
@@ -1819,7 +1820,7 @@ test('closed source issue terminalizes stale active GitHub objective and release
     },
   });
   const closed={number:1620,state:'closed',state_reason:'not_planned',closed_at:'2026-09-23T10:43:42Z',title:'stale canary',body:''};
-  const nextIssue={number:60,state:'open',state_reason:null,updated_at:'2026-09-23T10:44:00Z',title:'next read-only work',body:READ_ONLY_BASE+'\\nOWNER_DIRECT=true\\nPRIORITY=P0',html_url:'https://example/60'};
+  const nextIssue={number:60,state:'open',state_reason:null,updated_at:'2026-09-23T10:44:00Z',title:'next read-only work',body:READ_ONLY_BASE+'\nOWNER_DIRECT=true\nPRIORITY=P1\nRESOURCE_SCOPE=NEXT_READ_ONLY',html_url:'https://example/60'};
   const fetchImpl=async(url)=>{
     if(url.endsWith('/issues/1620'))return response(closed);
     if(url.includes('/issues?'))return response([nextIssue]);
@@ -1838,7 +1839,7 @@ test('closed source issue terminalizes stale active GitHub objective and release
 });
 
 test('CORE_REVIEW GitHub objectives bypass generic manager and queue one direct review job',()=>{
-  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   const helperAt=core.indexOf('async function reconcileGithubCoreReviewObjective(o)');
   const managerAt=core.indexOf('async function managerTick()');
   const managerSlice=core.slice(managerAt,managerAt+4000);
@@ -1848,20 +1849,21 @@ test('CORE_REVIEW GitHub objectives bypass generic manager and queue one direct 
   assert.match(core,/\[TIGERIQ_INDEPENDENT_REVIEW_V1\]/);
   assert.match(core,/REVIEW=PASS\|CHANGES_REQUIRED/);
   assert.match(managerSlice,/if\(await reconcileGithubCoreReviewObjective\(o\)\) return;/);
-  assert.ok(managerSlice.indexOf('reconcileGithubCoreReviewObjective(o)')<managerSlice.indexOf('callManagerDecision('));
+  assert.ok(core.indexOf('reconcileGithubCoreReviewObjective(o)',managerAt)<core.indexOf('callManagerDecision(',managerAt));
+  assert.ok(core.indexOf('callManagerDecision(',managerAt)>managerAt);
 });
 
 test('CORE_REVIEW direct path preserves strict targetWorker routing and terminal evidence',()=>{
-  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   assert.match(core,/preferredEmployeeId:j\.objective_metadata\?\.targetWorker\|\|null/);
-  assert.match(core,/CORE_REVIEW completed by \$\{reviewer\}\/\$\{provider\}/);
+  assert.ok(core.includes("CORE_REVIEW ${changesRequired?'changes required':'completed'} by ${reviewer}/${provider}"));
   assert.match(core,/GITHUB_CORE_REVIEW_COMPLETED/);
   assert.match(core,/GITHUB_CORE_REVIEW_BLOCKED/);
 });
 
 
 test('CORE_REVIEW evidence parser enforces exact reviewed head and structured decision',()=>{
-  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   const start=core.indexOf('export function parseGithubCoreReviewEvidence');
   const end=core.indexOf('\n}\n\nasync function reconcileGithubCoreReviewObjective',start)+2;
   assert.ok(start>0&&end>start);
@@ -1887,18 +1889,18 @@ test('CORE_REVIEW evidence parser enforces exact reviewed head and structured de
 });
 
 test('github_review job validates reviewer evidence before terminal done write',()=>{
-  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   const run=core.slice(core.indexOf('async function claimJob()'),core.indexOf('async function callManagerDecision'));
-  assert.match(run,/j\.kind==='github_review'\?parseGithubCoreReviewEvidence\(routed\.text,j\.prompt\):null/);
+  assert.match(run,/if\(j\.kind==='github_review'\)[\s\S]{0,300}reviewEvidence=parseGithubCoreReviewEvidence\(routed\.text,j\.prompt\)/);
   assert.match(run,/reviewEvidence/);
 });
 
 test('github_api_autowork may use approved FREE API roster while preserving explicit LOCAL',()=>{
-  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   assert.match(core,/const CORE_AUTOWORK_EMPLOYEES = Object\.freeze\(\[OLLAMA_EMPLOYEE_ID,'NV11','NV12'\]\)/);
-  assert.match(core,/const employeeAllowlist=j\.kind==='github_api_autowork'\?CORE_AUTOWORK_EMPLOYEES:stabilityAllowlist/);
+  assert.match(core,/const employeeAllowlist=j\.kind==='github_api_autowork'\?githubAutoworkEmployeeAllowlist\(j,CORE_AUTOWORK_EMPLOYEES\):stabilityAllowlist/);
   assert.match(core,/profile:effectiveCoreJobRoutingProfile\(j\)/);
-  assert.match(core,/taskKind==='github_api_autowork'\s*\? new Set\(CORE_AUTOWORK_EMPLOYEES\)/);
+  assert.match(core,/taskKind==='github_api_autowork'\s*\? new Set\(githubAutoworkEmployeeAllowlist\(job,CORE_AUTOWORK_EMPLOYEES\)\)/);
   assert.match(core,/employeeAllowlist\.size/);
   assert.match(core,/employeeAllowlist\.has\(String\(x\.employee_id\|\|''\)\.toUpperCase\(\)\)/);
 });
@@ -1914,7 +1916,7 @@ test('GitHub backlog fallback cadence stays fast and bounded',()=>{
 
 
 test('CORE_REVIEW CHANGES_REQUIRED blocks objective instead of closing review as completed',()=>{
-  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8');
+  const core=readFileSync(new URL('../apps/tigeriq-core/core.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
   assert.match(core,/decision==='CHANGES_REQUIRED'/);
   assert.match(core,/changesRequired\?'blocked':'completed'/);
   assert.match(core,/GITHUB_CORE_REVIEW_CHANGES_REQUIRED/);

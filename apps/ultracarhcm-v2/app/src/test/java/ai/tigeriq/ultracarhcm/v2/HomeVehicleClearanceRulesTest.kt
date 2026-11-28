@@ -15,6 +15,24 @@ class HomeVehicleClearanceRulesTest {
         }
     }
 
+    @Test fun quickBarLeavesStartButtonGapAcrossViewportSizes() {
+        for (height in listOf(480, 600, 720, 800, 900, 1080, 1440, 1600, 1920, 2160, 2880, 4320)) {
+            for (density in listOf(.75f, 1f, 1.25f, 1.5f, 2f, 2.5f, 3f, 4f)) {
+                val lift = (50 * density + .5f).toInt()
+                val top = HomeLayoutRules.quickBarTop(height, lift)
+                val bottom = top + .145f
+                val start = maxOf(.73f, bottom + .006f).coerceAtMost(.80f)
+                val endPx = (top * height).toInt() + (.145f * height).toInt()
+                assertTrue(top >= .56f && top <= .647f)
+                assertTrue("QuickBar overlaps start at $height/$density", endPx < (start * height).toInt())
+            }
+        }
+        assertEquals(.647f, HomeLayoutRules.quickBarTop(2160, 50), .00001f)
+        assertEquals(.56f, HomeLayoutRules.quickBarTop(0, 50), .00001f)
+        assertEquals(.56f, HomeLayoutRules.quickBarTop(-1, 50), .00001f)
+        assertEquals(.56f, HomeLayoutRules.quickBarTop(1080, -1), .00001f)
+    }
+
     @Test fun invalidGeometryFailClosed() {
         val top = HomeLayoutRules.vehicleTopBeforeQuickBar(Float.NaN)
         assertTrue(top.isFinite())

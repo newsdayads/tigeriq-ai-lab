@@ -1,7 +1,4 @@
 import { evaluateGithubAutoworkOutput, reinforceGithubAutoworkPrompt, githubAutoworkAcceptanceRetryEligible, githubAutoworkAcceptanceRetryPrompt } from './github-autowork-acceptance.mjs';
-import { executeFencedPaperclipBrokerInstall, executeFencedPaperclipHealth } from './paperclip-direct-lease.mjs';
-import { readFencedPaperclipHealth } from '../openclaw-tigeriq-runtime/paperclip-lab.mjs';
-import { inspectPaperclipBackupProvenance } from '../openclaw-tigeriq-runtime/paperclip-backup-provenance.mjs';
 import {installedLabVersion} from './installed-lab-version.mjs';
 import { createServer } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
@@ -2103,13 +2100,13 @@ function pcOperatorJobId(objectiveId,phaseIndex,ordinal){
   return `JOB-OC-${createHash('sha256').update(key).digest('hex').slice(0,24)}`;
 }
 const OPENCLAW_RETRYABLE_JOB_KINDS=new Set(['outage','timeout','openclaw_failure','worker_timeout','spawn_error','agent_terminal_invalid','busy','rate_limit']);
-const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop','android_worker_sign_v020_ci_artifact','android_worker_sign_v020_user_context','android_worker_grant_v020_signer_read_acl','android_worker_export_v020_signed_apk_chunk','android_worker_publish_v020_manifest','android_worker_gate_c_v020_enqueue_10','tigeriq_live_3150_production_deploy','chrome_ui_reconcile_cancelled_job','paperclip_lab_broker_install','paperclip_lab_fenced_health','paperclip_openai_device_auth_start','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']);
+const PC_OPERATOR_DIRECT_MUTATING_ACTIONS=new Set(['task_start','task_stop','android_worker_sign_v020_ci_artifact','android_worker_sign_v020_user_context','android_worker_grant_v020_signer_read_acl','android_worker_export_v020_signed_apk_chunk','android_worker_publish_v020_manifest','android_worker_gate_c_v020_enqueue_10','tigeriq_live_3150_production_deploy','chrome_ui_reconcile_cancelled_job']);
 
 export function directPcOperatorAction(job){
   const raw=job?.objective_metadata?.pcOperatorDirectAction;
   if(!raw||typeof raw!=='object'||Array.isArray(raw))return null;
   const action=String(raw.action||'');
-  if(action==='shell_exec'||action==='file_write'||action.startsWith('pad_'))return null;
+  if(action==='shell_exec'||action==='file_write'||action.startsWith('pad_')||action.toLowerCase().startsWith('paperclip_'))return null;
   const standingRelease=action==='tigeriq_live_3150_production_deploy'&&job?.objective_metadata?.p1P5StandingReleaseAuthorized===true;
   if(PC_OPERATOR_DIRECT_MUTATING_ACTIONS.has(action)&&job?.objective_metadata?.ownerDirect!==true&&!standingRelease)return null;
   return raw;
@@ -2121,26 +2118,7 @@ async function runDirectPcOperatorJob(j){
   const idempotencyKey=`pc-direct:${String(j.objective_id)}:${String(j.id)}:${createHash('sha256').update(JSON.stringify(action)).digest('hex').slice(0,16)}`;
   await pool.query("update tigeriq_jobs set attempts=attempts+1,provider='local-direct',routing_profile='PC_OPERATOR_DIRECT',routing_decision=$2 where id=$1",[j.id,JSON.stringify({profile:'PC_OPERATOR_DIRECT',executionSurface:'PC_OPERATOR_DIRECT_LOCAL',idempotencyKey,action:action.action})]);
   await event('PC_OPERATOR_DIRECT_ADMITTED',{jobId:j.id,objectiveId:j.objective_id,taskKind:'pc_operator',idempotencyKey,action:action.action});
-  // Paperclip R07 is a state-changing PC01 operation. Core direct actions
-  // must not evade the atomic NV06 fence enforced by the MCP mutation route.
-  const receipt=action.action==='paperclip_lab_broker_install'
-    ? (await executeFencedPaperclipBrokerInstall({
-        job:j,db:pool,execute:executePcAction,
-        acquire:acquireSharedResourceLease,heartbeat:heartbeatSharedResourceLease,
-        release:releaseSharedResourceLease,
-      })).receipt
-    : action.action==='paperclip_lab_fenced_health'
-      ? (await executeFencedPaperclipHealth({
-          job:j,db:pool,
-          execute: async ({action:requested}) => {
-            if(requested!=='paperclip_lab_fenced_health')throw new Error('PAPERCLIP_FENCED_ACTION_INVALID');
-            const data=await readFencedPaperclipHealth();
-            return {ok:true,action:requested,target:'pc01-local',data};
-          },
-          acquire:acquireSharedResourceLease,heartbeat:heartbeatSharedResourceLease,
-          release:releaseSharedResourceLease,
-        })).receipt
-      : await executePcAction(action);
+  const receipt=await executePcAction(action);
   const result={ok:true,provider:'local-direct',executionSurface:'PC_OPERATOR_DIRECT_LOCAL',idempotencyKey,evidence:{bridgeCalls:[{tool:'tigeriq_pc',result:receipt}]}};
   await hotPathStage(j,'EVIDENCE',{provider:'local-direct',executionSurface:'PC_OPERATOR_DIRECT_LOCAL',idempotencyKey});
   await pool.query("update tigeriq_jobs set status='done',employee_id=null,resource_id=null,provider='local-direct',routing_profile='PC_OPERATOR_DIRECT',result=$2,lease_until=null,completed_at=now(),next_attempt_at=null,resource_wait_count=0,resource_wait_started_at=null where id=$1",[j.id,JSON.stringify(result)]);
@@ -3991,20 +3969,6 @@ const server=createServer(async(req,res)=>{
     if(req.method==='GET'&&url.pathname==='/api/health-live-work'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await apiHealthLiveWorkProjection()));}
     if(req.method==='GET'&&url.pathname==='/api/work-projection'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await apiHealthWorkProjection()));}
     if(req.method==='GET'&&url.pathname==='/api/work-orders'){res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(await githubWorkOrders()));}
-    // GH-2054: bounded, non-mutating backup diagnostic in the already running
-    // PC01 Core. Avoid the separately cached PC Operator MCP process, which can
-    // retain old code after an approved Core release. No broker write or SQL
-    // archive bytes are exposed, and the route only accepts local-self/auth.
-    if(req.method==='GET'&&url.pathname==='/api/pc01/paperclip-backup-integrity'){
-      if(!localSelf(req)&&!auth(req)){
-        res.writeHead(401,{'content-type':'application/json','cache-control':'no-store'});
-        return res.end(JSON.stringify({ok:false,error:'LOCAL_CORE_AUTH_REQUIRED'}));
-      }
-      const backup=await inspectPaperclipBackupProvenance();
-      res.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
-      return res.end(JSON.stringify({ok:backup.verified===true,backup}));
-    }
-
     if(req.method==='POST'&&url.pathname==='/api/github-event'){
       const authorization=String(req.headers.authorization||'');
       const match=authorization.match(/^Bearer\s+(.+)$/i);

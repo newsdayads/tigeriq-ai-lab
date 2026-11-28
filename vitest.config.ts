@@ -19,8 +19,8 @@ export default defineConfig({
       'tests/web-control-bundle-assets.test.mjs',
       'tests/pc01-release-preflight.test.mjs',
       'tests/pc01-updater-release-gate.test.mjs',
-      'tests/paperclip-broker-at-most-once.test.mjs',
       'tests/pc01-release-guard-e2e.test.mjs',
+      'tests/pc01-standing-release.test.mjs',
       'tests/pc01-runtime-control.test.mjs',
       'tests/pc01-workforce-deployment.test.mjs',
       'tests/pwa-entry.test.mjs',
@@ -65,8 +65,6 @@ export default defineConfig({
       'tests/pc-operator-mcp.test.mjs',
       'tests/pc01-authorization-server.test.mjs',
       'tests/pc01-authorization-gateway.test.mjs',
-      'tests/pc-operator-mcp-nv06-negative-receipts.test.mjs',
-      'tests/pc-operator-mcp-paperclip-completed-step.test.mjs',
       'tests/r12-ci-self-heal-canary.test.mjs',
     ],
     environment: 'node'

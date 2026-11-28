@@ -860,15 +860,10 @@ describe('GitHub Core intake guardrails',()=>{
     expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"android_worker_sign_v020_user_context"}',false)).toMatchObject({
       present:true,valid:false,reason:'OWNER_DIRECT_REQUIRED'
     });
-    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"paperclip_lab_preflight"}',false)).toMatchObject({
-      present:true,valid:true,action:{action:'paperclip_lab_preflight'},mutating:false
-    });
-    expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON={"action":"paperclip_lab_health"}',false)).toMatchObject({
-      present:true,valid:true,action:{action:'paperclip_lab_health'},mutating:false
-    });
-    for(const action of ['paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']){
-      expect(parsePcOperatorDirectAction(`PC_OPERATOR_DIRECT_ACTION_JSON={"action":"${action}"}`,true)).toMatchObject({present:true,valid:true,action:{action},mutating:true});
-      expect(parsePcOperatorDirectAction(`PC_OPERATOR_DIRECT_ACTION_JSON={"action":"${action}"}`,false)).toMatchObject({present:true,valid:false,reason:'OWNER_DIRECT_REQUIRED'});
+    for(const action of ['paperclip_lab_preflight','paperclip_lab_health','paperclip_lab_broker_install','paperclip_lab_fenced_health','paperclip_openai_device_auth_start','paperclip_lab_install','paperclip_lab_start','paperclip_lab_stop']){
+      for(const ownerDirect of [true,false]){
+        expect(parsePcOperatorDirectAction('PC_OPERATOR_DIRECT_ACTION_JSON='+JSON.stringify({action}),ownerDirect)).toMatchObject({present:true,valid:false,reason:'ACTION_NOT_ALLOWLISTED'});
+      }
     }
     for(const action of ['shell_exec','file_write','pad_click']){
       expect(parsePcOperatorDirectAction(`PC_OPERATOR_DIRECT_ACTION_JSON={"action":"${action}"}`,true)).toMatchObject({present:true,valid:false});

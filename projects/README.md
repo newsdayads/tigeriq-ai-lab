@@ -30,3 +30,6 @@ Giữ nguyên `PROJECT_ID` lịch sử và các Issue đang có; nhóm cha `tige
 **Ranh giới:** App Chrome tiếp tục LOCAL-ONLY trên PC01, các dự án ngoài repo có quyền và quy trình phát hành riêng, mỗi tích hợp xuyên dự án cần hợp đồng API/phân quyền/hạn mức và bằng chứng. Bảng GitHub Projects (nếu được tạo riêng qua quyền GitHub hợp lệ) không đồng nghĩa với file manifest; xem `docs/PROJECT_ISOLATION_AND_COLLABORATION_V1.md`.
 
 Cấu hình này trên nhánh đề xuất chưa tự khẳng định đã phát hành, đã phân quyền độc lập hoặc đã tạo bảng GitHub Projects.
+
+## Quyết định 26/11/2026
+Paperclip và TigerIQ Phone Farm bị hủy theo chỉ đạo Owner, không tự giao lại. Phần mã nguồn độc lập lưu tại `archive/retired-projects/2026-11-26/`; danh mục hiện hành đã loại Paperclip. Không xem lịch sử phía trên là danh mục đang chạy.
