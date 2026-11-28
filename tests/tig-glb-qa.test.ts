@@ -274,3 +274,48 @@ it('accepts declared optional extension when no extension is required',()=>{cons
 it('rejects object-valued buffers container',()=>{const r=run(rewriteJsonFixture(d=>{d.buffers={0:d.buffers[0],length:1};}));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid glTF storage arrays');});
 it('rejects object-valued bufferViews container',()=>{const r=run(rewriteJsonFixture(d=>{d.bufferViews=Object.fromEntries(d.bufferViews.map((value,index)=>[index,value]));}));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid glTF storage arrays');});
 it('rejects object-valued accessors container',()=>{const r=run(rewriteJsonFixture(d=>{d.accessors=Object.fromEntries(d.accessors.map((value,index)=>[index,value]));}));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid glTF storage arrays');});
+
+
+function webpPaddingFixture(paddingByte = 0) {
+  const glb = fixture({});
+  const jsonLength = glb.readUInt32LE(12);
+  const doc = JSON.parse(glb.subarray(20, 20 + jsonLength).toString('utf8').trim());
+  const binChunkStart = 20 + jsonLength;
+  const binLength = glb.readUInt32LE(binChunkStart);
+  const binStart = binChunkStart + 8;
+  const bin = Buffer.from(glb.subarray(binStart, binStart + binLength));
+  const webp = Buffer.alloc(22);
+  webp.write('RIFF', 0, 'ascii');
+  webp.writeUInt32LE(webp.length - 8, 4);
+  webp.write('WEBP', 8, 'ascii');
+  webp.write('VP8 ', 12, 'ascii');
+  webp.writeUInt32LE(1, 16);
+  webp[20] = 0x00;
+  webp[21] = paddingByte;
+  doc.bufferViews[3].byteOffset = bin.length;
+  doc.bufferViews[3].byteLength = webp.length;
+  doc.buffers[0].byteLength = bin.length + webp.length;
+  const nextBin = Buffer.concat([bin, webp, Buffer.alloc((4 - (bin.length + webp.length) % 4) % 4)]);
+  const rawJson = Buffer.from(JSON.stringify(doc));
+  const json = Buffer.concat([rawJson, Buffer.alloc((4 - rawJson.length % 4) % 4, 0x20)]);
+  const header = Buffer.alloc(12);
+  header.writeUInt32LE(0x46546c67, 0);
+  header.writeUInt32LE(2, 4);
+  header.writeUInt32LE(28 + json.length + nextBin.length, 8);
+  const chunk = (type, bytes) => {
+    const h = Buffer.alloc(8);
+    h.writeUInt32LE(bytes.length, 0);
+    h.writeUInt32LE(type, 4);
+    return Buffer.concat([h, bytes]);
+  };
+  return Buffer.concat([header, chunk(0x4e4f534a, json), chunk(0x004e4942, nextBin)]);
+}
+
+it('rejects a non-zero RIFF padding byte in an embedded WebP image',()=>{
+  const r=run(webpPaddingFixture(0x7f));
+  expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid WebP');
+});
+it('accepts a zero RIFF padding byte in an embedded WebP image',()=>{
+  const r=run(webpPaddingFixture(0));
+  expect(r.status).toBe(0);expect(JSON.parse(r.stdout)).toMatchObject({embeddedImages:1,technicalScreen:'PASS',releaseEligible:false});
+});
