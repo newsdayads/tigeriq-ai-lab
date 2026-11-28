@@ -259,9 +259,9 @@ async function runCliAnythingWriter(request, { spawnImpl = spawn, timeoutSec = 3
     fs.realpath(scriptPath), fs.realpath(runtimeRoot), fs.realpath(outputRoot),
   ]);
   const scriptBytes = await fs.readFile(scriptPath);
-  const normalizedScript = Buffer.from(scriptBytes.toString('utf8').replace(/\\r\\n/g, '\\n'), 'utf8');
+  const normalizedScript = Buffer.from(scriptBytes.toString('utf8').replace(/\r\n/g, '\n'), 'utf8');
   const scriptGitBlobSha = createHash('sha1')
-    .update(Buffer.from('blob ' + normalizedScript.length + '\\0', 'utf8'))
+    .update(Buffer.from('blob ' + normalizedScript.length + '\0', 'utf8'))
     .update(normalizedScript)
     .digest('hex');
   if (normalizeWinPath(scriptReal).toLowerCase() !== normalizeWinPath(spec.scriptPath).toLowerCase()
