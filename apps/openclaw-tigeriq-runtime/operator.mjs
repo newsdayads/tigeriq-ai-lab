@@ -210,7 +210,13 @@ export function validateCliAnythingWriterRequest(value) {
   }
   const validText = (text, max) => typeof text === 'string' && text.trim().length > 0
     && text.length <= max
-    && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ud800-\udfff\ufffe\uffff]/u.test(text);
+    && [...text].every(character => {
+      const cp = character.codePointAt(0);
+      return cp === 9 || cp === 10 || cp === 13
+        || (cp >= 32 && cp <= 0xD7FF)
+        || (cp >= 0xE000 && cp <= 0xFFFD)
+        || (cp >= 0x10000 && cp <= 0x10FFFF);
+    });
   if (!validText(title, 200)) throw new Error('CLI_ANYTHING_WRITER_INVALID_TITLE');
   if (!Array.isArray(paragraphs) || paragraphs.length < 1 || paragraphs.length > 30
     || paragraphs.some(p => !validText(p, 2000))) {
