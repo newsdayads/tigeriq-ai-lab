@@ -104,7 +104,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     if (vertexAttribute && ((start + off) % 4 !== 0 || (v.byteStride == null && width % 4 !== 0))) fail('invalid vertex attribute alignment');
     if (!count || stride < width || stride % size || (start + off) % size || off > length || width > length - off || count - 1 > Math.floor((length - off - width) / stride)) fail('accessor out of bounds');
     const reader = {5121:'readUInt8',5123:'readUInt16LE',5125:'readUInt32LE',5126:'readFloatLE'}[a.componentType];
-    return { count, get:(n,c=0) => {
+    return { count, componentType: a.componentType, get:(n,c=0) => {
       const value = bin[reader](start + off + n*stride + c*size);
       if (!a.normalized) return value;
       if (a.componentType === 5121) return value / 255;
@@ -150,6 +150,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
       if (count % 3) fail('non-triangle index count');
       for(let k=0;k<count;k+=3) {
         const a=idx?idx.get(k):k, c=idx?idx.get(k+1):k+1, e=idx?idx.get(k+2):k+2;
+        if(idx && [5121,5123,5125].some(type => idx.componentType === type && [a,c,e].includes({5121:255,5123:65535,5125:4294967295}[type]))) fail('reserved maximum index value');
         if(a>=pos.count||c>=pos.count||e>=pos.count) fail('index out of bounds');
         const x=[0,1,2].map(j=>pos.get(c,j)-pos.get(a,j)), y=[0,1,2].map(j=>pos.get(e,j)-pos.get(a,j));
         const cross=[x[1]*y[2]-x[2]*y[1],x[2]*y[0]-x[0]*y[2],x[0]*y[1]-x[1]*y[0]];
