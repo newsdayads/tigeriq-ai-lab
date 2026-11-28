@@ -131,6 +131,31 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
   const extensionsUsed = readExtensionList('extensionsUsed', d.extensionsUsed);
   const extensionsRequired = readExtensionList('extensionsRequired', d.extensionsRequired);
   const usedExtensions = new Set(extensionsUsed);
+  function validateVertexAttribute(semantic, attribute) {
+    const type = attribute.type, componentType = attribute.componentType, normalized = attribute.normalized === true;
+    let valid = false;
+    if (semantic === 'POSITION') valid = type === 'VEC3' && componentType === 5126 && !normalized;
+    else if (semantic === 'NORMAL') valid = type === 'VEC3' && componentType === 5126 && !normalized;
+    else if (semantic === 'TANGENT') valid = type === 'VEC4' && componentType === 5126 && !normalized;
+    else {
+      const indexed = /^(TEXCOORD|COLOR|JOINTS|WEIGHTS)_(0|[1-9][0-9]{0,8})$/.exec(semantic);
+      if (indexed) {
+        const family = indexed[1];
+        if (family === 'TEXCOORD') valid = type === 'VEC2' && (componentType === 5126 && !normalized || (componentType === 5121 || componentType === 5123) && normalized);
+        else if (family === 'COLOR') valid = (type === 'VEC3' || type === 'VEC4') && (componentType === 5126 && !normalized || (componentType === 5121 || componentType === 5123) && normalized);
+        else if (family === 'JOINTS') valid = type === 'VEC4' && (componentType === 5121 || componentType === 5123) && !normalized;
+        else if (family === 'WEIGHTS') valid = type === 'VEC4' && (componentType === 5126 && !normalized || (componentType === 5121 || componentType === 5123) && normalized);
+      } else if (semantic.startsWith('_')) {
+        // Application-specific attributes may use supported component types, but never UNSIGNED_INT.
+        valid = ['SCALAR', 'VEC2', 'VEC3', 'VEC4'].includes(type) && [5120, 5121, 5122, 5123, 5126].includes(componentType);
+      } else if (/^[A-Za-z][A-Za-z0-9_]*:[A-Za-z_][A-Za-z0-9_]*$/.test(semantic)) {
+        const extension = semantic.slice(0, semantic.indexOf(':'));
+        if (!usedExtensions.has(extension)) fail('undeclared vertex attribute extension');
+        return;
+      }
+    }
+    if (!valid) fail('invalid vertex attribute storage: ' + semantic);
+  }
   const supportedRequiredExtensions = new Set();
   for (const extension of extensionsRequired) {
     if (!usedExtensions.has(extension)) fail('required extension missing from extensionsUsed');
@@ -186,10 +211,11 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     for (const p of m.primitives) {
       if (p.mode !== undefined && p.mode !== 4) fail('only triangle primitives supported');
       let vertexAttributeCount;
-      for (const accessorIndex of Object.values(p.attributes ?? {})) {
+      for (const [semantic, accessorIndex] of Object.entries(p.attributes ?? {})) {
         const index = integer(accessorIndex, 'vertex attribute accessor index');
         const attribute = d.accessors?.[index];
         if (!attribute || typeof attribute !== 'object' || Array.isArray(attribute) || attribute.bufferView == null || attribute.sparse !== undefined) fail('unsupported vertex attribute accessor');
+        validateVertexAttribute(semantic, attribute);
         const components = { SCALAR:1, VEC2:2, VEC3:3, VEC4:4 }[attribute.type];
         const componentSize = {5120:1,5121:1,5122:2,5123:2,5126:4}[attribute.componentType];
         if (!Number.isSafeInteger(components) || !Number.isSafeInteger(componentSize)) fail('unsupported vertex attribute accessor');
@@ -247,7 +273,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
   if (d.skins !== undefined && !Array.isArray(d.skins)) fail('invalid skins');
   if (d.animations !== undefined && !Array.isArray(d.animations)) fail('invalid animations');
   const images=d.images ?? [];
-  for(const im of images) { if (!im || typeof im !== 'object' || Array.isArray(im) || im.uri !== undefined || !['image/png','image/jpeg','image/webp'].includes(im.mimeType)) fail('unsupported image'); const {start,length}=view(im.bufferView); if(!length) fail('empty image'); checkImage(bin.subarray(start,start+length),im.mimeType); }
+  for(const im of images) { if (!im || typeof im !== 'object' || Array.isArray(im) || im.uri !== undefined || !['image/png','image/jpeg','image/webp'].includes(im.mimeType)) fail('unsupported image'); if (im.mimeType === 'image/webp' && !usedExtensions.has('EXT_texture_webp')) fail('WebP image requires EXT_texture_webp in extensionsUsed'); const {start,length}=view(im.bufferView); if(!length) fail('empty image'); checkImage(bin.subarray(start,start+length),im.mimeType); }
   const skins=d.skins?.length??0, animations=d.animations?.length??0;
   return { schema:'tig-glb-inspection-v1',sha256:createHash('sha256').update(b).digest('hex'),meshes,triangles:total,triangleBudget,embeddedImages:images.length,uvMissing,uvOutOfRange,degenerate,skins,morphTargets,animations,
     technicalScreen:total<=triangleBudget&&uvMissing===0&&uvOutOfRange===0&&degenerate===0&&images.length>0?'PASS':'NOT_MET',
