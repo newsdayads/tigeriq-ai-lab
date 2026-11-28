@@ -293,8 +293,10 @@ function webpPaddingFixture(paddingByte = 0, declareExtension = true) {
   webp.writeUInt32LE(1, 16);
   webp[20] = 0x00;
   webp[21] = paddingByte;
-  doc.bufferViews[3].byteOffset = bin.length;
-  doc.bufferViews[3].byteLength = webp.length;
+  const webpViewIndex = doc.bufferViews.length;
+  doc.bufferViews.push({buffer:0,byteOffset:bin.length,byteLength:webp.length});
+  doc.images.push({bufferView:webpViewIndex,mimeType:'image/webp'});
+  doc.textures = [{source:0,extensions:{EXT_texture_webp:{source:1}}}];
   doc.buffers[0].byteLength = bin.length + webp.length;
   const nextBin = Buffer.concat([bin, webp, Buffer.alloc((4 - (bin.length + webp.length) % 4) % 4)]);
   const rawJson = Buffer.from(JSON.stringify(doc));
@@ -315,6 +317,7 @@ function webpPaddingFixture(paddingByte = 0, declareExtension = true) {
 it('rejects signed BYTE NORMAL storage without KHR_mesh_quantization',()=>{const r=run(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],componentType:5120});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid vertex attribute storage: NORMAL');});
 it('rejects signed SHORT JOINTS_0 storage',()=>{const r=run(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],type:'VEC4',componentType:5122});d.meshes[0].primitives[0].attributes.JOINTS_0=d.accessors.length-1;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid vertex attribute storage: JOINTS_0');});
 it('accepts core glTF unsigned SHORT JOINTS_0 storage',()=>{const r=run(rewriteJsonFixture(d=>{d.bufferViews.push({...d.bufferViews[0],byteStride:8});d.accessors.push({...d.accessors[0],bufferView:d.bufferViews.length-1,type:'VEC4',componentType:5123});d.meshes[0].primitives[0].attributes.JOINTS_0=d.accessors.length-1;}));expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');});
+it('rejects WebP texture extension without a fallback image',()=>{const r=run(rewriteJsonFixture(d=>{d.extensionsUsed=['EXT_texture_webp'];d.textures=[{extensions:{EXT_texture_webp:{source:1}}}];d.images.push({bufferView:3,mimeType:'image/webp'});}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid fallback image index');});
 it('rejects WebP image without EXT_texture_webp declaration',()=>{const r=run(webpPaddingFixture(0,false));expect(r.status).toBe(1);expect(r.stderr).toContain('WebP image requires EXT_texture_webp in extensionsUsed');});
 
 it('rejects a non-zero RIFF padding byte in an embedded WebP image',()=>{
