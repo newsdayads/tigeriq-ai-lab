@@ -121,7 +121,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
   if (d?.asset?.version !== '2.0' || !bin || d.buffers?.length !== 1 || d.buffers[0].uri !== undefined) fail('unsupported non-embedded GLB');
   const readExtensionList = (name, value) => {
     if (value === undefined) return [];
-    if (!Array.isArray(value) || value.some(extension => typeof extension !== 'string' || extension.trim().length === 0) || new Set(value).size !== value.length) {
+    if (!Array.isArray(value) || value.length === 0 || value.some(extension => typeof extension !== 'string' || extension.trim().length === 0) || new Set(value).size !== value.length) {
       fail('invalid ' + name);
     }
     return value;
