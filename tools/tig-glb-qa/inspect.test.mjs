@@ -229,3 +229,18 @@ test('accepts UTF-8 BOM while validating JSON chunk alignment',()=>{
   out.writeUInt32LE(out.length,8);
   assert.equal(inspectGlb(out).technicalScreen,'PASS');
 });
+
+test('rejects JSON chunk padding longer than the required 0-3 bytes',()=>{
+  const glb=fixture();
+  const jsonLength=glb.readUInt32LE(12);
+  const json=glb.subarray(20,20+jsonLength);
+  const binHeader=20+jsonLength;
+  const bin=glb.subarray(binHeader);
+  const expanded=Buffer.concat([json,Buffer.alloc(4,0x20)]);
+  const chunkHeader=Buffer.alloc(8);
+  chunkHeader.writeUInt32LE(expanded.length,0);
+  chunkHeader.writeUInt32LE(0x4e4f534a,4);
+  const out=Buffer.concat([glb.subarray(0,12),chunkHeader,expanded,bin]);
+  out.writeUInt32LE(out.length,8);
+  assert.throws(()=>inspectGlb(out),/invalid JSON chunk padding/);
+});
