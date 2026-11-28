@@ -253,8 +253,14 @@ async function runCliAnythingWriter(request, { spawnImpl = spawn, timeoutSec = 3
     || normalizeWinPath(outputRoot).toLowerCase() !== normalizeWinPath(spec.outputRoot).toLowerCase()) {
     throw new Error('CLI_ANYTHING_WRITER_PATH_REDIRECTED');
   }
-  const [scriptStat, rootStat] = await Promise.all([fs.lstat(scriptPath), fs.lstat(outputRoot)]);
-  if (!scriptStat.isFile() || scriptStat.isSymbolicLink()
+  const [scriptStat, rootStat, scriptReal, runtimeReal, outputRootReal] = await Promise.all([
+    fs.lstat(scriptPath), fs.lstat(outputRoot),
+    fs.realpath(scriptPath), fs.realpath(runtimeRoot), fs.realpath(outputRoot),
+  ]);
+  if (normalizeWinPath(scriptReal).toLowerCase() !== normalizeWinPath(spec.scriptPath).toLowerCase()
+    || normalizeWinPath(runtimeReal).toLowerCase() !== normalizeWinPath(spec.cwd).toLowerCase()
+    || normalizeWinPath(outputRootReal).toLowerCase() !== normalizeWinPath(spec.outputRoot).toLowerCase()
+    || !scriptStat.isFile() || scriptStat.isSymbolicLink()
     || !rootStat.isDirectory() || rootStat.isSymbolicLink()) {
     throw new Error('CLI_ANYTHING_WRITER_RUNTIME_LAYOUT_INVALID');
   }
@@ -315,7 +321,8 @@ async function runCliAnythingWriter(request, { spawnImpl = spawn, timeoutSec = 3
     throw new Error('CLI_ANYTHING_WRITER_RECEIPT_CONTRACT_INVALID');
   }
   const outputPath = await realPathInsideRoots(spec.outputPath);
-  if (normalizeWinPath(outputPath).toLowerCase() !== normalizeWinPath(spec.outputPath).toLowerCase()) {
+  const outputReal = await fs.realpath(outputPath);
+  if (normalizeWinPath(outputReal).toLowerCase() !== normalizeWinPath(spec.outputPath).toLowerCase()) {
     throw new Error('CLI_ANYTHING_WRITER_OUTPUT_PATH_REDIRECTED');
   }
   const outputStat = await fs.lstat(outputPath);
