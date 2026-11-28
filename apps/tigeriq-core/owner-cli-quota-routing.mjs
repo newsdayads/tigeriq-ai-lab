@@ -35,15 +35,15 @@ export function antigravityQuotaSnapshots(result,{observedAt}={}){
   });
 }
 
-const GROUPS=[
-  {group:'Gemini Models',preferred:['gemini-3.8-flash-low','gemini-4-hydrogen-medium','gemini-4-neon-high']},
-  {group:'Claude and GPT models',preferred:['claude-sonnet-5-5-medium','claude-opus-5-5-high','gpt-oss-120b-medium']},
-  {group:'Gemini 4 Argon',preferred:['gemini-4-argon-medium','gemini-4-argon-high']}
-];
+// Owner 2026-11-29: Hydrogen only for automatic Antigravity routing.
+// Both efforts share one Gemini quota; a higher Claude/GPT quota is not authorization.
+export const HYDROGEN_LOW='gemini-4-hydrogen-low';
+export const HYDROGEN_MEDIUM='gemini-4-hydrogen-medium';
+const GROUPS=[{group:'Gemini Models',preferred:[HYDROGEN_LOW,HYDROGEN_MEDIUM]}];
 const DIFFICULTY={
-  LOW:['gemini-3.8-flash-low','gemini-4-hydrogen-medium','claude-sonnet-5-5-medium'],
-  MEDIUM:['gemini-4-hydrogen-medium','gemini-4-neon-high','claude-sonnet-5-5-medium','gemini-3.8-flash-low'],
-  HIGH:['gemini-4-neon-high','claude-opus-5-5-high','claude-sonnet-5-5-medium','gemini-4-hydrogen-medium']
+  LOW:[HYDROGEN_LOW],
+  MEDIUM:[HYDROGEN_MEDIUM,HYDROGEN_LOW],
+  HIGH:[HYDROGEN_MEDIUM,HYDROGEN_LOW]
 };
 const available=(snapshot,nowMs)=>snapshot?.quotaKnown===true&&snapshot.blocked!==true
   &&snapshot.remainingFraction!==null&&snapshot.remainingFraction>0.05
@@ -58,8 +58,8 @@ export function chooseOwnerCodingRoute({
 }={}){
   const id=String(job.id||''),scope=String(job.resourceScope||'');
   if(!id||!scope||job.priority==='P0')return {chosen:null,code:'JOB_SCOPE_REQUIRED'};
-  const task=String(job.difficulty||'MEDIUM').toUpperCase();
-  const preference=DIFFICULTY[task]||DIFFICULTY.MEDIUM;
+  const task=String(job.difficulty||'LOW').toUpperCase();
+  const preference=DIFFICULTY[task]||DIFFICULTY.LOW;
   const agyNames=new Set((Array.isArray(antigravityModels)?antigravityModels:[]).map(String));
   const quota=(Array.isArray(snapshots)?snapshots:[]).filter(s=>available(s,nowMs));
   const agyCandidates=[];
