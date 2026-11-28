@@ -317,9 +317,9 @@ async function runCliAnythingWriter(request, { spawnImpl = spawn, timeoutSec = 3
   });
   if (result.timedOut) throw new Error('CLI_ANYTHING_WRITER_TIMEOUT');
   const scriptBytesAfter = await fs.readFile(scriptPath);
-  const normalizedScriptAfter = Buffer.from(scriptBytesAfter.toString('utf8').replace(/\\r\\n/g, '\\n'), 'utf8');
+  const normalizedScriptAfter = Buffer.from(scriptBytesAfter.toString('utf8').replace(/\r\n/g, '\n'), 'utf8');
   const scriptGitBlobShaAfter = createHash('sha1')
-    .update(Buffer.from('blob ' + normalizedScriptAfter.length + '\\0', 'utf8'))
+    .update(Buffer.from('blob ' + normalizedScriptAfter.length + '\0', 'utf8'))
     .update(normalizedScriptAfter)
     .digest('hex');
   if (scriptGitBlobShaAfter !== scriptGitBlobSha) {
