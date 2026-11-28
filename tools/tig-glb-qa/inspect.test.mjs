@@ -199,3 +199,13 @@ test('rejects POSITION bounds that do not match actual vertex data',()=>assert.t
 test('accepts exact POSITION bounds for valid geometry',()=>assert.equal(inspectGlb(fixture()).technicalScreen,'PASS'));
 
 test('rejects reserved maximum UNSIGNED_SHORT index value',()=>{const glb=fixture();const jsonLength=glb.readUInt32LE(12);const binStart=20+jsonLength+8;glb.writeUInt16LE(65535,binStart+64);assert.throws(()=>inspectGlb(glb),/reserved maximum index value/);});
+
+test('rejects non-space JSON chunk padding',()=>{
+  const glb=fixture();
+  const jsonLength=glb.readUInt32LE(12);
+  const json=glb.subarray(20,20+jsonLength).toString('utf8');
+  const padding=json.match(/ *$/)?.[0].length ?? 0;
+  assert.ok(padding>0,'fixture must contain JSON alignment padding');
+  glb[20+jsonLength-1]=0x09;
+  assert.throws(()=>inspectGlb(glb),/invalid JSON chunk padding/);
+});
