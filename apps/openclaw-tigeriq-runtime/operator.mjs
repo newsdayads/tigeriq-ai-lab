@@ -195,6 +195,7 @@ async function runShell({ command, cwd, shell = 'powershell', timeoutSec = 60 })
 const CLI_ANYTHING_WRITER_ROOT = 'D:\\TigerIQ\\State\\cli-anything-writer';
 const CLI_ANYTHING_WRITER_SCRIPT = 'D:\\TigerIQ\\Runtime\\CoreSource\\apps\\openclaw-tigeriq-runtime\\cli-anything-writer.py';
 const CLI_ANYTHING_WRITER_UPSTREAM_BLOB = '59a50348b33c878dec576f4e8d6b7591d0a420d5';
+const CLI_ANYTHING_WRITER_GIT_BLOB_SHA = 'b6d0fa5a7265c15b0ec8fc0c15ec1b871c0abdb3';
 
 export function validateCliAnythingWriterRequest(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)
@@ -257,12 +258,21 @@ async function runCliAnythingWriter(request, { spawnImpl = spawn, timeoutSec = 3
     fs.lstat(scriptPath), fs.lstat(outputRoot),
     fs.realpath(scriptPath), fs.realpath(runtimeRoot), fs.realpath(outputRoot),
   ]);
+  const scriptBytes = await fs.readFile(scriptPath);
+  const normalizedScript = Buffer.from(scriptBytes.toString('utf8').replace(/\\r\\n/g, '\\n'), 'utf8');
+  const scriptGitBlobSha = createHash('sha1')
+    .update(Buffer.from('blob ' + normalizedScript.length + '\\0', 'utf8'))
+    .update(normalizedScript)
+    .digest('hex');
   if (normalizeWinPath(scriptReal).toLowerCase() !== normalizeWinPath(spec.scriptPath).toLowerCase()
     || normalizeWinPath(runtimeReal).toLowerCase() !== normalizeWinPath(spec.cwd).toLowerCase()
     || normalizeWinPath(outputRootReal).toLowerCase() !== normalizeWinPath(spec.outputRoot).toLowerCase()
     || !scriptStat.isFile() || scriptStat.isSymbolicLink()
     || !rootStat.isDirectory() || rootStat.isSymbolicLink()) {
     throw new Error('CLI_ANYTHING_WRITER_RUNTIME_LAYOUT_INVALID');
+  }
+  if (scriptGitBlobSha !== CLI_ANYTHING_WRITER_GIT_BLOB_SHA) {
+    throw new Error('CLI_ANYTHING_WRITER_SOURCE_BLOB_MISMATCH');
   }
   const timeout = Math.max(1, Math.min(60, Number(timeoutSec) || 30));
   const result = await new Promise((resolve, reject) => {
@@ -339,6 +349,7 @@ async function runCliAnythingWriter(request, { spawnImpl = spawn, timeoutSec = 3
     readbackBytes: bytes.length,
     readbackSha256,
     readbackVerified: true,
+    sourceGitBlobSha: scriptGitBlobSha,
     execution: 'PYTHON_3_12_FIXED_PATH_NO_SHELL',
   };
 }
