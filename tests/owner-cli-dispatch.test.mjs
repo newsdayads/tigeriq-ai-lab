@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { dispatchOwnerCliJob } from '../apps/tigeriq-core/owner-cli-dispatch.mjs';
+import { dispatchOwnerCliJob, parseAntigravityPlanOutput, isNativeGoalPrompt, defaultExecuteOwnerCli } from '../apps/tigeriq-core/owner-cli-dispatch.mjs';
 import { codexQuotaSnapshot, antigravityQuotaSnapshots } from '../apps/tigeriq-core/owner-cli-quota-routing.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -302,11 +302,50 @@ describe('Owner CLI Core Dispatch E2E & Negative Gates', () => {
     assert.equal(scopedCodex.provider, 'codex');
   });
 
+  it('never queues an interactive goal into plan-only execution', async()=>{
+    const db=makeFakeDb();
+    const result=await dispatchOwnerCliJob({db,job:{id:'GOAL-1',resourceScope:'test:goal'},prompt:'/goal complete a task',
+      probeQuota:async()=>{throw Error('MUST_NOT_PROBE')},executeCli:async()=>{throw Error('MUST_NOT_RUN')}});
+    assert.equal(result.code,'AGY_GOAL_INTERACTIVE_EXECUTOR_REQUIRED');
+    assert.equal(result.accepted,false);
+    assert.equal(isNativeGoalPrompt(' /goal\nwork'),true);
+    assert.equal(isNativeGoalPrompt('/goals'),false);
+  });
+  it('rejects non-Hydrogen models and goal commands before spawning the CLI', async()=>{
+    await assert.rejects(defaultExecuteOwnerCli({provider:'antigravity',model:'claude-opus-5-5-high',prompt:'test'}),/AGY_HYDROGEN_MODEL_REQUIRED/);
+    await assert.rejects(defaultExecuteOwnerCli({provider:'antigravity',model:'gemini-4-hydrogen-low',prompt:'/goal test'}),/AGY_GOAL_INTERACTIVE_EXECUTOR_REQUIRED/);
+  });
+  it('requires a real SUCCESS JSON response and records proposal-only receipt',()=>{
+    for(const value of ['not json','{"status":"ERROR","response":"x"}','{"status":"SUCCESS","response":"x","command":{"name":"usage"}}'])
+      assert.throws(()=>parseAntigravityPlanOutput(value));
+    const result=parseAntigravityPlanOutput(JSON.stringify({status:'SUCCESS',response:'proposal',conversation_id:'conv',usage:{total_tokens:12}}));
+    assert.equal(result.productAccepted,false);
+    assert.equal(result.executionMode,'plan');
+    assert.equal(result.conversationId,'conv');
+    assert.equal(result.usage.total_tokens,12);
+  });
+  it('keeps an uncertain bridge result pending and prevents duplicate dispatch',async()=>{
+    const db=makeFakeDb();
+    let calls=0;
+    const args={db,job:{id:'PENDING-1',resourceScope:'test:pending'},prompt:'bounded plan',
+      probeQuota:async()=>makeProbe(),emitEvent:db.emitEvent,nowMs,
+      executeCli:async()=>{calls++;throw Error('OWNER_CLI_BRIDGE_TIMEOUT_PENDING')}};
+    const first=await dispatchOwnerCliJob(args);
+    assert.equal(first.pending,true);
+    assert.equal(first.code,'OWNER_CLI_RECEIPT_PENDING');
+    assert.equal(db.leases.size,1);
+    const second=await dispatchOwnerCliJob(args);
+    assert.equal(second.code,'DISPATCH_IN_PROGRESS');
+    assert.equal(calls,1);
+  });
+
   it('verifies Core wires owner-cli-dispatch into existing runJob and HTTP endpoints', () => {
     const coreSrc = readFileSync(join(__dirname, '..', 'apps', 'tigeriq-core', 'core.mjs'), 'utf8');
     assert.match(coreSrc, /import\s+\{\s*dispatchOwnerCliJob,\s*probeOwnerCliQuota\s*\}\s+from\s+'\.\/owner-cli-dispatch\.mjs'/);
     assert.match(coreSrc, /j\.kind\s*===\s*'owner_cli_dispatch'/);
     assert.match(coreSrc, /\/api\/owner-cli\/quota/);
     assert.match(coreSrc, /\/api\/owner-cli\/dispatch/);
+    assert.ok(coreSrc.includes("difficulty:String(b.difficulty||'LOW')"));
+    assert.ok(coreSrc.includes('AGY_GOAL_INTERACTIVE_EXECUTOR_REQUIRED'));
   });
 });
