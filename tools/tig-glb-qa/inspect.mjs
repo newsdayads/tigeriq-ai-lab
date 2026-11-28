@@ -121,7 +121,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
   }
   if (!Array.isArray(d?.buffers) || !Array.isArray(d.bufferViews) || !Array.isArray(d.accessors)) fail('invalid glTF storage arrays');
   const parseAssetVersion = (value, name) => {
-    const match = typeof value === 'string' && /^(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})$/.exec(value);
+    const match = typeof value === 'string' && /^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$/.exec(value);
     if (!match) fail('invalid ' + name);
     return [Number(match[1]), Number(match[2])];
   };
