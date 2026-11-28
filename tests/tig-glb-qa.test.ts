@@ -20,7 +20,7 @@ function fixture(opts: { index?: number; nan?: boolean; noUv?: boolean; degenera
   if(opts.badBinPadding) bin[bin.length-1] = 1;
   const doc = { asset:{version:'2.0'}, buffers:[{byteLength:68+png.length,...(opts.external?{uri:'external.bin'}:{})}],
     bufferViews:[{buffer:0,byteOffset:0,byteLength:36,...(opts.stride != null?{byteStride:opts.stride}:{})},{buffer:0,byteOffset:36,byteLength:24},{buffer:0,byteOffset:60,byteLength:6,...(opts.indexStride != null?{byteStride:opts.indexStride}:{})},{buffer:0,byteOffset:68,byteLength:png.length,...(opts.imageStride != null?{byteStride:opts.imageStride}:{})}],
-    accessors:[{bufferView:0,componentType:5126,count:opts.singlePosition?1:3,type:'VEC3',min:[0,0,0],max:[1,opts.degenerate?0:1,0]},{bufferView:opts.sharedView?0:1,componentType:5126,count:opts.singlePosition?1:3,type:'VEC2'},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],
+    accessors:[{bufferView:0,componentType:5126,count:opts.singlePosition?1:3,type:'VEC3',min:[0,0,0],max:[opts.singlePosition?0:1,opts.singlePosition?0:(opts.degenerate?0:1),0]},{bufferView:opts.sharedView?0:1,componentType:5126,count:opts.singlePosition?1:3,type:'VEC2'},{bufferView:2,componentType:5123,count:3,type:'SCALAR'}],
     meshes:[{name:'test',primitives:[{attributes:{POSITION:0,...(opts.noUv?{}:{TEXCOORD_0:1})},indices:2}]}],
     images:[{bufferView:3,mimeType:opts.imageMime??'image/png'}] };
   const json=Buffer.from(JSON.stringify(doc)); const padded=Buffer.concat([json,Buffer.alloc((4-json.length%4)%4,32)]);
