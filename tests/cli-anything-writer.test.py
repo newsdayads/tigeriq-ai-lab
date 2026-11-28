@@ -1,5 +1,6 @@
 """Run on Python 3.12: python tests/cli-anything-writer.test.py."""
 import hashlib
+import io
 import importlib.util
 import json
 import pathlib
@@ -74,6 +75,33 @@ class WriterAdapterTest(unittest.TestCase):
             with self.assertRaises(OSError):
                 m.run_request(self.request)
         self.assertEqual(list(self.root.iterdir()), [])
+
+    def test_fsync_failure_cleanup(self):
+        with mock.patch.object(m.os, "fsync", side_effect=OSError("simulated fsync failure")):
+            with self.assertRaises(OSError):
+                m.run_request(self.request)
+        self.assertEqual(list(self.root.iterdir()), [])
+
+    def test_output_readback_failure_cleanup(self):
+        original = pathlib.Path.read_bytes
+        def fail_odt_read(path):
+            if path.suffix == ".odt":
+                raise OSError("simulated output readback failure")
+            return original(path)
+        with mock.patch.object(pathlib.Path, "read_bytes", fail_odt_read):
+            with self.assertRaises(OSError):
+                m.run_request(self.request)
+        self.assertEqual(list(self.root.iterdir()), [])
+
+    def test_cli_success_path(self):
+        raw = json.dumps(self.request).encode("utf-8")
+        stdin = io.TextIOWrapper(io.BytesIO(raw), encoding="utf-8")
+        stdout = io.StringIO()
+        with mock.patch.object(m, "ROOT", self.root), mock.patch.object(m.sys, "stdin", stdin), mock.patch.object(m.sys, "stdout", stdout), mock.patch.object(m.sys, "argv", [str(path)]):
+            self.assertEqual(m.main(), 0)
+        receipt = json.loads(stdout.getvalue())
+        self.assertTrue(receipt["ok"])
+        self.assertEqual(pathlib.Path(receipt["path"]).read_bytes()[:2], b"PK")
 
     def test_public_api_does_not_accept_output_path(self):
         with self.assertRaises(TypeError):
