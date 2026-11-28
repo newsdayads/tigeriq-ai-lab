@@ -2321,7 +2321,7 @@ async function runJob(j) {
           id:j.id,
           resourceScope:meta.resourceScope||'',
           priority:meta.priority||'P1',
-          difficulty:meta.difficulty||'MEDIUM',
+          difficulty:meta.difficulty||'LOW',
           idempotencyKey:meta.idempotencyKey||undefined,
           codexGrant:meta.codexGrant||null,
         },
@@ -4170,6 +4170,10 @@ const server=createServer(async(req,res)=>{
       const b=await readBody(req);
       const promptText=String(b.prompt||b.objective||'').trim();
       const resourceScope=String(b.resourceScope||'').trim();
+      if(/^\/goal(?:\s|$)/i.test(promptText)){
+        res.writeHead(409,{'content-type':'application/json','cache-control':'no-store'});
+        return res.end(JSON.stringify({ok:false,error:'AGY_GOAL_INTERACTIVE_EXECUTOR_REQUIRED'}));
+      }
       if(!promptText||!resourceScope){
         res.writeHead(400,{'content-type':'application/json'});
         return res.end(JSON.stringify({ok:false,error:'PROMPT_AND_RESOURCE_SCOPE_REQUIRED'}));
@@ -4185,7 +4189,7 @@ const server=createServer(async(req,res)=>{
         source:b.source||'owner_cli_api',
         resourceScope,
         priority:['P1','P2'].includes(priority)?priority:'P1',
-        difficulty:String(b.difficulty||'MEDIUM').toUpperCase(),
+        difficulty:String(b.difficulty||'LOW').toUpperCase(),
         idempotencyKey:b.idempotencyKey?String(b.idempotencyKey):`${jobId}:${resourceScope}`,
         ...(b.codexGrant?{codexGrant:b.codexGrant}:{}),
         ...(b.timeoutMs?{timeoutMs:Number(b.timeoutMs)}:{}),
