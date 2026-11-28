@@ -54,7 +54,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
   const fail = msg => { throw new Error(msg); };
   if (!Number.isSafeInteger(triangleBudget) || triangleBudget < 1) fail('invalid triangle budget');
   if (b.length < 20 || b.readUInt32LE(0) !== 0x46546c67 || b.readUInt32LE(4) !== 2 || b.readUInt32LE(8) !== b.length) fail('invalid GLB header');
-  let at = 12, d, bin, chunks = 0;
+  let at = 12, d, bin, chunks = 0, hasJson = false;
   while (at < b.length) {
     if (at + 8 > b.length) fail('truncated chunk header');
     const len = b.readUInt32LE(at), type = b.readUInt32LE(at + 4);
@@ -62,7 +62,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     if (len % 4 || at + len > b.length) fail('invalid chunk length');
     if (chunks++ === 0 && type !== 0x4e4f534a) fail('JSON must be first');
     if (type === 0x004e4942 && chunks !== 2) fail('BIN chunk must be second');
-    if (type === 0x4e4f534a) { if (d) fail('duplicate JSON'); d = JSON.parse(b.subarray(at, at + len).toString('utf8')); }
+    if (type === 0x4e4f534a) { if (hasJson) fail('duplicate JSON'); hasJson = true; d = JSON.parse(b.subarray(at, at + len).toString('utf8')); }
     else if (type === 0x004e4942) { if (bin) fail('duplicate BIN'); bin = b.subarray(at, at + len); }
     at += len;
   }
