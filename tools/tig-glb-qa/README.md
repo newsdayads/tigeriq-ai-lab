@@ -37,6 +37,7 @@ A `technicalScreen: PASS` is **not** art/visual acceptance and never makes `rele
 ```bash
 node --check tools/tig-glb-qa/inspect.mjs
 node --test tools/tig-glb-qa/inspect.test.mjs
+npx vitest run tests/tig-glb-qa.test.ts
 ```
 
-The repository's TypeScript/Vitest test file is an additional suite and must be run with the repository's genuine Vitest environment; a Node compatibility shim is not Vitest.
+The TypeScript/Vitest suite is a required companion regression suite. Run it with the repository's genuine Vitest installation; a Node compatibility shim is not Vitest.
