@@ -96,7 +96,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     const size = {5121:1,5123:2,5125:4,5126:4}[a.componentType], width = size * components;
     const stride = integer(v.byteStride ?? width, 'stride');
     if (v.byteStride != null && v.byteStride > length) fail('invalid buffer view stride');
-    if (vertexAttribute && ((start + off) % 4 !== 0 || (v.byteStride == null && size % 4 !== 0))) fail('invalid vertex attribute alignment');
+    if (vertexAttribute && ((start + off) % 4 !== 0 || (v.byteStride == null && width % 4 !== 0))) fail('invalid vertex attribute alignment');
     if (!count || stride < width || stride % size || (start + off) % size || off > length || width > length - off || count - 1 > Math.floor((length - off - width) / stride)) fail('accessor out of bounds');
     const reader = {5121:'readUInt8',5123:'readUInt16LE',5125:'readUInt32LE',5126:'readFloatLE'}[a.componentType];
     return { count, get:(n,c=0) => {
