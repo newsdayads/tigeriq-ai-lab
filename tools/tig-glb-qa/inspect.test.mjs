@@ -56,6 +56,18 @@ function duplicateJsonFixture() {
   return Buffer.concat([header, ...chunks]);
 }
 
+function invalidUtf8Fixture() {
+  const glb = fixture();
+  const jsonLength = glb.readUInt32LE(12);
+  const json = Buffer.from(glb.subarray(20, 20 + jsonLength));
+  const marker = Buffer.from('fixture');
+  const offset = json.indexOf(marker);
+  assert.notEqual(offset, -1);
+  json[offset] = 0xff;
+  json.copy(glb, 20);
+  return glb;
+}
+
 function normalizedUvFixture(componentType, normalized = true, misaligned = false, misalignedView = false) {
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP438AAAAQBAYDFKhhdAAAAAElFTkSuQmCC', 'base64');
   const pos = Buffer.alloc(36);
@@ -89,6 +101,7 @@ for (const [componentType, label] of [[5121,'UNSIGNED_BYTE'],[5123,'UNSIGNED_SHO
   });
 }
 test('rejects duplicate JSON chunks even when first JSON value is null',()=>assert.throws(()=>inspectGlb(duplicateJsonFixture()),/duplicate JSON/));
+test('rejects invalid UTF-8 in the JSON chunk',()=>assert.throws(()=>inspectGlb(invalidUtf8Fixture()),/invalid UTF-8 JSON/));
 test('rejects unnormalized integer TEXCOORD_0',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5121,false)),/invalid normalized accessor/));
 test('rejects normalized FLOAT TEXCOORD_0',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5126,true)),/invalid normalized accessor/));
 test('rejects misaligned vertex attribute accessor offsets',()=>assert.throws(()=>inspectGlb(normalizedUvFixture(5123,true,true)),/invalid vertex attribute alignment/));
