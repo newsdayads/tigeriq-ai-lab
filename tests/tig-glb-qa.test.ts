@@ -38,6 +38,27 @@ function run(b: Buffer) {
   const path=join(dir,`fixture-${seq++}.glb`);writeFileSync(path,b);
   return spawnSync(process.execPath,[resolve('tools/tig-glb-qa/inspect.mjs'),path],{encoding:'utf8'});
 }
+function duplicateJsonFixture() {
+  const valid = fixture();
+  const jsonLength = valid.readUInt32LE(12);
+  const json = valid.subarray(20, 20 + jsonLength);
+  const binHeader = 20 + jsonLength;
+  const binLength = valid.readUInt32LE(binHeader);
+  const bin = valid.subarray(binHeader + 8, binHeader + 8 + binLength);
+  const chunk = (type, bytes) => {
+    const header = Buffer.alloc(8);
+    header.writeUInt32LE(bytes.length);
+    header.writeUInt32LE(type, 4);
+    return Buffer.concat([header, bytes]);
+  };
+  const chunks = [chunk(0x4e4f534a, Buffer.from('null')), chunk(0x004e4942, bin), chunk(0x4e4f534a, json)];
+  const header = Buffer.alloc(12);
+  header.writeUInt32LE(0x46546c67);
+  header.writeUInt32LE(2, 4);
+  header.writeUInt32LE(12 + chunks.reduce((sum, part) => sum + part.length, 0), 8);
+  return Buffer.concat([header, ...chunks]);
+}
+
 function normalizedUvFixture(componentType: 5121 | 5123 | 5126, normalized = true, misaligned = false, misalignedView = false) {
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP438AAAAQBAYDFKhhdAAAAAElFTkSuQmCC', 'base64');
   const pos = Buffer.alloc(36);
@@ -69,6 +90,9 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
     const r=run(normalizedUvFixture(componentType));
     expect(r.status).toBe(0);
     expect(JSON.parse(r.stdout)).toMatchObject({uvMissing:0,uvOutOfRange:0,technicalScreen:'PASS',releaseEligible:false});
+  });
+  it('rejects duplicate JSON chunks even when first JSON value is null',()=>{
+    const r=run(duplicateJsonFixture());expect(r.status).toBe(1);expect(r.stderr).toContain('duplicate JSON');
   });
   it('rejects unnormalized integer TEXCOORD_0',()=>{
     const r=run(normalizedUvFixture(5121,false));expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid normalized accessor');
