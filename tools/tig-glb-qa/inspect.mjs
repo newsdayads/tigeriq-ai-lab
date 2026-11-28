@@ -172,7 +172,6 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
       for (const accessorIndex of Object.values(p.attributes ?? {})) {
         const index = integer(accessorIndex, 'vertex attribute accessor index');
         const attribute = d.accessors?.[index];
-        if (!attribute || attribute.bufferView == null || attribute.sparse !== undefined) fail('unsupported vertex attribute accessor');
         if (!attribute || typeof attribute !== 'object' || Array.isArray(attribute) || attribute.bufferView == null || attribute.sparse !== undefined) fail('unsupported vertex attribute accessor');
         const components = { SCALAR:1, VEC2:2, VEC3:3, VEC4:4 }[attribute.type];
         const componentSize = {5120:1,5121:1,5122:2,5123:2,5126:4}[attribute.componentType];
