@@ -34,6 +34,12 @@ def png(w, h, idat=None, color_type=6, bit_depth=8, palette=None, palette_after_
     parts.append(chunk(b'IEND', b''))
     return b''.join(parts)
 
+def insert_after_ihdr(data, kind, payload):
+    chunk = struct.pack('>I', len(payload)) + kind + payload + struct.pack('>I', zlib.crc32(kind + payload))
+    ihdr_end = 8 + 12 + struct.unpack_from('>I', data, 8)[0]
+    return data[:ihdr_end] + chunk + data[ihdr_end:]
+
+
 class PackageTests(unittest.TestCase):
     def run_fixture(self, layer=None, composite=None, qa=None, require_release=False):
         with tempfile.TemporaryDirectory() as folder:
@@ -122,6 +128,16 @@ class PackageTests(unittest.TestCase):
     def test_palette_entry_count_cannot_exceed_index_bit_depth(self):
         with self.assertRaisesRegex(ValueError, 'PLTE exceeds indexed bit depth'):
             self.run_fixture(layer=png(1, 1, color_type=3, bit_depth=1, palette=b'\x00\x00\x00' * 3))
+
+    def test_duplicate_ihdr_rejected(self):
+        source = png(1, 1)
+        ihdr = source[16:29]
+        with self.assertRaisesRegex(ValueError, 'duplicate or misplaced PNG IHDR'):
+            self.run_fixture(layer=insert_after_ihdr(source, b'IHDR', ihdr))
+
+    def test_unknown_critical_chunk_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'unsupported critical PNG chunk'):
+            self.run_fixture(layer=insert_after_ihdr(png(1, 1), b'ABCD', b''))
 
     def test_wrong_composite_size(self):
         with self.assertRaisesRegex(ValueError, 'canvas mismatch'):
