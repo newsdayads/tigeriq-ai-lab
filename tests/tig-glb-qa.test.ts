@@ -149,6 +149,22 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
   it('rejects null buffer URI instead of treating it as absent',()=>{
     const r=run(rewriteJsonFixture(d=>{d.buffers[0].uri=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('unsupported non-embedded GLB');
   });
+  it('accepts a valid asset minVersion not greater than version',()=>{
+    const r=run(rewriteJsonFixture(d=>{d.asset.minVersion='1.0';}));
+    expect(r.status).toBe(0);expect(JSON.parse(r.stdout).technicalScreen).toBe('PASS');
+  });
+  it('rejects asset minVersion greater than asset version',()=>{
+    const r=run(rewriteJsonFixture(d=>{d.asset.minVersion='2.1';}));
+    expect(r.status).toBe(1);expect(r.stderr).toContain('asset minVersion exceeds version');
+  });
+  it('rejects malformed asset minVersion version strings',()=>{
+    const r=run(rewriteJsonFixture(d=>{d.asset.minVersion='02.0';}));
+    expect(r.status).toBe(1);expect(r.stderr).toContain('invalid asset minVersion');
+  });
+  it('rejects malformed asset version strings',()=>{
+    const r=run(rewriteJsonFixture(d=>{d.asset.version='02.0';}));
+    expect(r.status).toBe(1);expect(r.stderr).toContain('invalid asset version');
+  });
   it('rejects null primitive indices instead of treating them as omitted',()=>{
     const r=run(rewriteJsonFixture(d=>{d.meshes[0].primitives[0].indices=null;}));expect(r.status).toBe(1);expect(r.stderr).toContain('invalid accessor index');
   });
