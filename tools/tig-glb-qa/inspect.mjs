@@ -245,6 +245,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
   }
   if (!Array.isArray(d.meshes) || !d.meshes.length) fail('missing meshes');
   const meshes = []; let total = 0, morphTargets = 0, uvMissing = 0, uvOutOfRange = 0, degenerate = 0;
+  const vertexAccessorsByView = new Map();
   for (const [mi,m] of d.meshes.entries()) {
     if (!Array.isArray(m.primitives) || !m.primitives.length) fail('missing primitives');
     let triangles = 0, vertices = 0;
@@ -255,6 +256,8 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
         const index = integer(accessorIndex, 'vertex attribute accessor index');
         const attribute = d.accessors?.[index];
         if (!attribute || typeof attribute !== 'object' || Array.isArray(attribute) || attribute.bufferView == null || attribute.sparse !== undefined) fail('unsupported vertex attribute accessor');
+        if (!vertexAccessorsByView.has(attribute.bufferView)) vertexAccessorsByView.set(attribute.bufferView, new Set());
+        vertexAccessorsByView.get(attribute.bufferView).add(index);
         validateVertexAttribute(semantic, attribute);
         const components = { SCALAR:1, VEC2:2, VEC3:3, VEC4:4 }[attribute.type];
         const componentSize = {5120:1,5121:1,5122:2,5123:2,5126:4}[attribute.componentType];
@@ -301,6 +304,11 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
       triangles+=count/3; vertices+=pos.count; morphTargets+=p.targets?.length??0;
     }
     total+=triangles; meshes.push({name:m.name??'mesh-'+mi,triangles,vertices});
+  }
+  for (const [viewIndex, accessorIndices] of vertexAccessorsByView) {
+    if (accessorIndices.size > 1 && d.bufferViews[viewIndex]?.byteStride === undefined) {
+      fail('shared vertex bufferView requires byteStride');
+    }
   }
   if (d.images !== undefined && !Array.isArray(d.images)) fail('invalid images');
   if (d.skins !== undefined && !Array.isArray(d.skins)) fail('invalid skins');
