@@ -131,6 +131,10 @@ for (const [componentType, label] of [[5121,'UNSIGNED_BYTE'],[5123,'UNSIGNED_SHO
 test('rejects vertex attributes with mismatched counts',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.bufferViews[0].byteStride=12;d.accessors.push({...d.accessors[0],count:2});d.meshes[0].primitives[0].attributes.NORMAL=3;})),/vertex attribute count mismatch/));
 test('rejects duplicate JSON chunks even when first JSON value is null',()=>assert.throws(()=>inspectGlb(duplicateJsonFixture()),/duplicate JSON/));
 test('rejects null buffer URI instead of treating it as absent',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.buffers[0].uri=null;})),/unsupported non-embedded GLB/));
+test('accepts a valid asset minVersion not greater than version',()=>assert.equal(inspectGlb(rewriteJsonFixture(d=>{d.asset.minVersion='1.0';})).technicalScreen,'PASS'));
+test('rejects asset minVersion greater than asset version',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.asset.minVersion='2.1';})),/asset minVersion exceeds version/));
+test('rejects malformed asset minVersion version strings',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.asset.minVersion='02.0';})),/invalid asset minVersion/));
+test('rejects malformed asset version strings',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.asset.version='02.0';})),/invalid asset version/));
 test('rejects null primitive indices instead of treating them as omitted',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.meshes[0].primitives[0].indices=null;})),/invalid accessor index/));
 test('rejects null primitive mode instead of applying the default',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.meshes[0].primitives[0].mode=null;})),/only triangle primitives supported/));
 test('rejects null embedded image URI',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.images[0].uri=null;})),/unsupported image/));
