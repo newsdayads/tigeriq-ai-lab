@@ -62,6 +62,9 @@ def png_size(data):
     idat_ended = False
     while offset + 12 <= len(data):
         length, kind = struct.unpack_from('>I4s', data, offset)
+        require(length <= 0x7fffffff, 'PNG chunk length exceeds specification limit')
+        require(all(65 <= byte <= 90 or 97 <= byte <= 122 for byte in kind), 'invalid PNG chunk type')
+        require(not (kind[2] & 0x20), 'invalid PNG reserved chunk-type bit')
         end = offset + 12 + length
         require(end <= len(data), 'truncated PNG chunk')
         payload = data[offset + 8:end - 4]
