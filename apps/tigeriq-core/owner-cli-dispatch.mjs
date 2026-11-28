@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { liveOwnerCliQuotaProbe, locateCodexExe } from './owner-cli-quota-probe.mjs';
-import { chooseOwnerCodingRoute, HYDROGEN_LOW, HYDROGEN_MEDIUM } from './owner-cli-quota-routing.mjs';
+import { chooseOwnerCodingRoute, OWNER_AGY_MODELS } from './owner-cli-quota-routing.mjs';
 import { releaseSharedResourceLease } from './shared-resource-lease.mjs';
 
 const LOCAL = process.env.LOCALAPPDATA || '';
@@ -86,7 +86,11 @@ export function parseAntigravityPlanOutput(stdout) {
   let result;
   try { result=JSON.parse(String(stdout||'')); }
   catch { throw Object.assign(new Error('AGY_INVALID_JSON_RECEIPT'),{kind:'cli_exit'}); }
-  if(result?.status!=='SUCCESS'||typeof result.response!=='string'||!result.response.trim()||result.command){
+  if(result?.status!=='SUCCESS'){
+    const detail=typeof result?.error==='string'?result.error:String(result?.error?.message||result?.error?.code||result?.status||'');
+    throw Object.assign(new Error('AGY_PLAN_RESPONSE_NOT_SUCCESS'),{kind:classifyCliFailure(detail)});
+  }
+  if(typeof result.response!=='string'||!result.response.trim()||result.command){
     throw Object.assign(new Error('AGY_PLAN_RESPONSE_NOT_SUCCESS'),{kind:'cli_exit'});
   }
   return {output:JSON.stringify(result),executionMode:'plan',productAccepted:false,
@@ -97,8 +101,8 @@ export function parseAntigravityPlanOutput(stdout) {
 export async function defaultExecuteOwnerCli({ provider, model, prompt, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
   const boundedMs = clampTimeout(timeoutMs);
   if(provider==='antigravity'){
-    if(![HYDROGEN_LOW,HYDROGEN_MEDIUM].includes(model))
-      throw Object.assign(new Error('AGY_HYDROGEN_MODEL_REQUIRED'),{kind:'scope_denied'});
+    if(!OWNER_AGY_MODELS.includes(model))
+      throw Object.assign(new Error('AGY_AUTHORIZED_MODEL_REQUIRED'),{kind:'scope_denied'});
     if(isNativeGoalPrompt(prompt))
       throw Object.assign(new Error('AGY_GOAL_INTERACTIVE_EXECUTOR_REQUIRED'),{kind:'scope_denied'});
   }
@@ -112,7 +116,7 @@ export async function defaultExecuteOwnerCli({ provider, model, prompt, timeoutM
     const timeoutSec = Math.max(5, Math.ceil(boundedMs / 1000));
     const { stdout } = await spawnBoundedCli(
       DEFAULT_AGY_EXE,
-      ['-p', String(prompt || ''), '--model', String(model || ''), '--mode', 'plan', '--output-format', 'json', '--print-timeout', `${timeoutSec}s`],
+      ['-p', String(prompt || ''), '--model', String(model || ''), '--mode', 'plan', '--settings', '{"useG1Credits":false}', '--output-format', 'json', '--print-timeout', `${timeoutSec}s`],
       { timeoutMs: boundedMs },
     );
     return parseAntigravityPlanOutput(stdout);
@@ -213,7 +217,7 @@ export async function dispatchOwnerCliJob({
   nowMs = Date.now(),
   timeoutMs = DEFAULT_TIMEOUT_MS,
   leaseTtlMs = DEFAULT_LEASE_TTL_MS,
-  maxFailovers = 4,
+  maxFailovers = 2,
 } = {}) {
   const jobId = String(job.id || '').trim();
   const resourceScope = String(job.resourceScope || '').trim();
@@ -264,7 +268,7 @@ export async function dispatchOwnerCliJob({
   const failures = [];
   const boundedTimeout = clampTimeout(timeoutMs);
 
-  for (let attempt = 0; attempt < maxFailovers; attempt++) {
+  for (let attempt = 0; attempt < Math.min(2,Math.max(1,maxFailovers)); attempt++) {
     const decision = chooseOwnerCodingRoute({
       job: { ...job, id: jobId, resourceScope, priority },
       snapshots: remainingSnapshots,
