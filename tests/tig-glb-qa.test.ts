@@ -128,8 +128,8 @@ describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
     const r=run(normalizedUvFixture(5121,true,false,false,true));
     expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid vertex attribute alignment');
   });
-  it('accepts tightly packed normalized UNSIGNED_SHORT VEC2 TEXCOORD_0 with implicit 4-byte stride',()=>{
-    const r=run(normalizedUvFixture(5123,true,false,false,true));
+  it('accepts normalized UNSIGNED_SHORT VEC2 TEXCOORD_0 with explicit 4-byte byteStride',()=>{
+    const r=run(normalizedUvFixture(5123,true,false,false,false));
     expect(r.status).toBe(0);
     expect(JSON.parse(r.stdout)).toMatchObject({uvMissing:0,uvOutOfRange:0,technicalScreen:'PASS',releaseEligible:false});
   });
