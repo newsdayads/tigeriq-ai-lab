@@ -120,7 +120,19 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
     at += len;
   }
   if (!Array.isArray(d?.buffers) || !Array.isArray(d.bufferViews) || !Array.isArray(d.accessors)) fail('invalid glTF storage arrays');
-  if (d?.asset?.version !== '2.0' || !bin || d.buffers.length !== 1 || d.buffers[0].uri !== undefined) fail('unsupported non-embedded GLB');
+  const parseAssetVersion = (value, name) => {
+    const match = typeof value === 'string' && /^(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})$/.exec(value);
+    if (!match) fail('invalid ' + name);
+    return [Number(match[1]), Number(match[2])];
+  };
+  const assetVersion = parseAssetVersion(d?.asset?.version, 'asset version');
+  if (d.asset.minVersion !== undefined) {
+    const minVersion = parseAssetVersion(d.asset.minVersion, 'asset minVersion');
+    if (minVersion[0] > assetVersion[0] || (minVersion[0] === assetVersion[0] && minVersion[1] > assetVersion[1])) {
+      fail('asset minVersion exceeds version');
+    }
+  }
+  if (d.asset.version !== '2.0' || !bin || d.buffers.length !== 1 || d.buffers[0].uri !== undefined) fail('unsupported non-embedded GLB');
   const readExtensionList = (name, value) => {
     if (value === undefined) return [];
     if (!Array.isArray(value) || value.length === 0 || value.some(extension => typeof extension !== 'string' || extension.trim().length === 0) || new Set(value).size !== value.length) {
