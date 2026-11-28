@@ -250,3 +250,11 @@ test('rejects JSON chunk padding longer than the required 0-3 bytes',()=>{
   out.writeUInt32LE(out.length,8);
   assert.throws(()=>inspectGlb(out),/invalid JSON chunk padding/);
 });
+
+test('rejects zero-initialized non-POSITION vertex attributes',()=>{
+  assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{const normal={...d.accessors[0]};delete normal.bufferView;d.accessors.push(normal);d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;})),/unsupported vertex attribute accessor/);
+});
+
+test('rejects sparse non-POSITION vertex attributes',()=>{
+  assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.accessors.push({...d.accessors[0],sparse:{}});d.meshes[0].primitives[0].attributes.NORMAL=d.accessors.length-1;})),/unsupported vertex attribute accessor/);
+});
