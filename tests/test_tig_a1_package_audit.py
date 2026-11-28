@@ -19,11 +19,20 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
-def png(w, h, idat=None):
+def png(w, h, idat=None, color_type=6, bit_depth=8, palette=None, palette_after_idat=False):
     def chunk(kind, data):
         return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
-    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)) + chunk(b'IDAT', zlib.compress((b'\0' * (1 + w * 4)) * h) if idat is None else idat) + chunk(b'IEND', b'')
-
+    channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[color_type]
+    row_bytes = (w * channels * bit_depth + 7) // 8
+    compressed = zlib.compress((b'\0' * (1 + row_bytes)) * h) if idat is None else idat
+    parts = [b'\x89PNG\r\n\x1a\n', chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, bit_depth, color_type, 0, 0, 0))]
+    if palette is not None and not palette_after_idat:
+        parts.append(chunk(b'PLTE', palette))
+    parts.append(chunk(b'IDAT', compressed))
+    if palette is not None and palette_after_idat:
+        parts.append(chunk(b'PLTE', palette))
+    parts.append(chunk(b'IEND', b''))
+    return b''.join(parts)
 
 class PackageTests(unittest.TestCase):
     def run_fixture(self, layer=None, composite=None, qa=None, require_release=False):
@@ -89,6 +98,30 @@ class PackageTests(unittest.TestCase):
     def test_trailing_compressed_data_rejected(self):
         with self.assertRaisesRegex(ValueError, 'PNG decoded size'):
             self.run_fixture(layer=png(1, 1, zlib.compress(b'\0' * 5) + b'extra'))
+
+    def test_indexed_png_requires_palette(self):
+        with self.assertRaisesRegex(ValueError, 'missing PNG PLTE'):
+            self.run_fixture(layer=png(1, 1, color_type=3))
+
+    def test_indexed_png_accepts_valid_palette(self):
+        result = self.run_fixture(layer=png(1, 1, color_type=3, palette=b'\xff\x00\x00'))
+        self.assertEqual(result['technical_package_integrity'], 'PASS')
+
+    def test_palette_forbidden_for_grayscale(self):
+        with self.assertRaisesRegex(ValueError, 'PLTE forbidden'):
+            self.run_fixture(layer=png(1, 1, color_type=0, palette=b'\x00\x00\x00'))
+
+    def test_palette_must_precede_idat(self):
+        with self.assertRaisesRegex(ValueError, 'PLTE ordering'):
+            self.run_fixture(layer=png(1, 1, color_type=3, palette=b'\x00\x00\x00', palette_after_idat=True))
+
+    def test_palette_length_must_be_rgb_triplets(self):
+        with self.assertRaisesRegex(ValueError, 'PLTE length'):
+            self.run_fixture(layer=png(1, 1, color_type=3, palette=b'\x00\x00'))
+
+    def test_palette_entry_count_cannot_exceed_index_bit_depth(self):
+        with self.assertRaisesRegex(ValueError, 'PLTE exceeds indexed bit depth'):
+            self.run_fixture(layer=png(1, 1, color_type=3, bit_depth=1, palette=b'\x00\x00\x00' * 3))
 
     def test_wrong_composite_size(self):
         with self.assertRaisesRegex(ValueError, 'canvas mismatch'):
