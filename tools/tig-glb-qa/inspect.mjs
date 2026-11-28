@@ -206,9 +206,14 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
   if (!Number.isSafeInteger(logical) || logical < 0 || logical > bin.length || bin.length - logical > 3) fail('invalid buffer length');
   if (bin.subarray(logical).some(byte => byte !== 0)) fail('invalid BIN padding');
   const integer = (x, name) => { if (!Number.isSafeInteger(x) || x < 0) fail('invalid ' + name); return x; };
-  function view(i, { allowStride = false } = {}) {
-    const v = d.bufferViews?.[integer(i, 'view index')];
+  const bufferViewUsage = new Map();
+  function view(i, { allowStride = false, usage = 'image' } = {}) {
+    const index = integer(i, 'view index');
+    const v = d.bufferViews?.[index];
     if (!v || v.buffer !== 0) fail('invalid buffer view');
+    const previousUsage = bufferViewUsage.get(index);
+    if (previousUsage && previousUsage !== usage) fail('bufferView mixes ' + previousUsage + ' and ' + usage + ' data');
+    bufferViewUsage.set(index, usage);
     const start = integer(v.byteOffset === undefined ? 0 : v.byteOffset, 'view offset'), length = integer(v.byteLength, 'view length');
     if (start > logical || length > logical - start) fail('buffer view out of bounds');
     if (v.byteStride !== undefined) {
@@ -226,7 +231,7 @@ export function inspectGlb(input, { triangleBudget = 30000 } = {}) {
       if (unsignedInteger !== (a.normalized === true)) fail('invalid normalized accessor');
       if (![5126, 5121, 5123].includes(a.componentType)) fail('unsupported normalized accessor');
     } else if (a.normalized) fail('unsupported accessor');
-    const { v, start, length } = view(a.bufferView, { allowStride: vertexAttribute });
+    const { v, start, length } = view(a.bufferView, { allowStride: vertexAttribute, usage: vertexAttribute ? 'vertex attribute' : 'index' });
     const count = integer(a.count, 'accessor count'), off = integer(a.byteOffset === undefined ? 0 : a.byteOffset, 'accessor offset');
     const components = { SCALAR:1, VEC2:2, VEC3:3 }[kind];
     const size = {5121:1,5123:2,5125:4,5126:4}[a.componentType], width = size * components;
