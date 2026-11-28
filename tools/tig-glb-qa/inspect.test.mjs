@@ -323,6 +323,9 @@ test('accepts core glTF unsigned SHORT JOINTS_0 storage',()=>{const r=inspectGlb
 
 test('rejects WebP image without a texture extension reference',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.extensionsUsed=['EXT_texture_webp'];d.textures=[];d.images.push({bufferView:3,mimeType:'image/webp'});})),/unreferenced WebP image/));
 test('rejects WebP texture extension without a fallback image',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.extensionsUsed=['EXT_texture_webp'];d.textures=[{extensions:{EXT_texture_webp:{source:1}}}];d.images.push({bufferView:3,mimeType:'image/webp'});})),/invalid fallback image index/));
+test('rejects WebP texture extension when no WebP image target exists',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.extensionsUsed=['EXT_texture_webp'];d.textures=[{source:0,extensions:{EXT_texture_webp:{source:0}}}];})),/invalid EXT_texture_webp image references/));
+test('rejects undeclared WebP texture extension when no WebP image target exists',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.textures=[{source:0,extensions:{EXT_texture_webp:{source:0}}}];})),/WebP image requires EXT_texture_webp in extensionsUsed/));
+test('rejects non-array textures container',()=>assert.throws(()=>inspectGlb(rewriteJsonFixture(d=>{d.textures={};})),/invalid textures/));
 test('rejects WebP image without EXT_texture_webp declaration',()=>assert.throws(()=>inspectGlb(webpPaddingFixture(0,false)),/WebP image requires EXT_texture_webp in extensionsUsed/));
 
 test('rejects a non-zero RIFF padding byte in an embedded WebP image', () => {
