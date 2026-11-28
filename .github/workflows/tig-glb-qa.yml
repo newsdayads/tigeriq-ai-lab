@@ -1,0 +1,52 @@
+name: TiG GLB QA
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/tig-glb-qa/**'
+      - 'tests/tig-glb-qa.test.ts'
+      - '.github/workflows/tig-glb-qa.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig*.json'
+      - 'api/control.mjs'
+      - 'scripts/verify_queue_hygiene.mjs'
+      - 'scripts/verify_work_board_ui.mjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tig-glb-qa-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    name: Exact-head validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Syntax and standalone regression tests
+        run: |
+          node --check tools/tig-glb-qa/inspect.mjs
+          node --test tools/tig-glb-qa/inspect.test.mjs
+      - name: Vitest regression suite
+        run: npx vitest run tests/tig-glb-qa.test.ts
+      - name: Repository typecheck and build
+        run: |
+          npm run typecheck
+          npm run build
+      - name: Queue hygiene and work-board verification
+        run: |
+          node --check api/control.mjs
+          node scripts/verify_queue_hygiene.mjs
+          node scripts/verify_work_board_ui.mjs
