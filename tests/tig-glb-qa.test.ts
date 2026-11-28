@@ -122,9 +122,14 @@ function normalizedUvFixture(componentType: 5121 | 5123 | 5126, normalized = tru
   return Buffer.concat([header,chunk(0x4e4f534a,json),chunk(0x004e4942,bin)]);
 }
 describe('TiG bounded GLB screen (not likeness or release acceptance)',()=>{
-  it.each([5121,5123] as const)('rejects normalized integer TEXCOORD_0 %s without required 4-byte vertex stride',componentType=>{
-    const r=run(normalizedUvFixture(componentType,true,false,false,true));
+  it('rejects tightly packed normalized UNSIGNED_BYTE VEC2 TEXCOORD_0 without 4-byte element alignment',()=>{
+    const r=run(normalizedUvFixture(5121,true,false,false,true));
     expect(r.status).toBe(1);expect(r.stdout).toBe('');expect(r.stderr).toContain('invalid vertex attribute alignment');
+  });
+  it('accepts tightly packed normalized UNSIGNED_SHORT VEC2 TEXCOORD_0 with implicit 4-byte stride',()=>{
+    const r=run(normalizedUvFixture(5123,true,false,false,true));
+    expect(r.status).toBe(0);
+    expect(JSON.parse(r.stdout)).toMatchObject({uvMissing:0,uvOutOfRange:0,technicalScreen:'PASS',releaseEligible:false});
   });
 
   it.each([5121,5123] as const)('accepts normalized integer TEXCOORD_0 %s',componentType=>{
